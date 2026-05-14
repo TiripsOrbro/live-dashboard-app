@@ -20,6 +20,12 @@ const times = [
     '4PM', '5PM', '6PM', '7PM', '8PM', '9PM', //'10PM'
 ];
 
+const TRADING_GRID_START_HOUR = 10;
+
+function tradingEndHourExclusive() {
+    return TRADING_GRID_START_HOUR + times.length;
+}
+
 
 /* -----------------------------------------------------------
    Sales data in memory — forecast and actual (filled by API)
@@ -550,10 +556,10 @@ const SCHEDULE = [
     { time: '20:30', show: ['cleanToilets', 'patioBins','diningBins']},
     { time: '20:40', show: ['removeBins', 'wipeTREDPoster','filterPan'] },
     { time: '20:50', show: ['wipePrepGuide', 'carryoverPan', 'removeStickers']},
-    { time: '21:00', show: ['countSafe', 'printReports','carryoverFirstRound'] },   //MIC ONLY
+    { time: '21:00', show: ['countSafe', 'printReports','carryoverFirstRound'] },
 
     // "After 9:30PM"
-    { time: '21:10', show: ['bigGrillFirstAlert','checkThawing','hotLine']},        //MIC ONLY
+    { time: '21:10', show: ['bigGrillFirstAlert','checkThawing','hotLine']},
     { time: '21:20', show: ['stockCount','organiseFreezer','chipDump']},
     { time: '21:30', show: ['mopDining','coldLine','bigGrillSecondAlert'] },
     { time: '21:40', show: ['remainingFloors'] },                                   //Room for 2 more to be added
@@ -564,7 +570,7 @@ const SCHEDULE = [
     { time: '22:00', show: ['remainingBins'] },
     { time: '22:00', show: ['carryover'] },
     { time: '22:00', show: ['cleanOutSpotSweeps'] },
-    { time: '22:00', show: ['shutDownTills'] },                                     //MIC ONLY
+    { time: '22:00', show: ['shutDownTills'] },
 ];
 
 const _notificationSchedule = [];
@@ -876,7 +882,7 @@ function getCurrentHourProgress() {
     const minutes = now.getMinutes();
     const seconds = now.getSeconds();
 
-    const startHour = 10;
+    const startHour = TRADING_GRID_START_HOUR;
     const tradeEndHourExclusive = tradingEndHourExclusive();
     /** After close (e.g. 10PM), keep hourly grid colours for one more wall-clock hour (until 11PM). */
     const gridColoursEndHourExclusive = tradeEndHourExclusive + 1;
@@ -942,6 +948,18 @@ function formatCurrency(value) {
     };
 
     return `$${numericValue.toLocaleString(undefined, options)}`;
+}
+
+/** Always two fractional digits (e.g. $4,914.00) — charcoal day-total forecast only. */
+function formatCurrencyTwoDecimals(value) {
+    const numericValue = Number(value);
+    if (Number.isNaN(numericValue)) {
+        return String(value);
+    }
+    return `$${numericValue.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
 }
 
 
@@ -1050,16 +1068,14 @@ function buildActualRow(values, forecasts) {
 }
 
 /* -----------------------------------------------------------
-   Lunch (10AM–2PM) / Dinner (3PM–close) — sums of hourly forecast & actual
+   Day part row — charcoal cell shows full-day total (colour bar only).
+   Lunch 10AM–3PM (hourly slice + wall) | Dinner 3PM–close
 ----------------------------------------------------------- */
-const LUNCH_HOUR_END = 5; // slice end index: hours 0–4 → 10AM through 2PM
-const LUNCH_WALL_START_HOUR = 10;
-const LUNCH_WALL_END_HOUR = 15; // 3PM — first dinner column
-const DINNER_WALL_START_HOUR = LUNCH_WALL_END_HOUR;
-
-function tradingEndHourExclusive() {
-    return LUNCH_WALL_START_HOUR + times.length;
-}
+/** First index of 3PM column in `times` / hourly arrays (dinner starts here). */
+const PART_LUNCH_END = 5;
+const LUNCH_WALL_START = 10;
+const LUNCH_WALL_END_EXCLUSIVE = 15;
+const DINNER_WALL_START = 15;
 
 function sumHourSlice(values, start, end) {
     return values.slice(start, end).reduce((sum, v) => sum + (Number(v) || 0), 0);
@@ -1156,27 +1172,55 @@ function getDayPartPresentation(forecasts, actuals, startIdx, endExclusive, wall
     };
 }
 
+/** Full-day total in charcoal cell — bar always full width; colour = green / yellow / red vs forecast (same as hourly cells). */
+function buildDayPartCharcoalCellHtml(forecasts, actuals) {
+    if (!Array.isArray(forecasts) || forecasts.length === 0) {
+        return `<div class="grid-label meal-period-label meal-period-day-sales-total">
+            <div class="meal-period-day-sales-stack">
+                <div class="meal-period-day-sales-muted">Waiting for sales data</div>
+            </div>
+            <div class="meal-period-day-sales-fullbar" style="background-color: ${paceFillMap['cell-green']}"></div>
+        </div>`;
+    }
+    const dayForecast = sumHourSlice(forecasts, 0, times.length);
+    const dayActual = sumHourSlice(actuals, 0, times.length);
+    let statusClass = 'cell-green';
+    if (dayForecast > 0) {
+        statusClass = getActualCellClass(dayActual, dayForecast);
+    }
+    const barBg = paceFillMap[statusClass] || paceFillMap['cell-green'];
+    return `<div class="grid-label meal-period-label meal-period-day-sales-total" role="region" aria-label="Day sales total">
+        <div class="meal-period-day-sales-stack">
+            <div class="meal-period-day-sales-figures">
+                <div class="meal-period-day-sales-line">A${formatCurrencyTwoDecimals(dayActual)}</div>
+                <div class="meal-period-day-sales-line">F${formatCurrencyTwoDecimals(dayForecast)}</div>
+            </div>
+        </div>
+        <div class="meal-period-day-sales-fullbar" style="background-color: ${barBg}"></div>
+    </div>`;
+}
+
 function buildMealPeriodRow(forecasts, actuals) {
-    const lunchForecast = sumHourSlice(forecasts, 0, LUNCH_HOUR_END);
-    const lunchActual = sumHourSlice(actuals, 0, LUNCH_HOUR_END);
-    const dinnerForecast = sumHourSlice(forecasts, LUNCH_HOUR_END, times.length);
-    const dinnerActual = sumHourSlice(actuals, LUNCH_HOUR_END, times.length);
+    const lunchForecast = sumHourSlice(forecasts, 0, PART_LUNCH_END);
+    const lunchActual = sumHourSlice(actuals, 0, PART_LUNCH_END);
+    const dinnerForecast = sumHourSlice(forecasts, PART_LUNCH_END, times.length);
+    const dinnerActual = sumHourSlice(actuals, PART_LUNCH_END, times.length);
 
     const dinnerWallEnd = tradingEndHourExclusive();
     const lunchPres = getDayPartPresentation(
         forecasts,
         actuals,
         0,
-        LUNCH_HOUR_END,
-        LUNCH_WALL_START_HOUR,
-        LUNCH_WALL_END_HOUR
+        PART_LUNCH_END,
+        LUNCH_WALL_START,
+        LUNCH_WALL_END_EXCLUSIVE
     );
     const dinnerPres = getDayPartPresentation(
         forecasts,
         actuals,
-        LUNCH_HOUR_END,
+        PART_LUNCH_END,
         times.length,
-        DINNER_WALL_START_HOUR,
+        DINNER_WALL_START,
         dinnerWallEnd
     );
 
@@ -1189,14 +1233,14 @@ function buildMealPeriodRow(forecasts, actuals) {
     if (dinnerPres.liveLayersHtml) dinnerCellClasses.push('meal-period-cell--live');
 
     const lunchStyleAttr = [
-        `grid-column: 2 / 7`,
+        'grid-column: 2 / 7',
         lunchPres.inlineStyle,
         lunchPres.outcomeBorderColor ? `border: var(--cell-border) ${lunchPres.outcomeBorderColor}` : '',
     ]
         .filter(Boolean)
         .join('; ');
     const dinnerStyleAttr = [
-        `grid-column: 7 / 14`,
+        'grid-column: 7 / 14',
         dinnerPres.inlineStyle,
         dinnerPres.outcomeBorderColor ? `border: var(--cell-border) ${dinnerPres.outcomeBorderColor}` : '',
     ]
@@ -1204,7 +1248,7 @@ function buildMealPeriodRow(forecasts, actuals) {
         .join('; ');
 
     return `
-        <div class="grid-label meal-period-label">Lunch/Dinner Day Parts</div>
+        ${buildDayPartCharcoalCellHtml(forecasts, actuals)}
         <div class="${lunchCellClasses.join(' ')}" style="${lunchStyleAttr}">
             ${lunchPres.liveLayersHtml || ''}
             <div class="meal-period-body">

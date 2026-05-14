@@ -605,6 +605,60 @@ body {
     text-align: center;
 }
 
+/* Charcoal day-total cell — full-day actual/forecast; bottom strip always full width, colour only (no time pace) */
+.grid-label.meal-period-day-sales-total {
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    text-align: center;
+    gap: 6px;
+    padding: 8px 6px 6px;
+    min-height: var(--dashboard-grid-min-height);
+    box-sizing: border-box;
+}
+
+.meal-period-day-sales-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+}
+
+.meal-period-day-sales-figures {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: var(--font-size-3);
+    font-weight: var(--font-weight-meal-lines);
+    color: var(--grey);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+}
+
+.meal-period-day-sales-line {
+    white-space: nowrap;
+}
+
+.meal-period-day-sales-muted {
+    font-size: var(--font-size-5);
+    font-weight: var(--font-weight-legend);
+    color: var(--grey);
+    opacity: 0.88;
+}
+
+.meal-period-day-sales-fullbar {
+    width: 100%;
+    height: 10px;
+    flex-shrink: 0;
+    margin-top: auto;
+    box-sizing: border-box;
+}
+
 
 /*TIME/FORECAST/ACTALCOLUMN*/
 .grid-label {

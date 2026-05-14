@@ -2,7 +2,8 @@ const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs').promises;
 const path = require('path');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+require('dotenv').config({ path: path.join(__dirname, '../.env.production') });
 
 const scrapeData = require('./services/scraper');
 

@@ -34,18 +34,21 @@ function decryptCredentialPayload(encryptedPayload, keyText) {
 }
 
 function getMacromatixCredentials() {
-    if (process.env.SCRAPER_CREDENTIALS_ENCRYPTED) {
-        if (!process.env.SCRAPER_CREDENTIALS_KEY) {
+    const encrypted = String(process.env.SCRAPER_CREDENTIALS_ENCRYPTED || '').trim();
+    if (encrypted) {
+        if (!String(process.env.SCRAPER_CREDENTIALS_KEY || '').trim()) {
             throw new Error('SCRAPER_CREDENTIALS_KEY is required when SCRAPER_CREDENTIALS_ENCRYPTED is set');
         }
 
-        const decrypted = decryptCredentialPayload(
-            process.env.SCRAPER_CREDENTIALS_ENCRYPTED,
-            process.env.SCRAPER_CREDENTIALS_KEY
-        );
+        let decrypted;
+        try {
+            decrypted = decryptCredentialPayload(encrypted, process.env.SCRAPER_CREDENTIALS_KEY);
+        } catch (e) {
+            throw new Error(`Failed to decrypt SCRAPER_CREDENTIALS_ENCRYPTED: ${e.message}`);
+        }
         return {
-            username: decrypted.username,
-            password: decrypted.password,
+            username: decrypted && decrypted.username != null ? String(decrypted.username) : '',
+            password: decrypted && decrypted.password != null ? String(decrypted.password) : '',
         };
     }
 
@@ -658,8 +661,12 @@ async function scrapeMacromatix(options = {}) {
     const todayKey = dashboardDateKey();
     const cachedForecast = getCachedForecastForToday(todayKey);
 
-    if (!username || !password) {
-        throw new Error('Macromatix scraper credentials are not configured');
+    if (!String(username || '').trim() || !String(password || '').trim()) {
+        const hint =
+            String(process.env.SCRAPER_CREDENTIALS_ENCRYPTED || '').trim()
+                ? 'Check SCRAPER_CREDENTIALS_ENCRYPTED / SCRAPER_CREDENTIALS_KEY (decrypt failed or empty username/password).'
+                : 'Set SCRAPER_USERNAME and SCRAPER_PASSWORD in .env or .env.production at the project root (both are loaded on startup).';
+        throw new Error(`Macromatix scraper credentials are not configured. ${hint}`);
     }
 
     let browser;

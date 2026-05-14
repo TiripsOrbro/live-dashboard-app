@@ -105,8 +105,8 @@ ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=10
 EnvironmentFile=/home/pi/live-dashboard-app/.env.production
-# Optional when using system Chromium instead of Puppeteer's bundled Chromium:
-# Environment=SCRAPER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+# Optional: system Chromium (recommended on Pi). Bookworm often uses `/usr/bin/chromium`; older images used `/usr/bin/chromium-browser`. Run `which chromium` or `which chromium-browser` on the Pi.
+# Environment=SCRAPER_EXECUTABLE_PATH=/usr/bin/chromium
 
 [Install]
 WantedBy=multi-user.target

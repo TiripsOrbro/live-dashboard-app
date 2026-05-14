@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const fs = require('fs');
 const puppeteer = require('puppeteer');
 
 const BASE_URL = 'https://tacobellau.macromatix.net/';
@@ -308,6 +309,29 @@ async function clickFirstToolbarAction(page) {
     });
 }
 
+/** Prefer system Chromium on Pi; README paths vary by OS (`chromium` vs `chromium-browser`). */
+function resolveChromiumExecutablePath() {
+    const fromEnv = String(process.env.SCRAPER_EXECUTABLE_PATH || '').trim();
+    if (fromEnv) {
+        if (fs.existsSync(fromEnv)) {
+            return fromEnv;
+        }
+        console.warn(`[Macromatix] SCRAPER_EXECUTABLE_PATH not found (${fromEnv}), scanning common paths`);
+    }
+    const candidates = [
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/snap/bin/chromium',
+        '/usr/bin/google-chrome-stable',
+    ];
+    for (const p of candidates) {
+        if (fs.existsSync(p)) {
+            return p;
+        }
+    }
+    return undefined;
+}
+
 /** Visible window: set SCRAPER_HEADLESS to 0, false, no, or off. Optional SCRAPER_SLOW_MO_MS (ms), SCRAPER_DEVTOOLS=1 */
 function getPuppeteerLaunchOptions() {
     const raw = process.env.SCRAPER_HEADLESS;
@@ -330,8 +354,10 @@ function getPuppeteerLaunchOptions() {
             '--no-first-run',
         ],
     };
-    if (process.env.SCRAPER_EXECUTABLE_PATH) {
-        opts.executablePath = process.env.SCRAPER_EXECUTABLE_PATH;
+    const chromiumPath = resolveChromiumExecutablePath();
+    if (chromiumPath) {
+        opts.executablePath = chromiumPath;
+        console.log('[Macromatix] Using Chromium executable:', chromiumPath);
     }
     const slowMo = Number(process.env.SCRAPER_SLOW_MO_MS);
     if (Number.isFinite(slowMo) && slowMo > 0) {

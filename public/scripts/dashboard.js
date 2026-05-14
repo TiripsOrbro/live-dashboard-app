@@ -1,0 +1,1311 @@
+/* -----------------------------------------------------------
+   Root element — dashboard mounts here (`#app`)
+----------------------------------------------------------- */
+const app = document.getElementById('app');
+
+const SALES_API_URL =
+    typeof window !== 'undefined' && window.__DASHBOARD_SALES_API__
+        ? window.__DASHBOARD_SALES_API__
+        : `${window.location.origin}/api/sales`;
+const AUDITS_API_URL = `${window.location.origin}/api/audits`;
+const SALES_REFRESH_MINUTES = 2;
+const DASHBOARD_TIME_ZONE = 'Australia/Melbourne';
+
+/* -----------------------------------------------------------
+   Grid columns — one label per trading hour (10AM–9PM) uncomment for 10PM
+----------------------------------------------------------- */
+const times = [
+    '10AM', '11AM', '12PM', '1PM', '2PM', '3PM',
+    '4PM', '5PM', '6PM', '7PM', '8PM', '9PM', //'10PM'
+];
+
+
+/* -----------------------------------------------------------
+   Sales data in memory — forecast and actual (filled by API)
+----------------------------------------------------------- */
+let forecastSales = [];
+let liveSales = [];
+/** Display labels for vendors with scheduled orders still in Create / In Progress (no order #). */
+let pendingVendors = [];
+/** Labels the user has marked done this session (hidden until Macromatix drops them from the API list). */
+const dismissedPendingVendors = new Set();
+
+function getVisiblePendingVendors() {
+    return pendingVendors.filter((v) => !dismissedPendingVendors.has(v));
+}
+
+/* -----------------------------------------------------------
+   Audits list (left) — Monday refresh; Square One pair advances each Monday (1–2, 3–4, 5–6, 7–8, repeat)
+----------------------------------------------------------- */
+const SQUARE_ONE_PLACEHOLDERS = [
+    'Dining Room',
+    'Restrooms',
+    'Production Line',
+    'Walls, Floors, Drains, Shelves...',
+    'External',
+    'Bins, Bin Room, Office...',
+    'Drink Station',
+    'Prep and Washup',
+];
+
+/**
+ * Anchor Monday (local): that week shows Square Ones 1 & 2; each following Monday moves to the next pair (3&4, 5&6, 7&8), then back to 1&2.
+ * Change the inner date to any Monday you want as a “1 & 2” week — it is normalised to Monday if needed.
+ */
+const AUDIT_ANCHOR_MONDAY = (() => {
+    const a = new Date(2026, 4, 4);
+    const x = new Date(a.getFullYear(), a.getMonth(), a.getDate());
+    const day = (x.getDay() + 6) % 7;
+    x.setDate(x.getDate() - day);
+    x.setHours(0, 0, 0, 0);
+    return x;
+})();
+
+let auditListMondayKey = null;
+const dismissedAudits = new Set();
+let auditStateLoaded = false;
+
+function dashboardDateParts(d = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-AU', {
+        timeZone: DASHBOARD_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(d);
+    const get = (type) => Number(parts.find((part) => part.type === type)?.value);
+    return { year: get('year'), month: get('month'), day: get('day') };
+}
+
+function mondayDateLocal(d = new Date()) {
+    const { year, month, day: date } = dashboardDateParts(d);
+    const x = new Date(year, month - 1, date);
+    const day = (x.getDay() + 6) % 7;
+    x.setDate(x.getDate() - day);
+    x.setHours(0, 0, 0, 0);
+    return x;
+}
+
+function auditWeekKey(d = new Date()) {
+    const thisMon = mondayDateLocal(d);
+    return `${thisMon.getFullYear()}-${String(thisMon.getMonth() + 1).padStart(2, '0')}-${String(thisMon.getDate()).padStart(2, '0')}`;
+}
+
+function syncAuditWeekState() {
+    const k = auditWeekKey();
+    if (auditListMondayKey !== k) {
+        dismissedAudits.clear();
+        auditListMondayKey = k;
+        auditStateLoaded = false;
+    }
+}
+
+function squareOnePairForWeek() {
+    const thisMon = mondayDateLocal();
+    const msWeek = 7 * 24 * 60 * 60 * 1000;
+    const weeks = Math.floor((thisMon.getTime() - AUDIT_ANCHOR_MONDAY.getTime()) / msWeek);
+    const slot = ((weeks % 4) + 4) % 4;
+    const i = slot * 2;
+    return [SQUARE_ONE_PLACEHOLDERS[i], SQUARE_ONE_PLACEHOLDERS[i + 1]];
+}
+
+function getAuditListItems() {
+    return ['Pest Walk', 'RGM Cleaning Checklist', 'Period Safety Inspection', ...squareOnePairForWeek()];
+}
+
+function getVisibleAudits() {
+    return getAuditListItems().filter((label) => !dismissedAudits.has(label));
+}
+
+function applyAuditDismissals(labels) {
+    const validLabels = new Set(getAuditListItems());
+    dismissedAudits.clear();
+    if (Array.isArray(labels)) {
+        for (const label of labels) {
+            if (validLabels.has(label)) dismissedAudits.add(label);
+        }
+    }
+}
+
+async function loadAuditState() {
+    syncAuditWeekState();
+    try {
+        const res = await fetch(AUDITS_API_URL);
+        if (!res.ok) throw new Error(`Audit API responded with ${res.status}`);
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Audit API returned unsuccessful response');
+        if (data.weekKey === auditListMondayKey) {
+            applyAuditDismissals(data.dismissed);
+        }
+        auditStateLoaded = true;
+        if (document.querySelector('.dashboard-grid')) updateGrid();
+    } catch (err) {
+        console.warn('Failed to load audit state:', err);
+        auditStateLoaded = true;
+    }
+}
+
+async function saveAuditState() {
+    syncAuditWeekState();
+    try {
+        const res = await fetch(AUDITS_API_URL, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dismissed: [...dismissedAudits] }),
+        });
+        if (!res.ok) throw new Error(`Audit API responded with ${res.status}`);
+    } catch (err) {
+        console.warn('Failed to save audit state:', err);
+    }
+}
+
+/* -----------------------------------------------------------
+   Sales API — fetch JSON from API, trim hours, refresh grid & timestamp
+----------------------------------------------------------- */
+async function loadSalesData() {
+    try {
+        const res = await fetch(SALES_API_URL);
+        if (!res.ok) {
+            throw new Error(`API responded with ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (!data.success) {
+            throw new Error(data.error || 'API returned unsuccessful response');
+        }
+
+        // Remove early hours (store closed) and keep only 10AM–9PM, can -4 to -5 for a 10PM store
+        forecastSales = Array.isArray(data.forecast) ? data.forecast.slice(5, -4) : [];
+        liveSales = Array.isArray(data.actual) ? data.actual.slice(5, -4) : [];
+        pendingVendors = Array.isArray(data.pendingVendors) ? data.pendingVendors : [];
+        for (const d of [...dismissedPendingVendors]) {
+            if (!pendingVendors.includes(d)) dismissedPendingVendors.delete(d);
+        }
+
+        updateGrid();
+        updateTimestamp(data.timestamp);
+        updateSalesStatus(data);
+
+    } catch (err) {
+        console.error('Failed to load sales data:', err);
+        updateSalesStatus({ stale: true, warning: 'Unable to refresh sales data. If issue persists, contact Ash.' });
+        const grid = document.querySelector('.dashboard-grid');
+        if (grid && !liveSales.length) {
+            grid.innerHTML = '<div class="grid-error">Unable to load sales data. Let Ash know so he can sort something, it cannot be fixed if he is at work.</div>';
+            pendingVendors = [];
+            dismissedPendingVendors.clear();
+            dismissedAudits.clear();
+            auditListMondayKey = null;
+            updatePendingVendorsPanel();
+        }
+    }
+}
+
+/* -----------------------------------------------------------
+   Header clock — updates `#time-display` every second
+----------------------------------------------------------- */
+function formatTime(dateObj) {
+    return dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: DASHBOARD_TIME_ZONE });
+}
+
+function updateClock() {
+    const timeDisplay = document.getElementById('time-display');
+    if (timeDisplay) {
+        timeDisplay.textContent = formatTime(new Date());
+    }
+}
+
+/* -----------------------------------------------------------
+   Header "Last updated" — formats API `timestamp` for `#last-updated`
+----------------------------------------------------------- */
+function updateTimestamp(ts) {
+    const el = document.getElementById('last-updated');
+    if (el) {
+        const date = new Date(ts);
+        el.textContent = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: DASHBOARD_TIME_ZONE });
+    }
+}
+
+function updateSalesStatus(data = {}) {
+    const el = document.getElementById('sales-status');
+    if (!el) return;
+
+    if (data.stale || data.warning) {
+        const age = Number(data.staleAgeSeconds);
+        const ageText = Number.isFinite(age) && age > 0 ? ` (${Math.round(age / 60)} min old)` : '';
+        el.textContent = `${data.warning || 'Showing cached sales data.'}${ageText}`;
+        el.hidden = false;
+        return;
+    }
+
+    el.textContent = '';
+    el.hidden = true;
+}
+
+/* -----------------------------------------------------------
+   Notification defaults — animation length, easing, sound URL & volume
+----------------------------------------------------------- */
+window.POPUP_CONFIG = window.POPUP_CONFIG || {
+    transitionDuration: 350,
+    easing: 'cubic-bezier(0.22,1,0.36,1)',
+    soundUrl: '/assets/sounds/8_bit.mp3',
+    soundVolume: 0.9,
+    // Adjust this to make notification cards taller/shorter.
+    cardMinHeight: 160,
+};
+
+/* -----------------------------------------------------------
+   Notification icons — task type label → sprite image path
+----------------------------------------------------------- */
+window.iconMap = window.iconMap || {
+    "Clean": "/assets/Sprites/Clean.png",
+    "Close": "/assets/Sprites/Close.png",
+    "Front Counter": "/assets/Sprites/Front%20Counter.png",
+    "Fry": "/assets/Sprites/Fry2.png",
+    "Toilets": "/assets/Sprites/Toilets.png",
+};
+const iconMap = window.iconMap;
+const POPUP_CONFIG = window.POPUP_CONFIG;
+
+if (typeof POPUP_CONFIG.cardMinHeight === 'number') {
+    document.documentElement.style.setProperty('--popup-card-min-height', `${POPUP_CONFIG.cardMinHeight}px`);
+}
+
+/* -----------------------------------------------------------
+   Notification sound — preload file, play, Web Audio beep fallback
+----------------------------------------------------------- */
+let _popupAudio = null;
+function preloadPopupAudio() {
+    try {
+        if (POPUP_CONFIG.soundUrl) {
+            _popupAudio = new Audio(POPUP_CONFIG.soundUrl);
+            _popupAudio.volume = POPUP_CONFIG.soundVolume ?? 1.0;
+            _popupAudio.preload = 'auto';
+            _popupAudio.load();
+        }
+    } catch (e) {
+        _popupAudio = null;
+    }
+}
+preloadPopupAudio();
+
+function playNotificationSound() {
+    try {
+        if (_popupAudio) {
+            _popupAudio.pause();
+            _popupAudio.currentTime = 0;
+            _popupAudio.volume = POPUP_CONFIG.soundVolume ?? 1.0;
+            _popupAudio.play().catch(() => generateBeep());
+            return;
+        }
+    } catch (e) {}
+    generateBeep();
+}
+
+function generateBeep({duration = 140, frequency = 880, volume = 0.06} = {}) {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = 'sine';
+        o.frequency.value = frequency;
+        g.gain.value = volume;
+        o.connect(g);
+        g.connect(ctx.destination);
+        o.start();
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration / 1000);
+        setTimeout(() => { try { o.stop(); ctx.close(); } catch (e) {} }, duration + 20);
+    } catch (e) {}
+}
+
+/* -----------------------------------------------------------
+   Single notification — one message, top progress bar (drains R→L)
+----------------------------------------------------------- */
+function showPopup(message, duration = 10000, type = null, options = {}) {
+    const container = document.getElementById('popup-container');
+    if (!container) return;
+
+    const popup = document.createElement('div');
+    popup.className = 'popup';
+
+    const progressEl = document.createElement('div');
+    progressEl.className = 'popup-progress';
+    /* scaleX 1→0 with origin left: fill shrinks from the right (empties R→L) */
+    progressEl.style.transformOrigin = 'left center';
+
+    const inner = document.createElement('div');
+    inner.className = 'popup-inner';
+
+    const iconWrapper = document.createElement('div');
+    iconWrapper.className = 'popup-icon';
+    if (type && iconMap[type]) {
+        const img = document.createElement('img');
+        img.src = iconMap[type];
+        img.alt = type;
+        iconWrapper.appendChild(img);
+    } else {
+        iconWrapper.style.visibility = 'hidden';
+    }
+
+    const messageEl = document.createElement('div');
+    messageEl.className = 'popup-message';
+    messageEl.textContent = message || '';
+    if (options.wrapMessage) messageEl.classList.add('wrap');
+
+    popup.appendChild(progressEl);
+    inner.appendChild(iconWrapper);
+    inner.appendChild(messageEl);
+    popup.appendChild(inner);
+    container.appendChild(popup);
+
+    // show
+    requestAnimationFrame(() => popup.classList.add('popup-show'));
+    try { playNotificationSound(); } catch (e) {}
+
+    // animate top progress (empties toward the left)
+    progressEl.style.animation = 'none';
+    void progressEl.offsetWidth;
+    progressEl.style.animation = `drain ${duration}ms linear forwards`;
+
+    const dismissPopup = () => {
+        if (!popup.isConnected) return;
+        popup.classList.remove('popup-show');
+        popup.classList.add('popup-hide');
+        setTimeout(() => popup.remove(), POPUP_CONFIG.transitionDuration + 50);
+    };
+
+    // dismiss by tap/click
+    popup.addEventListener('pointerdown', dismissPopup);
+
+    // remove after duration + transition
+    setTimeout(dismissPopup, duration);
+}
+
+/* -----------------------------------------------------------
+   Two independent cards — same shell as single popup, no shared wrapper
+   Config shape: { title, instruction, message, type, duration, options }
+----------------------------------------------------------- */
+function makeMultiPopupCard(cfg, cellDuration, iconSide) {
+    const card = document.createElement('div');
+    card.className = `popup popup-multi popup-multi-icon-${iconSide}`;
+
+    const titleBox = document.createElement('div');
+    titleBox.className = 'popup-title-box';
+
+    const titleProgress = document.createElement('div');
+    titleProgress.className = 'popup-title-progress';
+    titleProgress.style.transformOrigin = 'left center';
+    titleBox.appendChild(titleProgress);
+
+    const title = document.createElement('div');
+    title.className = 'popup-title';
+    title.textContent = cfg.title || (cfg.type ? cfg.type : 'Notification');
+    titleBox.appendChild(title);
+
+    const progress = document.createElement('div');
+    progress.className = 'popup-progress';
+    progress.style.transformOrigin = 'left center';
+    card.appendChild(progress);
+    card.appendChild(titleBox);
+
+    if (cfg.type && iconMap && iconMap[cfg.type]) {
+        const iconSmall = document.createElement('div');
+        iconSmall.className = 'popup-cell-icon';
+        const img = document.createElement('img');
+        img.src = iconMap[cfg.type];
+        img.alt = cfg.type;
+        iconSmall.appendChild(img);
+        card.appendChild(iconSmall);
+    }
+
+    const instruction = document.createElement('div');
+    instruction.className = 'popup-instruction';
+    instruction.textContent = cfg.instruction || cfg.message || '';
+
+    card.appendChild(instruction);
+
+    requestAnimationFrame(() => {
+        progress.style.animation = `drain ${cellDuration}ms linear forwards`;
+        titleProgress.style.animation = `drain ${cellDuration}ms linear forwards`;
+    });
+
+    return card;
+}
+
+/* ============================================================
+   NOTIFICATIONS — edit this object only (no coding knowledge needed)
+
+   Each entry needs:
+   • A short key on the left (e.g. fryCheck) — you use that key in the schedule below.
+   • name        — big heading on the card
+   • instruction — smaller text under it
+   • icon        — must match a name from the icon list under window.iconMap above
+                   (e.g. "Fry", "Close", "Clean", "Front Counter", "Toilets")
+
+   Optional: duration — how long the card stays (milliseconds), default 15000 (15 sec)
+            seconds  — alternative: seconds (e.g. seconds: 20)
+   ============================================================ */
+const NOTIFICATIONS = {
+
+
+    // "Before 9:30PM"
+
+    cleanToilets: {name: 'Clean and stock Toilets',instruction: 'Clean and stock Toilets', icon: 'Toilets', seconds: 600},
+    diningBins: {name: 'Dining room bins',instruction: 'Empty, clean and reline dining room bins', icon: 'Clean', seconds: 600},
+    patioBins: {name: 'Patio bins',instruction: 'Empty, clean and reline patio bins', icon: 'Clean', seconds: 600},
+    removeBins: {name: 'Remove and clean bins',instruction: 'Remove and clean inside and outside of bins, then allow them to air dry. Leave 1 bin for the line and one 1 for washup, bins should be relined once they are dry', icon: 'Clean', seconds: 900},
+    smallVats: {name: 'Begin shutting down 2 small fry vats',instruction: 'Complete a full daily filter on all 3 vats and shut fown the 2 smaller vats, leaving the largest vat running. make sure a full scrub vat, wash, rinse and full polish is completed before moving on to the next vat. While waiting for the vats to filter, use degreaser to clean the front of the fryer', icon: 'Fry', seconds: 1200},
+    hotLine: {name: 'Clean Hot Line (KEEPING PRODUCTS HOT!!!)',instruction: 'Clean the hot line well by well by shifting the pans back on row and then replacing them once complete, pans should NEVER be left on the bench!!!', icon: 'Clean', seconds: 900},
+    filterPan: {name: 'Last fry filter',instruction: 'Ensure there are enough chips to make orders for 5 minutes before completing an express filter on the large vat, once that is complete, allow filter pan to cool before carefully removing the filter pan and taking it to washup to be cleaned and left to dry', icon: 'Fry', seconds: 1200},
+    removeExtras: {name: 'Remove any EXTRAs from line',instruction: 'Nothing that impacts speed should be removed, only holders for cantina bowls, dipping cups and lids, wrappers, chip bag holders, scale insert, underline fridge and containers', icon: 'Clean', seconds: 900},   
+    DTBench: {name: 'Clean DT bench',instruction: 'Remove tray and items from bench to clean underneath them and then put back, if tray is dirty consider replacing it with a new clean one and leaving the old one at washup', icon: 'Clean', seconds: 900},  
+    prepBench: {name: 'Clean Prep Bench',instruction: 'Unplug and move the rice cooker to clean under it, check if the seasoning, sugar and rice tub are clean, if not clean them and leave to air dry', icon: 'Clean', seconds: 900},
+    fryBench: {name: 'Clean Fry Bench',instruction: "Use degreaser to clean the fry bench, don't neglect the rails that hold the baskets or the shelf that holds nacho chips", icon: 'Fry', seconds: 900},   
+    cleanFloors: {name: 'Begin cleaning floors',instruction: 'Clean all floors except in use line, make sure to clean under shelves, benches, equipement (Drink machines, Fryer, Retherm) and the line', icon: 'Clean', seconds: 900},
+    drains: {name: 'Clean drains',instruction: 'Remove drains from wherever you have mopped, remove any buildup from underneath the catchers', icon: 'Clean', seconds: 600},   
+    setupCarryover: {name: 'Setup Carryover Sink',instruction: 'Sink should be filled 3/4 of the way with just ice, water will be added to it later in the night', icon: 'Clean', seconds: 600},
+    cleanRetherm: {name: 'Clean Retherm',instruction: 'Drain and clean inside the retherm following the standard card, once the inside has been cleaned, close the lids and valves and clean the outside of the retherm', icon: 'Clean', seconds: 900},
+    
+        //MIC ONLY
+
+    removeStickers: {name: 'MIC - Remove Stickers',instruction: 'Remove Stickers of anything that is going to before open tomorrow, typically stickers that have hold times of 24 hours or less', icon: 'Close', seconds: 600},
+    wipePrepGuide: {name: 'MIC - Wipe off Prep Guide',instruction: 'Use Grafitti cleaner to remove sharpie, then use either degreaser, glass cleaner or hand sanitizer to remove residue', icon: 'Close', seconds: 600},
+    wipeTREDPoster: {name: 'MIC - Wipe off TRED Poster',instruction: 'Use Grafitti cleaner to remove sharpie, then use either degreaser, glass cleaner or hand sanitizer to remove residue', icon: 'Close', seconds: 600},
+
+    // "After 9:30PM"
+
+    mopDining: {name: 'Mop dining room',instruction: 'Clean dining room using the green mop and bucket, use multiple bucket loads if your water is turning grey. REMINDER: make sure the mop is properly wrung out before using it to avoid flooding the floor', icon: 'Clean', seconds: 900},  
+    carryoverPan: {name: 'Setup Carryover pan',instruction: 'Setup Carryover pan, line it with enough bags for your expected carryover, a full pan of chicken= 2 bags, beef = 3, nacho = 2', icon: 'Clean', seconds: 600},  
+    carryoverFirstRound: {name: 'First Round of Carryover',instruction: 'Check with MIC if there are any ingredients that can be carried over, ensuring there is enough product to last the night, if there are any issues, inform MIC and they will handle it', icon: 'Clean', seconds: 900},  
+    chipDump: {name: 'Clean Chip Dump',instruction: 'Remove all chips and peices from the inside chip dump, inclusing the grill on the top of the dump', icon: 'Clean', seconds: 600},     
+    coldLine: {name: 'Clean cold line',instruction: 'Clean cold line, items should only be removed from the cold line for a short period of time to avoid them warming up and becoming unsafe to eat', icon: 'Clean', seconds: 600},    
+    remainingFloors: {name: 'Clean floors',instruction: 'Clean remaining floors that were missed during the night', icon: 'Clean', seconds: 600},
+    
+        //MIC ONLY
+    
+    stockCount: {name: 'MIC -Complete Stock Count',instruction: 'While completing your count remove any half opened boxes, after completing count, investigate any red variances', icon: 'Close', seconds: 600},    
+    countSafe: {name: 'MIC - Count safe',instruction: "MIC - Stock up tills to ensure you don't need to swap around any money at the end of the night and then Count safe", icon: 'Close', seconds: 600},     
+    bigGrillFirstAlert: {name: 'MIC - Switch off Big Grill',instruction: 'Turn off the big grill, and allow to cool for 20 minutes', icon: 'Close', seconds: 600}, 
+    bigGrillSecondAlert: {name: 'MIC - Clean Big Grill',instruction: 'Put on PPE and begin cleaning the big grill, ensuring that you are pouring chemicals on the scrubber not directly on the grill. remember clean the entire grill,the chemical is heat activated and takes time to heat up and remove build up.', icon: 'Close', seconds: 600},
+
+    // "After Close"
+
+    drinkNozzles: {name: 'Drink Nozzles',instruction: 'Get a bucket of clean sanitiser water, collect all the drink nozzles and place them in the bucket, then clean the nozzles with the sanitiser water before laying them out on cloths', icon: 'Close', seconds: 3600}, 
+    remainingBins: {name: 'Remove Bins',instruction: 'Remove remaining bins cleaned them and allow them to airdry and relined dry bins', icon: 'Clean', seconds: 3600},
+    carryover: {name: 'Carryover',instruction: 'Complete remaining carryover, keeping products hot in the hotline until they are being carried over', icon: 'Clean', seconds: 3600},
+    cleanOutSpotSweeps: {name: 'Clean spot sweeps',instruction: 'Disassemble and clean out spot sweeps and leave them to air dry', icon: 'Clean', seconds: 3600},
+    checkThawing: {name: 'Check if more thawing is needed',instruction: 'Check thwaing guide and confirm if more thawing is needed', icon: 'Clean', seconds: 600},
+    organiseFreezer: {name: 'Organise Freezer',instruction: 'Organise freezer stock, removing any expired products and organising the stock correctly', icon: 'Clean', seconds: 600},
+
+        //MIC ONLY
+
+    printReports: {name: 'MIC- print reports',instruction: 'Print Daily Roster and Prep Guide', icon: 'Clean', seconds: 600},
+    shutDownTills: {name: 'MIC - Shut down tills',instruction: 'Close tills and deposit money into safe for the night', icon: 'Clean', seconds: 3600},
+
+
+};						
+
+/* ============================================================
+   SCHEDULE — when to show 1, 2, or 3 cards at the same time
+
+   • time — 24-hour clock as "HH:MM" (e.g. "14:30" for 2:30 PM)
+   • show — list of keys from NOTIFICATIONS above (1 to 3 names)
+
+   Examples:
+     { time: '9:00',  show: ['fryCheck'] }
+     { time: '14:15', show: ['closeSoon', 'volumeCheck'] }
+     { time: '20:00', show: ['fryCheck', 'volumeCheck', 'closeSoon'] }
+   ============================================================ */
+const SCHEDULE = [
+
+    // "Before 9:30PM"
+    { time: '20:00', show: ['smallVats']},    
+    { time: '20:10', show: ['DTBench', 'prepBench', 'fryBench'] },
+    { time: '20:20', show: ['setupCarryover','removeExtras']},
+    { time: '20:30', show: ['cleanFloors', 'drains'] },
+    { time: '20:40', show: ['cleanToilets', 'patioBins'] },
+    { time: '20:50', show: ['removeBins', 'diningBins'] },
+    { time: '21:00', show: ['cleanRetherm']},
+    { time: '21:10', show: ['hotLine']},
+    { time: '21:15', show: ['filterPan']},
+    { time: '21:15', show: ['removeStickers', 'wipePrepGuide', 'wipeTREDPoster'] }, //MIC ONLY
+
+    // "After 9:30PM"
+    { time: '21:20', show: ['bigGrillFirstAlert'] },                                //MIC ONLY
+    { time: '21:20', show: ['countSafe'] },                                         //MIC ONLY
+    { time: '21:20', show: ['printReports'] },                                      //MIC ONLY
+    { time: '21:30', show: ['mopDining'] },
+    { time: '21:30', show: ['carryoverPan'] },
+    { time: '21:30', show: ['stockCount'] },                                        //MIC ONLY
+    { time: '21:30', show: ['checkThawing'] },
+    { time: '21:30', show: ['organiseFreezer'] },
+    { time: '21:35', show: ['carryoverFirstRound'] },
+    { time: '21:40', show: ['chipDump'] },
+    { time: '21:40', show: ['coldLine'] },
+    { time: '21:40', show: ['bigGrillSecondAlert'] },
+    { time: '21:45', show: ['remainingFloors'] },
+
+    // "After Close"
+    { time: '22:00', show: ['drinkNozzles'] },
+    { time: '22:00', show: ['remainingBins'] },
+    { time: '22:00', show: ['carryover'] },
+    { time: '22:00', show: ['cleanOutSpotSweeps'] },
+    { time: '22:00', show: ['shutDownTills'] },                                     //MIC ONLY
+];
+
+const _notificationSchedule = [];
+const _iconSides = ['left', 'left', 'left'];
+
+function parseScheduleTime(value) {
+    if (typeof value !== 'string') return null;
+    const parts = value.trim().split(':');
+    if (parts.length !== 2) return null;
+    let h = parseInt(parts[0], 10);
+    let m = parseInt(parts[1], 10);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return {
+        hour: Math.max(0, Math.min(23, h)),
+        minute: Math.max(0, Math.min(59, m)),
+    };
+}
+
+function presetKeyToCardConfig(key) {
+    const p = NOTIFICATIONS[key];
+    if (!p) {
+        console.warn('[Notifications] Unknown key — not in NOTIFICATIONS:', key);
+        return null;
+    }
+    let duration = 15000;
+    if (typeof p.duration === 'number') duration = p.duration;
+    else if (typeof p.seconds === 'number') duration = p.seconds * 1000;
+    return {
+        title: p.name,
+        instruction: p.instruction || '',
+        type: p.icon || null,
+        duration,
+    };
+}
+
+function openNotificationCards(configs) {
+    if (!configs.length) return;
+    const container = document.getElementById('popup-container');
+    if (!container) return;
+    try { playNotificationSound(); } catch (e) {}
+    configs.forEach((cfg, i) => {
+        const side = _iconSides[i % _iconSides.length];
+        const card = makeMultiPopupCard(cfg, cfg.duration, side);
+        container.appendChild(card);
+        requestAnimationFrame(() => card.classList.add('popup-show'));
+
+        const dismissCard = () => {
+            if (!card.isConnected) return;
+            card.classList.remove('popup-show');
+            card.classList.add('popup-hide');
+            setTimeout(() => card.remove(), POPUP_CONFIG.transitionDuration + 50);
+        };
+
+        // dismiss by tap/click
+        card.addEventListener('pointerdown', dismissCard);
+
+        setTimeout(dismissCard, cfg.duration);
+    });
+}
+
+/** Pass 1–3 keys from NOTIFICATIONS (e.g. showNotificationGroup(['fryCheck', 'closeSoon'])) */
+function showNotificationGroup(keys) {
+    const list = (Array.isArray(keys) ? keys : [keys]).filter(Boolean).slice(0, 3);
+    if (list.length > 3) console.warn('[Notifications] Only 3 cards at once; ignoring extras.');
+    const configs = list.map(presetKeyToCardConfig).filter(Boolean);
+    openNotificationCards(configs);
+}
+
+function registerSchedule(rows) {
+    _notificationSchedule.length = 0;
+    rows.forEach((row) => {
+        const t = parseScheduleTime(row.time);
+        if (!t) {
+            console.warn('[Notifications] Invalid time (use HH:MM):', row);
+            return;
+        }
+        const show = Array.isArray(row.show) ? row.show.filter(Boolean).slice(0, 3) : [];
+        if (!show.length) {
+            console.warn('[Notifications] Add at least one name in show:', row);
+            return;
+        }
+        _notificationSchedule.push({
+            hour: t.hour,
+            minute: t.minute,
+            show,
+            _triggered: false,
+        });
+    });
+}
+
+function processPopupSchedule() {
+    const now = new Date();
+    const hh = now.getHours();
+    const mm = now.getMinutes();
+    _notificationSchedule.forEach((entry) => {
+        if (entry._triggered || entry.hour !== hh || entry.minute !== mm) return;
+        entry._triggered = true;
+        showNotificationGroup(entry.show);
+    });
+}
+
+registerSchedule(SCHEDULE);
+processPopupSchedule();
+setInterval(processPopupSchedule, 1000);
+
+document.getElementById('popup-test-btn')?.addEventListener('click', () => {
+    const keys = Object.keys(NOTIFICATIONS);
+    if (!keys.length) {
+        showPopup('Add entries to NOTIFICATIONS in dashboard.js', 8000, null, { wrapMessage: true });
+        return;
+    }
+    const count = Math.floor(Math.random() * 3) + 1;
+    const picked = [];
+    while (picked.length < count) {
+        const k = keys[Math.floor(Math.random() * keys.length)];
+        if (!picked.includes(k)) picked.push(k);
+    }
+    showNotificationGroup(picked);
+});
+
+window.showPopup = showPopup;
+window.NOTIFICATIONS = NOTIFICATIONS;
+window.SCHEDULE = SCHEDULE;
+window.showNotificationGroup = showNotificationGroup;
+window.openNotificationCards = openNotificationCards;
+window.registerSchedule = registerSchedule;
+
+/* -----------------------------------------------------------
+   Past-hour cells — actual vs forecast (beat / slightly low / well below)
+----------------------------------------------------------- */
+function getActualCellClass(actual, forecast) {
+    const difference = actual - forecast;
+    const ratio = difference / forecast;
+
+    if (ratio >= 0) return 'cell-green';
+    if (ratio >= -0.1) return 'cell-orange';
+    return 'cell-red';
+}
+
+
+/* -----------------------------------------------------------
+   Current trading hour — which column is "now" + fraction through the hour
+----------------------------------------------------------- */
+function getCurrentHourProgress() {
+    const now = new Date();
+    const hour = now.getHours();
+    const minutes = now.getMinutes();
+    const seconds = now.getSeconds();
+
+    const startHour = 10;
+    const endHour = 22;
+
+    if (hour < startHour || hour >= endHour) {
+        return { hourIndex: -1, progress: 0 };
+    }
+
+    const hourIndex = hour - startHour;
+    const progress = minutes / 60 + seconds / 3600;
+
+    return { hourIndex, progress };
+}
+
+
+/* Pace fill — same palette as .cell-green / .cell-orange / .cell-red */
+const paceFillMap = {
+    'cell-green': 'var(--good)',
+    'cell-orange': 'var(--near)',
+    'cell-red': 'var(--bad)',
+};
+
+/* Darker rim per status — pairs with paceFillMap like solid grid cells */
+const paceBorderMap = {
+    'cell-green': 'var(--good-border)',
+    'cell-orange': 'var(--near-border)',
+    'cell-red': 'var(--bad-border)',
+};
+
+
+/* -----------------------------------------------------------
+   Grid numbers — pace vs forecast for current hour + `$` formatting for cells
+----------------------------------------------------------- */
+function getPaceClass(actual, forecast, elapsedProgress) {
+    const f = Number(forecast) || 0;
+    const a = Number(actual) || 0;
+    const p = Number(elapsedProgress) || 0;
+    if (f <= 0 || p <= 0) return 'cell-green';
+
+    const expectedSales = f * p;
+
+    if (a >= expectedSales) return 'cell-green';
+
+    const shortfall = (expectedSales - a) / expectedSales;
+    if (shortfall <= 0.1) return 'cell-orange';
+
+    return 'cell-red';
+}
+
+function formatCurrency(value) {
+    const numericValue = Number(value);
+    if (Number.isNaN(numericValue)) {
+        return String(value);
+    }
+
+    const options = {
+        minimumFractionDigits: Number.isInteger(numericValue) ? 0 : 2,
+        maximumFractionDigits: 2,
+    };
+
+    return `$${numericValue.toLocaleString(undefined, options)}`;
+}
+
+
+/* -----------------------------------------------------------
+   Live progress — dual fills (main = vs forecast, strip = pace)
+----------------------------------------------------------- */
+function buildLiveProgressLayersHtml(timeFillPercent, outcomeClass, paceClass) {
+    const p = Math.max(0, Math.min(100, timeFillPercent));
+    const mainBg = paceFillMap[outcomeClass] || 'var(--blank)';
+    const paceBg = paceFillMap[paceClass] || 'var(--bad)';
+    return `<div class="grid-cell-live-layers" aria-hidden="true">
+        <div class="grid-cell-live-main-frame">
+            <div class="grid-cell-live-main-fill" style="width: ${p}%; background-color: ${mainBg};"></div>
+        </div>
+        <div class="grid-cell-live-pace-row">
+            <div class="grid-cell-live-pace-grow" style="width: ${p}%;">
+                <div class="grid-cell-live-pace-bar" style="border-top: var(--cell-border) ${paceBg}; background-color: ${paceBg};"></div>
+            </div>
+        </div>
+    </div>`;
+}
+
+function hasBeatenHourForecast(actual, forecast) {
+    const f = Number(forecast) || 0;
+    const a = Number(actual) || 0;
+    if (f <= 0) return true;
+    return a >= f;
+}
+
+function hasBeatenPeriodForecast(totalActual, totalForecast) {
+    const f = Number(totalForecast) || 0;
+    const a = Number(totalActual) || 0;
+    if (f <= 0) return true;
+    return a >= f;
+}
+
+function buildHourlyDataCell({ index, hourProgress, forecast, actual, displayValue }) {
+    const isFuture = index > hourProgress.hourIndex;
+    if (isFuture) {
+        return `<div class="grid-cell">${formatCurrency(displayValue)}</div>`;
+    }
+
+    const fn = Number(forecast) || 0;
+    const an = Number(actual) || 0;
+    const isCurrentHour = index === hourProgress.hourIndex && hourProgress.hourIndex >= 0;
+
+    if (!isCurrentHour) {
+        const cellClass = getActualCellClass(an, fn);
+        return `<div class="grid-cell${cellClass ? ` ${cellClass}` : ''}">${formatCurrency(displayValue)}</div>`;
+    }
+
+    if (hasBeatenHourForecast(an, fn)) {
+        const cellClass = getActualCellClass(an, fn);
+        return `<div class="grid-cell${cellClass ? ` ${cellClass}` : ''}">${formatCurrency(displayValue)}</div>`;
+    }
+
+    const { progress } = hourProgress;
+    const paceClass = getPaceClass(an, fn, progress);
+    const outcomeClass = getActualCellClass(an, fn);
+    const progressPct = Math.round(progress * 1000) / 10;
+    const layers = buildLiveProgressLayersHtml(progressPct, outcomeClass, paceClass);
+    const outcomeBorder = paceBorderMap[outcomeClass] || 'var(--blank-border)';
+    return `<div class="grid-cell grid-cell--live-hour" style="border: var(--cell-border) ${outcomeBorder};">${layers}<span class="grid-cell-live-value">${formatCurrency(displayValue)}</span></div>`;
+}
+
+/* -----------------------------------------------------------
+   Sales grid rows — HTML for forecast row and actual row
+----------------------------------------------------------- */
+function buildHeaderRow() {
+    return `
+        <div class="grid-label header-label">Time</div>
+        ${times.map((time) => `<div class="grid-cell header-cell">${time}</div>`).join('')}
+    `;
+}
+
+function buildForecastRow(forecasts, actuals) {
+    const hourProgress = getCurrentHourProgress();
+    return `
+        <div class="grid-label">Forecast Sales</div>
+        ${forecasts.map((value, index) =>
+            buildHourlyDataCell({
+                index,
+                hourProgress,
+                forecast: value,
+                actual: actuals[index],
+                displayValue: value,
+            })
+        ).join('')}
+    `;
+}
+
+function buildActualRow(values, forecasts) {
+    const hourProgress = getCurrentHourProgress();
+    return `
+        <div class="grid-label">Actual Sales</div>
+        ${values.map((value, index) =>
+            buildHourlyDataCell({
+                index,
+                hourProgress,
+                forecast: forecasts[index],
+                actual: value,
+                displayValue: value,
+            })
+        ).join('')}
+    `;
+}
+
+/* -----------------------------------------------------------
+   Lunch (10AM–2PM) / Dinner (3PM–close) — sums of hourly forecast & actual
+----------------------------------------------------------- */
+const LUNCH_HOUR_END = 5; // slice end index: hours 0–4 → 10AM through 2PM
+const LUNCH_WALL_START_HOUR = 10;
+const LUNCH_WALL_END_HOUR = 15; // 3PM — first dinner column
+const DINNER_WALL_START_HOUR = LUNCH_WALL_END_HOUR;
+
+function tradingEndHourExclusive() {
+    return LUNCH_WALL_START_HOUR + times.length;
+}
+
+function sumHourSlice(values, start, end) {
+    return values.slice(start, end).reduce((sum, v) => sum + (Number(v) || 0), 0);
+}
+
+function todayAt(hour, minute = 0, second = 0, millisecond = 0) {
+    const d = new Date();
+    d.setHours(hour, minute, second, millisecond);
+    return d.getTime();
+}
+
+function getWallClockPeriodProgress(startHour, endHourExclusive) {
+    const t0 = todayAt(startHour, 0, 0, 0);
+    const t1 = todayAt(endHourExclusive, 0, 0, 0);
+    const now = Date.now();
+    if (now <= t0) return 0;
+    if (now >= t1) return 1;
+    return (now - t0) / (t1 - t0);
+}
+
+function getPeriodExpectedSoFarSlice(forecasts, startIdx, endExclusive, hourProgress) {
+    const { hourIndex, progress } = hourProgress;
+    let expected = 0;
+    for (let i = startIdx; i < endExclusive; i++) {
+        const f = Number(forecasts[i]) || 0;
+        if (hourIndex < 0) break;
+        if (i < hourIndex) expected += f;
+        else if (i === hourIndex) {
+            expected += f * progress;
+            break;
+        } else break;
+    }
+    return expected;
+}
+
+function getPeriodActualSoFarSlice(actuals, startIdx, endExclusive, hourProgress) {
+    const { hourIndex } = hourProgress;
+    if (hourIndex < 0) return 0;
+    let actual = 0;
+    for (let i = startIdx; i < endExclusive; i++) {
+        if (i <= hourIndex) actual += Number(actuals[i]) || 0;
+        else break;
+    }
+    return actual;
+}
+
+function getDayPartPresentation(forecasts, actuals, startIdx, endExclusive, wallStartHour, wallEndHourExclusive) {
+    const hourProgress = getCurrentHourProgress();
+    const totalForecast = sumHourSlice(forecasts, startIdx, endExclusive);
+    const totalActual = sumHourSlice(actuals, startIdx, endExclusive);
+    const tStart = todayAt(wallStartHour, 0, 0, 0);
+    const tEnd = todayAt(wallEndHourExclusive, 0, 0, 0);
+    const now = Date.now();
+    const wallPct = Math.round(getWallClockPeriodProgress(wallStartHour, wallEndHourExclusive) * 1000) / 10;
+
+    if (now < tStart) {
+        return { phase: 'before', cellClass: '', inlineStyle: '', liveLayersHtml: '', outcomeBorderColor: '' };
+    }
+
+    if (now >= tEnd) {
+        const finalClass = totalForecast > 0 ? getActualCellClass(totalActual, totalForecast) : 'cell-green';
+        return { phase: 'after', cellClass: finalClass, inlineStyle: '', liveLayersHtml: '', outcomeBorderColor: '' };
+    }
+
+    let paceClass = 'cell-green';
+    if (totalForecast <= 0) {
+        paceClass = 'cell-green';
+    } else {
+        const expectedSoFar = getPeriodExpectedSoFarSlice(forecasts, startIdx, endExclusive, hourProgress);
+        const actualSoFar = getPeriodActualSoFarSlice(actuals, startIdx, endExclusive, hourProgress);
+        const ep = totalForecast > 0 ? expectedSoFar / totalForecast : 0;
+        if (expectedSoFar <= 0) {
+            paceClass = 'cell-green';
+        } else {
+            paceClass = getPaceClass(actualSoFar, totalForecast, ep);
+        }
+    }
+
+    if (hasBeatenPeriodForecast(totalActual, totalForecast)) {
+        const finalClass = totalForecast > 0 ? getActualCellClass(totalActual, totalForecast) : 'cell-green';
+        return { phase: 'during', cellClass: finalClass, inlineStyle: '', liveLayersHtml: '', outcomeBorderColor: '' };
+    }
+
+    const mainClass = totalForecast > 0 ? getActualCellClass(totalActual, totalForecast) : 'cell-green';
+    const liveLayersHtml = buildLiveProgressLayersHtml(wallPct, mainClass, paceClass);
+    const outcomeBorderColor = paceBorderMap[mainClass] || 'var(--blank-border)';
+
+    return {
+        phase: 'during',
+        cellClass: '',
+        inlineStyle: '',
+        liveLayersHtml,
+        outcomeBorderColor,
+    };
+}
+
+function buildMealPeriodRow(forecasts, actuals) {
+    const lunchForecast = sumHourSlice(forecasts, 0, LUNCH_HOUR_END);
+    const lunchActual = sumHourSlice(actuals, 0, LUNCH_HOUR_END);
+    const dinnerForecast = sumHourSlice(forecasts, LUNCH_HOUR_END, times.length);
+    const dinnerActual = sumHourSlice(actuals, LUNCH_HOUR_END, times.length);
+
+    const dinnerWallEnd = tradingEndHourExclusive();
+    const lunchPres = getDayPartPresentation(
+        forecasts,
+        actuals,
+        0,
+        LUNCH_HOUR_END,
+        LUNCH_WALL_START_HOUR,
+        LUNCH_WALL_END_HOUR
+    );
+    const dinnerPres = getDayPartPresentation(
+        forecasts,
+        actuals,
+        LUNCH_HOUR_END,
+        times.length,
+        DINNER_WALL_START_HOUR,
+        dinnerWallEnd
+    );
+
+    const lunchCellClasses = ['grid-cell', 'meal-period-cell'];
+    if (lunchPres.cellClass) lunchCellClasses.push(lunchPres.cellClass);
+    if (lunchPres.liveLayersHtml) lunchCellClasses.push('meal-period-cell--live');
+
+    const dinnerCellClasses = ['grid-cell', 'meal-period-cell'];
+    if (dinnerPres.cellClass) dinnerCellClasses.push(dinnerPres.cellClass);
+    if (dinnerPres.liveLayersHtml) dinnerCellClasses.push('meal-period-cell--live');
+
+    const lunchStyleAttr = [
+        `grid-column: 2 / 7`,
+        lunchPres.inlineStyle,
+        lunchPres.outcomeBorderColor ? `border: var(--cell-border) ${lunchPres.outcomeBorderColor}` : '',
+    ]
+        .filter(Boolean)
+        .join('; ');
+    const dinnerStyleAttr = [
+        `grid-column: 7 / 14`,
+        dinnerPres.inlineStyle,
+        dinnerPres.outcomeBorderColor ? `border: var(--cell-border) ${dinnerPres.outcomeBorderColor}` : '',
+    ]
+        .filter(Boolean)
+        .join('; ');
+
+    return `
+        <div class="grid-label meal-period-label">Lunch/Dinner Day Parts</div>
+        <div class="${lunchCellClasses.join(' ')}" style="${lunchStyleAttr}">
+            ${lunchPres.liveLayersHtml || ''}
+            <div class="meal-period-body">
+                <div class="meal-period-title">Lunch</div>
+                <div class="meal-period-stats">
+                    <div class="meal-period-line"><span class="meal-period-value">${formatCurrency(lunchActual)} / ${formatCurrency(lunchForecast)}</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="${dinnerCellClasses.join(' ')}" style="${dinnerStyleAttr}">
+            ${dinnerPres.liveLayersHtml || ''}
+            <div class="meal-period-body">
+                <div class="meal-period-title">Dinner</div>
+                <div class="meal-period-stats">
+                    <div class="meal-period-line"><span class="meal-period-value">${formatCurrency(dinnerActual)} / ${formatCurrency(dinnerForecast)}</span></div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+/* -----------------------------------------------------------
+   Refresh sales grid — header row + forecast + actual from global arrays
+----------------------------------------------------------- */
+function escapeHtml(text) {
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function updateAuditsPanel() {
+    const el = document.getElementById('audits-list-panel');
+    if (!el) return;
+
+    const visible = getVisibleAudits();
+    if (!visible.length) {
+        el.innerHTML = '';
+        return;
+    }
+
+    el.innerHTML = visible
+        .map(
+            (name) =>
+                `<div class="audit-item"><button type="button" class="audit-chip" data-audit="${encodeURIComponent(
+                    name
+                )}" aria-label="Mark ${escapeHtml(name)} as done">${escapeHtml(name)}</button></div>`
+        )
+        .join('');
+}
+
+function updatePendingVendorsPanel() {
+    const el = document.getElementById('pending-vendors-panel');
+    if (!el) return;
+
+    const visible = getVisiblePendingVendors();
+    if (!visible.length) {
+        el.innerHTML = '';
+        return;
+    }
+
+    el.innerHTML = visible
+        .map(
+            (name) =>
+                `<div class="pending-vendor-item"><button type="button" class="pending-vendor-chip" data-vendor="${encodeURIComponent(
+                    name
+                )}" aria-label="Mark ${escapeHtml(name)} as done">${escapeHtml(name)}</button></div>`
+        )
+        .join('');
+}
+
+function handleFooterChipDismissClick(e) {
+    const vBtn = e.target.closest('button.pending-vendor-chip');
+    if (vBtn && !vBtn.classList.contains('pending-vendor-chip--dismissing')) {
+        const enc = vBtn.getAttribute('data-vendor');
+        if (!enc) return;
+        const label = decodeURIComponent(enc);
+        dismissedPendingVendors.add(label);
+        const item = vBtn.closest('.pending-vendor-item');
+        vBtn.classList.add('pending-vendor-chip--dismissing');
+        if (item) item.classList.add('pending-vendor-item--dismissing');
+        let removed = false;
+        const finishRemove = () => {
+            if (removed) return;
+            removed = true;
+            item?.remove();
+            const panel = document.getElementById('pending-vendors-panel');
+            const aside = document.querySelector('.pending-vendors-aside');
+            if (panel && panel.children.length === 0 && aside) {
+                aside.remove();
+                document.querySelector('.dashboard-grid-footer-trail')?.remove();
+            }
+        };
+        const onAnimEnd = (ev) => {
+            if (ev.target !== vBtn) return;
+            const names = String(ev.animationName || '');
+            if (!names.includes('pending-vendor-chip-exit')) return;
+            finishRemove();
+        };
+        vBtn.addEventListener('animationend', onAnimEnd, { once: true });
+        window.setTimeout(finishRemove, 1000);
+        return;
+    }
+
+    const aBtn = e.target.closest('button.audit-chip');
+    if (aBtn && !aBtn.classList.contains('audit-chip--dismissing')) {
+        const enc = aBtn.getAttribute('data-audit');
+        if (!enc) return;
+        const label = decodeURIComponent(enc);
+        dismissedAudits.add(label);
+        saveAuditState();
+        const item = aBtn.closest('.audit-item');
+        aBtn.classList.add('audit-chip--dismissing');
+        if (item) item.classList.add('audit-item--dismissing');
+        let removed = false;
+        const finishRemove = () => {
+            if (removed) return;
+            removed = true;
+            item?.remove();
+            const panel = document.getElementById('audits-list-panel');
+            const aside = document.querySelector('.audits-aside');
+            if (panel && panel.children.length === 0 && aside) {
+                aside.remove();
+                document.querySelector('.dashboard-grid-footer-lead')?.remove();
+            }
+        };
+        const onAnimEnd = (ev) => {
+            if (ev.target !== aBtn) return;
+            const names = String(ev.animationName || '');
+            if (!names.includes('audit-chip-exit')) return;
+            finishRemove();
+        };
+        aBtn.addEventListener('animationend', onAnimEnd, { once: true });
+        window.setTimeout(finishRemove, 1000);
+    }
+}
+
+function bindFooterChipDismissOnce() {
+    if (bindFooterChipDismissOnce._bound) return;
+    bindFooterChipDismissOnce._bound = true;
+    app.addEventListener('click', handleFooterChipDismissClick);
+}
+
+function buildColourGuideNoteHtml() {
+    return `
+        <div class="dashboard-colour-note">
+            <strong>Colour guide:</strong>
+            <strong>Red:</strong> Not on track. <strong>Yellow:</strong> Almost on track (90%). <strong>Green:</strong> On track.
+            <br>
+            <strong>Current hour</strong> fills with time indicates actual sales vs forecast; the <strong>bottom strip</strong> fills with time and indicates if you are "on track" to meet sales at this minute.
+        </div>
+    `;
+}
+
+function buildAuditsAsideHtml() {
+    if (!getVisibleAudits().length) {
+        return '';
+    }
+    return `
+        <div class="audits-aside" role="region" aria-label="List of audits">
+            <div class="audits-heading">List of Audits</div>
+            <div id="audits-list-panel" class="audits-list" aria-live="polite"></div>
+        </div>
+    `;
+}
+
+function buildPendingVendorsAsideHtml() {
+    if (!getVisiblePendingVendors().length) {
+        return '';
+    }
+    return `
+        <div class="pending-vendors-aside" role="region" aria-label="Orders to place from Macromatix">
+            <div class="pending-vendors-heading">Orders to place</div>
+            <div id="pending-vendors-panel" class="pending-vendors-list" aria-live="polite"></div>
+        </div>
+    `;
+}
+
+function buildGridFooterRow() {
+    const leadInner = buildAuditsAsideHtml();
+    const lead = leadInner ? `<div class="dashboard-grid-footer-lead">${leadInner}</div>` : '';
+    const ordersAside = buildPendingVendorsAsideHtml();
+    const trail = ordersAside ? `<div class="dashboard-grid-footer-trail">${ordersAside}</div>` : '';
+    return `
+        <div class="dashboard-grid-footer">
+            <div class="dashboard-grid-footer-ledger">
+                ${lead}
+                ${buildColourGuideNoteHtml()}
+                ${trail}
+            </div>
+        </div>
+    `;
+}
+
+function updateGrid() {
+    const grid = document.querySelector('.dashboard-grid');
+    if (!grid) return;
+
+    syncAuditWeekState();
+
+    grid.innerHTML = `
+        ${buildHeaderRow()}
+        ${buildForecastRow(forecastSales, liveSales)}
+        ${buildActualRow(liveSales, forecastSales)}
+        ${buildMealPeriodRow(forecastSales, liveSales)}
+        ${buildGridFooterRow()}
+    `;
+    updateAuditsPanel();
+    updatePendingVendorsPanel();
+}
+
+/* -----------------------------------------------------------
+   First paint — dashboard layout, header, empty grid, popup mount point
+----------------------------------------------------------- */
+function renderDashboard() {
+    app.innerHTML = `
+        <div class="dashboard">
+            <div class="dashboard-header">
+                <div class="dashboard-title">
+                    <h1>SALES DASHBOARD</h1>
+                    <p class="subtitle">Real-time sales data updated automatically.</p>
+                </div>
+                <div class="top-info">
+                    <div class="top-info-group">
+                        <span class="top-info-label">Current Time</span>
+                        <span id="time-display" class="top-info-value">${formatTime(new Date())}</span>
+                    </div>
+                    <div class="top-info-group" style="text-align: center;">
+                        <span class="top-info-label">Last updated</span>
+                        <span id="last-updated" class="top-info-value">--:--</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="sales-status" class="sales-status" role="status" aria-live="polite" hidden></div>
+
+            <div class="dashboard-grid"></div>
+
+            <div id="popup-container"></div>
+        </div>
+    `;
+    bindFooterChipDismissOnce();
+}
+
+/* -----------------------------------------------------------
+   Timer — keep header clock in sync (1s interval)
+----------------------------------------------------------- */
+setInterval(updateClock, 1000);
+
+/* Rebuild grid on a short cadence so day-part / current-hour fill tracks wall clock between sales API polls */
+const GRID_PROGRESS_REFRESH_MS = 10000;
+setInterval(() => {
+    if (forecastSales.length && document.querySelector('.dashboard-grid')) {
+        updateGrid();
+    }
+}, GRID_PROGRESS_REFRESH_MS);
+
+/* -----------------------------------------------------------
+   Sales polling — load now, then every N minutes on wall-clock boundaries
+----------------------------------------------------------- */
+function startSyncedUpdates() {
+    // Load immediately
+    loadSalesData();
+
+    // Calculate time until next refresh boundary
+    const now = new Date();
+    const msUntilNext =
+        (SALES_REFRESH_MINUTES - (now.getMinutes() % SALES_REFRESH_MINUTES)) * 60 * 1000 -
+        (now.getSeconds() * 1000) -
+        now.getMilliseconds();
+
+    // Wait until the boundary, then start interval
+    setTimeout(() => {
+        loadSalesData();
+        setInterval(loadSalesData, SALES_REFRESH_MINUTES * 60 * 1000);
+    }, msUntilNext);
+}
+
+/* -----------------------------------------------------------
+   Boot — render dashboard shell, then start clock & sales sync
+----------------------------------------------------------- */
+(async () => {
+    renderDashboard();
+    await loadAuditState();
+    startSyncedUpdates();
+})();

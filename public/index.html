@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Dashboard</title>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="styles/dashboard.css">
+    <link rel="icon" href="favicon.ico" type="image/x-icon">
+</head>
+
+<body>
+    <!-- Main App Container -->
+    <div id="app">Loading dashboard...</div>
+
+    <!-- Popup Container -->
+    <div class="popup">
+        <div class="popup-progress"></div>
+        <div class="popup-inner">
+            <div class="popup-icon"></div>
+            <div class="popup-message"></div>
+            <div class="popup-buttons">
+                <button>Busy</button>
+                <button>Quiet</button>
+            </div>
+        </div>
+    </div>
+
+    <button id="popup-test-btn">Test Popup</button>
+
+
+    <!-- Popup Sound Effect -->
+    <audio id="popup-sound" src="assets/sounds/notification.mp3" preload="auto"></audio>
+
+    <!-- Scripts -->
+    <script src="scripts/dashboard.js"></script>
+</body>
+</html>

@@ -118,6 +118,8 @@ async function closeBrowserQuietly(browser, label) {
  * Disabled — Macromatix default date on the page is enough for now.
  * To re-test / re-enable: uncomment the constant and the `withPageContextRetry(... setScheduledOrdersDateOffset ...)`
  * block in `scrapePendingVendors`. Optional env: SCRAPER_SCHEDULED_ORDERS_DAY_OFFSET (0 = today).
+ * For arbitrary calendar dates, the dashboard calls `/api/sales?testScheduledOrdersDate=YYYY-MM-DD` when the
+ * request is dashboard-authenticated (cookie) or `DASHBOARD_ENABLE_ORDER_DATE_TEST=1` is set (uses `setScheduledOrdersToYmd`).
  */
 // const SCHEDULED_ORDERS_DAY_OFFSET = Number(process.env.SCRAPER_SCHEDULED_ORDERS_DAY_OFFSET ?? 2);
 
@@ -370,26 +372,16 @@ function getPuppeteerLaunchOptions() {
 }
 
 /**
- * Scheduled orders: Telerik RadDatePicker — calendar pick + Enter/blur, then `__doPostBack` via injected
- * &lt;script&gt;. Afterward: race navigation vs settle (SCRAPER_SCHEDULED_ORDERS_SETTLE_MS), then `readyState` check.
- * Vendor parsing uses `withPageContextRetry` if a full reload replaces the document mid-scrape.
- * With postback on, toolbar Go/Refresh is skipped. Set SCRAPER_SCHEDULED_DATE_POSTBACK=false to use toolbar only.
+ * Set RadDatePicker hidden fields + visible text (runs in page). Returns `{ ok, postBackTarget }` for postback path.
  */
-async function setScheduledOrdersDateOffset(page, offsetDays) {
-    if (!Number.isFinite(offsetDays) || offsetDays === 0) return;
-
-    const d = new Date();
-    d.setDate(d.getDate() + offsetDays);
-    const dayNum = d.getDate();
-    const monthIndex = d.getMonth();
-    const month1 = monthIndex + 1;
-    const yyyy = d.getFullYear();
+async function telerikApplyScheduledOrdersYmdFields(page, yyyy, month1, dayNum) {
+    const monthIndex = month1 - 1;
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const displayStr = `${dayNum}-${months[monthIndex]}-${yyyy}`;
     const pad = (n) => String(n).padStart(2, '0');
     const valueAsString = `${yyyy}-${pad(month1)}-${pad(dayNum)}-00-00-00`;
 
-    const applied = await page.evaluate(
+    return page.evaluate(
         ({ displayStr, valueAsString, y, m1, day }) => {
             const dateInput = document.querySelector('[id$="_DatePicker_dateInput"]');
             if (!dateInput || !dateInput.id) return { ok: false };
@@ -444,16 +436,55 @@ async function setScheduledOrdersDateOffset(page, offsetDays) {
         },
         { displayStr, valueAsString, y: yyyy, m1: month1, day: dayNum }
     );
+}
 
+/**
+ * Scheduled orders: Telerik RadDatePicker — calendar pick + Enter/blur, then `__doPostBack` via injected
+ * &lt;script&gt;. Afterward: race navigation vs settle (SCRAPER_SCHEDULED_ORDERS_SETTLE_MS), then `readyState` check.
+ * Vendor parsing uses `withPageContextRetry` if a full reload replaces the document mid-scrape.
+ * With postback on, toolbar Go/Refresh is skipped. Set SCRAPER_SCHEDULED_DATE_POSTBACK=false to use toolbar only.
+ */
+async function setScheduledOrdersToYmd(page, yyyy, month1, dayNum) {
+    const monthIndex = month1 - 1;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const displayStr = `${dayNum}-${months[monthIndex]}-${yyyy}`;
+    const pad = (n) => String(n).padStart(2, '0');
+    const valueAsString = `${yyyy}-${pad(month1)}-${pad(dayNum)}-00-00-00`;
+    const settleMs = Math.max(3500, Number(process.env.SCRAPER_SCHEDULED_ORDERS_SETTLE_MS ?? 6500) || 6500);
+
+    await page
+        .waitForSelector('[id$="_DatePicker_wrapper"], [id$="_DatePicker_dateInput"]', { timeout: 25000 })
+        .catch(() => null);
+    await page.waitForTimeout(600);
+
+    /** RadCalendar first: day click often reloads the page; avoid a second __doPostBack from stale control ids. */
+    const pickedCalendar = await pickDateViaRadCalendarUI(page, yyyy, monthIndex, dayNum);
+    if (pickedCalendar) {
+        console.log(`[Macromatix] Scheduled-orders date via RadCalendar → ${displayStr} (${valueAsString})`);
+        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 25000 }).catch(() => {});
+        await page.waitForTimeout(settleMs);
+        try {
+            await commitScheduledOrdersDateUi(page);
+        } catch (e) {
+            console.warn('[Macromatix] commitScheduledOrdersDateUi after RadCalendar:', e.message);
+        }
+        await page.waitForTimeout(700);
+        return;
+    }
+
+    console.warn('[Macromatix] RadCalendar pick failed; using Telerik field sync + postback / toolbar');
+
+    const applied = await telerikApplyScheduledOrdersYmdFields(page, yyyy, month1, dayNum);
     if (applied.ok) {
-        console.log(`[Macromatix] Telerik date +${offsetDays}d → ${displayStr} (${valueAsString})`);
+        console.log(`[Macromatix] Telerik scheduled-orders date fields → ${displayStr} (${valueAsString})`);
     } else {
         console.warn('[Macromatix] Scheduled-orders date input `[id$="_DatePicker_dateInput"]` not found');
+        return;
     }
 
     const pickedUi = await pickDateViaRadCalendarUI(page, yyyy, monthIndex, dayNum);
     if (pickedUi) {
-        console.log('[Macromatix] RadCalendar UI: day selected');
+        console.log('[Macromatix] RadCalendar UI (fallback path): day selected');
     }
 
     await page.waitForTimeout(250);
@@ -461,8 +492,6 @@ async function setScheduledOrdersDateOffset(page, offsetDays) {
     await commitScheduledOrdersDateUi(page);
 
     /** Date change is usually a partial postback — no document navigation, so `waitForNavigation` would idle until timeout (~30s). */
-    const settleMs = Number(process.env.SCRAPER_SCHEDULED_ORDERS_SETTLE_MS ?? 4500);
-
     if (SCHEDULED_DATE_POSTBACK && applied.postBackTarget) {
         try {
             const nav = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 12000 }).catch(() => {});
@@ -490,6 +519,13 @@ async function setScheduledOrdersDateOffset(page, offsetDays) {
     }
 
     await page.waitForTimeout(350);
+}
+
+async function setScheduledOrdersDateOffset(page, offsetDays) {
+    if (!Number.isFinite(offsetDays) || offsetDays === 0) return;
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    await setScheduledOrdersToYmd(page, d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 
 /** Raw vendor text from Macromatix → short label for the dashboard (only these are listed). */
@@ -547,13 +583,26 @@ async function withPageContextRetry(page, label, fn) {
  * Parse scheduled-orders tables: rows that still need an order placed (Create/Process in Order #,
  * or Pending / Unprocessed status) and no numeric order # → vendor names.
  */
-async function scrapePendingVendors(page) {
+async function scrapePendingVendors(page, opts = {}) {
     await page.goto(SCHEDULED_ORDERS_URL, GOTO_OPTS);
     await page.waitForTimeout(700);
 
     // await withPageContextRetry(page, 'scheduled orders date', async () => {
     //     await setScheduledOrdersDateOffset(page, SCHEDULED_ORDERS_DAY_OFFSET);
     // });
+
+    const { pickYmd } = opts;
+    if (
+        pickYmd &&
+        Number.isFinite(pickYmd.year) &&
+        Number.isFinite(pickYmd.month) &&
+        Number.isFinite(pickYmd.day)
+    ) {
+        await withPageContextRetry(page, 'scheduled orders date (test YMD)', async () => {
+            await setScheduledOrdersToYmd(page, pickYmd.year, pickYmd.month, pickYmd.day);
+        });
+        await page.waitForTimeout(500);
+    }
 
     const parsed = await withPageContextRetry(page, 'scheduled orders vendors', async () => {
         await Promise.race([
@@ -686,6 +735,13 @@ async function scrapeMacromatix(options = {}) {
     const { username, password } = getMacromatixCredentials();
     const todayKey = dashboardDateKey();
     const cachedForecast = getCachedForecastForToday(todayKey);
+    const pickYmd = options.scheduledOrdersPickYmd;
+    const testScheduledOrdersPick =
+        pickYmd &&
+        Number.isFinite(pickYmd.year) &&
+        Number.isFinite(pickYmd.month) &&
+        Number.isFinite(pickYmd.day);
+    const skipScheduledPersistence = Boolean(options.skipScheduledOrdersPersistence);
 
     if (!String(username || '').trim() || !String(password || '').trim()) {
         const hint =
@@ -785,13 +841,25 @@ async function scrapeMacromatix(options = {}) {
         );
 
         let pendingVendors = [];
-        if (scheduledOrdersCompleteDateKey === todayKey) {
+        const skipPendingForCompletedToday =
+            !testScheduledOrdersPick && scheduledOrdersCompleteDateKey === todayKey;
+        if (skipPendingForCompletedToday) {
             console.log('[Macromatix] Scheduled orders already complete today; skipping check');
             pendingVendors = getLastKnownPendingVendors(todayKey);
         } else {
             try {
                 console.log('[Macromatix] Opening scheduled orders...');
-                const pendingResult = await scrapePendingVendors(page);
+                if (testScheduledOrdersPick) {
+                    console.log(
+                        '[Macromatix] Scheduled orders date pick (test):',
+                        pickYmd.year,
+                        pickYmd.month,
+                        pickYmd.day
+                    );
+                }
+                const pendingResult = await scrapePendingVendors(page, {
+                    pickYmd: testScheduledOrdersPick ? pickYmd : null,
+                });
                 pendingVendors = pendingResult.vendors;
                 console.log('[Macromatix] pending vendor labels:', pendingVendors.join(', ') || '(none)');
                 console.log(
@@ -800,7 +868,9 @@ async function scrapeMacromatix(options = {}) {
                     'rows:',
                     pendingResult.dataRowCount
                 );
-                recordScheduledOrdersResult(todayKey, pendingVendors);
+                if (!skipScheduledPersistence) {
+                    recordScheduledOrdersResult(todayKey, pendingVendors);
+                }
             } catch (vendorErr) {
                 console.warn('[Macromatix] Scheduled orders scrape failed:', vendorErr.message);
                 pendingVendors = getLastKnownPendingVendors(todayKey);

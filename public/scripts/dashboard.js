@@ -12,6 +12,8 @@ const AUDIT_SCHEDULE_URL = `${window.location.origin}/api/audit-schedule`;
 const SALES_REFRESH_MINUTES = 2;
 const DASHBOARD_TIME_ZONE = 'Australia/Melbourne';
 
+/* Order-date test UI disabled — was: test panel, `orderDateTestYmd`, `asOfDate` on audit schedule, `testScheduledOrdersDate` scrape. Uncomment from git history to restore. */
+
 /* -----------------------------------------------------------
    Grid columns — one label per trading hour (10AM–9PM) uncomment for 10PM
 ----------------------------------------------------------- */
@@ -37,8 +39,22 @@ let pendingVendors = [];
 /** Labels the user has marked done this session (hidden until Macromatix drops them from the API list). */
 const dismissedPendingVendors = new Set();
 
+/**
+ * Vendors that may appear in Macromatix early — we only surface them on the last Melbourne Monday of the month.
+ * Match is case-insensitive with spaces removed (e.g. "Eco Lab", "ECOLAB").
+ */
+function matchesLastMondayOnlyVendor(label) {
+    const collapsed = String(label).replace(/\s+/g, '').toLowerCase();
+    return ['ecolab', 'reward', 'franke', 'staples'].includes(collapsed);
+}
+
 function getVisiblePendingVendors() {
-    return pendingVendors.filter((v) => !dismissedPendingVendors.has(v));
+    const lastMondayMonth = isMelbourneLastMondayOfMonth();
+    return pendingVendors.filter((v) => {
+        if (dismissedPendingVendors.has(v)) return false;
+        if (!lastMondayMonth && matchesLastMondayOnlyVendor(v)) return false;
+        return true;
+    });
 }
 
 /* -----------------------------------------------------------
@@ -68,9 +84,84 @@ function dashboardDateParts(d = new Date()) {
     return { year: get('year'), month: get('month'), day: get('day') };
 }
 
+function isMelbourneMonday(d) {
+    const ref = d === undefined ? new Date() : d;
+    const w = new Intl.DateTimeFormat('en-AU', {
+        timeZone: DASHBOARD_TIME_ZONE,
+        weekday: 'long',
+    }).format(ref);
+    return w === 'Monday';
+}
+
+function gregorianDaysInMonth(year, month) {
+    return new Date(year, month, 0).getDate();
+}
+
+/** First `Date` whose Melbourne civil date is `year`-`month`-`day`. */
+function findInstantForMelbourneYmd(year, month, day) {
+    const start = Date.UTC(year, month - 1, day - 1, 0, 0, 0);
+    const spanMs = 120 * 60 * 60 * 1000;
+    const step = 15 * 60 * 1000;
+    for (let ms = 0; ms < spanMs; ms += step) {
+        const t = new Date(start + ms);
+        const p = dashboardDateParts(t);
+        if (p.year === year && p.month === month && p.day === day) return t;
+    }
+    return null;
+}
+
+function melbourneWeekdayLong(d) {
+    return new Intl.DateTimeFormat('en-AU', {
+        timeZone: DASHBOARD_TIME_ZONE,
+        weekday: 'long',
+    }).format(d);
+}
+
+/** Calendar day-of-month (1–31) of the last Monday in this Melbourne calendar month. */
+function melbourneLastMondayCalendarDay(year, month) {
+    const dim = gregorianDaysInMonth(year, month);
+    const tLast = findInstantForMelbourneYmd(year, month, dim);
+    if (!tLast) return null;
+    const w = melbourneWeekdayLong(tLast);
+    const iso = { Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6, Sunday: 7 }[w];
+    if (!iso) return null;
+    return dim - ((iso - 1 + 7) % 7);
+}
+
+/** True when `d` is the last Monday of the month in `DASHBOARD_TIME_ZONE` (always a Monday). */
+function isMelbourneLastMondayOfMonth(d) {
+    const ref = d === undefined ? new Date() : d;
+    if (!isMelbourneMonday(ref)) return false;
+    const { year, month, day } = dashboardDateParts(ref);
+    const lastMon = melbourneLastMondayCalendarDay(year, month);
+    if (lastMon == null) return false;
+    return day === lastMon;
+}
+
+/** Fixed label for Mondays — not returned by Macromatix `pendingVendors`. */
+function mondayCashOrderReminderHtml() {
+    return `<div class="pending-vendor-item pending-vendor-item--info" role="status">
+        <div class="pending-vendor-monday-note">${escapeHtml('Cash Order')}</div>
+    </div>`;
+}
+
+/** Last Monday of the month — one row per vendor (not from Macromatix list on other days). */
+function lastMondayMonthlyOrdersReminderHtml() {
+    const labels = ['Eco Lab', 'Reward', 'Franke', 'Staples'];
+    return labels
+        .map(
+            (label) =>
+                `<div class="pending-vendor-item pending-vendor-item--info" role="status"><div class="pending-vendor-monday-note">${escapeHtml(
+                    label
+                )}</div></div>`
+        )
+        .join('');
+}
+
 /** Fallback only if /api/audit-schedule fails (matches old Monday-week key in Melbourne). */
-function clientMelbourneMondayWeekKey(d = new Date()) {
-    const { year, month, day: date } = dashboardDateParts(d);
+function clientMelbourneMondayWeekKey(d) {
+    const ref = d === undefined ? new Date() : d;
+    const { year, month, day: date } = dashboardDateParts(ref);
     const x = new Date(year, month - 1, date);
     const day = (x.getDay() + 6) % 7;
     x.setDate(x.getDate() - day);
@@ -111,7 +202,7 @@ function updateAuditScheduleBanner(show, message) {
 
 async function loadAuditSchedule() {
     try {
-        const res = await fetch(AUDIT_SCHEDULE_URL);
+        const res = await fetch(AUDIT_SCHEDULE_URL, { credentials: 'include' });
         if (!res.ok) throw new Error(`Audit schedule responded with ${res.status}`);
         const data = await res.json();
         if (!data.success) throw new Error(data.error || 'Audit schedule returned unsuccessful response');
@@ -189,9 +280,18 @@ async function saveAuditState() {
 /* -----------------------------------------------------------
    Sales API — fetch JSON from API, trim hours, refresh grid & timestamp
 ----------------------------------------------------------- */
+function applySalesPayload(data) {
+    forecastSales = Array.isArray(data.forecast) ? data.forecast.slice(5, -4) : [];
+    liveSales = Array.isArray(data.actual) ? data.actual.slice(5, -4) : [];
+    pendingVendors = Array.isArray(data.pendingVendors) ? data.pendingVendors : [];
+    for (const d of [...dismissedPendingVendors]) {
+        if (!pendingVendors.includes(d)) dismissedPendingVendors.delete(d);
+    }
+}
+
 async function loadSalesData() {
     try {
-        const res = await fetch(SALES_API_URL);
+        const res = await fetch(SALES_API_URL, { credentials: 'include' });
         if (!res.ok) {
             throw new Error(`API responded with ${res.status}`);
         }
@@ -202,12 +302,7 @@ async function loadSalesData() {
         }
 
         // Remove early hours (store closed) and keep only 10AM–9PM, can -4 to -5 for a 10PM store
-        forecastSales = Array.isArray(data.forecast) ? data.forecast.slice(5, -4) : [];
-        liveSales = Array.isArray(data.actual) ? data.actual.slice(5, -4) : [];
-        pendingVendors = Array.isArray(data.pendingVendors) ? data.pendingVendors : [];
-        for (const d of [...dismissedPendingVendors]) {
-            if (!pendingVendors.includes(d)) dismissedPendingVendors.delete(d);
-        }
+        applySalesPayload(data);
 
         await loadAuditSchedule();
         updateGrid();
@@ -837,6 +932,7 @@ setInterval(() => {
     processBoiloutSchedule();
 }, 1000);
 
+/* Test popup button handler (disabled — restore with `#popup-test-btn` in index.html)
 document.getElementById('popup-test-btn')?.addEventListener('click', () => {
     const keys = Object.keys(NOTIFICATIONS);
     if (!keys.length) {
@@ -851,6 +947,7 @@ document.getElementById('popup-test-btn')?.addEventListener('click', () => {
     }
     showNotificationGroup(picked);
 });
+*/
 
 window.showPopup = showPopup;
 window.NOTIFICATIONS = NOTIFICATIONS;
@@ -1306,19 +1403,27 @@ function updatePendingVendorsPanel() {
     if (!el) return;
 
     const visible = getVisiblePendingVendors();
-    if (!visible.length) {
+    const monday = isMelbourneMonday();
+    const lastMondayMonth = isMelbourneLastMondayOfMonth();
+    if (!visible.length && !monday && !lastMondayMonth) {
         el.innerHTML = '';
         return;
     }
 
-    el.innerHTML = visible
-        .map(
-            (name) =>
-                `<div class="pending-vendor-item"><button type="button" class="pending-vendor-chip" data-vendor="${encodeURIComponent(
-                    name
-                )}" aria-label="Mark ${escapeHtml(name)} as done">${escapeHtml(name)}</button></div>`
-        )
-        .join('');
+    const mondayHtml = monday ? mondayCashOrderReminderHtml() : '';
+    const lastMondayHtml = lastMondayMonth ? lastMondayMonthlyOrdersReminderHtml() : '';
+    const chipsHtml = visible.length
+        ? visible
+              .map(
+                  (name) =>
+                      `<div class="pending-vendor-item"><button type="button" class="pending-vendor-chip" data-vendor="${encodeURIComponent(
+                          name
+                      )}" aria-label="Mark ${escapeHtml(name)} as done">${escapeHtml(name)}</button></div>`
+              )
+              .join('')
+        : '';
+
+    el.innerHTML = mondayHtml + lastMondayHtml + chipsHtml;
 }
 
 function handleFooterChipDismissClick(e) {
@@ -1417,7 +1522,7 @@ function buildAuditsAsideHtml() {
 }
 
 function buildPendingVendorsAsideHtml() {
-    if (!getVisiblePendingVendors().length) {
+    if (!getVisiblePendingVendors().length && !isMelbourneMonday() && !isMelbourneLastMondayOfMonth()) {
         return '';
     }
     return `

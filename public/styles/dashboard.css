@@ -306,6 +306,39 @@ body {
     }
 }
 
+.pending-vendor-item--info {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+/** Same inner surface + type as `.pending-vendor-chip` / `.audit-chip` (info rows are not clickable). */
+.pending-vendor-item--info .pending-vendor-monday-note {
+    box-sizing: border-box;
+    min-height: 38px;
+    padding: 8px 16px;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 100%;
+    font: inherit;
+    font-size: var(--font-size-3);
+    font-weight: var(--font-weight-grid-label);
+    text-align: center;
+    white-space: nowrap;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    border-radius: 0;
+    border: none;
+    background: color-mix(in srgb, var(--blank) 12%, var(--dark-purple-border));
+    color: var(--blank);
+    line-height: 1.2;
+}
+
 .pending-vendor-chip {
     box-sizing: border-box;
     min-height: 38px;
@@ -864,6 +897,63 @@ body {
     display: none;
 }
 
+/* Order-date test panel (disabled — restore with dashboard.js test UI)
+.order-date-test-panel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+    margin: 0 0 14px;
+    padding: 10px 14px;
+    border: var(--cell-border) dashed var(--near-border);
+    background: color-mix(in srgb, var(--near) 18%, var(--blank));
+    color: var(--grid-data-text-color);
+    font-size: var(--font-size-3);
+}
+
+.order-date-test-label {
+    font-weight: var(--font-weight-grid-label);
+    white-space: nowrap;
+}
+
+.order-date-test-input {
+    font: inherit;
+    font-size: var(--font-size-3);
+    padding: 6px 8px;
+    border: var(--cell-border) var(--near-border);
+    background: var(--blank);
+    color: inherit;
+}
+
+.order-date-test-btn {
+    font: inherit;
+    font-size: var(--font-size-3);
+    font-weight: var(--font-weight-medium);
+    padding: 6px 12px;
+    cursor: pointer;
+    border: var(--cell-border) var(--dark-purple-border);
+    background: var(--dark-purple-border);
+    color: var(--blank);
+    border-radius: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.order-date-test-btn--secondary {
+    background: color-mix(in srgb, var(--blank) 14%, var(--dark-purple-border));
+}
+
+.order-date-test-hint {
+    flex: 1 1 200px;
+    font-size: var(--font-size-4);
+    line-height: 1.35;
+    opacity: 0.95;
+}
+
+.order-date-test-hint[hidden] {
+    display: none;
+}
+*/
+
 /* -----------------------------------------------------------
    Responsive — grid & header
 ----------------------------------------------------------- */
@@ -1232,6 +1322,7 @@ body {
     object-fit: contain;
 }
 
+/* Test popup button (disabled — uncomment HTML + this block to restore)
 #popup-test-btn {
     position: fixed;
     bottom: 100px;
@@ -1247,3 +1338,4 @@ body {
     opacity: 0.95;
     pointer-events: auto;
 }
+*/

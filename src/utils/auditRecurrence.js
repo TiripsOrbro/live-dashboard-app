@@ -359,6 +359,19 @@ function loadAuditRecurrenceConfigSync(explicitPath) {
     }
 }
 
+/**
+ * Any `Date` that formats to the given civil `year`–`month`–`day` in `timeZone` (used as `now` for schedule math).
+ */
+function instantForYmdInTimeZone(year, month, day, timeZone) {
+    const start = Date.UTC(year, month - 1, day - 1, 0, 0, 0);
+    for (let ms = 0; ms < 120 * 3600000; ms += 15 * 60 * 1000) {
+        const d = new Date(start + ms);
+        const y = ymdInTimeZone(d, timeZone);
+        if (y.year === year && y.month === month && y.day === day) return d;
+    }
+    return new Date(Date.UTC(year, month - 1, day, 14, 0, 0));
+}
+
 function getAuditSchedule(now = new Date(), explicitPath) {
     const cfg = loadAuditRecurrenceConfigSync(explicitPath);
     const timeZone = cfg.timeZone || 'Australia/Melbourne';
@@ -384,6 +397,7 @@ module.exports = {
     getAuditSchedule,
     getDismissalPeriodKey,
     loadAuditRecurrenceConfigSync,
+    instantForYmdInTimeZone,
     defaultConfig,
     FIXED_AUDITS,
     SQUARE_ONE_PLACEHOLDERS,

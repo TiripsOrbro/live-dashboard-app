@@ -19,7 +19,12 @@ require('dotenv').config({ path: path.join(__dirname, '../.env.production'), ove
 })();
 
 const scrapeData = require('./services/scraper');
-const { getDismissalPeriodKey, getAuditSchedule } = require('./utils/auditRecurrence');
+const {
+    getDismissalPeriodKey,
+    getAuditSchedule,
+    instantForYmdInTimeZone,
+    loadAuditRecurrenceConfigSync,
+} = require('./utils/auditRecurrence');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -28,6 +33,30 @@ const SALES_CACHE_SECONDS = Number(process.env.SALES_CACHE_SECONDS || 90);
 const SCRAPE_TIMEOUT_MS = Number(process.env.SCRAPE_TIMEOUT_MS || 120000);
 const SCRAPE_RETRIES = Number(process.env.SCRAPE_RETRIES || 1);
 const AUDIT_STATE_FILE = process.env.AUDIT_STATE_FILE || path.join(__dirname, '../data/audit-state.json');
+
+function isScheduledOrdersDateTestEnabled() {
+    return /^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_ENABLE_ORDER_DATE_TEST ?? '').trim());
+}
+
+/** Test-date scrapes: explicit env, or any request that already passed dashboard cookie auth. */
+function canRunScheduledOrdersDateTest(req, testPick) {
+    if (!testPick) return false;
+    if (isScheduledOrdersDateTestEnabled()) return true;
+    if (isDashboardAuthenticated(req)) return true;
+    return false;
+}
+
+/** Returns `{ year, month, day, ymd }` or null if invalid. */
+function parseScheduledOrdersTestYmd(raw) {
+    const s = String(raw ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    const [y, m, d] = s.split('-').map((x) => parseInt(x, 10));
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+    const dim = new Date(y, m, 0).getDate();
+    if (d > dim) return null;
+    return { year: y, month: m, day: d, ymd: s };
+}
 const DASHBOARD_ACCESS_KEY = String(process.env.DASHBOARD_ACCESS_KEY || '');
 const DASHBOARD_ALLOWED_IPS = String(process.env.DASHBOARD_ALLOWED_IPS || '')
     .split(',')
@@ -280,7 +309,7 @@ async function withTimeout(promise, ms, onTimeout) {
     }
 }
 
-async function scrapeWithRetry() {
+async function scrapeWithRetry(scrapeOptions = {}) {
     let lastError;
     const attempts = Math.max(1, SCRAPE_RETRIES + 1);
     for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -288,6 +317,7 @@ async function scrapeWithRetry() {
         try {
             return await withTimeout(
                 scrapeData({
+                    ...scrapeOptions,
                     onBrowser: (browser) => {
                         activeBrowser = browser;
                     },
@@ -344,8 +374,13 @@ app.get('/', (req, res) => {
 
 app.get('/api/audit-schedule', (req, res) => {
     try {
-        const schedule = getAuditSchedule();
-        res.json({ success: true, ...schedule });
+        const asOf = parseScheduledOrdersTestYmd(req.query.asOfDate);
+        const cfg = loadAuditRecurrenceConfigSync();
+        const tz = cfg.timeZone || 'Australia/Melbourne';
+        const schedule = asOf
+            ? getAuditSchedule(instantForYmdInTimeZone(asOf.year, asOf.month, asOf.day, tz))
+            : getAuditSchedule(undefined);
+        res.json({ success: true, ...schedule, ...(asOf ? { asOfDate: asOf.ymd } : {}) });
     } catch (error) {
         console.error('API: Error reading audit schedule:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -393,7 +428,25 @@ app.get('/api/test-scraper', async (req, res) => {
 app.get('/api/sales', async (req, res) => {
     try {
         console.log('API: Sales data requested');
-        const payload = await getSalesDataCached();
+        const testPick = parseScheduledOrdersTestYmd(req.query.testScheduledOrdersDate);
+        let payload;
+        if (testPick && canRunScheduledOrdersDateTest(req, testPick)) {
+            console.log('API: Scheduled-orders test scrape for Melbourne date', testPick.ymd);
+            const result = await scrapeWithRetry({
+                scheduledOrdersPickYmd: { year: testPick.year, month: testPick.month, day: testPick.day },
+                skipScheduledOrdersPersistence: true,
+            });
+            payload = {
+                success: true,
+                actual: result.actual,
+                forecast: result.forecast,
+                timestamp: result.timestamp,
+                pendingVendors: Array.isArray(result.pendingVendors) ? result.pendingVendors : [],
+                testScheduledOrdersDate: testPick.ymd,
+            };
+        } else {
+            payload = await getSalesDataCached();
+        }
         res.json(payload);
     } catch (error) {
         console.error('API: Error fetching sales data:', error);

@@ -8,6 +8,7 @@ const SALES_API_URL =
         ? window.__DASHBOARD_SALES_API__
         : `${window.location.origin}/api/sales`;
 const AUDITS_API_URL = `${window.location.origin}/api/audits`;
+const AUDIT_SCHEDULE_URL = `${window.location.origin}/api/audit-schedule`;
 const SALES_REFRESH_MINUTES = 2;
 const DASHBOARD_TIME_ZONE = 'Australia/Melbourne';
 
@@ -35,33 +36,18 @@ function getVisiblePendingVendors() {
 }
 
 /* -----------------------------------------------------------
-   Audits list (left) — Monday refresh; Square One pair advances each Monday (1–2, 3–4, 5–6, 7–8, repeat)
+   Audits list — dismissal period + Square One pair from server schedule (see data/audit-recurrence.json)
 ----------------------------------------------------------- */
-const SQUARE_ONE_PLACEHOLDERS = [
+const AUDIT_FALLBACK_ITEMS = [
+    'Pest Walk',
+    'RGM Cleaning Checklist',
+    'Period Safety Inspection',
     'Dining Room',
     'Restrooms',
-    'Production Line',
-    'Walls, Floors, Drains, Shelves...',
-    'External',
-    'Bins, Bin Room, Office...',
-    'Drink Station',
-    'Prep and Washup',
 ];
 
-/**
- * Anchor Monday (local): that week shows Square Ones 1 & 2; each following Monday moves to the next pair (3&4, 5&6, 7&8), then back to 1&2.
- * Change the inner date to any Monday you want as a “1 & 2” week — it is normalised to Monday if needed.
- */
-const AUDIT_ANCHOR_MONDAY = (() => {
-    const a = new Date(2026, 4, 4);
-    const x = new Date(a.getFullYear(), a.getMonth(), a.getDate());
-    const day = (x.getDay() + 6) % 7;
-    x.setDate(x.getDate() - day);
-    x.setHours(0, 0, 0, 0);
-    return x;
-})();
-
-let auditListMondayKey = null;
+let cachedAuditSchedule = null;
+let auditPeriodKey = null;
 const dismissedAudits = new Set();
 let auditStateLoaded = false;
 
@@ -76,40 +62,74 @@ function dashboardDateParts(d = new Date()) {
     return { year: get('year'), month: get('month'), day: get('day') };
 }
 
-function mondayDateLocal(d = new Date()) {
+/** Fallback only if /api/audit-schedule fails (matches old Monday-week key in Melbourne). */
+function clientMelbourneMondayWeekKey(d = new Date()) {
     const { year, month, day: date } = dashboardDateParts(d);
     const x = new Date(year, month - 1, date);
     const day = (x.getDay() + 6) % 7;
     x.setDate(x.getDate() - day);
     x.setHours(0, 0, 0, 0);
-    return x;
+    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
 }
 
-function auditWeekKey(d = new Date()) {
-    const thisMon = mondayDateLocal(d);
-    return `${thisMon.getFullYear()}-${String(thisMon.getMonth() + 1).padStart(2, '0')}-${String(thisMon.getDate()).padStart(2, '0')}`;
+function getAuditListItems() {
+    if (cachedAuditSchedule && Array.isArray(cachedAuditSchedule.auditListItems)) {
+        return cachedAuditSchedule.auditListItems;
+    }
+    return AUDIT_FALLBACK_ITEMS;
 }
 
-function syncAuditWeekState() {
-    const k = auditWeekKey();
-    if (auditListMondayKey !== k) {
+function syncAuditPeriodState() {
+    const k = cachedAuditSchedule ? cachedAuditSchedule.periodKey : clientMelbourneMondayWeekKey();
+    if (auditPeriodKey !== k) {
         dismissedAudits.clear();
-        auditListMondayKey = k;
+        auditPeriodKey = k;
         auditStateLoaded = false;
     }
 }
 
-function squareOnePairForWeek() {
-    const thisMon = mondayDateLocal();
-    const msWeek = 7 * 24 * 60 * 60 * 1000;
-    const weeks = Math.floor((thisMon.getTime() - AUDIT_ANCHOR_MONDAY.getTime()) / msWeek);
-    const slot = ((weeks % 4) + 4) % 4;
-    const i = slot * 2;
-    return [SQUARE_ONE_PLACEHOLDERS[i], SQUARE_ONE_PLACEHOLDERS[i + 1]];
+/** True after at least one successful `/api/audit-schedule` response (used for error copy only). */
+let auditScheduleFetchedOkOnce = false;
+
+function updateAuditScheduleBanner(show, message) {
+    const el = document.getElementById('audit-schedule-status');
+    if (!el) return;
+    if (!show) {
+        el.hidden = true;
+        el.textContent = '';
+        return;
+    }
+    el.hidden = false;
+    el.textContent = message;
 }
 
-function getAuditListItems() {
-    return ['Pest Walk', 'RGM Cleaning Checklist', 'Period Safety Inspection', ...squareOnePairForWeek()];
+async function loadAuditSchedule() {
+    try {
+        const res = await fetch(AUDIT_SCHEDULE_URL);
+        if (!res.ok) throw new Error(`Audit schedule responded with ${res.status}`);
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error || 'Audit schedule returned unsuccessful response');
+        cachedAuditSchedule = data;
+        auditScheduleFetchedOkOnce = true;
+        updateAuditScheduleBanner(false, '');
+    } catch (err) {
+        console.warn('Failed to load audit schedule:', err);
+        if (!cachedAuditSchedule) {
+            const k = clientMelbourneMondayWeekKey();
+            cachedAuditSchedule = {
+                periodKey: k,
+                weekKey: k,
+                auditListItems: [...AUDIT_FALLBACK_ITEMS],
+                squareSlot: 0,
+                timeZone: DASHBOARD_TIME_ZONE,
+            };
+        }
+        const msg = auditScheduleFetchedOkOnce
+            ? 'Could not refresh the audit checklist schedule from the server. The checklist still reflects the last successful load.'
+            : 'Could not load the audit checklist schedule from the server. Using an offline fallback (Melbourne Monday week) until it is available.';
+        updateAuditScheduleBanner(true, msg);
+    }
+    syncAuditPeriodState();
 }
 
 function getVisibleAudits() {
@@ -127,13 +147,15 @@ function applyAuditDismissals(labels) {
 }
 
 async function loadAuditState() {
-    syncAuditWeekState();
+    await loadAuditSchedule();
+    syncAuditPeriodState();
     try {
         const res = await fetch(AUDITS_API_URL);
         if (!res.ok) throw new Error(`Audit API responded with ${res.status}`);
         const data = await res.json();
         if (!data.success) throw new Error(data.error || 'Audit API returned unsuccessful response');
-        if (data.weekKey === auditListMondayKey) {
+        const serverKey = data.periodKey || data.weekKey;
+        if (serverKey === auditPeriodKey) {
             applyAuditDismissals(data.dismissed);
         }
         auditStateLoaded = true;
@@ -145,7 +167,7 @@ async function loadAuditState() {
 }
 
 async function saveAuditState() {
-    syncAuditWeekState();
+    syncAuditPeriodState();
     try {
         const res = await fetch(AUDITS_API_URL, {
             method: 'PUT',
@@ -181,6 +203,7 @@ async function loadSalesData() {
             if (!pendingVendors.includes(d)) dismissedPendingVendors.delete(d);
         }
 
+        await loadAuditSchedule();
         updateGrid();
         updateTimestamp(data.timestamp);
         updateSalesStatus(data);
@@ -194,7 +217,7 @@ async function loadSalesData() {
             pendingVendors = [];
             dismissedPendingVendors.clear();
             dismissedAudits.clear();
-            auditListMondayKey = null;
+            auditPeriodKey = null;
             updatePendingVendorsPanel();
         }
     }
@@ -446,24 +469,27 @@ function makeMultiPopupCard(cfg, cellDuration, iconSide) {
    ============================================================ */
 const NOTIFICATIONS = {
 
+    //BOILOUTS (see processBoiloutSchedule). */
+    boiloutOilDump: { name: 'Dump the oil (boilout prep)', instruction: 'Dump the oil tonightfor boilout, tomorrow is the scheduled boilout.', icon: 'Fry', seconds: 600 },
+    boiloutComplete: { name: 'Complete a boilout', instruction: 'Complete the scheduled fryer boilout for this period.', icon: 'Fry', seconds: 3400 },
 
     // "Before 9:30PM"
 
     cleanToilets: {name: 'Clean and stock Toilets',instruction: 'Clean and stock Toilets', icon: 'Toilets', seconds: 600},
     diningBins: {name: 'Dining room bins',instruction: 'Empty, clean and reline dining room bins', icon: 'Clean', seconds: 600},
     patioBins: {name: 'Patio bins',instruction: 'Empty, clean and reline patio bins', icon: 'Clean', seconds: 600},
-    removeBins: {name: 'Remove and clean bins',instruction: 'Remove and clean inside and outside of bins, then allow them to air dry. Leave 1 bin for the line and one 1 for washup, bins should be relined once they are dry', icon: 'Clean', seconds: 900},
-    smallVats: {name: 'Begin shutting down 2 small fry vats',instruction: 'Complete a full daily filter on all 3 vats and shut fown the 2 smaller vats, leaving the largest vat running. make sure a full scrub vat, wash, rinse and full polish is completed before moving on to the next vat. While waiting for the vats to filter, use degreaser to clean the front of the fryer', icon: 'Fry', seconds: 1200},
-    hotLine: {name: 'Clean Hot Line (KEEPING PRODUCTS HOT!!!)',instruction: 'Clean the hot line well by well by shifting the pans back on row and then replacing them once complete, pans should NEVER be left on the bench!!!', icon: 'Clean', seconds: 900},
-    filterPan: {name: 'Last fry filter',instruction: 'Ensure there are enough chips to make orders for 5 minutes before completing an express filter on the large vat, once that is complete, allow filter pan to cool before carefully removing the filter pan and taking it to washup to be cleaned and left to dry', icon: 'Fry', seconds: 1200},
-    removeExtras: {name: 'Remove any EXTRAs from line',instruction: 'Nothing that impacts speed should be removed, only holders for cantina bowls, dipping cups and lids, wrappers, chip bag holders, scale insert, underline fridge and containers', icon: 'Clean', seconds: 900},   
-    DTBench: {name: 'Clean DT bench',instruction: 'Remove tray and items from bench to clean underneath them and then put back, if tray is dirty consider replacing it with a new clean one and leaving the old one at washup', icon: 'Clean', seconds: 900},  
-    prepBench: {name: 'Clean Prep Bench',instruction: 'Unplug and move the rice cooker to clean under it, check if the seasoning, sugar and rice tub are clean, if not clean them and leave to air dry', icon: 'Clean', seconds: 900},
-    fryBench: {name: 'Clean Fry Bench',instruction: "Use degreaser to clean the fry bench, don't neglect the rails that hold the baskets or the shelf that holds nacho chips", icon: 'Fry', seconds: 900},   
-    cleanFloors: {name: 'Begin cleaning floors',instruction: 'Clean all floors except in use line, make sure to clean under shelves, benches, equipement (Drink machines, Fryer, Retherm) and the line', icon: 'Clean', seconds: 900},
+    removeBins: {name: 'Remove and clean bins',instruction: 'Remove and clean inside and outside of bins, then allow them to air dry. Leave 1 bin for the line and one 1 for washup, bins should be relined once they are dry', icon: 'Clean', seconds: 600},
+    smallVats: {name: 'Begin shutting down 2 small fry vats',instruction: 'Complete a full daily filter on all 3 vats and shut fown the 2 smaller vats, leaving the largest vat running. make sure a full scrub vat, wash, rinse and full polish is completed before moving on to the next vat. While waiting for the vats to filter, use degreaser to clean the front of the fryer', icon: 'Fry', seconds: 600},
+    hotLine: {name: 'Clean Hot Line (KEEPING PRODUCTS HOT!!!)',instruction: 'Clean the hot line well by well by shifting the pans back on row and then replacing them once complete, pans should NEVER be left on the bench!!!', icon: 'Clean', seconds: 600},
+    filterPan: {name: 'Last fry filter',instruction: 'Ensure there are enough chips to make orders for 5 minutes before completing an express filter on the large vat, once that is complete, allow filter pan to cool before carefully removing the filter pan and taking it to washup to be cleaned and left to dry', icon: 'Fry', seconds: 600},
+    removeExtras: {name: 'Remove any EXTRAs from line',instruction: 'Nothing that impacts speed should be removed, only holders for cantina bowls, dipping cups and lids, wrappers, chip bag holders, scale insert, underline fridge and containers', icon: 'Clean', seconds: 600},   
+    DTBench: {name: 'Clean DT bench',instruction: 'Remove tray and items from bench to clean underneath them and then put back, if tray is dirty consider replacing it with a new clean one and leaving the old one at washup', icon: 'Clean', seconds: 600},  
+    prepBench: {name: 'Clean Prep Bench',instruction: 'Unplug and move the rice cooker to clean under it, check if the seasoning, sugar and rice tub are clean, if not clean them and leave to air dry', icon: 'Clean', seconds: 600},
+    fryBench: {name: 'Clean Fry Bench',instruction: "Use degreaser to clean the fry bench, don't neglect the rails that hold the baskets or the shelf that holds nacho chips", icon: 'Fry', seconds: 600},   
+    cleanFloors: {name: 'Begin cleaning floors',instruction: 'Clean all floors except in use line, make sure to clean under shelves, benches, equipement (Drink machines, Fryer, Retherm) and the line', icon: 'Clean', seconds: 600},
     drains: {name: 'Clean drains',instruction: 'Remove drains from wherever you have mopped, remove any buildup from underneath the catchers', icon: 'Clean', seconds: 600},   
     setupCarryover: {name: 'Setup Carryover Sink',instruction: 'Sink should be filled 3/4 of the way with just ice, water will be added to it later in the night', icon: 'Clean', seconds: 600},
-    cleanRetherm: {name: 'Clean Retherm',instruction: 'Drain and clean inside the retherm following the standard card, once the inside has been cleaned, close the lids and valves and clean the outside of the retherm', icon: 'Clean', seconds: 900},
+    cleanRetherm: {name: 'Clean Retherm',instruction: 'Drain and clean inside the retherm following the standard card, once the inside has been cleaned, close the lids and valves and clean the outside of the retherm', icon: 'Clean', seconds: 600},
     
         //MIC ONLY
 
@@ -473,9 +499,9 @@ const NOTIFICATIONS = {
 
     // "After 9:30PM"
 
-    mopDining: {name: 'Mop dining room',instruction: 'Clean dining room using the green mop and bucket, use multiple bucket loads if your water is turning grey. REMINDER: make sure the mop is properly wrung out before using it to avoid flooding the floor', icon: 'Clean', seconds: 900},  
+    mopDining: {name: 'Mop dining room',instruction: 'Clean dining room using the green mop and bucket, use multiple bucket loads if your water is turning grey. REMINDER: make sure the mop is properly wrung out before using it to avoid flooding the floor', icon: 'Clean', seconds: 600},  
     carryoverPan: {name: 'Setup Carryover pan',instruction: 'Setup Carryover pan, line it with enough bags for your expected carryover, a full pan of chicken= 2 bags, beef = 3, nacho = 2', icon: 'Clean', seconds: 600},  
-    carryoverFirstRound: {name: 'First Round of Carryover',instruction: 'Check with MIC if there are any ingredients that can be carried over, ensuring there is enough product to last the night, if there are any issues, inform MIC and they will handle it', icon: 'Clean', seconds: 900},  
+    carryoverFirstRound: {name: 'First Round of Carryover',instruction: 'Check with MIC if there are any ingredients that can be carried over, ensuring there is enough product to last the night, if there are any issues, inform MIC and they will handle it', icon: 'Clean', seconds: 600},  
     chipDump: {name: 'Clean Chip Dump',instruction: 'Remove all chips and peices from the inside chip dump, inclusing the grill on the top of the dump', icon: 'Clean', seconds: 600},     
     coldLine: {name: 'Clean cold line',instruction: 'Clean cold line, items should only be removed from the cold line for a short period of time to avoid them warming up and becoming unsafe to eat', icon: 'Clean', seconds: 600},    
     remainingFloors: {name: 'Clean floors',instruction: 'Clean remaining floors that were missed during the night', icon: 'Clean', seconds: 600},
@@ -518,31 +544,20 @@ const NOTIFICATIONS = {
 const SCHEDULE = [
 
     // "Before 9:30PM"
-    { time: '20:00', show: ['smallVats']},    
-    { time: '20:10', show: ['DTBench', 'prepBench', 'fryBench'] },
-    { time: '20:20', show: ['setupCarryover','removeExtras']},
-    { time: '20:30', show: ['cleanFloors', 'drains'] },
-    { time: '20:40', show: ['cleanToilets', 'patioBins'] },
-    { time: '20:50', show: ['removeBins', 'diningBins'] },
-    { time: '21:00', show: ['cleanRetherm']},
-    { time: '21:10', show: ['hotLine']},
-    { time: '21:15', show: ['filterPan']},
-    { time: '21:15', show: ['removeStickers', 'wipePrepGuide', 'wipeTREDPoster'] }, //MIC ONLY
+    { time: '20:00', show: ['smallVats','prepBench', 'fryBench']},    
+    { time: '20:10', show: ['DTBench', 'setupCarryover','removeExtras'] },
+    { time: '20:20', show: ['cleanFloors', 'drains','cleanRetherm'] },
+    { time: '20:30', show: ['cleanToilets', 'patioBins','diningBins']},
+    { time: '20:40', show: ['removeBins', 'wipeTREDPoster','filterPan'] },
+    { time: '20:50', show: ['wipePrepGuide', 'carryoverPan', 'removeStickers']},
+    { time: '21:00', show: ['countSafe', 'printReports','carryoverFirstRound'] },   //MIC ONLY
 
     // "After 9:30PM"
-    { time: '21:20', show: ['bigGrillFirstAlert'] },                                //MIC ONLY
-    { time: '21:20', show: ['countSafe'] },                                         //MIC ONLY
-    { time: '21:20', show: ['printReports'] },                                      //MIC ONLY
-    { time: '21:30', show: ['mopDining'] },
-    { time: '21:30', show: ['carryoverPan'] },
-    { time: '21:30', show: ['stockCount'] },                                        //MIC ONLY
-    { time: '21:30', show: ['checkThawing'] },
-    { time: '21:30', show: ['organiseFreezer'] },
-    { time: '21:35', show: ['carryoverFirstRound'] },
-    { time: '21:40', show: ['chipDump'] },
-    { time: '21:40', show: ['coldLine'] },
-    { time: '21:40', show: ['bigGrillSecondAlert'] },
-    { time: '21:45', show: ['remainingFloors'] },
+    { time: '21:10', show: ['bigGrillFirstAlert','checkThawing','hotLine']},        //MIC ONLY
+    { time: '21:20', show: ['stockCount','organiseFreezer','chipDump']},
+    { time: '21:30', show: ['mopDining','coldLine','bigGrillSecondAlert'] },
+    { time: '21:40', show: ['remainingFloors'] },                                   //Room for 2 more to be added
+
 
     // "After Close"
     { time: '22:00', show: ['drinkNozzles'] },
@@ -635,25 +650,186 @@ function registerSchedule(rows) {
             hour: t.hour,
             minute: t.minute,
             show,
-            _triggered: false,
+            _triggeredForYmd: null,
         });
     });
 }
 
 function processPopupSchedule() {
     const now = new Date();
-    const hh = now.getHours();
-    const mm = now.getMinutes();
+    const { hour: hh, minute: mm } = melbourneHourMinute(now);
+    const todayYmd = melbourneYmdFromDate(now);
+    const ymdToday = formatYmd(todayYmd.year, todayYmd.month, todayYmd.day);
     _notificationSchedule.forEach((entry) => {
-        if (entry._triggered || entry.hour !== hh || entry.minute !== mm) return;
-        entry._triggered = true;
+        if (entry.hour !== hh || entry.minute !== mm) return;
+        if (entry._triggeredForYmd === ymdToday) return;
+        entry._triggeredForYmd = ymdToday;
         showNotificationGroup(entry.show);
     });
 }
 
+/* ============================================================
+   BOILOUT_RULE — calendar reminders (Melbourne date + times)
+
+   • anchor       — first day of period 0 (YYYY-MM-DD). Next Period 1 June
+   • periodDays   — length of each period (28).
+   • Each period: the **first Monday** on or after the block start, still inside the block, is “boilout day”.
+   • oilDump      — evening **calendar day before** that Monday (Sunday night if boilout is Monday).
+   Times use **Australia/Melbourne** wall clock (not the PC timezone).
+   ============================================================ */
+const BOILOUT_RULE = {
+    anchor: '2026-06-01',
+    periodDays: 28,
+    oilDump: { time: '21:30', show: ['boiloutOilDump'] },
+    boilout: { time: '07:00', show: ['boiloutComplete'] },
+};
+
+function gregorianToJd(y, m, d) {
+    const a = Math.floor((14 - m) / 12);
+    const yy = y + 4800 - a;
+    const mm = m + 12 * a - 3;
+    return (
+        d +
+        Math.floor((153 * mm + 2) / 5) +
+        365 * yy +
+        Math.floor(yy / 4) -
+        Math.floor(yy / 100) +
+        Math.floor(yy / 400) -
+        32045
+    );
+}
+
+function jdToGregorian(jd) {
+    const a = jd + 32044;
+    const b = Math.floor((4 * a + 3) / 146097);
+    const c = a - Math.floor((146097 * b) / 4);
+    const d = Math.floor((4 * c + 3) / 1461);
+    const e = c - Math.floor((1461 * d) / 4);
+    const f = Math.floor((5 * e + 2) / 153);
+    const day = e - Math.floor((153 * f + 2) / 5) + 1;
+    const month = f + 3 - 12 * Math.floor(f / 10);
+    const year = b * 100 + d - 4800 + Math.floor(f / 10);
+    return { year, month, day };
+}
+
+function isoWeekdayFromYmd(y, m, d) {
+    const t = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+    const w = t.getUTCDay();
+    return w === 0 ? 7 : w;
+}
+
+function formatYmd(y, m, d) {
+    return `${y}-${String(m).padStart(2, '0')}-${String(m).padStart(2, '0')}`;
+}
+
+function parseBoiloutAnchorYmd(s) {
+    const m = String(s || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    return { year: +m[1], month: +m[2], day: +m[3] };
+}
+
+function melbourneYmdFromDate(d = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: DASHBOARD_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(d);
+    const get = (type) => Number(parts.find((p) => p.type === type)?.value);
+    return { year: get('year'), month: get('month'), day: get('day') };
+}
+
+function melbourneHourMinute(d = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-AU', {
+        timeZone: DASHBOARD_TIME_ZONE,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).formatToParts(d);
+    const get = (type) => Number(parts.find((p) => p.type === type)?.value);
+    return { hour: get('hour'), minute: get('minute') };
+}
+
+/** First Monday with JD in [periodStartJd, periodEndJd] inclusive. */
+function firstMondayYmdInJdRange(periodStartJd, periodEndJd) {
+    for (let jd = periodStartJd; jd <= periodEndJd; jd += 1) {
+        const g = jdToGregorian(jd);
+        if (isoWeekdayFromYmd(g.year, g.month, g.day) === 1) {
+            return g;
+        }
+    }
+    return null;
+}
+
+/**
+ * Melbourne calendar: YMD of the boilout Monday for the period containing `today`,
+ * or null if today is before anchor.
+ */
+function boiloutMondayYmdContaining(todayYmd, rule) {
+    const anchor = parseBoiloutAnchorYmd(rule.anchor);
+    if (!anchor) return null;
+    const periodDays = Math.max(1, Math.floor(Number(rule.periodDays) || 28));
+    const todayJd = gregorianToJd(todayYmd.year, todayYmd.month, todayYmd.day);
+    const anchorJd = gregorianToJd(anchor.year, anchor.month, anchor.day);
+    const diff = todayJd - anchorJd;
+    if (diff < 0) return null;
+    const periodIndex = Math.floor(diff / periodDays);
+    const periodStartJd = anchorJd + periodIndex * periodDays;
+    const periodEndJd = periodStartJd + periodDays - 1;
+    return firstMondayYmdInJdRange(periodStartJd, periodEndJd);
+}
+
+function ymdBefore(y, m, d) {
+    const jd = gregorianToJd(y, m, d) - 1;
+    return jdToGregorian(jd);
+}
+
+let _boiloutOilDumpTriggeredForYmd = null;
+let _boiloutCompleteTriggeredForYmd = null;
+
+function processBoiloutSchedule(now = new Date()) {
+    const rule = BOILOUT_RULE;
+    if (!rule || !rule.anchor) return;
+    const todayYmd = melbourneYmdFromDate(now);
+    const todayStr = formatYmd(todayYmd.year, todayYmd.month, todayYmd.day);
+    const boilMon = boiloutMondayYmdContaining(todayYmd, rule);
+    if (!boilMon) return;
+
+    const boilStr = formatYmd(boilMon.year, boilMon.month, boilMon.day);
+    const beforeBoil = ymdBefore(boilMon.year, boilMon.month, boilMon.day);
+    const oilDumpStr = formatYmd(beforeBoil.year, beforeBoil.month, beforeBoil.day);
+
+    const { hour: hh, minute: mm } = melbourneHourMinute(now);
+
+    if (todayStr === oilDumpStr) {
+        const row = rule.oilDump;
+        if (row && row.time) {
+            const t = parseScheduleTime(row.time);
+            if (t && t.hour === hh && t.minute === mm && _boiloutOilDumpTriggeredForYmd !== todayStr) {
+                showNotificationGroup(row.show || []);
+                _boiloutOilDumpTriggeredForYmd = todayStr;
+            }
+        }
+    }
+    if (todayStr === boilStr) {
+        const row = rule.boilout;
+        if (row && row.time) {
+            const t = parseScheduleTime(row.time);
+            if (t && t.hour === hh && t.minute === mm && _boiloutCompleteTriggeredForYmd !== todayStr) {
+                showNotificationGroup(row.show || []);
+                _boiloutCompleteTriggeredForYmd = todayStr;
+            }
+        }
+    }
+}
+
 registerSchedule(SCHEDULE);
 processPopupSchedule();
-setInterval(processPopupSchedule, 1000);
+processBoiloutSchedule();
+setInterval(() => {
+    processPopupSchedule();
+    processBoiloutSchedule();
+}, 1000);
 
 document.getElementById('popup-test-btn')?.addEventListener('click', () => {
     const keys = Object.keys(NOTIFICATIONS);
@@ -676,6 +852,7 @@ window.SCHEDULE = SCHEDULE;
 window.showNotificationGroup = showNotificationGroup;
 window.openNotificationCards = openNotificationCards;
 window.registerSchedule = registerSchedule;
+window.BOILOUT_RULE = BOILOUT_RULE;
 
 /* -----------------------------------------------------------
    Past-hour cells — actual vs forecast (beat / slightly low / well below)
@@ -700,10 +877,16 @@ function getCurrentHourProgress() {
     const seconds = now.getSeconds();
 
     const startHour = 10;
-    const endHour = 22;
+    const tradeEndHourExclusive = tradingEndHourExclusive();
+    /** After close (e.g. 10PM), keep hourly grid colours for one more wall-clock hour (until 11PM). */
+    const gridColoursEndHourExclusive = tradeEndHourExclusive + 1;
 
-    if (hour < startHour || hour >= endHour) {
+    if (hour < startHour || hour >= gridColoursEndHourExclusive) {
         return { hourIndex: -1, progress: 0 };
+    }
+
+    if (hour >= tradeEndHourExclusive) {
+        return { hourIndex: times.length, progress: 1 };
     }
 
     const hourIndex = hour - startHour;
@@ -1221,7 +1404,7 @@ function updateGrid() {
     const grid = document.querySelector('.dashboard-grid');
     if (!grid) return;
 
-    syncAuditWeekState();
+    syncAuditPeriodState();
 
     grid.innerHTML = `
         ${buildHeaderRow()}
@@ -1258,6 +1441,7 @@ function renderDashboard() {
             </div>
 
             <div id="sales-status" class="sales-status" role="status" aria-live="polite" hidden></div>
+            <div id="audit-schedule-status" class="audit-schedule-status" role="alert" aria-live="assertive" hidden></div>
 
             <div class="dashboard-grid"></div>
 
@@ -1306,6 +1490,7 @@ function startSyncedUpdates() {
 ----------------------------------------------------------- */
 (async () => {
     renderDashboard();
+    await loadAuditSchedule();
     await loadAuditState();
     startSyncedUpdates();
 })();

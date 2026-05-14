@@ -19,6 +19,7 @@ require('dotenv').config({ path: path.join(__dirname, '../.env.production'), ove
 })();
 
 const scrapeData = require('./services/scraper');
+const { getDismissalPeriodKey, getAuditSchedule } = require('./utils/auditRecurrence');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,7 +27,6 @@ const SALES_CACHE_SECONDS = Number(process.env.SALES_CACHE_SECONDS || 90);
 /** Full Macromatix run (login + labour + scheduled orders); default 120s for slow pages */
 const SCRAPE_TIMEOUT_MS = Number(process.env.SCRAPE_TIMEOUT_MS || 120000);
 const SCRAPE_RETRIES = Number(process.env.SCRAPE_RETRIES || 1);
-const DASHBOARD_TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
 const AUDIT_STATE_FILE = process.env.AUDIT_STATE_FILE || path.join(__dirname, '../data/audit-state.json');
 const DASHBOARD_ACCESS_KEY = String(process.env.DASHBOARD_ACCESS_KEY || '');
 const DASHBOARD_ALLOWED_IPS = String(process.env.DASHBOARD_ALLOWED_IPS || '')
@@ -203,25 +203,6 @@ function isSalesCacheFresh() {
     return (Date.now() - salesCacheAt) < (SALES_CACHE_SECONDS * 1000);
 }
 
-function dashboardDateParts(d = new Date()) {
-    const parts = new Intl.DateTimeFormat('en-AU', {
-        timeZone: DASHBOARD_TIME_ZONE,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-    }).formatToParts(d);
-    const get = (type) => Number(parts.find((part) => part.type === type)?.value);
-    return { year: get('year'), month: get('month'), day: get('day') };
-}
-
-function auditWeekKey(d = new Date()) {
-    const { year, month, day } = dashboardDateParts(d);
-    const x = new Date(year, month - 1, day);
-    const daysSinceMonday = (x.getDay() + 6) % 7;
-    x.setDate(x.getDate() - daysSinceMonday);
-    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
-}
-
 function normalizeAuditLabels(labels) {
     if (!Array.isArray(labels)) return [];
     return [...new Set(labels.map((label) => String(label || '').trim()).filter(Boolean))];
@@ -231,15 +212,17 @@ async function readAuditStateFile() {
     try {
         const raw = await fs.readFile(AUDIT_STATE_FILE, 'utf8');
         const parsed = JSON.parse(raw);
+        const storedKey = String(parsed.periodKey || parsed.weekKey || '');
         return {
-            weekKey: String(parsed.weekKey || ''),
+            weekKey: storedKey,
+            periodKey: storedKey,
             dismissed: normalizeAuditLabels(parsed.dismissed),
         };
     } catch (error) {
         if (error.code !== 'ENOENT') {
             console.warn('API: Failed to read audit state file:', error.message);
         }
-        return { weekKey: auditWeekKey(), dismissed: [] };
+        return { weekKey: getDismissalPeriodKey(), periodKey: getDismissalPeriodKey(), dismissed: [] };
     }
 }
 
@@ -249,20 +232,22 @@ async function writeAuditStateFile(state) {
 }
 
 async function getAuditState() {
-    const currentWeekKey = auditWeekKey();
+    const currentKey = getDismissalPeriodKey();
     if (!auditStateCache) {
         auditStateCache = await readAuditStateFile();
     }
-    if (auditStateCache.weekKey !== currentWeekKey) {
-        auditStateCache = { weekKey: currentWeekKey, dismissed: [] };
+    if (auditStateCache.weekKey !== currentKey) {
+        auditStateCache = { weekKey: currentKey, periodKey: currentKey, dismissed: [] };
         await writeAuditStateFile(auditStateCache);
     }
     return auditStateCache;
 }
 
 async function saveAuditDismissals(labels) {
+    const k = getDismissalPeriodKey();
     auditStateCache = {
-        weekKey: auditWeekKey(),
+        weekKey: k,
+        periodKey: k,
         dismissed: normalizeAuditLabels(labels),
     };
     await writeAuditStateFile(auditStateCache);
@@ -355,6 +340,16 @@ async function getSalesDataCached() {
 // Route to serve the main HTML file
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '../public', 'index.html'));
+});
+
+app.get('/api/audit-schedule', (req, res) => {
+    try {
+        const schedule = getAuditSchedule();
+        res.json({ success: true, ...schedule });
+    } catch (error) {
+        console.error('API: Error reading audit schedule:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
 });
 
 app.get('/api/audits', async (req, res) => {

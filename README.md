@@ -129,6 +129,105 @@ journalctl -u live-dashboard -n 100 --no-pager
 
 Keep `/api/test-scraper` disabled during normal operation. It is only available when `ENABLE_TEST_SCRAPER=true` is set.
 
+## Audit recurrence (checklist schedule)
+
+The footer **audit checklist** uses two independent rules: when dismissed taps reset (`dismissalPeriod`) versus how the two **Square One** placeholders rotate (`squareOnePeriod`). Both are driven by JSON on the server so the browser does not duplicate calendar logic.
+
+### Files and environment
+
+| Item | Default |
+|------|---------|
+| Recurrence config | `data/audit-recurrence.json` |
+| Override path | `AUDIT_RECURRENCE_FILE=/path/to/custom.json` |
+| Persisted dismissals | `data/audit-state.json` (via `AUDIT_STATE_FILE`) |
+
+The dashboard calls **`GET /api/audit-schedule`** on load and whenever sales data refreshes. That response includes `periodKey`, `squareSlot`, `auditListItems`, and `timeZone`. Dismissals from **`GET` / `PUT /api/audits`** are keyed by the same `periodKey` as the dismissal rule (the JSON file still accepts legacy `weekKey` in `audit-state.json`; new writes include both `weekKey` and `periodKey` with the same string where applicable).
+
+Full Outlook **RRULE** syntax, `EXDATE`, and an in-dashboard editor are **out of scope**; edit the JSON on the Pi (or deploy a new file) to change behaviour.
+
+### Top-level JSON shape (v1)
+
+```json
+{
+  "timeZone": "Australia/Melbourne",
+  "dismissalPeriod": { "type": "weekly", "weekdays": [1], "intervalWeeks": 1, "anchor": "2026-05-04" },
+  "squareOnePeriod": { "type": "weekly", "intervalWeeks": 1, "anchor": "2026-05-04", "slotModulo": 4 }
+}
+```
+
+- **`timeZone`**: IANA name used for all calendar boundaries (typically `Australia/Melbourne`).
+- **`dismissalPeriod`**: Defines **`periodKey`**. When it changes, stored dismissals no longer apply and the checklist resets for the new period.
+- **`squareOnePeriod`**: Defines **`squareSlot`** (0-based index modulo `slotModulo`, default **4**), which picks the two rotating Square One labels. It does not affect dismissal persistence. For **`type: "weekly"`**, the slot follows **Monday-aligned weeks** from **`anchor`** and **`intervalWeeks`** (same as the legacy anchor math); an optional **`weekdays`** field on this rule is ignored for rotation.
+
+### Rule types (subset)
+
+All rules use the config **`timeZone`** for “today” and for parsing **`anchor`** dates.
+
+1. **`weekly`**
+   - **`weekdays`** (dismissal): Array of **ISO weekdays** `1` = Monday … `7` = Sunday. A new period can start on each matched weekday (see **Multiple weekdays** below). Omit or use `[1]` for the legacy Monday week key.
+   - **`intervalWeeks`**: `1` = every week on those weekdays; `2` = every second week (counting from **`anchor`** in that timezone).
+   - **`anchor`**: ISO date `YYYY-MM-DD` in the config timezone; used as the week interval reference.
+   - **Square One `weekly`**: Uses **`anchor`** and **`intervalWeeks`** with **Monday-aligned** week counting only (legacy behaviour). **`weekdays`** is not used for the slot.
+
+2. **`intervalDays`**
+   - **`intervalDays`**: Positive integer; period index is `floor(daysSinceAnchor / intervalDays)`.
+   - **`anchor`**: ISO date; period boundaries align to whole multiples of `intervalDays` since anchor midnight.
+
+3. **`monthlyDay`**
+   - **`day`**: Day of month `1`–`31` (short months clamp the occurrence, e.g. 31 → last day of month).
+
+4. **`monthlyWeekday`**
+   - **`ordinal`**: `1`–`4` for first through fourth, or `-1` for last.
+   - **`weekday`**: ISO `1`–`7` (Monday–Sunday).
+
+### `periodKey` stability
+
+- For **`weekly`** dismissal with the usual Monday-only setup, **`periodKey`** is a plain Melbourne **`YYYY-MM-DD`** (Monday at period start), matching the legacy **`weekKey`** so existing `audit-state.json` stays valid.
+- For other dismissal types, keys are prefixed (for example `intervalDays:…`, `monthlyDay:…`) so they cannot collide with plain dates.
+
+### Multiple weekdays (`weekly`)
+
+If **`weekdays`** lists more than one day, each occurrence starts a new period when that weekday is reached; **`periodKey`** encodes the **actual start date** of the current period in `YYYY-MM-DD` form (Melbourne), so keys stay unique per span.
+
+### Examples
+
+**Every Melbourne Monday (default / legacy-aligned)** — dismissal and Square One both advance weekly from the same anchor:
+
+```json
+{
+  "timeZone": "Australia/Melbourne",
+  "dismissalPeriod": { "type": "weekly", "weekdays": [1], "intervalWeeks": 1, "anchor": "2026-05-04" },
+  "squareOnePeriod": { "type": "weekly", "intervalWeeks": 1, "anchor": "2026-05-04", "slotModulo": 4 }
+}
+```
+
+**Second Monday of each month** (ordinal weekday):
+
+```json
+"dismissalPeriod": { "type": "monthlyWeekday", "ordinal": 2, "weekday": 1 }
+```
+
+**15th of each month**:
+
+```json
+"dismissalPeriod": { "type": "monthlyDay", "day": 15 }
+```
+
+**Every 14 days** (aligned to anchor):
+
+```json
+"dismissalPeriod": { "type": "intervalDays", "intervalDays": 14, "anchor": "2026-05-01" }
+```
+
+**Square One every second Monday** while dismissals stay weekly:
+
+```json
+"dismissalPeriod": { "type": "weekly", "weekdays": [1], "intervalWeeks": 1, "anchor": "2026-05-04" },
+"squareOnePeriod": { "type": "weekly", "intervalWeeks": 2, "anchor": "2026-05-04", "slotModulo": 4 }
+```
+
+Invalid JSON or unknown rule fields causes **`GET /api/audit-schedule`** to return **500**; the dashboard shows a **separate** banner from sales status and uses a safe local fallback until the next successful load.
+
 ## Technologies Used
 - Node.js
 - Express.js

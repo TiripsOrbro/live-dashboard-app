@@ -1,0 +1,15 @@
+{
+  "timeZone": "Australia/Melbourne",
+  "dismissalPeriod": {
+    "type": "weekly",
+    "weekdays": [1],
+    "intervalWeeks": 1,
+    "anchor": "2026-05-04"
+  },
+  "squareOnePeriod": {
+    "type": "weekly",
+    "intervalWeeks": 1,
+    "anchor": "2026-05-04",
+    "slotModulo": 4
+  }
+}

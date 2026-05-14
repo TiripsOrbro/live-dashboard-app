@@ -795,6 +795,21 @@ body {
     display: none;
 }
 
+.audit-schedule-status {
+    margin: 0 0 10px;
+    padding: 8px 12px;
+    border: var(--cell-border) var(--dark-purple-border);
+    background: color-mix(in srgb, var(--tb-purple-light) 22%, var(--blank));
+    color: var(--grid-data-text-color);
+    font-size: var(--font-size-4);
+    font-weight: var(--font-weight-medium);
+    text-align: center;
+}
+
+.audit-schedule-status[hidden] {
+    display: none;
+}
+
 /* -----------------------------------------------------------
    Responsive — grid & header
 ----------------------------------------------------------- */

@@ -35,7 +35,7 @@ live-dashboard-app
    npm install
    ```
 
-3. Create a `.env` file in the root directory and add your login credentials and other necessary environment variables. On startup the app loads `.env` first, then `.env.production` if it exists (so Pi-style secrets in `.env.production` work when you run `npm start` locally too).
+3. Create a `.env` file in the root directory and add your login credentials and other necessary environment variables. On startup the app loads `.env` first, then `.env.production` if it exists. Values in `.env.production` override `.env` (so empty placeholder `SCRAPER_*` lines in `.env` do not block real credentials in `.env.production`).
 
 ## Usage
 1. Start the application:

@@ -3,7 +3,20 @@ const crypto = require('crypto');
 const fs = require('fs').promises;
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
-require('dotenv').config({ path: path.join(__dirname, '../.env.production') });
+/* Production wins over base .env (dotenv does not override by default, so empty SCRAPER_* in .env would block .env.production). */
+require('dotenv').config({ path: path.join(__dirname, '../.env.production'), override: true });
+
+(function logMacromatixEnvStatus() {
+    const enc = String(process.env.SCRAPER_CREDENTIALS_ENCRYPTED || '').trim();
+    if (enc) {
+        const keyOk = Boolean(String(process.env.SCRAPER_CREDENTIALS_KEY || '').trim());
+        console.log(`[Env] Macromatix: SCRAPER_CREDENTIALS_ENCRYPTED set; SCRAPER_CREDENTIALS_KEY ${keyOk ? 'set' : 'MISSING'}`);
+        return;
+    }
+    const u = Boolean(String(process.env.SCRAPER_USERNAME || '').trim());
+    const p = Boolean(String(process.env.SCRAPER_PASSWORD || '').trim());
+    console.log(`[Env] Macromatix: SCRAPER_USERNAME ${u ? 'set' : 'MISSING'}, SCRAPER_PASSWORD ${p ? 'set' : 'MISSING'}`);
+})();
 
 const scrapeData = require('./services/scraper');
 

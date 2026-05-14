@@ -47,14 +47,14 @@ function getMacromatixCredentials() {
             throw new Error(`Failed to decrypt SCRAPER_CREDENTIALS_ENCRYPTED: ${e.message}`);
         }
         return {
-            username: decrypted && decrypted.username != null ? String(decrypted.username) : '',
-            password: decrypted && decrypted.password != null ? String(decrypted.password) : '',
+            username: decrypted && decrypted.username != null ? String(decrypted.username).trim() : '',
+            password: decrypted && decrypted.password != null ? String(decrypted.password).trim() : '',
         };
     }
 
     return {
-        username: process.env.SCRAPER_USERNAME,
-        password: process.env.SCRAPER_PASSWORD,
+        username: String(process.env.SCRAPER_USERNAME || '').trim(),
+        password: String(process.env.SCRAPER_PASSWORD || '').trim(),
     };
 }
 

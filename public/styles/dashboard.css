@@ -897,7 +897,7 @@ body {
     display: none;
 }
 
-/* Order-date test panel (disabled — restore with dashboard.js test UI)
+/* DEBUG: order-date test panel */
 .order-date-test-panel {
     display: flex;
     flex-wrap: wrap;
@@ -952,7 +952,6 @@ body {
 .order-date-test-hint[hidden] {
     display: none;
 }
-*/
 
 /* -----------------------------------------------------------
    Responsive — grid & header
@@ -1322,7 +1321,7 @@ body {
     object-fit: contain;
 }
 
-/* Test popup button (disabled — uncomment HTML + this block to restore)
+/* DEBUG: floating test popup trigger */
 #popup-test-btn {
     position: fixed;
     bottom: 100px;
@@ -1338,4 +1337,3 @@ body {
     opacity: 0.95;
     pointer-events: auto;
 }
-*/

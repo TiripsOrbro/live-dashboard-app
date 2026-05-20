@@ -228,6 +228,10 @@ If **`weekdays`** lists more than one day, each occurrence starts a new period w
 
 Invalid JSON or unknown rule fields causes **`GET /api/audit-schedule`** to return **500**; the dashboard shows a **separate** banner from sales status and uses a safe local fallback until the next successful load.
 
+## Macromatix Excel / Build To JS
+
+The sales dashboard does not read Excel workbooks. **Build To JS** and stock report merges run in the sibling project **[mmx-report-automation](../mmx-report-automation)** (`data/workbooks/`, `npm run excel-only`). This app’s `data/` folder holds audit JSON only — see [data/README.md](data/README.md).
+
 ## Technologies Used
 - Node.js
 - Express.js

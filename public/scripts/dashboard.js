@@ -12,7 +12,8 @@ const AUDIT_SCHEDULE_URL = `${window.location.origin}/api/audit-schedule`;
 const SALES_REFRESH_MINUTES = 2;
 const DASHBOARD_TIME_ZONE = 'Australia/Melbourne';
 
-/* Order-date test UI disabled — was: test panel, `orderDateTestYmd`, `asOfDate` on audit schedule, `testScheduledOrdersDate` scrape. Uncomment from git history to restore. */
+/** DEBUG: when set to `YYYY-MM-DD`, order rules + audit schedule use that Melbourne date; “Apply” runs test scheduled-orders scrape (see server `canRunScheduledOrdersDateTest`). */
+let orderDateTestYmd = null;
 
 /* -----------------------------------------------------------
    Grid columns — one label per trading hour (10AM–9PM) uncomment for 10PM
@@ -85,7 +86,7 @@ function dashboardDateParts(d = new Date()) {
 }
 
 function isMelbourneMonday(d) {
-    const ref = d === undefined ? new Date() : d;
+    const ref = d === undefined ? getDashboardEffectiveInstant() : d;
     const w = new Intl.DateTimeFormat('en-AU', {
         timeZone: DASHBOARD_TIME_ZONE,
         weekday: 'long',
@@ -110,6 +111,15 @@ function findInstantForMelbourneYmd(year, month, day) {
     return null;
 }
 
+/** Melbourne instant for civil date used by Monday / last-Monday order rules (DEBUG date picker or live today). */
+function getDashboardEffectiveInstant() {
+    if (!orderDateTestYmd || !/^\d{4}-\d{2}-\d{2}$/.test(orderDateTestYmd)) {
+        return new Date();
+    }
+    const [y, m, d] = orderDateTestYmd.split('-').map(Number);
+    return findInstantForMelbourneYmd(y, m, d) || new Date();
+}
+
 function melbourneWeekdayLong(d) {
     return new Intl.DateTimeFormat('en-AU', {
         timeZone: DASHBOARD_TIME_ZONE,
@@ -130,7 +140,7 @@ function melbourneLastMondayCalendarDay(year, month) {
 
 /** True when `d` is the last Monday of the month in `DASHBOARD_TIME_ZONE` (always a Monday). */
 function isMelbourneLastMondayOfMonth(d) {
-    const ref = d === undefined ? new Date() : d;
+    const ref = d === undefined ? getDashboardEffectiveInstant() : d;
     if (!isMelbourneMonday(ref)) return false;
     const { year, month, day } = dashboardDateParts(ref);
     const lastMon = melbourneLastMondayCalendarDay(year, month);
@@ -160,7 +170,7 @@ function lastMondayMonthlyOrdersReminderHtml() {
 
 /** Fallback only if /api/audit-schedule fails (matches old Monday-week key in Melbourne). */
 function clientMelbourneMondayWeekKey(d) {
-    const ref = d === undefined ? new Date() : d;
+    const ref = d === undefined ? getDashboardEffectiveInstant() : d;
     const { year, month, day: date } = dashboardDateParts(ref);
     const x = new Date(year, month - 1, date);
     const day = (x.getDay() + 6) % 7;
@@ -202,7 +212,12 @@ function updateAuditScheduleBanner(show, message) {
 
 async function loadAuditSchedule() {
     try {
-        const res = await fetch(AUDIT_SCHEDULE_URL, { credentials: 'include' });
+        let url = AUDIT_SCHEDULE_URL;
+        if (orderDateTestYmd && /^\d{4}-\d{2}-\d{2}$/.test(orderDateTestYmd)) {
+            const sep = url.includes('?') ? '&' : '?';
+            url = `${url}${sep}asOfDate=${encodeURIComponent(orderDateTestYmd)}`;
+        }
+        const res = await fetch(url, { credentials: 'include' });
         if (!res.ok) throw new Error(`Audit schedule responded with ${res.status}`);
         const data = await res.json();
         if (!data.success) throw new Error(data.error || 'Audit schedule returned unsuccessful response');
@@ -289,7 +304,55 @@ function applySalesPayload(data) {
     }
 }
 
+function orderDateTestSetHint(text, hidden = false) {
+    const el = document.getElementById('order-date-test-hint');
+    if (!el) return;
+    el.textContent = text || '';
+    el.hidden = hidden || !text;
+}
+
+async function loadSalesDataForOrderDateTest() {
+    if (!orderDateTestYmd) return;
+    orderDateTestSetHint('Scraping Macromatix for that scheduled-orders date… (can take up to a couple of minutes)', false);
+    try {
+        const sep = SALES_API_URL.includes('?') ? '&' : '?';
+        const res = await fetch(`${SALES_API_URL}${sep}testScheduledOrdersDate=${encodeURIComponent(orderDateTestYmd)}`, {
+            credentials: 'include',
+        });
+        if (!res.ok) {
+            throw new Error(`API responded with ${res.status}`);
+        }
+        const data = await res.json();
+        if (!data.success) {
+            throw new Error(data.error || 'API returned unsuccessful response');
+        }
+        applySalesPayload(data);
+        if (data.testScheduledOrdersDate !== orderDateTestYmd) {
+            orderDateTestSetHint(
+                'Test scrape was not run (unlock this dashboard in the browser, or set DASHBOARD_ENABLE_ORDER_DATE_TEST=1 on the server). Showing cached sales.',
+                false
+            );
+        } else {
+            orderDateTestSetHint(
+                `DEBUG: rules use Melbourne date ${orderDateTestYmd}. Sales auto-refresh is paused until you click “Live date”.`,
+                false
+            );
+        }
+        await loadAuditSchedule();
+        updateGrid();
+        updateTimestamp(data.timestamp);
+        updateSalesStatus(data);
+    } catch (err) {
+        console.error('Failed to load sales data (order date test):', err);
+        orderDateTestSetHint(String(err && err.message ? err.message : err), false);
+        updateSalesStatus({ stale: true, warning: 'Order date test scrape failed.' });
+    }
+}
+
 async function loadSalesData() {
+    if (orderDateTestYmd) {
+        return;
+    }
     try {
         const res = await fetch(SALES_API_URL, { credentials: 'include' });
         if (!res.ok) {
@@ -932,7 +995,6 @@ setInterval(() => {
     processBoiloutSchedule();
 }, 1000);
 
-/* Test popup button handler (disabled — restore with `#popup-test-btn` in index.html)
 document.getElementById('popup-test-btn')?.addEventListener('click', () => {
     const keys = Object.keys(NOTIFICATIONS);
     if (!keys.length) {
@@ -947,7 +1009,6 @@ document.getElementById('popup-test-btn')?.addEventListener('click', () => {
     }
     showNotificationGroup(picked);
 });
-*/
 
 window.showPopup = showPopup;
 window.NOTIFICATIONS = NOTIFICATIONS;
@@ -1566,6 +1627,43 @@ function updateGrid() {
     updatePendingVendorsPanel();
 }
 
+function buildOrderDateTestPanelHtml() {
+    return `
+        <div id="order-date-test-panel" class="order-date-test-panel" role="region" aria-label="DEBUG: test scheduled orders date (Macromatix)">
+            <span class="order-date-test-label">DEBUG — test orders date</span>
+            <input type="date" id="order-date-test-input" class="order-date-test-input" autocomplete="off" />
+            <button type="button" id="order-date-test-apply" class="order-date-test-btn">Apply and re-scrape</button>
+            <button type="button" id="order-date-test-clear" class="order-date-test-btn order-date-test-btn--secondary">Live date</button>
+            <span id="order-date-test-hint" class="order-date-test-hint" hidden></span>
+        </div>`;
+}
+
+function bindOrderDateTestPanelOnce() {
+    if (bindOrderDateTestPanelOnce._done) return;
+    bindOrderDateTestPanelOnce._done = true;
+    app.addEventListener('click', (ev) => {
+        const t = ev.target;
+        if (!(t instanceof HTMLElement)) return;
+        if (t.id === 'order-date-test-apply') {
+            const inp = document.getElementById('order-date-test-input');
+            const v = inp && inp.value;
+            if (!v) {
+                orderDateTestSetHint('Pick a date first.', false);
+                return;
+            }
+            orderDateTestYmd = v;
+            dismissedPendingVendors.clear();
+            loadSalesDataForOrderDateTest();
+            return;
+        }
+        if (t.id === 'order-date-test-clear') {
+            orderDateTestYmd = null;
+            orderDateTestSetHint('', true);
+            loadSalesData();
+        }
+    });
+}
+
 /* -----------------------------------------------------------
    First paint — dashboard layout, header, empty grid, popup mount point
 ----------------------------------------------------------- */
@@ -1591,6 +1689,7 @@ function renderDashboard() {
 
             <div id="sales-status" class="sales-status" role="status" aria-live="polite" hidden></div>
             <div id="audit-schedule-status" class="audit-schedule-status" role="alert" aria-live="assertive" hidden></div>
+            ${buildOrderDateTestPanelHtml()}
 
             <div class="dashboard-grid"></div>
 
@@ -1598,6 +1697,7 @@ function renderDashboard() {
         </div>
     `;
     bindFooterChipDismissOnce();
+    bindOrderDateTestPanelOnce();
 }
 
 /* -----------------------------------------------------------

@@ -1034,20 +1034,21 @@ setInterval(() => {
     processBoiloutSchedule();
 }, 1000);
 
-document.getElementById('popup-test-btn')?.addEventListener('click', () => {
-    const keys = Object.keys(NOTIFICATIONS);
-    if (!keys.length) {
-        showPopup('Add entries to NOTIFICATIONS in dashboard.js', 8000, null, { wrapMessage: true });
-        return;
-    }
-    const count = Math.floor(Math.random() * 3) + 1;
-    const picked = [];
-    while (picked.length < count) {
-        const k = keys[Math.floor(Math.random() * keys.length)];
-        if (!picked.includes(k)) picked.push(k);
-    }
-    showNotificationGroup(picked);
-});
+// DEBUG: random notification popup test (disabled for production)
+// document.getElementById('popup-test-btn')?.addEventListener('click', () => {
+//     const keys = Object.keys(NOTIFICATIONS);
+//     if (!keys.length) {
+//         showPopup('Add entries to NOTIFICATIONS in dashboard.js', 8000, null, { wrapMessage: true });
+//         return;
+//     }
+//     const count = Math.floor(Math.random() * 3) + 1;
+//     const picked = [];
+//     while (picked.length < count) {
+//         const k = keys[Math.floor(Math.random() * keys.length)];
+//         if (!picked.includes(k)) picked.push(k);
+//     }
+//     showNotificationGroup(picked);
+// });
 
 window.showPopup = showPopup;
 window.NOTIFICATIONS = NOTIFICATIONS;
@@ -1666,42 +1667,43 @@ function updateGrid() {
     updatePendingVendorsPanel();
 }
 
-function buildOrderDateTestPanelHtml() {
-    return `
-        <div id="order-date-test-panel" class="order-date-test-panel" role="region" aria-label="DEBUG: test scheduled orders date (Macromatix)">
-            <span class="order-date-test-label">DEBUG — test orders date</span>
-            <input type="date" id="order-date-test-input" class="order-date-test-input" autocomplete="off" />
-            <button type="button" id="order-date-test-apply" class="order-date-test-btn">Apply and re-scrape</button>
-            <button type="button" id="order-date-test-clear" class="order-date-test-btn order-date-test-btn--secondary">Live date</button>
-            <span id="order-date-test-hint" class="order-date-test-hint" hidden></span>
-        </div>`;
-}
-
-function bindOrderDateTestPanelOnce() {
-    if (bindOrderDateTestPanelOnce._done) return;
-    bindOrderDateTestPanelOnce._done = true;
-    app.addEventListener('click', (ev) => {
-        const t = ev.target;
-        if (!(t instanceof HTMLElement)) return;
-        if (t.id === 'order-date-test-apply') {
-            const inp = document.getElementById('order-date-test-input');
-            const v = inp && inp.value;
-            if (!v) {
-                orderDateTestSetHint('Pick a date first.', false);
-                return;
-            }
-            orderDateTestYmd = v;
-            dismissedPendingVendors.clear();
-            loadSalesDataForOrderDateTest();
-            return;
-        }
-        if (t.id === 'order-date-test-clear') {
-            orderDateTestYmd = null;
-            orderDateTestSetHint('', true);
-            loadSalesData();
-        }
-    });
-}
+// DEBUG: order-date test panel (disabled for production)
+// function buildOrderDateTestPanelHtml() {
+//     return `
+//         <div id="order-date-test-panel" class="order-date-test-panel" role="region" aria-label="DEBUG: test scheduled orders date (Macromatix)">
+//             <span class="order-date-test-label">DEBUG — test orders date</span>
+//             <input type="date" id="order-date-test-input" class="order-date-test-input" autocomplete="off" />
+//             <button type="button" id="order-date-test-apply" class="order-date-test-btn">Apply and re-scrape</button>
+//             <button type="button" id="order-date-test-clear" class="order-date-test-btn order-date-test-btn--secondary">Live date</button>
+//             <span id="order-date-test-hint" class="order-date-test-hint" hidden></span>
+//         </div>`;
+// }
+//
+// function bindOrderDateTestPanelOnce() {
+//     if (bindOrderDateTestPanelOnce._done) return;
+//     bindOrderDateTestPanelOnce._done = true;
+//     app.addEventListener('click', (ev) => {
+//         const t = ev.target;
+//         if (!(t instanceof HTMLElement)) return;
+//         if (t.id === 'order-date-test-apply') {
+//             const inp = document.getElementById('order-date-test-input');
+//             const v = inp && inp.value;
+//             if (!v) {
+//                 orderDateTestSetHint('Pick a date first.', false);
+//                 return;
+//             }
+//             orderDateTestYmd = v;
+//             dismissedPendingVendors.clear();
+//             loadSalesDataForOrderDateTest();
+//             return;
+//         }
+//         if (t.id === 'order-date-test-clear') {
+//             orderDateTestYmd = null;
+//             orderDateTestSetHint('', true);
+//             loadSalesData();
+//         }
+//     });
+// }
 
 /* -----------------------------------------------------------
    First paint — dashboard layout, header, empty grid, popup mount point
@@ -1728,7 +1730,6 @@ function renderDashboard() {
 
             <div id="sales-status" class="sales-status" role="status" aria-live="polite" hidden></div>
             <div id="audit-schedule-status" class="audit-schedule-status" role="alert" aria-live="assertive" hidden></div>
-            ${buildOrderDateTestPanelHtml()}
 
             <div class="dashboard-grid"></div>
 
@@ -1736,7 +1737,7 @@ function renderDashboard() {
         </div>
     `;
     bindFooterChipDismissOnce();
-    bindOrderDateTestPanelOnce();
+    // bindOrderDateTestPanelOnce();
 }
 
 /* -----------------------------------------------------------

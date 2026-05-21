@@ -25,7 +25,7 @@ const {
     instantForYmdInTimeZone,
     loadAuditRecurrenceConfigSync,
 } = require('./utils/auditRecurrence');
-const { readOrdersReadyForReview } = require('./utils/ordersReadySignal');
+const { readOrdersReadyForReview, markOrdersReadyAcknowledged, readOrdersReadyAck } = require('./utils/ordersReadySignal');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -491,7 +491,18 @@ app.get('/api/orders-ready', async (req, res) => {
         res.json({ success: true, ...(await readOrdersReadyForReview()) });
     } catch (error) {
         console.error('API: Error reading orders-ready signal:', error);
-        res.status(500).json({ success: false, active: false, error: error.message });
+        res.status(500).json({ success: false, active: false, showPopup: false, error: error.message });
+    }
+});
+
+app.post('/api/orders-ready/ack', async (req, res) => {
+    try {
+        await markOrdersReadyAcknowledged(req.body?.completedAt);
+        const ack = await readOrdersReadyAck();
+        res.json({ success: true, date: ack.date });
+    } catch (error) {
+        console.error('API: Error acknowledging orders-ready popup:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

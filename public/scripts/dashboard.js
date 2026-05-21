@@ -807,16 +807,37 @@ function showNotificationGroup(keys) {
 
 const ORDERS_READY_POLL_SECONDS = 30;
 const ORDERS_READY_MAX_MS = 600000;
-let _ordersReadyPopupCompletedAt = null;
+let _ordersReadyPopupInFlight = false;
 
-function maybeShowOrdersReadyPopup(info) {
-    if (!info || !info.active || !info.completedAt) return;
-    if (_ordersReadyPopupCompletedAt === info.completedAt) return;
+async function acknowledgeOrdersReadyPopup(completedAt) {
+    try {
+        const res = await fetch(`${window.location.origin}/api/orders-ready/ack`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completedAt }),
+        });
+        return res.ok;
+    } catch (err) {
+        console.warn('Orders-ready ack failed:', err);
+        return false;
+    }
+}
+
+async function maybeShowOrdersReadyPopup(info) {
+    if (!info || !info.showPopup || !info.completedAt) return;
+    if (_ordersReadyPopupInFlight) return;
 
     const preset = presetKeyToCardConfig('ordersReadyForReview');
     if (!preset) return;
 
-    _ordersReadyPopupCompletedAt = info.completedAt;
+    _ordersReadyPopupInFlight = true;
+    const ackOk = await acknowledgeOrdersReadyPopup(info.completedAt);
+    if (!ackOk) {
+        _ordersReadyPopupInFlight = false;
+        return;
+    }
+
     const remaining = Number(info.remainingMs);
     preset.duration = Number.isFinite(remaining)
         ? Math.max(5000, Math.min(ORDERS_READY_MAX_MS, remaining))

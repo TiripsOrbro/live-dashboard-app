@@ -366,6 +366,7 @@ async function loadSalesData() {
 
         // Remove early hours (store closed) and keep only 10AM–9PM, can -4 to -5 for a 10PM store
         applySalesPayload(data);
+        maybeShowOrdersReadyPopup(data.ordersReadyForReview);
 
         await loadAuditSchedule();
         updateGrid();
@@ -691,6 +692,13 @@ const NOTIFICATIONS = {
     printReports: {name: 'MIC- print reports',instruction: 'Print Daily Roster and Prep Guide', icon: 'Clean', seconds: 600},
     shutDownTills: {name: 'MIC - Shut down tills',instruction: 'Close tills and deposit money into safe for the night', icon: 'Clean', seconds: 3600},
 
+    ordersReadyForReview: {
+        name: 'Orders are ready to be reviewed',
+        instruction: '',
+        icon: 'Close',
+        seconds: 600,
+    },
+
 
 };						
 
@@ -795,6 +803,37 @@ function showNotificationGroup(keys) {
     if (list.length > 3) console.warn('[Notifications] Only 3 cards at once; ignoring extras.');
     const configs = list.map(presetKeyToCardConfig).filter(Boolean);
     openNotificationCards(configs);
+}
+
+const ORDERS_READY_POLL_SECONDS = 30;
+const ORDERS_READY_MAX_MS = 600000;
+let _ordersReadyPopupCompletedAt = null;
+
+function maybeShowOrdersReadyPopup(info) {
+    if (!info || !info.active || !info.completedAt) return;
+    if (_ordersReadyPopupCompletedAt === info.completedAt) return;
+
+    const preset = presetKeyToCardConfig('ordersReadyForReview');
+    if (!preset) return;
+
+    _ordersReadyPopupCompletedAt = info.completedAt;
+    const remaining = Number(info.remainingMs);
+    preset.duration = Number.isFinite(remaining)
+        ? Math.max(5000, Math.min(ORDERS_READY_MAX_MS, remaining))
+        : ORDERS_READY_MAX_MS;
+    openNotificationCards([preset]);
+}
+
+async function pollOrdersReadyForReview() {
+    try {
+        const res = await fetch(`${window.location.origin}/api/orders-ready`, { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.success) return;
+        maybeShowOrdersReadyPopup(data);
+    } catch (err) {
+        console.warn('Orders-ready poll failed:', err);
+    }
 }
 
 function registerSchedule(rows) {
@@ -1719,6 +1758,8 @@ setInterval(() => {
 function startSyncedUpdates() {
     // Load immediately
     loadSalesData();
+    pollOrdersReadyForReview();
+    setInterval(pollOrdersReadyForReview, ORDERS_READY_POLL_SECONDS * 1000);
 
     // Calculate time until next refresh boundary
     const now = new Date();

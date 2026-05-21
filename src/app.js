@@ -25,6 +25,7 @@ const {
     instantForYmdInTimeZone,
     loadAuditRecurrenceConfigSync,
 } = require('./utils/auditRecurrence');
+const { readOrdersReadyForReview } = require('./utils/ordersReadySignal');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -232,6 +233,24 @@ function isSalesCacheFresh() {
     return (Date.now() - salesCacheAt) < (SALES_CACHE_SECONDS * 1000);
 }
 
+function logDashboardScrapeComplete(payload) {
+    const tz = process.env.DASHBOARD_TIME_ZONE || process.env.MMX_TIME_ZONE || 'Australia/Melbourne';
+    let when;
+    try {
+        when = new Date().toLocaleString('en-AU', { timeZone: tz, hour12: false });
+    } catch {
+        when = payload.timestamp || new Date().toISOString();
+    }
+    const actualHours = Array.isArray(payload.actual) ? payload.actual.length : 0;
+    const forecastHours = Array.isArray(payload.forecast) ? payload.forecast.length : 0;
+    const pending = Array.isArray(payload.pendingVendors) ? payload.pendingVendors : [];
+    const pendingPart =
+        pending.length > 0 ? `${pending.length} (${pending.join(', ')})` : '0';
+    console.log(
+        `[Dashboard] Scrape cycle complete — ${when} ${tz} | actual: ${actualHours}h | forecast: ${forecastHours}h | pending vendors: ${pendingPart}`
+    );
+}
+
 function normalizeAuditLabels(labels) {
     if (!Array.isArray(labels)) return [];
     return [...new Set(labels.map((label) => String(label || '').trim()).filter(Boolean))];
@@ -357,6 +376,7 @@ async function getSalesDataCached() {
         };
         salesCache = payload;
         salesCacheAt = Date.now();
+        logDashboardScrapeComplete(payload);
         return payload;
     })();
 
@@ -444,9 +464,11 @@ app.get('/api/sales', async (req, res) => {
                 pendingVendors: Array.isArray(result.pendingVendors) ? result.pendingVendors : [],
                 testScheduledOrdersDate: testPick.ymd,
             };
+            logDashboardScrapeComplete(payload);
         } else {
             payload = await getSalesDataCached();
         }
+        payload.ordersReadyForReview = await readOrdersReadyForReview();
         res.json(payload);
     } catch (error) {
         console.error('API: Error fetching sales data:', error);
@@ -456,10 +478,20 @@ app.get('/api/sales', async (req, res) => {
                 stale: true,
                 staleAgeSeconds: Math.round((Date.now() - salesCacheAt) / 1000),
                 warning: 'Serving stale cached sales due to scrape error.',
+                ordersReadyForReview: await readOrdersReadyForReview(),
             });
             return;
         }
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/orders-ready', async (req, res) => {
+    try {
+        res.json({ success: true, ...(await readOrdersReadyForReview()) });
+    } catch (error) {
+        console.error('API: Error reading orders-ready signal:', error);
+        res.status(500).json({ success: false, active: false, error: error.message });
     }
 });
 

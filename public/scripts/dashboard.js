@@ -635,11 +635,42 @@ function makeMultiPopupCard(cfg, cellDuration, iconSide) {
 const NOTIFICATIONS = {
 
     //BOILOUTS (see processBoiloutSchedule). */
-    boiloutOilDump: { name: 'Dump the oil (boilout prep)', instruction: 'Dump the oil tonightfor boilout, tomorrow is the scheduled boilout.', icon: 'Fry', seconds: 600 },
-    boiloutComplete: { name: 'Complete a boilout', instruction: 'Complete the scheduled fryer boilout for this period.', icon: 'Fry', seconds: 3400 },
+    boiloutOilDump: { name: 'Dump the oil (boilout prep)', instruction: 'Dump the oil tonightfor boilout, tomorrow is the scheduled boilout.', icon: 'Fry', seconds: 3600 },
+    boiloutComplete: { name: 'Complete a boilout', instruction: 'Complete the scheduled fryer boilout for this period.', icon: 'Fry', seconds: 3600 },
 
-    // "Before 9:30PM"
+    //COOKS
 
+    '845AM': {name: 'Cook',instruction: 'Put down cook, and set the timer for 45 minutes', icon: 'Clean', seconds: 600},
+    '1030AM': {name: 'Cook',instruction: 'Put down cook, and set the timer for 45 minutes', icon: 'Clean', seconds: 600},
+    '2PM': {name: 'Cook',instruction: 'Put down cook, and set the timer for 45 minutes', icon: 'Clean', seconds: 600},
+    '330PM': {name: 'Cook',instruction: 'Put down cook, and set the timer for 45 minutes', icon: 'Clean', seconds: 600},
+    '8PM': {name: 'Cook',instruction: 'Put down cook, and set the timer for 45 minutes', icon: 'Clean', seconds: 600},
+
+
+    //RESTOCK
+    stockUpUnderlineFridge: {name: 'Stock Up Underline Fridge',instruction: 'Stock up the underline fridge with enough products to last the shift following the ubild to', icon: 'Clean', seconds: 3600},
+    stockUpDeserts: {name: 'Stock Up Deserts',instruction: 'Build to enough Choc and Caramel Sauce for the shift', icon: 'Clean', seconds: 3600},
+
+    //OPEN
+    safeCount: {name: 'Safe Count',instruction: 'Count the safe and ensure the count is correct', icon: 'Clean', seconds: 7200}, //3600 seconds = 1 hour
+    AMStockCount: {name: 'Morning Stock Count',instruction: 'Count the stock and share count in group chat', icon: 'Clean', seconds: 7200}, //3600 seconds = 1 hour
+    recieveOrders: {name: 'Recieve Orders',instruction: 'Recieve orders in MMX', icon: 'Clean', seconds: 7200}, //3600 seconds = 1 hour
+    completeFryPrep: {name: 'Complete Fry Prep',instruction: 'Complete fry prep for the day, ensuring all ingredients are ready for the day', icon: 'Clean', seconds: 7200}, //3600 seconds = 1 hour
+    completeSaladPrep: {name: 'Complete Salad Prep',instruction: 'Complete salad prep for the day, ensuring all ingredients are ready for the day', icon: 'Clean', seconds: 7200}, //3600 seconds = 1 hour
+    checkToilets: {name: 'Check Toilets',instruction: 'Check the toilets and ensure they are clean and stocked', icon: 'Clean', seconds: 7200},
+    stockUpPaperStockOnLine: {name: 'Stock Up Paper Stock On Line',instruction: 'Stock up the paper stock on the line, ensuring there is enough takeaway bags, chip bags, cups, lids, wraps and boxes for the day', icon: 'Clean', seconds: 7200},
+    
+
+    //CHANGEOVER
+    changeUtensils: {name: 'Change Utensils',instruction: 'Gather up the clean utensiles and then change over and remove the in use utensils from the line, replacing them as you go with the new clean ones', icon: 'Clean', seconds: 600},
+    changeoverSafeCount: {name: 'Changeover Safe Count',instruction: 'Count the safe with the closing MIC and ensure the count is correct', icon: 'Clean', seconds: 600},
+    changeoverTills: {name: 'Change Over Tills',instruction: 'Change over tills and deposit money into safe', icon: 'Close', seconds: 600},
+    changeSink: {name: 'Change Sink',instruction: 'Check with MIC first, then clear all dishes from the sink, drain it and refill using 2 packets of powersoak detergent and sanitiser powder', icon: 'Clean', seconds: 600},
+    changeBuckets: {name: 'Changeover Buckets',instruction: 'Change buckets, ensuring the sink has been drained and refilled with fersh sanitiser water', icon: 'Clean', seconds: 600},
+    changeoverStockCount: {name: 'Changeover Stock Count',instruction: 'Count the stock and share count in group chat', icon: 'Clean', seconds: 600},
+
+
+    //CLOSE
     cleanToilets: {name: 'Clean and stock Toilets',instruction: 'Clean and stock Toilets', icon: 'Toilets', seconds: 600},
     diningBins: {name: 'Dining room bins',instruction: 'Empty, clean and reline dining room bins', icon: 'Clean', seconds: 600},
     patioBins: {name: 'Patio bins',instruction: 'Empty, clean and reline patio bins', icon: 'Clean', seconds: 600},
@@ -655,40 +686,25 @@ const NOTIFICATIONS = {
     drains: {name: 'Clean drains',instruction: 'Remove drains from wherever you have mopped, remove any buildup from underneath the catchers', icon: 'Clean', seconds: 600},   
     setupCarryover: {name: 'Setup Carryover Sink',instruction: 'Sink should be filled 3/4 of the way with just ice, water will be added to it later in the night', icon: 'Clean', seconds: 600},
     cleanRetherm: {name: 'Clean Retherm',instruction: 'Drain and clean inside the retherm following the standard card, once the inside has been cleaned, close the lids and valves and clean the outside of the retherm', icon: 'Clean', seconds: 600},
-    
-        //MIC ONLY
-
     removeStickers: {name: 'MIC - Remove Stickers',instruction: 'Remove Stickers of anything that is going to before open tomorrow, typically stickers that have hold times of 24 hours or less', icon: 'Close', seconds: 600},
     wipePrepGuide: {name: 'MIC - Wipe off Prep Guide',instruction: 'Use Grafitti cleaner to remove sharpie, then use either degreaser, glass cleaner or hand sanitizer to remove residue', icon: 'Close', seconds: 600},
     wipeTREDPoster: {name: 'MIC - Wipe off TRED Poster',instruction: 'Use Grafitti cleaner to remove sharpie, then use either degreaser, glass cleaner or hand sanitizer to remove residue', icon: 'Close', seconds: 600},
-
-    // "After 9:30PM"
-
     mopDining: {name: 'Mop dining room',instruction: 'Clean dining room using the green mop and bucket, use multiple bucket loads if your water is turning grey. REMINDER: make sure the mop is properly wrung out before using it to avoid flooding the floor', icon: 'Clean', seconds: 600},  
     carryoverPan: {name: 'Setup Carryover pan',instruction: 'Setup Carryover pan, line it with enough bags for your expected carryover, a full pan of chicken= 2 bags, beef = 3, nacho = 2', icon: 'Clean', seconds: 600},  
     carryoverFirstRound: {name: 'First Round of Carryover',instruction: 'Check with MIC if there are any ingredients that can be carried over, ensuring there is enough product to last the night, if there are any issues, inform MIC and they will handle it', icon: 'Clean', seconds: 600},  
     chipDump: {name: 'Clean Chip Dump',instruction: 'Remove all chips and peices from the inside chip dump, inclusing the grill on the top of the dump', icon: 'Clean', seconds: 600},     
     coldLine: {name: 'Clean cold line',instruction: 'Clean cold line, items should only be removed from the cold line for a short period of time to avoid them warming up and becoming unsafe to eat', icon: 'Clean', seconds: 600},    
-    remainingFloors: {name: 'Clean floors',instruction: 'Clean remaining floors that were missed during the night', icon: 'Clean', seconds: 600},
-    
-        //MIC ONLY
-    
+    remainingFloors: {name: 'Clean floors',instruction: 'Clean remaining floors that were missed during the night', icon: 'Clean', seconds: 600},    
     stockCount: {name: 'MIC -Complete Stock Count',instruction: 'While completing your count remove any half opened boxes, after completing count, investigate any red variances', icon: 'Close', seconds: 600},    
     countSafe: {name: 'MIC - Count safe',instruction: "MIC - Stock up tills to ensure you don't need to swap around any money at the end of the night and then Count safe", icon: 'Close', seconds: 600},     
     bigGrillFirstAlert: {name: 'MIC - Switch off Big Grill',instruction: 'Turn off the big grill, and allow to cool for 20 minutes', icon: 'Close', seconds: 600}, 
     bigGrillSecondAlert: {name: 'MIC - Clean Big Grill',instruction: 'Put on PPE and begin cleaning the big grill, ensuring that you are pouring chemicals on the scrubber not directly on the grill. remember clean the entire grill,the chemical is heat activated and takes time to heat up and remove build up.', icon: 'Close', seconds: 600},
-
-    // "After Close"
-
     drinkNozzles: {name: 'Drink Nozzles',instruction: 'Get a bucket of clean sanitiser water, collect all the drink nozzles and place them in the bucket, then clean the nozzles with the sanitiser water before laying them out on cloths', icon: 'Close', seconds: 3600}, 
     remainingBins: {name: 'Remove Bins',instruction: 'Remove remaining bins cleaned them and allow them to airdry and relined dry bins', icon: 'Clean', seconds: 3600},
     carryover: {name: 'Carryover',instruction: 'Complete remaining carryover, keeping products hot in the hotline until they are being carried over', icon: 'Clean', seconds: 3600},
     cleanOutSpotSweeps: {name: 'Clean spot sweeps',instruction: 'Disassemble and clean out spot sweeps and leave them to air dry', icon: 'Clean', seconds: 3600},
     checkThawing: {name: 'Check if more thawing is needed',instruction: 'Check thwaing guide and confirm if more thawing is needed', icon: 'Clean', seconds: 600},
     organiseFreezer: {name: 'Organise Freezer',instruction: 'Organise freezer stock, removing any expired products and organising the stock correctly', icon: 'Clean', seconds: 600},
-
-        //MIC ONLY
-
     printReports: {name: 'MIC- print reports',instruction: 'Print Daily Roster and Prep Guide', icon: 'Clean', seconds: 600},
     shutDownTills: {name: 'MIC - Shut down tills',instruction: 'Close tills and deposit money into safe for the night', icon: 'Clean', seconds: 3600},
 
@@ -714,6 +730,16 @@ const NOTIFICATIONS = {
      { time: '20:00', show: ['fryCheck', 'volumeCheck', 'closeSoon'] }
    ============================================================ */
 const SCHEDULE = [
+    //COOKS
+    { time: '8:45', show: ['cook845AM'] },
+    { time: '10:30', show: ['cook1030AM'] },
+    { time: '2:00', show: ['cook2PM'] },
+    { time: '3:30', show: ['cook330PM'] },
+    { time: '8:00', show: ['cook8PM'] },
+
+    //OPEN
+    { time: '8:00', show: [safeCount, AMStockCount, recieveOrders, completeFryPrep, completeSaladPrep, checkToilets, stockUpPaperStockOnLine, stockUpDeserts]},
+
 
     // "Before 9:30PM"
     { time: '20:00', show: ['smallVats','prepBench', 'fryBench']},    
@@ -943,7 +969,7 @@ function isoWeekdayFromYmd(y, m, d) {
 }
 
 function formatYmd(y, m, d) {
-    return `${y}-${String(m).padStart(2, '0')}-${String(m).padStart(2, '0')}`;
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
 function parseBoiloutAnchorYmd(s) {
@@ -972,6 +998,22 @@ function melbourneHourMinute(d = new Date()) {
     }).formatToParts(d);
     const get = (type) => Number(parts.find((p) => p.type === type)?.value);
     return { hour: get('hour'), minute: get('minute') };
+}
+
+function melbourneHourMinuteSecond(d = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-AU', {
+        timeZone: DASHBOARD_TIME_ZONE,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    }).formatToParts(d);
+    const get = (type) => Number(parts.find((p) => p.type === type)?.value);
+    return {
+        hour: get('hour'),
+        minute: get('minute'),
+        second: get('second'),
+    };
 }
 
 /** First Monday with JD in [periodStartJd, periodEndJd] inclusive. */
@@ -1096,10 +1138,7 @@ function getActualCellClass(actual, forecast) {
    Current trading hour — which column is "now" + fraction through the hour
 ----------------------------------------------------------- */
 function getCurrentHourProgress() {
-    const now = new Date();
-    const hour = now.getHours();
-    const minutes = now.getMinutes();
-    const seconds = now.getSeconds();
+    const { hour, minute, second } = melbourneHourMinuteSecond();
 
     const startHour = TRADING_GRID_START_HOUR;
     const tradeEndHourExclusive = tradingEndHourExclusive();
@@ -1115,7 +1154,7 @@ function getCurrentHourProgress() {
     }
 
     const hourIndex = hour - startHour;
-    const progress = minutes / 60 + seconds / 3600;
+    const progress = minute / 60 + second / 3600;
 
     return { hourIndex, progress };
 }
@@ -1300,19 +1339,12 @@ function sumHourSlice(values, start, end) {
     return values.slice(start, end).reduce((sum, v) => sum + (Number(v) || 0), 0);
 }
 
-function todayAt(hour, minute = 0, second = 0, millisecond = 0) {
-    const d = new Date();
-    d.setHours(hour, minute, second, millisecond);
-    return d.getTime();
-}
-
 function getWallClockPeriodProgress(startHour, endHourExclusive) {
-    const t0 = todayAt(startHour, 0, 0, 0);
-    const t1 = todayAt(endHourExclusive, 0, 0, 0);
-    const now = Date.now();
-    if (now <= t0) return 0;
-    if (now >= t1) return 1;
-    return (now - t0) / (t1 - t0);
+    const { hour, minute, second } = melbourneHourMinuteSecond();
+    const nowHourFloat = hour + minute / 60 + second / 3600;
+    if (nowHourFloat <= startHour) return 0;
+    if (nowHourFloat >= endHourExclusive) return 1;
+    return (nowHourFloat - startHour) / (endHourExclusive - startHour);
 }
 
 function getPeriodExpectedSoFarSlice(forecasts, startIdx, endExclusive, hourProgress) {
@@ -1345,16 +1377,15 @@ function getDayPartPresentation(forecasts, actuals, startIdx, endExclusive, wall
     const hourProgress = getCurrentHourProgress();
     const totalForecast = sumHourSlice(forecasts, startIdx, endExclusive);
     const totalActual = sumHourSlice(actuals, startIdx, endExclusive);
-    const tStart = todayAt(wallStartHour, 0, 0, 0);
-    const tEnd = todayAt(wallEndHourExclusive, 0, 0, 0);
-    const now = Date.now();
+    const { hour, minute, second } = melbourneHourMinuteSecond();
+    const nowHourFloat = hour + minute / 60 + second / 3600;
     const wallPct = Math.round(getWallClockPeriodProgress(wallStartHour, wallEndHourExclusive) * 1000) / 10;
 
-    if (now < tStart) {
+    if (nowHourFloat < wallStartHour) {
         return { phase: 'before', cellClass: '', inlineStyle: '', liveLayersHtml: '', outcomeBorderColor: '' };
     }
 
-    if (now >= tEnd) {
+    if (nowHourFloat >= wallEndHourExclusive) {
         const finalClass = totalForecast > 0 ? getActualCellClass(totalActual, totalForecast) : 'cell-green';
         return { phase: 'after', cellClass: finalClass, inlineStyle: '', liveLayersHtml: '', outcomeBorderColor: '' };
     }

@@ -3,6 +3,7 @@
    Scale 1 = largest … 5 = smallest
 ----------------------------------------------------------- */
 :root {
+    --dashboard-scale: clamp(0.72, min(calc(100vw / 1920), calc(100vh / 1080)), 1);
     --font-size-1: 2.35rem;
     --font-size-2: 1.65rem;
     --font-size-3: 1.35rem;
@@ -27,8 +28,8 @@
     --font-weight-meal-lines: var(--font-weight-bold);
 
     /* Layout */
-    --dashboard-grid-min-height: 68px;
-    --dashboard-grid-label-col: 190px;
+    --dashboard-grid-min-height: calc(68px * var(--dashboard-scale));
+    --dashboard-grid-label-col: calc(190px * var(--dashboard-scale));
     --grid-data-text-color: #000000; /* forecast / actual / lunch-dinner figures */
     --meal-period-body-padding-y: 8px;
     --meal-period-body-padding-x: 10px;
@@ -74,6 +75,7 @@
 html {
     height: 100%;
     overflow: hidden;
+    font-size: calc(16px * var(--dashboard-scale));
 }
 
 body {
@@ -91,7 +93,7 @@ body {
 #app {
     height: 100%;
     box-sizing: border-box;
-    padding: 24px;
+    padding: calc(24px * var(--dashboard-scale));
     overflow: hidden;
 }
 
@@ -105,7 +107,7 @@ body {
     margin: 0 auto;
     background: var(--grey);
     border-radius: 0;
-    padding: 28px;
+    padding: calc(28px * var(--dashboard-scale));
     box-sizing: border-box;
     overflow: hidden;
 }
@@ -233,7 +235,7 @@ body {
 .dashboard-grid {
     display: grid;
     grid-template-columns: var(--dashboard-grid-label-col) repeat(12, minmax(0, 1fr));
-    gap: 8px;
+    gap: calc(8px * var(--dashboard-scale));
     align-items: stretch;
     min-width: 0;
     overflow: hidden;
@@ -601,13 +603,17 @@ body {
 .grid-label,
 .grid-cell {
     box-sizing: border-box;
-    padding: 14px 12px;
+    padding: calc(14px * var(--dashboard-scale)) calc(12px * var(--dashboard-scale));
     border-radius: 0;
     font-size: var(--font-size-3);
     min-height: var(--dashboard-grid-min-height);
     display: flex;
     align-items: center;
     justify-content: center;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 
 .grid-label,

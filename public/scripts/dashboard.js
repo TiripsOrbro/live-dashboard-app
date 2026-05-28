@@ -659,7 +659,8 @@ const NOTIFICATIONS = {
     completeSaladPrep: {name: 'Complete Salad Prep',instruction: 'Complete salad prep for the day, ensuring all ingredients are ready for the day', icon: 'Clean', seconds: 7200}, //3600 seconds = 1 hour
     checkToilets: {name: 'Check Toilets',instruction: 'Check the toilets and ensure they are clean and stocked', icon: 'Clean', seconds: 7200},
     stockUpPaperStockOnLine: {name: 'Stock Up Paper Stock On Line',instruction: 'Stock up the paper stock on the line, ensuring there is enough takeaway bags, chip bags, cups, lids, wraps and boxes for the day', icon: 'Clean', seconds: 7200},
-    
+    thawing: {name: 'Thawing',instruction: 'Check the thawing guide and confirm if more thawing is needed', icon: 'Clean', seconds: 7200},
+
 
     //CHANGEOVER
     changeUtensils: {name: 'Change Utensils',instruction: 'Gather up the clean utensiles and then change over and remove the in use utensils from the line, replacing them as you go with the new clean ones', icon: 'Clean', seconds: 600},
@@ -738,7 +739,7 @@ const SCHEDULE = [
     { time: '8:00', show: ['cook8PM'] },
 
     //OPEN
-    { time: '8:00', show: [safeCount, AMStockCount, recieveOrders, completeFryPrep, completeSaladPrep, checkToilets, stockUpPaperStockOnLine, stockUpDeserts]},
+    { time: '8:00', show: [safeCount, AMStockCount, recieveOrders, completeFryPrep, completeSaladPrep, checkToilets, stockUpPaperStockOnLine, stockUpDeserts, thawing]},
 
 
     // "Before 9:30PM"

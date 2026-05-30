@@ -1,0 +1,8 @@
+# Vendor stock-count catalog — copy to `vendors/.CutFresh` and edit item lists.
+#
+# vendor: Cut Fresh
+# locations: Fridge | Dry | Carryover | In Use
+
+Lettuce | Crates | Bags | N/a
+Tomatoes | Crates | KGs | N/a
+Onions | Bags | KGs | N/a

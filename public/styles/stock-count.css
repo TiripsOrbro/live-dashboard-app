@@ -1,0 +1,286 @@
+/* Stock count entry — extends dashboard palette */
+body.stock-count-page {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--grey, #f0ece8);
+    color: var(--charcoal, #231e1f);
+}
+
+.stock-count {
+    width: min(960px, 100%);
+    margin: 0 auto;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+        max(20px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    box-sizing: border-box;
+}
+
+.stock-count-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.stock-count-header h1 {
+    margin: 0;
+    font-size: 1.35rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.stock-count-subtitle {
+    margin: 4px 0 0;
+    font-size: 0.9rem;
+    opacity: 0.85;
+}
+
+.stock-count-back {
+    color: var(--tb-purple, #702082);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.stock-count-back:hover {
+    text-decoration: underline;
+}
+
+.stock-count-status {
+    padding: 10px 12px;
+    border-radius: 0;
+    font-size: 0.85rem;
+    margin-bottom: 12px;
+    border: var(--cell-border, 2px solid) var(--blank-border, #c8c0bc);
+    background: var(--blank, #fff);
+}
+
+.stock-count-status--error {
+    border-color: var(--bad-border, #c62828);
+    background: color-mix(in srgb, var(--bad, #e53935) 12%, var(--blank, #fff));
+}
+
+.stock-count-status--success {
+    border-color: var(--good-border, #2e7d32);
+    background: color-mix(in srgb, var(--good, #43a047) 12%, var(--blank, #fff));
+}
+
+.stock-count-locations {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.stock-count-loc-btn {
+    border: var(--cell-border, 2px solid) var(--charcoal, #231e1f);
+    background: var(--blank, #fff);
+    color: var(--charcoal, #231e1f);
+    padding: 8px 12px;
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.stock-count-loc-btn--active {
+    background: var(--charcoal, #231e1f);
+    color: var(--white, #fff);
+}
+
+.stock-count-loc-btn--done:not(.stock-count-loc-btn--active) {
+    border-color: var(--good-border, #2e7d32);
+}
+
+.stock-count-panel {
+    border: var(--cell-border, 2px solid) var(--charcoal, #231e1f);
+    background: var(--blank, #fff);
+    padding: 0;
+    overflow: hidden;
+}
+
+.stock-count-panel h2 {
+    margin: 0;
+    padding: 12px 14px;
+    font-size: 1rem;
+    background: var(--charcoal, #231e1f);
+    color: var(--white, #fff);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.stock-count-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.stock-count-table th,
+.stock-count-table td {
+    border-bottom: var(--cell-border, 2px solid) color-mix(in srgb, var(--charcoal) 18%, var(--blank));
+    padding: 10px 12px;
+    text-align: left;
+    font-size: 0.88rem;
+    vertical-align: top;
+}
+
+.stock-count-table--entry td[data-label]:not(.stock-count-item-cell)::before,
+.stock-count-table td[data-label]:not(.stock-count-item-cell)::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.7;
+    margin-bottom: 4px;
+}
+
+.stock-count-table th {
+    background: color-mix(in srgb, var(--charcoal) 8%, var(--blank));
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+}
+
+.stock-count-table tr:last-child td {
+    border-bottom: none;
+}
+
+.stock-count-item-cell {
+    font-weight: 600;
+    min-width: 7rem;
+}
+
+.stock-count-item-cell .stock-count-item-code {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--charcoal) 65%, var(--blank));
+    margin-bottom: 2px;
+}
+
+.stock-count-item-name {
+    font-weight: 600;
+}
+
+.stock-count-input {
+    width: 100%;
+    max-width: 6.5rem;
+    box-sizing: border-box;
+    border: var(--cell-border, 2px solid) var(--blank-border, #c8c0bc);
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 0.95rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.stock-count-input:focus {
+    outline: 2px solid var(--tb-purple-light, #9c27b0);
+    outline-offset: 1px;
+}
+
+.stock-count-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.stock-count-btn {
+    border: var(--cell-border, 2px solid) var(--charcoal, #231e1f);
+    background: var(--charcoal, #231e1f);
+    color: var(--white, #fff);
+    padding: 12px 18px;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.stock-count-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.stock-count-btn--secondary {
+    background: var(--blank, #fff);
+    color: var(--charcoal, #231e1f);
+}
+
+.stock-count-review-note {
+    padding: 12px 14px;
+    font-size: 0.85rem;
+    border-top: var(--cell-border, 2px solid) color-mix(in srgb, var(--charcoal) 18%, var(--blank));
+    color: color-mix(in srgb, var(--charcoal) 70%, var(--blank));
+}
+
+.stock-count-empty-location {
+    margin: 0;
+    padding: 16px 14px;
+    font-size: 0.9rem;
+    color: color-mix(in srgb, var(--charcoal) 70%, var(--blank));
+}
+
+@media (max-width: 900px) and (orientation: portrait) {
+    .stock-count-table thead {
+        display: none;
+    }
+
+    .stock-count-table,
+    .stock-count-table tbody,
+    .stock-count-table tr,
+    .stock-count-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .stock-count-table tr {
+        border-bottom: var(--cell-border, 2px solid) color-mix(in srgb, var(--charcoal) 18%, var(--blank));
+        padding: 10px 12px;
+    }
+
+    .stock-count-table tr:last-child {
+        border-bottom: none;
+    }
+
+    .stock-count-table td {
+        border: none;
+        padding: 4px 0;
+    }
+
+    .stock-count-table td::before {
+        content: attr(data-label);
+        display: block;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        opacity: 0.7;
+        margin-bottom: 4px;
+    }
+
+    .stock-count-item-cell::before {
+        content: 'Item';
+    }
+
+    .stock-count-input {
+        max-width: none;
+    }
+
+    .stock-count-actions {
+        flex-direction: column;
+    }
+
+    .stock-count-btn {
+        width: 100%;
+        text-align: center;
+    }
+}

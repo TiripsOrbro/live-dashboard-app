@@ -94,6 +94,8 @@ let forecastSales = [];
 let liveSales = [];
 /** Display labels for vendors with scheduled orders still in Create / In Progress (no order #). */
 let pendingVendors = [];
+/** Vendors with stock-count catalogs ({ slug, label }). */
+let stockCountVendors = [];
 /** Labels the user has marked done this session (hidden until Macromatix drops them from the API list). */
 const dismissedPendingVendors = new Set();
 
@@ -113,6 +115,17 @@ function getVisiblePendingVendors() {
         if (!lastMondayMonth && matchesLastMondayOnlyVendor(v)) return false;
         return true;
     });
+}
+
+function vendorHasStockCount(label) {
+    return stockCountVendors.some((v) => v.label === label);
+}
+
+function stockCountPathForVendor(label) {
+    const entry = stockCountVendors.find((v) => v.label === label);
+    if (!entry || !STORE_NUMBER) return null;
+    if (NOLOGIN_MODE) return `/${STORE_NUMBER}/stock-count/${entry.slug}/nologin`;
+    return `/${STORE_NUMBER}/stock-count/${entry.slug}`;
 }
 
 /* -----------------------------------------------------------
@@ -365,6 +378,7 @@ function applySalesPayload(data) {
     forecastSales = Array.isArray(data.forecast) ? data.forecast.slice(sliceStart, sliceEnd) : [];
     liveSales = Array.isArray(data.actual) ? data.actual.slice(sliceStart, sliceEnd) : [];
     pendingVendors = Array.isArray(data.pendingVendors) ? data.pendingVendors : [];
+    stockCountVendors = Array.isArray(data.stockCountVendors) ? data.stockCountVendors : [];
     for (const d of [...dismissedPendingVendors]) {
         if (!pendingVendors.includes(d)) dismissedPendingVendors.delete(d);
     }
@@ -1576,16 +1590,28 @@ function buildPortraitHourRows() {
         .join('');
 }
 
-function buildPortraitMealActualCell(pres, value) {
-    const classes = ['grid-cell', 'meal-period-cell', 'portrait-data-cell', 'portrait-meal-cell'];
-    if (pres.cellClass) classes.push(pres.cellClass);
-    if (pres.liveLayersHtml) {
-        classes.push('meal-period-cell--live', 'grid-cell--live-hour');
-    }
-    const styleAttr = pres.outcomeBorderColor
-        ? ` style="border: var(--cell-border) ${pres.outcomeBorderColor}"`
+function portraitSummaryItemStatusClass(pres, actual, forecast) {
+    if (pres?.phase === 'before' || pres?.phase === 'during') return '';
+    if (pres?.phase === 'after' && pres.cellClass) return pres.cellClass;
+    if (Number(forecast) > 0) return getActualCellClass(actual, forecast);
+    return 'cell-green';
+}
+
+function buildPortraitSummaryItem(label, actual, forecast, pres = null, extraClass = '') {
+    const statusClass = portraitSummaryItemStatusClass(pres, actual, forecast);
+    const borderStyle = pres?.outcomeBorderColor
+        ? ` style="border-color: ${pres.outcomeBorderColor}"`
         : '';
-    return `<div class="${classes.join(' ')}"${styleAttr}>${pres.liveLayersHtml || ''}<span class="grid-cell-live-value portrait-cell-value">${formatCurrency(value)}</span></div>`;
+    const liveHtml = pres?.liveLayersHtml || '';
+    return `
+        <div class="portrait-summary-item ${extraClass}">
+            <div class="portrait-summary-item-label">${label}</div>
+            <div class="portrait-summary-item-values ${statusClass}${liveHtml ? ' portrait-summary-item-values--live' : ''}"${borderStyle}>
+                ${liveHtml}
+                <div class="portrait-summary-item-amount">${formatCurrency(actual)} / ${formatCurrency(forecast)}</div>
+            </div>
+        </div>
+    `;
 }
 
 function buildPortraitMealRows(forecasts, actuals) {
@@ -1612,21 +1638,20 @@ function buildPortraitMealRows(forecasts, actuals) {
         DINNER_WALL_START,
         dinnerWallEnd
     );
-    let dayClass = 'cell-green';
-    if (dayForecast > 0) {
-        dayClass = getActualCellClass(dayActual, dayForecast);
-    }
+    const dayPres = {
+        phase: 'after',
+        cellClass: dayForecast > 0 ? getActualCellClass(dayActual, dayForecast) : 'cell-green',
+        liveLayersHtml: '',
+        outcomeBorderColor: '',
+    };
 
     return `
-        <div class="grid-label portrait-summary-label">Lunch</div>
-        <div class="grid-cell portrait-data-cell portrait-meal-cell">${formatCurrency(lunchForecast)}</div>
-        ${buildPortraitMealActualCell(lunchPres, lunchActual)}
-        <div class="grid-label portrait-summary-label">Dinner</div>
-        <div class="grid-cell portrait-data-cell portrait-meal-cell">${formatCurrency(dinnerForecast)}</div>
-        ${buildPortraitMealActualCell(dinnerPres, dinnerActual)}
-        <div class="grid-label portrait-summary-label portrait-summary-label--day">Day total</div>
-        <div class="grid-cell portrait-data-cell portrait-meal-cell">${formatCurrency(dayForecast)}</div>
-        <div class="grid-cell portrait-data-cell portrait-meal-cell ${dayClass}">${formatCurrency(dayActual)}</div>
+        <div class="portrait-summary-box" role="region" aria-label="Lunch, dinner and day totals">
+            ${buildPortraitSummaryItem('Lunch', lunchActual, lunchForecast, lunchPres)}
+            ${buildPortraitSummaryItem('Dinner', dinnerActual, dinnerForecast, dinnerPres)}
+            ${buildPortraitSummaryItem('Day total', dayActual, dayForecast, dayPres, 'portrait-summary-item--day')}
+            <div class="portrait-summary-caption">Actual / Forecast</div>
+        </div>
     `;
 }
 
@@ -1713,12 +1738,15 @@ function updatePendingVendorsPanel() {
     const lastMondayHtml = lastMondayMonth ? lastMondayMonthlyOrdersReminderHtml() : '';
     const chipsHtml = visible.length
         ? visible
-              .map(
-                  (name) =>
-                      `<div class="pending-vendor-item"><button type="button" class="pending-vendor-chip" data-vendor="${encodeURIComponent(
-                          name
-                      )}" aria-label="Mark ${escapeHtml(name)} as done">${escapeHtml(name)}</button></div>`
-              )
+              .map((name) => {
+                  const stockPath = stockCountPathForVendor(name);
+                  if (stockPath) {
+                      return `<div class="pending-vendor-item"><a class="pending-vendor-chip pending-vendor-chip--link" href="${escapeHtml(stockPath)}" aria-label="Start stock count for ${escapeHtml(name)}">${escapeHtml(name)}</a></div>`;
+                  }
+                  return `<div class="pending-vendor-item"><button type="button" class="pending-vendor-chip" data-vendor="${encodeURIComponent(
+                      name
+                  )}" aria-label="Mark ${escapeHtml(name)} as done">${escapeHtml(name)}</button></div>`;
+              })
               .join('')
         : '';
 
@@ -1726,6 +1754,9 @@ function updatePendingVendorsPanel() {
 }
 
 function handleFooterChipDismissClick(e) {
+    const link = e.target.closest('a.pending-vendor-chip--link');
+    if (link) return;
+
     const vBtn = e.target.closest('button.pending-vendor-chip');
     if (vBtn && !vBtn.classList.contains('pending-vendor-chip--dismissing')) {
         const enc = vBtn.getAttribute('data-vendor');

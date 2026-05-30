@@ -1404,5 +1404,14 @@ async function listStores() {
     }
 }
 
+async function submitStockCountToMacromatix(_page, storeNumber, vendorSlug, aggregatedPayload) {
+    void _page;
+    void storeNumber;
+    void vendorSlug;
+    void aggregatedPayload;
+    throw new Error('Not implemented — awaiting Macromatix flow instructions');
+}
+
 module.exports = scrapeMacromatix;
 module.exports.listStores = listStores;
+module.exports.submitStockCountToMacromatix = submitStockCountToMacromatix;

@@ -219,6 +219,39 @@ Notes:
 - `DASHBOARD_STORE_NUMBERS` is **deprecated** and ignored when `.storelist` is present (it only applies to the legacy auto-enumerate fallback used when no `.storelist` exists).
 - Routing is domain-agnostic: the frontend uses `window.location.origin`, so any hostname pointed at the app gets the same path-based behaviour with no code change — only a Cloudflare DNS/ingress entry.
 
+### Built-in stock counting (BuiltInOrdering)
+
+Vendor item lists live in `vendors/` (copy from `vendors/examples/`):
+
+| File | Macromatix vendor |
+|------|-------------------|
+| `vendors/.Americold` | Americold |
+| `vendors/.Bega` | Bega |
+| `vendors/.CutFresh` | Cut Fresh |
+| `vendors/.Schweppes` | Schweppes |
+
+Example templates are in `vendors/examples/`. Live vendor files are git-ignored; examples are committed.
+
+Format (pipe-delimited):
+
+```
+# vendor: Americold
+# location-order: Freezer | Fridge | Dry | Carryover | In Use
+# locations: Freezer
+
+Beef | Boxes | Bags | KGs | Freezer
+10005242 | Sparkling Water 500ml | Packs | N/a | Bottles | Dry
+8418 | Sour Cream 2kg | Tubs | N/a | KGs | Fridge
+7769 | Dare Iced Coffee | N/a | N/a | Bottles | Fridge | In Use
+```
+
+- Optional leading **item code** before the name.
+- Exactly **three unit columns** (`N/a` hides a column), then **one or more locations per item**.
+- `# location-order:` controls tab order in the stock-count UI (only locations used by items appear).
+- `# locations:` is the default when an item line omits trailing locations.
+
+When a vendor appears under **Orders to place**, clicking it opens `/{store}/stock-count/{slug}` (e.g. `/3811/stock-count/americold`) instead of dismissing. Counts are saved per store/vendor/day in `data/stock-count-state.json`. Submit marks the vendor complete for the day; Macromatix entry automation is stubbed until the flow is defined.
+
 ### 4. Start under PM2
 
 ```sh

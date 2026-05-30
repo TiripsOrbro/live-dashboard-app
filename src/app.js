@@ -21,6 +21,14 @@ require('dotenv').config({ path: path.join(__dirname, '../.env.production'), ove
 const scrapeData = require('./services/scraper');
 const { notifyScrapeFailure } = require('./services/alertNotifier');
 const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./services/storeList');
+const { listConfiguredVendors, getVendorCatalog } = require('./services/vendorCatalog');
+const {
+    getDraft,
+    saveDraftLocation,
+    getSummary,
+    submitStockCount,
+    getCompletedVendorLabelsForStore,
+} = require('./services/stockCountState');
 const {
     getDismissalPeriodKey,
     getAuditSchedule,
@@ -251,9 +259,11 @@ function nologinAllowsPath(reqPath, storeNumber) {
     const store = String(storeNumber || '').replace(/[^0-9]/g, '');
     if (!store) return false;
     if (new RegExp(`^/${store}/nologin/?$`).test(reqPath)) return true;
+    if (new RegExp(`^/${store}/stock-count/[a-z0-9-]+(?:/nologin)?/?$`).test(reqPath)) return true;
     if (isDashboardAssetPath(reqPath)) return true;
     if (reqPath === '/api/me' || reqPath === '/api/audit-schedule') return true;
     if (reqPath === '/api/sales' || reqPath === '/api/audits') return true;
+    if (reqPath.startsWith('/api/stock-count')) return true;
     return false;
 }
 
@@ -705,6 +715,31 @@ function assertStoreAccess(req, res, storeNumber) {
     return true;
 }
 
+async function enrichSalesSliceWithStockCount(slice) {
+    if (!slice || typeof slice !== 'object') return slice;
+    const storeNumber = String(slice.storeNumber || '').trim();
+    slice.stockCountVendors = listConfiguredVendors();
+    if (!storeNumber) {
+        slice.stockCountCompleted = [];
+        return slice;
+    }
+    const completed = await getCompletedVendorLabelsForStore(storeNumber);
+    slice.stockCountCompleted = completed;
+    if (Array.isArray(slice.pendingVendors)) {
+        const done = new Set(completed.map(String));
+        slice.pendingVendors = slice.pendingVendors.filter((v) => !done.has(String(v)));
+    }
+    return slice;
+}
+
+function stockCountStoreFromQuery(req) {
+    return String(req.query.store || '').replace(/[^0-9]/g, '');
+}
+
+function stockCountVendorFromQuery(req) {
+    return String(req.query.vendor || '').trim().toLowerCase();
+}
+
 app.get('/welcome', (req, res) => {
     res.redirect('/login');
 });
@@ -733,6 +768,21 @@ app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
     }
     if (!assertStoreAccess(req, res, storeNumber)) return;
     res.sendFile(path.join(__dirname, '../public', 'index.html'));
+});
+
+function sendStockCountPage(req, res, storeNumber) {
+    if (!assertStoreAccess(req, res, storeNumber)) return;
+    res.sendFile(path.join(__dirname, '../public', 'stock-count.html'));
+}
+
+app.get(/^\/(\d{3,6})\/stock-count\/([a-z0-9-]+)\/?$/, (req, res) => {
+    const storeNumber = (req.path.match(/^\/(\d{3,6})\/stock-count\/[a-z0-9-]+\/?$/) || [])[1];
+    sendStockCountPage(req, res, storeNumber);
+});
+
+app.get(/^\/(\d{3,6})\/stock-count\/([a-z0-9-]+)\/nologin\/?$/, (req, res) => {
+    const storeNumber = (req.path.match(/^\/(\d{3,6})\/stock-count\/[a-z0-9-]+\/nologin\/?$/) || [])[1];
+    sendStockCountPage(req, res, storeNumber);
 });
 
 app.get('/api/me', (req, res) => {
@@ -779,6 +829,107 @@ app.put('/api/audits', async (req, res) => {
     }
 });
 
+app.get('/api/stock-count/vendors', (req, res) => {
+    res.json({ success: true, vendors: listConfiguredVendors() });
+});
+
+app.get('/api/stock-count/catalog', (req, res) => {
+    const vendorSlug = stockCountVendorFromQuery(req);
+    const catalog = getVendorCatalog(vendorSlug);
+    if (!catalog) {
+        res.status(404).json({ success: false, error: 'Vendor catalog not found.' });
+        return;
+    }
+    res.json({ success: true, catalog });
+});
+
+app.get('/api/stock-count/draft', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        const vendorSlug = stockCountVendorFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const draft = await getDraft(store, vendorSlug);
+        if (!draft) {
+            res.status(404).json({ success: false, error: 'Vendor catalog not found.' });
+            return;
+        }
+        res.json(draft);
+    } catch (error) {
+        console.error('API: Error reading stock count draft:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/stock-count/draft', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        const vendorSlug = stockCountVendorFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const location = String(req.body?.location || '').trim();
+        const items = req.body?.items;
+        if (!location) {
+            res.status(400).json({ success: false, error: 'Location is required.' });
+            return;
+        }
+        const draft = await saveDraftLocation(store, vendorSlug, location, items);
+        res.json(draft);
+    } catch (error) {
+        console.error('API: Error saving stock count draft:', error);
+        const status = /already submitted|Unknown location/i.test(error.message) ? 400 : 500;
+        res.status(status).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/stock-count/summary', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        const vendorSlug = stockCountVendorFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const summary = await getSummary(store, vendorSlug);
+        if (!summary) {
+            res.status(404).json({ success: false, error: 'Vendor catalog not found.' });
+            return;
+        }
+        res.json(summary);
+    } catch (error) {
+        console.error('API: Error reading stock count summary:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/stock-count/completed', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const completed = await getCompletedVendorLabelsForStore(store);
+        res.json({ success: true, store, completed });
+    } catch (error) {
+        console.error('API: Error reading stock count completed list:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/stock-count/submit', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        const vendorSlug = stockCountVendorFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const summary = await submitStockCount(store, vendorSlug);
+        if (!summary) {
+            res.status(404).json({ success: false, error: 'Vendor catalog not found.' });
+            return;
+        }
+        console.log(
+            `[StockCount] Submitted store ${store} vendor ${vendorSlug} — ${summary.items?.length || 0} item(s)`
+        );
+        res.json({ success: true, ...summary, macromatixPending: true });
+    } catch (error) {
+        console.error('API: Error submitting stock count:', error);
+        const status = /No stock count draft|already submitted/i.test(error.message) ? 400 : 500;
+        res.status(status).json({ success: false, error: error.message });
+    }
+});
+
 // Test endpoint to trigger scraper
 app.get('/api/test-scraper', async (req, res) => {
     if (!/^(1|true|yes|on)$/i.test(String(process.env.ENABLE_TEST_SCRAPER ?? '').trim())) {
@@ -817,9 +968,11 @@ app.get('/api/sales', async (req, res) => {
                 stores: Array.isArray(result.stores) ? result.stores : [],
             };
             logDashboardScrapeComplete(fullPayload);
-            const slice = filterSalesSliceForUser(
-                storeSliceFromPayload(fullPayload, requestedStore),
-                req.dashboardUser || getRequestUser(req)
+            const slice = await enrichSalesSliceWithStockCount(
+                filterSalesSliceForUser(
+                    storeSliceFromPayload(fullPayload, requestedStore),
+                    req.dashboardUser || getRequestUser(req)
+                )
             );
             slice.testScheduledOrdersDate = testPick.ymd;
             res.json(slice);
@@ -828,23 +981,27 @@ app.get('/api/sales', async (req, res) => {
 
         fullPayload = await getSalesDataCached();
         res.json(
-            filterSalesSliceForUser(
-                storeSliceFromPayload(fullPayload, requestedStore),
-                req.dashboardUser || getRequestUser(req)
+            await enrichSalesSliceWithStockCount(
+                filterSalesSliceForUser(
+                    storeSliceFromPayload(fullPayload, requestedStore),
+                    req.dashboardUser || getRequestUser(req)
+                )
             )
         );
     } catch (error) {
         console.error('API: Error fetching sales data:', error);
         if (salesCache) {
-            res.json({
-                ...filterSalesSliceForUser(
-                    storeSliceFromPayload(salesCache, requestedStore),
-                    req.dashboardUser || getRequestUser(req)
-                ),
-                stale: true,
-                staleAgeSeconds: Math.round((Date.now() - salesCacheAt) / 1000),
-                warning: 'Serving stale cached sales due to scrape error.',
-            });
+            res.json(
+                await enrichSalesSliceWithStockCount({
+                    ...filterSalesSliceForUser(
+                        storeSliceFromPayload(salesCache, requestedStore),
+                        req.dashboardUser || getRequestUser(req)
+                    ),
+                    stale: true,
+                    staleAgeSeconds: Math.round((Date.now() - salesCacheAt) / 1000),
+                    warning: 'Serving stale cached sales due to scrape error.',
+                })
+            );
             return;
         }
         res.status(500).json({ success: false, error: error.message });

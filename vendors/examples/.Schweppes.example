@@ -1,0 +1,11 @@
+# Vendor stock-count catalog — copy to `vendors/.Schweppes` and edit item lists.
+#
+# vendor: Schweppes
+# locations: Dry
+#
+# Format: itemCode | name | unit columns…
+
+3939 | 7UP BIB 15L | Boxes | N/a | N/a
+3227 | 7UP 600ml PET | Packs | N/a | Bottles
+10007576 | 7UP Can 375ml | Boxes | N/a | Cans
+3912 | Pepsi BIB 15L | Boxes | N/a | N/a

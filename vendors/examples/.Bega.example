@@ -1,0 +1,10 @@
+# Vendor stock-count catalog — copy to `vendors/.Bega` and edit item lists.
+#
+# vendor: Bega
+# locations: Fridge | In Use
+#
+# Format: itemCode | name | col1 | col2 | col3
+
+8418 | Sour Cream Light 2kg | Tubs | N/a | KGs
+8419 | Sour Cream Light 5kg | Tubs | N/a | KGs
+7769 | Dare Iced Coffee Double | N/a | N/a | Bottles

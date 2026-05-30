@@ -98,9 +98,9 @@ body.login-body {
 
 .login-logo {
     display: block;
-    width: 72px;
-    height: 72px;
-    border-radius: 18px;
+    width: 88px;
+    height: 88px;
+    border-radius: 22px;
     margin-bottom: 0.15rem;
     overflow: hidden;
 }
@@ -129,11 +129,6 @@ body.login-body {
 .brand-mark-pulse {
     stroke-dasharray: 520;
     stroke-dashoffset: 520;
-    animation: brand-mark-pulse-draw 2.4s ease-in-out infinite;
-}
-
-.brand-mark--busy .brand-mark-pulse {
-    animation-duration: 1.15s;
 }
 
 .brand-mark--busy .brand-mark-ring--outer,
@@ -150,28 +145,6 @@ body.login-body {
     50% {
         opacity: 0.62;
         transform: scale(1.03);
-    }
-}
-
-@keyframes brand-mark-pulse-draw {
-    0% {
-        stroke-dashoffset: 520;
-        opacity: 0.45;
-    }
-    12% {
-        opacity: 1;
-    }
-    42% {
-        stroke-dashoffset: 0;
-        opacity: 1;
-    }
-    58% {
-        stroke-dashoffset: 0;
-        opacity: 1;
-    }
-    100% {
-        stroke-dashoffset: 0;
-        opacity: 0.45;
     }
 }
 
@@ -491,6 +464,59 @@ body.login-body {
     }
 }
 
+/* Portrait phone — edge-to-edge login, larger brand mark */
+@media (max-width: 900px) and (orientation: portrait) {
+    html,
+    body.login-body {
+        min-height: 100dvh;
+    }
+
+    .login-root {
+        min-height: 100dvh;
+        height: 100dvh;
+    }
+
+    .login-stage {
+        min-height: 100dvh;
+        height: 100dvh;
+        display: flex;
+        align-items: stretch;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+            env(safe-area-inset-left);
+    }
+
+    .login-card {
+        width: 100%;
+        max-width: none;
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: clamp(22px, 5vw, 32px);
+        padding: clamp(28px, 7vw, 44px) clamp(24px, 6vw, 36px);
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+        background: transparent;
+    }
+
+    .login-logo {
+        width: clamp(104px, 28vw, 132px);
+        height: clamp(104px, 28vw, 132px);
+        border-radius: clamp(24px, 6.5vw, 32px);
+        margin-bottom: 0.35rem;
+    }
+
+    .login-title {
+        font-size: clamp(1.7rem, 6.5vw, 2.05rem);
+    }
+
+    .login-subtitle {
+        font-size: clamp(0.92rem, 3.6vw, 1rem);
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .login-stage,
     .welcome-stage,
@@ -523,7 +549,8 @@ body.login-body {
     }
 
     .brand-mark-dot-motion,
-    .brand-mark-dot-opacity {
+    .brand-mark-dot-opacity,
+    .brand-mark-cycle-anim {
         display: none;
     }
 }

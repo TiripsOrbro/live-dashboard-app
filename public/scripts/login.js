@@ -14,18 +14,22 @@ const rememberInput = document.getElementById('remember-me');
 const WELCOME_SKIP_KEY = 'dashboard-welcome-shown';
 const DASHBOARD_TIME_ZONE = 'Australia/Melbourne';
 
-const BRAND_MARK_DUR = '2.4s';
-const BRAND_MARK_DOT_DUR = '4.2s';
-const BRAND_MARK_DUR_BUSY = '1.15s';
-const BRAND_MARK_DOT_DUR_BUSY = '2s';
+const BRAND_MARK_CYCLE_DUR = '5s';
+const BRAND_MARK_CYCLE_BUSY = '2.4s';
 
-const DOT_MOTION_KEY_TIMES = '0;0.06;0.72;0.82;0.86;1';
-const DOT_LEAD_POINTS = '0;0;1;1;1;0';
-const DOT_TRAIL_POINTS = '0;0;0.86;0.86;0.86;0';
-const DOT_LEAD_OPACITY = '0;0;1;1;1;0;0';
-const DOT_LEAD_OPACITY_TIMES = '0;0.06;0.10;0.72;0.82;0.86;1';
-const DOT_TRAIL_OPACITY = '0;0;0.75;0.9;0.9;0;0';
-const DOT_TRAIL_OPACITY_TIMES = '0;0.06;0.10;0.72;0.82;0.86;1';
+/** One cycle: yellow draws the path → red follows → line fades → reset (invisible). */
+const PATH_DASH_VALUES = '520;520;0;0;520;520';
+const PATH_DASH_TIMES = '0;0.05;0.48;0.88;0.96;1';
+const PATH_OPACITY_VALUES = '0;1;1;1;0;0';
+const PATH_OPACITY_TIMES = '0;0.05;0.48;0.88;0.94;1';
+const LEAD_MOTION_POINTS = '0;0;0;1;1;1;0';
+const LEAD_MOTION_TIMES = '0;0.05;0.05;0.48;0.88;0.96;1';
+const LEAD_OPACITY_VALUES = '0;0;1;1;1;1;0';
+const LEAD_OPACITY_TIMES = '0;0.05;0.08;0.48;0.88;0.94;1';
+const TRAIL_MOTION_POINTS = '0;0;0;1;1;0';
+const TRAIL_MOTION_TIMES = '0;0.22;0.22;0.88;0.96;1';
+const TRAIL_OPACITY_VALUES = '0;0;1;1;1;0';
+const TRAIL_OPACITY_TIMES = '0;0.22;0.26;0.88;0.94;1';
 
 function brandMarkSvg(uid) {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="brand-mark" aria-hidden="true">
@@ -51,21 +55,29 @@ function brandMarkSvg(uid) {
     stroke-linecap="round"
     stroke-linejoin="round"
     pathLength="520"
+    stroke-dasharray="520"
+    stroke-dashoffset="520"
+    opacity="0"
     d="M96 268 L168 268 L208 168 L256 332 L304 204 L352 268 L416 268"
-  />
+  >
+    <animate class="brand-mark-cycle-anim" attributeName="stroke-dashoffset" dur="${BRAND_MARK_CYCLE_DUR}" repeatCount="indefinite" calcMode="linear"
+      values="${PATH_DASH_VALUES}" keyTimes="${PATH_DASH_TIMES}"/>
+    <animate class="brand-mark-cycle-anim" attributeName="opacity" dur="${BRAND_MARK_CYCLE_DUR}" repeatCount="indefinite" calcMode="linear"
+      values="${PATH_OPACITY_VALUES}" keyTimes="${PATH_OPACITY_TIMES}"/>
+  </path>
   <circle class="brand-mark-dot--trail" r="11" fill="#ff4081" opacity="0">
-    <animate class="brand-mark-dot-opacity" attributeName="opacity" dur="${BRAND_MARK_DOT_DUR}" repeatCount="indefinite"
-      values="${DOT_TRAIL_OPACITY}" keyTimes="${DOT_TRAIL_OPACITY_TIMES}"/>
-    <animateMotion class="brand-mark-dot-motion" dur="${BRAND_MARK_DOT_DUR}" repeatCount="indefinite" calcMode="linear"
-      keyTimes="${DOT_MOTION_KEY_TIMES}" keyPoints="${DOT_TRAIL_POINTS}">
+    <animate class="brand-mark-cycle-anim" attributeName="opacity" dur="${BRAND_MARK_CYCLE_DUR}" repeatCount="indefinite" calcMode="linear"
+      values="${TRAIL_OPACITY_VALUES}" keyTimes="${TRAIL_OPACITY_TIMES}"/>
+    <animateMotion class="brand-mark-cycle-anim" dur="${BRAND_MARK_CYCLE_DUR}" repeatCount="indefinite" calcMode="linear"
+      keyTimes="${TRAIL_MOTION_TIMES}" keyPoints="${TRAIL_MOTION_POINTS}">
       <mpath href="#${uid}-pulse-path"/>
     </animateMotion>
   </circle>
-  <circle class="brand-mark-dot--lead" r="16" fill="#ffc72c" opacity="0.45">
-    <animate class="brand-mark-dot-opacity" attributeName="opacity" dur="${BRAND_MARK_DOT_DUR}" repeatCount="indefinite"
-      values="${DOT_LEAD_OPACITY}" keyTimes="${DOT_LEAD_OPACITY_TIMES}"/>
-    <animateMotion class="brand-mark-dot-motion" dur="${BRAND_MARK_DOT_DUR}" repeatCount="indefinite" calcMode="linear"
-      keyTimes="${DOT_MOTION_KEY_TIMES}" keyPoints="${DOT_LEAD_POINTS}">
+  <circle class="brand-mark-dot--lead" r="16" fill="#ffc72c" opacity="0">
+    <animate class="brand-mark-cycle-anim" attributeName="opacity" dur="${BRAND_MARK_CYCLE_DUR}" repeatCount="indefinite" calcMode="linear"
+      values="${LEAD_OPACITY_VALUES}" keyTimes="${LEAD_OPACITY_TIMES}"/>
+    <animateMotion class="brand-mark-cycle-anim" dur="${BRAND_MARK_CYCLE_DUR}" repeatCount="indefinite" calcMode="linear"
+      keyTimes="${LEAD_MOTION_TIMES}" keyPoints="${LEAD_MOTION_POINTS}">
       <mpath href="#${uid}-pulse-path"/>
     </animateMotion>
   </circle>
@@ -79,9 +91,9 @@ function mountBrandMark(hostId, uid) {
 }
 
 function setBrandMarkBusy(busy) {
-    const dotDur = busy ? BRAND_MARK_DOT_DUR_BUSY : BRAND_MARK_DOT_DUR;
-    document.querySelectorAll('.brand-mark-dot-motion, .brand-mark-dot-opacity').forEach((node) => {
-        node.setAttribute('dur', dotDur);
+    const dur = busy ? BRAND_MARK_CYCLE_BUSY : BRAND_MARK_CYCLE_DUR;
+    document.querySelectorAll('.brand-mark-cycle-anim').forEach((node) => {
+        node.setAttribute('dur', dur);
     });
     document.querySelectorAll('.brand-mark').forEach((mark) => {
         mark.classList.toggle('brand-mark--busy', busy);

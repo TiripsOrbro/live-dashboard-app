@@ -52,6 +52,36 @@ body.login-body {
         var(--login-bg);
 }
 
+.dashboard-preload {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    border: 0;
+    margin: 0;
+    padding: 0;
+    z-index: 5;
+    background: var(--grey);
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.dashboard-preload--active {
+    visibility: visible;
+    pointer-events: auto;
+}
+
+body.login-body--dashboard-reveal {
+    background: var(--grey);
+    overflow: hidden;
+}
+
+body.login-body--dashboard-reveal .login-root {
+    visibility: hidden;
+    pointer-events: none;
+}
+
 /* ── Login stage ── */
 .login-stage {
     min-height: 100vh;
@@ -409,7 +439,7 @@ body.login-body {
 }
 
 .welcome-brand.welcome-reveal-active {
-    animation: welcome-logo-in 0.9s var(--apple-ease-out) forwards;
+    animation: welcome-logo-in 0.55s var(--apple-ease-out) forwards;
 }
 
 .welcome-message {
@@ -425,12 +455,13 @@ body.login-body {
 }
 
 .welcome-message.welcome-reveal-active {
-    animation: welcome-bloom-in 1.1s var(--apple-ease-out) 0.25s forwards;
+    animation: welcome-bloom-in 0.85s var(--apple-ease-out) 0.12s forwards;
 }
 
 .welcome-stage--exit {
     opacity: 0;
     background-color: var(--grey);
+    pointer-events: none;
     transition:
         opacity 0.85s var(--apple-ease) 0.08s,
         background-color 0.9s var(--apple-ease) 0.06s;

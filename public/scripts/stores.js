@@ -1,5 +1,20 @@
 /* Store picker — fetches the master store list and renders clickable tiles linking to /<storeNumber>. */
 const grid = document.getElementById('store-grid');
+const LANDSCAPE_PREF_KEY = 'dashboard-prefer-landscape';
+
+function markLandscapePreference() {
+    try {
+        sessionStorage.setItem(LANDSCAPE_PREF_KEY, '1');
+    } catch {
+        /* ignore */
+    }
+}
+
+grid.addEventListener('click', (event) => {
+    if (event.target.closest('a.store-tile')) {
+        markLandscapePreference();
+    }
+});
 
 function hourLabel(hour) {
     const h = (((Math.trunc(hour) % 24) + 24) % 24);

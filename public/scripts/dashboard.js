@@ -1703,6 +1703,7 @@ function buildGridFooterRow() {
 
 function updateGrid() {
     const grid = document.querySelector('.dashboard-grid');
+    const footerHost = document.getElementById('dashboard-footer');
     if (!grid) return;
 
     syncAuditPeriodState();
@@ -1712,8 +1713,13 @@ function updateGrid() {
         ${buildForecastRow(forecastSales, liveSales)}
         ${buildActualRow(liveSales, forecastSales)}
         ${buildMealPeriodRow(forecastSales, liveSales)}
-        ${buildGridFooterRow()}
     `;
+    const footerHtml = buildGridFooterRow();
+    if (footerHost) {
+        footerHost.innerHTML = footerHtml;
+    } else {
+        grid.insertAdjacentHTML('beforeend', footerHtml);
+    }
     updateAuditsPanel();
     updatePendingVendorsPanel();
 }
@@ -1761,6 +1767,14 @@ function updateGrid() {
 ----------------------------------------------------------- */
 function renderDashboard() {
     app.innerHTML = `
+        <div id="rotate-hint" class="rotate-hint" hidden aria-hidden="true">
+            <div class="rotate-hint-card">
+                <div class="rotate-hint-icon" aria-hidden="true">↻</div>
+                <h2>Rotate to landscape</h2>
+                <p>The sales grid is built for a wide view. Turn your phone sideways for the best layout.</p>
+                <a class="rotate-hint-back" href="/">← All stores</a>
+            </div>
+        </div>
         <div class="dashboard">
             <div class="dashboard-header">
                 <div class="dashboard-title">
@@ -1783,13 +1797,17 @@ function renderDashboard() {
             <div id="sales-status" class="sales-status" role="status" aria-live="polite" hidden></div>
             <div id="audit-schedule-status" class="audit-schedule-status" role="alert" aria-live="assertive" hidden></div>
 
-            <div class="dashboard-grid"></div>
+            <div class="dashboard-grid-scroll">
+                <div class="dashboard-grid"></div>
+            </div>
+            <div id="dashboard-footer"></div>
 
             <div id="popup-container"></div>
         </div>
     `;
     bindFooterChipDismissOnce();
     // bindOrderDateTestPanelOnce();
+    updateRotateHint();
 }
 
 /* -----------------------------------------------------------
@@ -1857,8 +1875,72 @@ async function initTradingHours() {
  */
 function applyDashboardScale() {
     const ratio = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
-    const scale = Math.max(0.72, Math.min(ratio, 1));
+    let scale = Math.max(0.72, Math.min(ratio, 1));
+    const mobile = window.matchMedia('(max-width: 900px)').matches;
+    if (mobile) {
+        if (window.matchMedia('(orientation: landscape)').matches) {
+            scale = Math.max(0.5, Math.min(window.innerHeight / 680, 0.92));
+        } else {
+            scale = Math.max(0.55, Math.min(window.innerWidth / 900, 0.85));
+        }
+    }
     document.documentElement.style.setProperty('--dashboard-scale', String(scale));
+}
+
+const LANDSCAPE_PREF_KEY = 'dashboard-prefer-landscape';
+
+function isMobileDashboardView() {
+    return window.matchMedia('(max-width: 900px), (max-height: 520px) and (pointer: coarse)').matches;
+}
+
+function updateRotateHint() {
+    const hint = document.getElementById('rotate-hint');
+    if (!hint) return;
+    let prefer = false;
+    try {
+        prefer = sessionStorage.getItem(LANDSCAPE_PREF_KEY) === '1';
+    } catch {
+        prefer = false;
+    }
+    const show = prefer && isMobileDashboardView() && window.matchMedia('(orientation: portrait)').matches;
+    hint.hidden = !show;
+    hint.setAttribute('aria-hidden', show ? 'false' : 'true');
+    document.body.classList.toggle('rotate-hint-active', show);
+}
+
+async function tryLockLandscape() {
+    if (!screen.orientation?.lock) return;
+    try {
+        await screen.orientation.lock('landscape');
+    } catch {
+        /* Browsers only allow lock in fullscreen/PWA — rotate hint is the fallback. */
+    }
+}
+
+function initMobileLandscape() {
+    if (STORE_NUMBER) {
+        try {
+            if (sessionStorage.getItem(LANDSCAPE_PREF_KEY) !== '1') {
+                sessionStorage.setItem(LANDSCAPE_PREF_KEY, '1');
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+
+    updateRotateHint();
+    window.addEventListener('orientationchange', () => {
+        applyDashboardScale();
+        updateRotateHint();
+    });
+    window.addEventListener('resize', () => {
+        applyDashboardScale();
+        updateRotateHint();
+    });
+
+    if (STORE_NUMBER && isMobileDashboardView()) {
+        tryLockLandscape();
+    }
 }
 
 /* -----------------------------------------------------------
@@ -1869,6 +1951,7 @@ function applyDashboardScale() {
     window.addEventListener('resize', applyDashboardScale);
     await initTradingHours();
     renderDashboard();
+    initMobileLandscape();
     await loadAuditSchedule();
     await loadAuditState();
     startSyncedUpdates();

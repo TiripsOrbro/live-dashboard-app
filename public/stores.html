@@ -2,11 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#7a3eb1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Store Dashboards</title>
 
     <link rel="stylesheet" href="/styles/dashboard.css">
-    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icon.svg">
     <style>
         body {
             display: flex;
@@ -92,6 +96,32 @@
             color: var(--charcoal);
             text-align: center;
             margin-top: 6vh;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 3vh 4vw;
+            }
+
+            .store-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 12px;
+            }
+
+            .store-tile {
+                padding: 18px 12px;
+                min-height: 88px;
+            }
+
+            .store-tile-number {
+                font-size: 1.35rem;
+            }
+        }
+
+        @media (max-width: 900px) and (orientation: landscape) {
+            .store-grid {
+                grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            }
         }
     </style>
 </head>

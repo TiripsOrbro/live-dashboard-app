@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TBA Dashboard">
+  <rect width="512" height="512" rx="96" fill="#231e1f"/>
+  <rect x="64" y="120" width="384" height="72" rx="12" fill="#7a3eb1"/>
+  <rect x="64" y="220" width="120" height="172" rx="12" fill="#312a2c"/>
+  <rect x="204" y="220" width="56" height="172" rx="8" fill="#3d9e47"/>
+  <rect x="272" y="220" width="56" height="172" rx="8" fill="#3d9e47"/>
+  <rect x="340" y="220" width="56" height="172" rx="8" fill="#c94a4a"/>
+  <rect x="408" y="220" width="40" height="172" rx="8" fill="#e8e8e8"/>
+</svg>

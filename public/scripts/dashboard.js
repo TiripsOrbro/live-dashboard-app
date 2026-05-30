@@ -1885,12 +1885,25 @@ async function initTradingHours() {
 /**
  * Fit the 1920×1080 dashboard design to the viewport.
  * Desktop: scale typography/spacing via --dashboard-scale.
- * Mobile: keep desktop layout at full internal scale and shrink the whole
- * card with CSS zoom so it reads as a miniature of the desktop view.
+ * Mobile: scale to viewport width and allow vertical scroll so the footer
+ * (audits / orders) is not clipped by Safari's bottom toolbar.
  */
+function getMobileLayoutHeight() {
+    const vv = window.visualViewport;
+    const height = vv?.height ?? window.innerHeight;
+    const standalone =
+        window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    if (standalone) return height;
+    return Math.max(height - 52, height * 0.88);
+}
+
 function applyDashboardScale() {
-    const ratio = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
     const mobile = window.matchMedia('(max-width: 900px)').matches;
+    const viewW = window.visualViewport?.width ?? window.innerWidth;
+    const viewH = getMobileLayoutHeight();
+    const ratio = mobile
+        ? viewW / 1920
+        : Math.min(viewW / 1920, viewH / 1080);
     const minScale = mobile ? 0.28 : 0.72;
     const scale = Math.max(minScale, Math.min(ratio, 1));
     const dash = document.querySelector('.dashboard');
@@ -1966,6 +1979,12 @@ function initMobileLandscape() {
         applyDashboardScale();
         updateRotateHint();
     });
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+            applyDashboardScale();
+            updateRotateHint();
+        });
+    }
 
     if (STORE_NUMBER && isMobileDashboardView()) {
         tryLockLandscape();

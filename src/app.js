@@ -214,13 +214,15 @@ function ipAllowlistMiddleware(req, res, next) {
     res.status(403).send('Forbidden');
 }
 
-function dashboardAuthMiddleware(req, res, next) {
-    if (req.path === '/login' || req.path === '/unlock' || req.path === '/logout') {
-        next();
-        return;
-    }
+function isLoginPublicPath(reqPath) {
+    if (reqPath === '/login' || reqPath === '/unlock' || reqPath === '/logout') return true;
+    if (reqPath === '/icon.svg' || reqPath === '/icon-mark.svg') return true;
+    if (reqPath === '/styles/login.css' || reqPath === '/scripts/login.js') return true;
+    return false;
+}
 
-    if (req.path === '/styles/login.css' || req.path === '/scripts/login.js') {
+function dashboardAuthMiddleware(req, res, next) {
+    if (isLoginPublicPath(req.path)) {
         next();
         return;
     }

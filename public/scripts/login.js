@@ -7,6 +7,7 @@ const welcomeMessage = document.getElementById('welcome-message');
 const errorEl = document.getElementById('login-error');
 const submitBtn = document.getElementById('login-submit');
 const submitLabel = document.querySelector('.login-submit-label');
+const loginProgress = document.getElementById('login-progress');
 const usernameInput = document.getElementById('login-username');
 const passwordInput = document.getElementById('login-password');
 const rememberInput = document.getElementById('remember-me');
@@ -14,22 +15,21 @@ const rememberInput = document.getElementById('remember-me');
 const WELCOME_SKIP_KEY = 'dashboard-welcome-shown';
 const DASHBOARD_TIME_ZONE = 'Australia/Melbourne';
 
-const BRAND_MARK_CYCLE_DUR = '5s';
-const BRAND_MARK_CYCLE_BUSY = '2.4s';
+const BRAND_MARK_CYCLE_DUR = '4s';
 
 /** One cycle: yellow draws the path → red follows → line fades → reset (invisible). */
 const PATH_DASH_VALUES = '520;520;0;0;520;520';
-const PATH_DASH_TIMES = '0;0.05;0.48;0.88;0.96;1';
+const PATH_DASH_TIMES = '0;0.05;0.40;0.78;0.92;1';
 const PATH_OPACITY_VALUES = '0;1;1;1;0;0';
-const PATH_OPACITY_TIMES = '0;0.05;0.48;0.88;0.94;1';
-const LEAD_MOTION_POINTS = '0;0;0;1;1;1;0';
-const LEAD_MOTION_TIMES = '0;0.05;0.05;0.48;0.88;0.96;1';
-const LEAD_OPACITY_VALUES = '0;0;1;1;1;1;0';
-const LEAD_OPACITY_TIMES = '0;0.05;0.08;0.48;0.88;0.94;1';
+const PATH_OPACITY_TIMES = '0;0.05;0.40;0.78;0.86;1';
+const LEAD_MOTION_POINTS = '0;0;0;1;0';
+const LEAD_MOTION_TIMES = '0;0.05;0.05;0.40;0.45';
+const LEAD_OPACITY_VALUES = '0;0;1;0;0';
+const LEAD_OPACITY_TIMES = '0;0.05;0.08;0.40;1';
 const TRAIL_MOTION_POINTS = '0;0;0;1;1;0';
-const TRAIL_MOTION_TIMES = '0;0.22;0.22;0.88;0.96;1';
+const TRAIL_MOTION_TIMES = '0;0.18;0.18;0.78;0.92;1';
 const TRAIL_OPACITY_VALUES = '0;0;1;1;1;0';
-const TRAIL_OPACITY_TIMES = '0;0.22;0.26;0.88;0.94;1';
+const TRAIL_OPACITY_TIMES = '0;0.18;0.22;0.78;0.86;1';
 
 function brandMarkSvg(uid) {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="brand-mark" aria-hidden="true">
@@ -91,10 +91,6 @@ function mountBrandMark(hostId, uid) {
 }
 
 function setBrandMarkBusy(busy) {
-    const dur = busy ? BRAND_MARK_CYCLE_BUSY : BRAND_MARK_CYCLE_DUR;
-    document.querySelectorAll('.brand-mark-cycle-anim').forEach((node) => {
-        node.setAttribute('dur', dur);
-    });
     document.querySelectorAll('.brand-mark').forEach((mark) => {
         mark.classList.toggle('brand-mark--busy', busy);
     });
@@ -168,6 +164,10 @@ function setFormBusy(busy) {
     rememberInput.disabled = busy;
     submitBtn.classList.toggle('login-submit--loading', busy);
     submitLabel.textContent = busy ? 'Signing in…' : 'Sign in';
+    if (loginProgress) {
+        loginProgress.hidden = !busy;
+        loginProgress.setAttribute('aria-hidden', busy ? 'false' : 'true');
+    }
     setBrandMarkBusy(busy);
 }
 

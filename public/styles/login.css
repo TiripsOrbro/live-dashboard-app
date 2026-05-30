@@ -64,6 +64,7 @@ body.login-body {
     transition:
         opacity 0.45s var(--popup-ease),
         transform 0.45s var(--popup-ease);
+    position: relative;
 }
 
 .login-stage--hide {
@@ -129,11 +130,6 @@ body.login-body {
 .brand-mark-pulse {
     stroke-dasharray: 520;
     stroke-dashoffset: 520;
-}
-
-.brand-mark--busy .brand-mark-ring--outer,
-.brand-mark--busy .brand-mark-ring--inner {
-    animation-duration: 1.15s;
 }
 
 @keyframes brand-mark-ring-pulse {
@@ -322,6 +318,50 @@ body.login-body {
     font-size: 0.88rem;
     color: var(--near);
     text-align: center;
+}
+
+.login-progress {
+    position: absolute;
+    left: max(20px, env(safe-area-inset-left));
+    right: max(20px, env(safe-area-inset-right));
+    bottom: max(20px, env(safe-area-inset-bottom));
+    z-index: 5;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s var(--popup-ease);
+}
+
+.login-progress:not([hidden]) {
+    opacity: 1;
+}
+
+.login-progress-track {
+    height: 2px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--login-border) 55%, transparent);
+    overflow: hidden;
+}
+
+.login-progress-bar {
+    display: block;
+    height: 100%;
+    width: 38%;
+    border-radius: inherit;
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--tb-purple-light) 70%, transparent),
+        #ffc72c
+    );
+    animation: login-progress-slide 1.35s ease-in-out infinite;
+}
+
+@keyframes login-progress-slide {
+    0% {
+        transform: translateX(-105%);
+    }
+    100% {
+        transform: translateX(320%);
+    }
 }
 
 .login-hint {
@@ -515,6 +555,12 @@ body.login-body {
     .login-subtitle {
         font-size: clamp(0.92rem, 3.6vw, 1rem);
     }
+
+    .login-progress {
+        left: max(24px, env(safe-area-inset-left));
+        right: max(24px, env(safe-area-inset-right));
+        bottom: max(16px, env(safe-area-inset-bottom));
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -525,6 +571,12 @@ body.login-body {
     .login-card--shake {
         animation: none !important;
         transition: opacity 0.2s ease !important;
+    }
+
+    .login-progress-bar {
+        animation: none !important;
+        width: 55%;
+        opacity: 0.75;
     }
 
     .welcome-brand,

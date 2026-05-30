@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Icon variants — TBA Dashboard</title>
+    <style>
+        :root {
+            --bg: #0d0b0c;
+            --surface: #1a1618;
+            --border: #3d3344;
+            --text: #f5f5f5;
+            --muted: #a8a8a8;
+            --purple: #7a3eb1;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 2rem 1.5rem 3rem;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        h1 {
+            margin: 0 0 0.35rem;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        p.lead {
+            margin: 0 0 2rem;
+            color: var(--muted);
+            max-width: 42rem;
+            line-height: 1.5;
+        }
+
+        .current {
+            margin-bottom: 2.5rem;
+            padding: 1.25rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface);
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+            flex-wrap: wrap;
+        }
+
+        .current img {
+            width: 80px;
+            height: 80px;
+            border-radius: 18px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 1.25rem;
+        }
+
+        .card {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--surface);
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.75rem;
+            transition: border-color 0.2s ease;
+        }
+
+        .card:hover {
+            border-color: var(--purple);
+        }
+
+        .card img {
+            width: 128px;
+            height: 128px;
+            border-radius: 28px;
+        }
+
+        .card img.small {
+            width: 48px;
+            height: 48px;
+            border-radius: 11px;
+        }
+
+        .sizes {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .name {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .desc {
+            font-size: 0.82rem;
+            color: var(--muted);
+            text-align: center;
+            line-height: 1.4;
+        }
+
+        .on-light {
+            background: #d9d9d9;
+            padding: 0.75rem 1rem;
+            border-radius: 6px;
+            margin-top: 0.25rem;
+        }
+
+        code {
+            font-size: 0.78rem;
+            color: var(--muted);
+        }
+
+        h2 {
+            margin: 2.5rem 0 0.5rem;
+            font-size: 1.15rem;
+            font-weight: 600;
+        }
+
+        h2 + p {
+            margin: 0 0 1.25rem;
+            color: var(--muted);
+            font-size: 0.9rem;
+            max-width: 42rem;
+            line-height: 1.5;
+        }
+
+        .card--featured {
+            border-color: color-mix(in srgb, var(--purple) 55%, var(--border));
+        }
+    </style>
+</head>
+<body>
+    <h1>Icon variants</h1>
+    <p class="lead">
+        Compare options below. Each shows at app size (128px) and favicon size (48px).
+        Pick one and we can swap <code>/icon.svg</code>.
+    </p>
+
+    <div class="current">
+        <img src="/icon.svg" alt="Current icon">
+        <div>
+            <div class="name">Current — <code>/icon.svg</code></div>
+            <div class="desc">Mini dashboard: purple header, sidebar, coloured bars</div>
+        </div>
+    </div>
+
+    <h2>V3 — Taco Bell themed</h2>
+    <p>Based on the live pulse concept: TB purple (<code>#702082</code>), gold pulse (<code>#ffc72c</code>), and abstract shapes — not the official logo.</p>
+
+    <div class="grid">
+        <article class="card card--featured">
+            <img src="v3-tb-gold-pulse.svg" alt="TB gold pulse">
+            <div class="sizes">
+                <img class="small" src="v3-tb-gold-pulse.svg" alt="">
+            </div>
+            <div class="name">TB-A — Gold pulse</div>
+            <div class="desc">Closest to V3 — plum gradient bg, purple rings, gold heartbeat</div>
+            <code>v3-tb-gold-pulse.svg</code>
+        </article>
+
+        <article class="card card--featured">
+            <img src="v3-tb-bell-pulse.svg" alt="TB bell pulse">
+            <div class="sizes">
+                <img class="small" src="v3-tb-bell-pulse.svg" alt="">
+            </div>
+            <div class="name">TB-B — Bell + pulse</div>
+            <div class="desc">Abstract bell with gold pulse + green “live” dot</div>
+            <code>v3-tb-bell-pulse.svg</code>
+        </article>
+
+        <article class="card card--featured">
+            <img src="v3-tb-shell-pulse.svg" alt="TB shell pulse">
+            <div class="sizes">
+                <img class="small" src="v3-tb-shell-pulse.svg" alt="">
+            </div>
+            <div class="name">TB-C — Taco shell</div>
+            <div class="desc">Gold shell arc with pulse in purple sky — most “food” themed</div>
+            <code>v3-tb-shell-pulse.svg</code>
+        </article>
+
+        <article class="card card--featured">
+            <img src="v3-tb-neon-pulse.svg" alt="TB neon pulse">
+            <div class="sizes">
+                <img class="small" src="v3-tb-neon-pulse.svg" alt="">
+            </div>
+            <div class="name">TB-D — Neon pulse</div>
+            <div class="desc">Glowing rings + gold pulse — late-night TB energy</div>
+            <code>v3-tb-neon-pulse.svg</code>
+        </article>
+    </div>
+
+    <h2>Earlier variants</h2>
+    <p>Original exploration set from before the V3 TB pass.</p>
+
+    <div class="grid">
+        <article class="card">
+            <img src="v1-dashboard-bars.svg" alt="V1 dashboard bars">
+            <div class="sizes">
+                <img class="small" src="v1-dashboard-bars.svg" alt="">
+            </div>
+            <div class="name">V1 — Dashboard bars</div>
+            <div class="desc">Refined version of current idea — cleaner proportions, gradient header</div>
+            <code>v1-dashboard-bars.svg</code>
+        </article>
+
+        <article class="card">
+            <img src="v2-monogram-t.svg" alt="V2 monogram T">
+            <div class="sizes">
+                <img class="small" src="v2-monogram-t.svg" alt="">
+            </div>
+            <div class="name">V2 — Monogram T</div>
+            <div class="desc">Bold “T” on black — simple, reads well small</div>
+            <code>v2-monogram-t.svg</code>
+        </article>
+
+        <article class="card">
+            <img src="v3-live-pulse.svg" alt="V3 live pulse">
+            <div class="sizes">
+                <img class="small" src="v3-live-pulse.svg" alt="">
+            </div>
+            <div class="name">V3 — Live pulse</div>
+            <div class="desc">Heartbeat line — emphasises “live” data</div>
+            <code>v3-live-pulse.svg</code>
+        </article>
+
+        <article class="card">
+            <img src="v4-grid-cells.svg" alt="V4 grid cells">
+            <div class="sizes">
+                <img class="small" src="v4-grid-cells.svg" alt="">
+            </div>
+            <div class="name">V4 — Grid cells</div>
+            <div class="desc">3×4 cell grid matching dashboard colours (green/red/grey)</div>
+            <code>v4-grid-cells.svg</code>
+        </article>
+
+        <article class="card">
+            <img src="v5-trend-line.svg" alt="V5 trend line">
+            <div class="sizes">
+                <img class="small" src="v5-trend-line.svg" alt="">
+            </div>
+            <div class="name">V5 — Trend line</div>
+            <div class="desc">Upward sales chart — purple gradient fill</div>
+            <code>v5-trend-line.svg</code>
+        </article>
+
+        <article class="card">
+            <img src="v6-bell-minimal.svg" alt="V6 bell minimal">
+            <div class="sizes">
+                <img class="small" src="v6-bell-minimal.svg" alt="">
+            </div>
+            <div class="name">V6 — Bell + live dot</div>
+            <div class="desc">Abstract bell shape with green “live” indicator</div>
+            <code>v6-bell-minimal.svg</code>
+        </article>
+    </div>
+</body>
+</html>

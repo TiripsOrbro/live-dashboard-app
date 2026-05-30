@@ -143,7 +143,29 @@ When `.Users` exists, username/password login is required. If no users file exis
 
 Sign out: `/logout`. Old `/unlock` bookmarks redirect to `/login`.
 
-After sign-in, the login page cross-fades to a charcoal welcome screen (using the `#` name from `.Users`), then transitions to the store picker or your store dashboard.
+After sign-in, the login page cross-fades to a charcoal welcome screen (using the `#` name from `.Users`), then transitions to the store picker or your store dashboard. The welcome animation is shown once per day per browser; later sign-ins the same day go straight through.
+
+The **login and welcome screens use a dedicated dark theme** (black background, light text). The sales dashboard itself stays on the light grey layout for grid readability.
+
+### Scrape failure alerts (optional)
+
+Add to `.env.production` to get notified when Macromatix scraping fails (rate-limited to once per 30 minutes by default):
+
+```ini
+# Discord/Slack/generic webhook (JSON POST with { content, text })
+DASHBOARD_ALERT_WEBHOOK_URL=https://discord.com/api/webhooks/...
+
+# Or email via SMTP (requires nodemailer — included in package.json)
+DASHBOARD_ALERT_EMAIL=you@example.com
+DASHBOARD_SMTP_HOST=smtp.gmail.com
+DASHBOARD_SMTP_PORT=587
+DASHBOARD_SMTP_USER=you@example.com
+DASHBOARD_SMTP_PASS=your-app-password
+DASHBOARD_SMTP_FROM=you@example.com
+
+# Optional: cooldown between duplicate alerts (ms). Default 1800000 (30 min).
+# DASHBOARD_ALERT_COOLDOWN_MS=1800000
+```
 
 
 ### `.storelist` — the master list

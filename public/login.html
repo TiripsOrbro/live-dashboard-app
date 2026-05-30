@@ -3,16 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#7a3eb1">
+    <meta name="theme-color" content="#000000">
+    <meta name="color-scheme" content="dark">
     <title>Sign in — Sales Dashboard</title>
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icon.svg">
     <link rel="stylesheet" href="/styles/login.css">
 </head>
 <body class="login-body">
     <div class="login-root">
         <section id="login-stage" class="login-stage" aria-label="Sign in">
-            <div class="login-card">
+            <div id="login-card" class="login-card">
                 <header class="login-brand">
+                    <img class="login-logo" src="/icon.svg" alt="" width="56" height="56">
                     <h1 class="login-title">SALES DASHBOARD</h1>
                     <p class="login-subtitle">Sign in to view live store data</p>
                 </header>
@@ -26,19 +29,25 @@
                         Password
                         <input id="login-password" name="password" type="password" autocomplete="current-password" required>
                     </label>
-                    <button type="submit" class="login-submit" id="login-submit">Sign in</button>
+                    <label class="login-remember">
+                        <input id="remember-me" name="remember" type="checkbox" checked>
+                        <span>Stay signed in on this device</span>
+                    </label>
+                    <button type="submit" class="login-submit" id="login-submit">
+                        <span class="login-submit-label">Sign in</span>
+                    </button>
                     <p id="login-error" class="login-error" role="alert" aria-live="polite"></p>
                 </form>
             </div>
         </section>
 
         <section id="welcome-stage" class="welcome-stage" hidden aria-hidden="true" aria-live="polite">
+            <div class="welcome-brand" aria-hidden="true">
+                <img class="welcome-logo" src="/icon.svg" alt="" width="72" height="72">
+            </div>
             <div class="welcome-copy">
                 <p class="welcome-line">
-                    <span id="welcome-label" class="welcome-label">Welcome</span>
-                </p>
-                <p class="welcome-line welcome-line--name" id="welcome-name-row" hidden>
-                    <span class="welcome-name-wrap"><span id="welcome-name"></span></span>
+                    <span id="welcome-message" class="welcome-message">Welcome</span>
                 </p>
             </div>
         </section>

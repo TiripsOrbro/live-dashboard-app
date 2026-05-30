@@ -481,12 +481,19 @@ function updateClock() {
 /* -----------------------------------------------------------
    Header "Last updated" — formats API `timestamp` for `#last-updated`
 ----------------------------------------------------------- */
+let lastTimestampShown = '';
+
 function updateTimestamp(ts) {
     const el = document.getElementById('last-updated');
-    if (el) {
-        const date = new Date(ts);
-        el.textContent = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: DASHBOARD_TIME_ZONE });
+    if (!el) return;
+    const date = new Date(ts);
+    el.textContent = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: DASHBOARD_TIME_ZONE });
+    if (lastTimestampShown && String(ts) !== lastTimestampShown) {
+        el.classList.remove('top-info-value--updated');
+        void el.offsetWidth;
+        el.classList.add('top-info-value--updated');
     }
+    lastTimestampShown = String(ts);
 }
 
 function updateSalesStatus(data = {}) {
@@ -1701,11 +1708,28 @@ function buildGridFooterRow() {
     `;
 }
 
+function showGridSkeleton() {
+    const grid = document.querySelector('.dashboard-grid');
+    if (!grid) return;
+    const cols = Math.max(times.length || 12, 8);
+    grid.classList.add('dashboard-grid--skeleton');
+    grid.setAttribute('aria-busy', 'true');
+    grid.innerHTML = `
+        <div class="grid-skeleton-row">${'<div class="grid-skeleton-block"></div>'.repeat(cols + 1)}</div>
+        <div class="grid-skeleton-row">${'<div class="grid-skeleton-block"></div>'.repeat(cols + 1)}</div>
+        <div class="grid-skeleton-row">${'<div class="grid-skeleton-block"></div>'.repeat(cols + 1)}</div>
+        <div class="grid-skeleton-row grid-skeleton-row--wide">${'<div class="grid-skeleton-block"></div>'.repeat(Math.min(cols + 1, 6))}</div>
+    `;
+}
+
 function updateGrid() {
     const grid = document.querySelector('.dashboard-grid');
     if (!grid) return;
 
     syncAuditPeriodState();
+
+    grid.classList.remove('dashboard-grid--skeleton');
+    grid.removeAttribute('aria-busy');
 
     grid.innerHTML = `
         ${buildHeaderRow()}
@@ -1800,6 +1824,7 @@ function renderDashboard() {
     // bindOrderDateTestPanelOnce();
     applyDashboardScale();
     updateRotateHint();
+    showGridSkeleton();
 }
 
 /* -----------------------------------------------------------

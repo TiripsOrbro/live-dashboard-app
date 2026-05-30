@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Bell shape minimal">
+  <defs>
+    <linearGradient id="v6-bell" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#9b5fd4"/>
+      <stop offset="100%" stop-color="#6a32a0"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0d0b0c"/>
+  <path
+    fill="url(#v6-bell)"
+    d="M256 96 C176 96 128 168 128 248 L96 320 H416 L384 248 C384 168 336 96 256 96 Z"
+  />
+  <rect x="200" y="336" width="112" height="24" rx="12" fill="#312a2c"/>
+  <circle cx="256" cy="376" r="28" fill="#7a3eb1"/>
+  <circle cx="368" cy="144" r="36" fill="#3d9e47"/>
+  <circle cx="368" cy="144" r="14" fill="#f5f5f5"/>
+</svg>

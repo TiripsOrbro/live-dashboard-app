@@ -18,7 +18,7 @@ require('dotenv').config({ path: path.join(__dirname, '../.env.production'), ove
     console.log(`[Env] Macromatix: SCRAPER_USERNAME ${u ? 'set' : 'MISSING'}, SCRAPER_PASSWORD ${p ? 'set' : 'MISSING'}`);
 })();
 
-const scrapeData = require('./services/scraper');
+const { notifyScrapeFailure } = require('./services/alertNotifier');
 const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./services/storeList');
 const {
     getDismissalPeriodKey,
@@ -169,14 +169,32 @@ function sendLoginFailure(req, res, message = 'Incorrect username or password.')
     res.redirect('/login?error=invalid');
 }
 
-function setSessionCookie(res, user) {
-    res.cookie(SESSION_COOKIE, createSessionToken(user), sessionCookieOptions());
-    res.clearCookie(LEGACY_COOKIE, sessionCookieOptions());
+function setSessionCookie(res, user, remember = true) {
+    res.cookie(SESSION_COOKIE, createSessionToken(user), sessionCookieOptions({ remember }));
+    res.clearCookie(LEGACY_COOKIE, sessionCookieOptions({ remember }));
 }
 
-function setLegacyAccessCookie(res) {
-    res.cookie(LEGACY_COOKIE, legacyAccessToken(DASHBOARD_ACCESS_KEY), sessionCookieOptions());
-    res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
+function setLegacyAccessCookie(res, remember = true) {
+    res.cookie(LEGACY_COOKIE, legacyAccessToken(DASHBOARD_ACCESS_KEY), sessionCookieOptions({ remember }));
+    res.clearCookie(SESSION_COOKIE, sessionCookieOptions({ remember }));
+}
+
+function logAuthLogin(req, user) {
+    const ip = getRequestIp(req);
+    if (user?.username === '__legacy__') {
+        console.log(`[Auth] Login: legacy access key from ${ip}`);
+        return;
+    }
+    const profile = userProfileForClient(user);
+    const label = profile.welcomeName || user.username;
+    const access = user.stores === '*' ? 'all stores' : user.stores.join(', ');
+    console.log(`[Auth] Login: ${user.username} (${label}) — ${access} from ${ip}`);
+}
+
+function logAuthLoginFailed(req, username, reason = 'invalid credentials') {
+    const ip = getRequestIp(req);
+    const who = String(username || '').trim() || '(no username)';
+    console.log(`[Auth] Login failed: ${who} — ${reason} from ${ip}`);
 }
 
 function ipAllowlistMiddleware(req, res, next) {
@@ -248,20 +266,24 @@ app.post('/login', (req, res) => {
 
     const username = String(req.body?.username || '').trim();
     const password = String(req.body?.password || req.body?.accessKey || '');
+    const remember = !(req.body?.remember === false || req.body?.remember === '0' || req.body?.remember === 0);
 
     if (!username && DASHBOARD_ACCESS_KEY && timingSafeEqualString(password, DASHBOARD_ACCESS_KEY)) {
-        setLegacyAccessCookie(res);
+        setLegacyAccessCookie(res, remember);
+        logAuthLogin(req, { username: '__legacy__', role: 'admin', stores: '*' });
         sendLoginSuccess(req, res, { username: '__legacy__', role: 'admin', stores: '*' });
         return;
     }
 
     const user = authenticate(username, password);
     if (!user) {
+        logAuthLoginFailed(req, username);
         sendLoginFailure(req, res);
         return;
     }
 
-    setSessionCookie(res, user);
+    setSessionCookie(res, user, remember);
+    logAuthLogin(req, user);
     sendLoginSuccess(req, res, user);
 });
 
@@ -276,10 +298,12 @@ app.post('/unlock', (req, res) => {
         return;
     }
     if (DASHBOARD_ACCESS_KEY && timingSafeEqualString(password, DASHBOARD_ACCESS_KEY)) {
-        setLegacyAccessCookie(res);
+        setLegacyAccessCookie(res, true);
+        logAuthLogin(req, { username: '__legacy__', role: 'admin', stores: '*' });
         sendLoginSuccess(req, res, { username: '__legacy__', role: 'admin', stores: '*' });
         return;
     }
+    logAuthLoginFailed(req, '', 'invalid access key');
     sendLoginFailure(req, res, 'Incorrect access key.');
 });
 
@@ -489,16 +513,21 @@ function mergeStoresPreservingGood(prevPayload, freshPayload) {
 function runScrapeIntoCache(options) {
     if (salesInFlight) return salesInFlight;
     salesInFlight = (async () => {
-        const result = await scrapeWithRetry(options);
-        const fresh = {
-            success: true,
-            timestamp: result.timestamp,
-            stores: Array.isArray(result.stores) ? result.stores : [],
-        };
-        salesCache = { success: true, timestamp: fresh.timestamp, stores: mergeStoresPreservingGood(salesCache, fresh) };
-        salesCacheAt = Date.now();
-        logDashboardScrapeComplete(salesCache);
-        return salesCache;
+        try {
+            const result = await scrapeWithRetry(options);
+            const fresh = {
+                success: true,
+                timestamp: result.timestamp,
+                stores: Array.isArray(result.stores) ? result.stores : [],
+            };
+            salesCache = { success: true, timestamp: fresh.timestamp, stores: mergeStoresPreservingGood(salesCache, fresh) };
+            salesCacheAt = Date.now();
+            logDashboardScrapeComplete(salesCache);
+            return salesCache;
+        } catch (error) {
+            notifyScrapeFailure(error, 'scrape cycle').catch(() => {});
+            throw error;
+        }
     })();
     salesInFlight.catch(() => {}).finally(() => {
         salesInFlight = null;
@@ -777,6 +806,7 @@ function startBackgroundRefresh() {
             await runScrapeIntoCache();
         } catch (error) {
             console.warn('[Dashboard] Background refresh failed:', error.message);
+            notifyScrapeFailure(error, 'background refresh').catch(() => {});
         }
     };
     // Prime the cache shortly after boot, then on the configured interval.

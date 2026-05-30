@@ -96,7 +96,10 @@ body {
 #app {
     height: 100%;
     box-sizing: border-box;
-    padding: calc(24px * var(--dashboard-scale));
+    padding: max(calc(24px * var(--dashboard-scale)), env(safe-area-inset-top))
+        max(calc(24px * var(--dashboard-scale)), env(safe-area-inset-right))
+        max(calc(24px * var(--dashboard-scale)), env(safe-area-inset-bottom))
+        max(calc(24px * var(--dashboard-scale)), env(safe-area-inset-left));
     overflow: hidden;
 }
 
@@ -886,6 +889,71 @@ body {
     opacity: 1;
     border: var(--cell-border) var(--bad-border);
     text-align: center;
+}
+
+/* Loading skeleton — shown before first sales payload arrives */
+.dashboard-grid--skeleton {
+    display: grid;
+    gap: calc(8px * var(--dashboard-scale));
+}
+
+.grid-skeleton-row {
+    display: grid;
+    grid-template-columns: var(--dashboard-grid-label-col) repeat(var(--grid-hours, 12), minmax(0, 1fr));
+    gap: calc(8px * var(--dashboard-scale));
+}
+
+.grid-skeleton-row--wide {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: calc(8px * var(--dashboard-scale));
+}
+
+.grid-skeleton-block {
+    min-height: var(--dashboard-grid-min-height);
+    border-radius: 2px;
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--blank) 88%, var(--grey)) 0%,
+        color-mix(in srgb, var(--white) 70%, var(--grey)) 45%,
+        color-mix(in srgb, var(--blank) 88%, var(--grey)) 100%
+    );
+    background-size: 200% 100%;
+    animation: grid-skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+.grid-skeleton-row .grid-skeleton-block:first-child {
+    min-height: calc(var(--dashboard-grid-min-height) * 0.85);
+}
+
+@keyframes grid-skeleton-shimmer {
+    0% {
+        background-position: 100% 0;
+    }
+    100% {
+        background-position: -100% 0;
+    }
+}
+
+.top-info-value--updated {
+    animation: last-updated-pulse 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes last-updated-pulse {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+        color: inherit;
+    }
+    35% {
+        opacity: 1;
+        transform: scale(1.06);
+        color: var(--tb-purple-light);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+        color: inherit;
+    }
 }
 
 .sales-status {

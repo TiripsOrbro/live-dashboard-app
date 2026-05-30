@@ -18,13 +18,31 @@
             align-items: center;
             min-height: 100vh;
             margin: 0;
-            padding: 4vh 4vw;
+            padding: max(4vh, env(safe-area-inset-top)) max(4vw, env(safe-area-inset-right))
+                max(4vh, env(safe-area-inset-bottom)) max(4vw, env(safe-area-inset-left));
             box-sizing: border-box;
         }
 
         .stores-header {
             text-align: center;
             margin-bottom: 4vh;
+            width: 100%;
+            max-width: 520px;
+        }
+
+        .stores-greeting {
+            margin: 0 0 0.35rem;
+            font-size: var(--font-size-4);
+            font-weight: var(--font-weight-medium);
+            color: color-mix(in srgb, var(--charcoal) 82%, var(--grey));
+        }
+
+        .stores-header-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem 1.25rem;
         }
 
         .stores-title {
@@ -110,7 +128,8 @@
 
         @media (max-width: 900px) {
             body {
-                padding: 3vh 4vw;
+                padding: max(3vh, env(safe-area-inset-top)) max(4vw, env(safe-area-inset-right))
+                    max(3vh, env(safe-area-inset-bottom)) max(4vw, env(safe-area-inset-left));
             }
 
             .store-grid {
@@ -152,9 +171,14 @@
 
 <body>
     <header class="stores-header">
-        <h1 class="stores-title">Store Dashboards</h1>
-        <p class="stores-subtitle">Select a store to open its live sales dashboard</p>
-        <p class="stores-logout"><a href="/logout">Sign out</a></p>
+        <p id="stores-greeting" class="stores-greeting" hidden></p>
+        <div class="stores-header-row">
+            <div>
+                <h1 class="stores-title">Store Dashboards</h1>
+                <p class="stores-subtitle">Select a store to open its live sales dashboard</p>
+            </div>
+            <p class="stores-logout"><a href="/logout">Sign out</a></p>
+        </div>
     </header>
 
     <main id="store-grid" class="store-grid" aria-label="Store list"></main>

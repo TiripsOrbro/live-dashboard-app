@@ -1,5 +1,6 @@
 /* Store picker — fetches the master store list and renders clickable tiles linking to /<storeNumber>. */
 const grid = document.getElementById('store-grid');
+const greetingEl = document.getElementById('stores-greeting');
 const LANDSCAPE_PREF_KEY = 'dashboard-prefer-landscape';
 
 function markLandscapePreference() {
@@ -54,11 +55,20 @@ function renderStores(stores) {
         .join('');
 }
 
+function showUserGreeting(me) {
+    if (!greetingEl || !me?.success) return;
+    const name = String(me.welcomeName || me.displayName || me.username || '').trim();
+    if (!name) return;
+    greetingEl.textContent = `Hi, ${name}`;
+    greetingEl.hidden = false;
+}
+
 async function loadStores() {
     try {
         const meRes = await fetch(`${window.location.origin}/api/me`, { credentials: 'include' });
         if (meRes.ok) {
             const me = await meRes.json();
+            showUserGreeting(me);
             if (me.success && me.skipStorePicker && me.defaultPath) {
                 markLandscapePreference();
                 window.location.replace(me.defaultPath);

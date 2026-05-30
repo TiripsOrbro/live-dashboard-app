@@ -8,6 +8,7 @@ const USERS_PATH = path.join(PROJECT_ROOT, '.Users');
 const SESSION_COOKIE = 'dashboard_session';
 const LEGACY_COOKIE = 'dashboard_access';
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/** Browser-session cookie when “Stay signed in” is unchecked (Express: omit maxAge). */
 
 const FIELD_LABELS = {
     username: ['username', 'user'],
@@ -350,14 +351,18 @@ function getLoginRedirectPath(user) {
     return '/';
 }
 
-function sessionCookieOptions() {
+function sessionCookieOptions(options = {}) {
+    const remember = options.remember !== false;
     const secureCookie = /^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_SECURE_COOKIE ?? '').trim());
-    return {
+    const base = {
         httpOnly: true,
         sameSite: 'strict',
         secure: secureCookie,
-        maxAge: SESSION_MAX_AGE_MS,
     };
+    if (remember) {
+        return { ...base, maxAge: SESSION_MAX_AGE_MS };
+    }
+    return base;
 }
 
 function userProfileForClient(user) {

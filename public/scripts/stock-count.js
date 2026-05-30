@@ -1,8 +1,10 @@
 const app = document.getElementById('app');
-const pathMatch = window.location.pathname.match(/\/(\d{3,6})\/stock-count\/([a-z0-9-]+)/);
-const STORE_NUMBER = pathMatch ? pathMatch[1] : '';
+const pathMatch = window.location.pathname.match(/\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)/i);
+const STORE_NUMBER = pathMatch ? pathMatch[1].toLowerCase() : '';
 const VENDOR_SLUG = pathMatch ? pathMatch[2] : '';
 const NOLOGIN_MODE = /\/nologin\/?$/.test(window.location.pathname);
+
+const MACROMATIX_URL = 'https://tacobellau.macromatix.net/';
 
 let catalog = null;
 let draft = null;
@@ -29,20 +31,6 @@ function escapeHtml(value) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
-}
-
-function formatItemLabel(item) {
-    if (item.itemCode) {
-        return `<span class="stock-count-item-code">${escapeHtml(item.itemCode)}</span><span class="stock-count-item-name">${escapeHtml(item.name)}</span>`;
-    }
-    return `<span class="stock-count-item-name">${escapeHtml(item.name)}</span>`;
-}
-
-function formatSummaryItemLabel(item) {
-    if (item.itemCode) {
-        return `<span class="stock-count-item-code">${escapeHtml(item.itemCode)}</span><span class="stock-count-item-name">${escapeHtml(item.itemName)}</span>`;
-    }
-    return `<span class="stock-count-item-name">${escapeHtml(item.itemName)}</span>`;
 }
 
 function setStatus(message, kind = '') {
@@ -148,24 +136,39 @@ async function goToReview() {
     }
 }
 
-async function submitCounts() {
-    if (draft?.submittedAt) return;
+function openMacromatix() {
+    window.open(MACROMATIX_URL, '_blank', 'noopener,noreferrer');
+}
+
+async function sendToMmx() {
+    if (draft?.submittedAt || saving) return;
+    const ok = await saveCurrentLocation(false);
+    if (!ok && !draft?.locations) return;
     saving = true;
+    setStatus('Sending counts to Macromatix… this may take a few minutes.', '');
     render();
     try {
-        const res = await fetch(apiQuery('/api/stock-count/submit'), {
+        const res = await fetch(apiQuery('/api/stock-count/send-to-mmx'), {
             method: 'POST',
             credentials: 'include',
             headers: { Accept: 'application/json' },
         });
         const data = await res.json();
         if (!res.ok || !data.success) {
-            throw new Error(data.error || 'Submit failed.');
+            throw new Error(data.error || 'Send to Macromatix failed.');
         }
-        draft = { ...draft, submittedAt: data.submittedAt };
-        summary = data;
-        setStatus('Stock count submitted. Macromatix entry will be added in a future update.', 'success');
+        draft = { ...draft, submittedAt: data.submittedAt || new Date().toISOString(), mmxSentAt: true };
+        await loadSummary();
         viewMode = 'review';
+        let msg = 'Counts sent to Macromatix Key Item Count.';
+        if (data.ordersRan) {
+            const okOrders = (data.orders?.processed || []).filter((p) => p.ok).length;
+            const totalOrders = (data.orders?.processed || []).length;
+            msg += ` Build-to orders entered (${okOrders}/${totalOrders} vendors updated).`;
+        } else {
+            msg += ' Complete remaining vendor counts to trigger build-to order entry.';
+        }
+        setStatus(msg, 'success');
     } catch (error) {
         setStatus(error.message, 'error');
     } finally {
@@ -174,19 +177,67 @@ async function submitCounts() {
     }
 }
 
+function resolveUnitSlots(item) {
+    if (Array.isArray(item.unitSlots) && item.unitSlots.length === 3) {
+        return item.unitSlots;
+    }
+    const cols = Array.isArray(item.columns) ? item.columns : [];
+    if (cols.length === 2) {
+        return [
+            { key: cols[0].key, label: cols[0].label, na: false },
+            { key: null, label: 'N/a', na: true },
+            { key: cols[1].key, label: cols[1].label, na: false },
+        ];
+    }
+    if (cols.length === 1) {
+        return [
+            { key: null, label: 'N/a', na: true },
+            { key: null, label: 'N/a', na: true },
+            { key: cols[0].key, label: cols[0].label, na: false },
+        ];
+    }
+    const slots = cols.map((col) => ({ key: col.key, label: col.label, na: false }));
+    while (slots.length < 3) slots.push({ key: null, label: 'N/a', na: true });
+    return slots.slice(0, 3);
+}
+
+function buildUnitSlotHtml(item, ariaName) {
+    const slots = resolveUnitSlots(item);
+    return slots
+        .slice(0, 3)
+        .map((slot) => {
+            const label = slot.label || 'N/a';
+            if (slot.na) {
+                return `<div class="stock-count-unit-slot stock-count-unit-slot--na" data-label="${escapeHtml(label)}">
+                    <span class="stock-count-unit-label">${escapeHtml(label)}</span>
+                    <div class="stock-count-input stock-count-input--na" aria-hidden="true"></div>
+                </div>`;
+            }
+            return `<div class="stock-count-unit-slot" data-label="${escapeHtml(label)}">
+                <span class="stock-count-unit-label">${escapeHtml(label)}</span>
+                <input type="number" min="0" step="any" class="stock-count-input" data-item="${escapeHtml(item.key)}" data-col="${escapeHtml(slot.key)}" inputmode="decimal" aria-label="${escapeHtml(ariaName)} ${escapeHtml(label)}"${draft?.submittedAt ? ' disabled' : ''}>
+            </div>`;
+        })
+        .join('');
+}
+
 function buildEntryView() {
     const locationName = catalog.locations[currentLocationIndex];
     const itemsAtLocation = getItemsForLocation(locationName);
     const rows = itemsAtLocation
         .map((item) => {
             const ariaName = item.itemCode ? `${item.itemCode} ${item.name}` : item.name;
-            const cells = item.columns
-                .map(
-                    (col) =>
-                        `<td data-label="${escapeHtml(col.label)}"><input type="number" min="0" step="any" class="stock-count-input" data-item="${escapeHtml(item.key)}" data-col="${escapeHtml(col.key)}" inputmode="decimal" aria-label="${escapeHtml(ariaName)} ${escapeHtml(col.label)}"${draft?.submittedAt ? ' disabled' : ''}></td>`
-                )
-                .join('');
-            return `<tr><td class="stock-count-item-cell" data-label="Item">${formatItemLabel(item)}</td>${cells}</tr>`;
+            return `<tr class="stock-count-entry-row">
+                <td class="stock-count-entry-cell" colspan="2">
+                    <div class="stock-count-entry-line">
+                        <div class="stock-count-name-slot">
+                            <span class="stock-count-unit-label stock-count-unit-label--spacer" aria-hidden="true">&nbsp;</span>
+                            <div class="stock-count-item-box">${escapeHtml(item.name)}</div>
+                        </div>
+                        <div class="stock-count-input-group">${buildUnitSlotHtml(item, ariaName)}</div>
+                    </div>
+                </td>
+            </tr>`;
         })
         .join('');
 
@@ -217,50 +268,80 @@ function buildEntryView() {
         <div class="stock-count-actions">
             <button type="button" class="stock-count-btn stock-count-btn--secondary" id="sc-prev" ${currentLocationIndex === 0 ? 'disabled' : ''}>Previous</button>
             <button type="button" class="stock-count-btn" id="sc-save-next" ${draft?.submittedAt ? 'disabled' : ''}>${currentLocationIndex >= catalog.locations.length - 1 ? 'Save' : 'Save & next'}</button>
-            <button type="button" class="stock-count-btn stock-count-btn--secondary" id="sc-review" ${draft?.submittedAt ? '' : ''}>Review totals</button>
+            <button type="button" class="stock-count-btn stock-count-btn--secondary" id="sc-review" ${draft?.submittedAt || saving ? 'disabled' : ''}>Send to MMX</button>
         </div>
     `;
 }
 
-function buildReviewView() {
-    const items = summary?.items || [];
-    const allColKeys = [];
-    const colLabelByKey = new Map();
-    for (const item of catalog.items) {
-        for (const col of item.columns) {
-            if (!colLabelByKey.has(col.key)) {
-                colLabelByKey.set(col.key, col.label);
-                allColKeys.push(col.key);
-            }
-        }
-    }
+function buildReviewUnitSlotHtml(catalogItem, summaryRow) {
+    const slots = resolveUnitSlots(catalogItem);
 
-    const header = allColKeys.map((k) => `<th>${escapeHtml(colLabelByKey.get(k))}</th>`).join('');
-    const rows = items
-        .map((item) => {
-            const cells = allColKeys
-                .map((k) => {
-                    const v = item.columns?.[k];
-                    return `<td data-label="${escapeHtml(colLabelByKey.get(k))}">${v != null && Number(v) > 0 ? escapeHtml(String(v)) : '—'}</td>`;
-                })
-                .join('');
-            return `<tr><td class="stock-count-item-cell" data-label="Item">${formatSummaryItemLabel(item)}</td>${cells}</tr>`;
+    return slots
+        .slice(0, 3)
+        .map((slot) => {
+            const label = slot.label || 'N/a';
+            if (slot.na) {
+                return `<div class="stock-count-unit-slot stock-count-unit-slot--na" data-label="${escapeHtml(label)}">
+                    <span class="stock-count-unit-label">${escapeHtml(label)}</span>
+                    <div class="stock-count-input stock-count-input--na" aria-hidden="true"></div>
+                </div>`;
+            }
+            const raw = summaryRow?.columns?.[slot.key];
+            const n = Number(raw);
+            const hasValue = Number.isFinite(n) && n > 0;
+            const display = hasValue ? String(raw) : '—';
+            const emptyClass = hasValue ? '' : ' stock-count-value-box--empty';
+            return `<div class="stock-count-unit-slot" data-label="${escapeHtml(label)}">
+                <span class="stock-count-unit-label">${escapeHtml(label)}</span>
+                <div class="stock-count-value-box${emptyClass}">${escapeHtml(display)}</div>
+            </div>`;
         })
         .join('');
+}
+
+function summaryRowHasCounts(row) {
+    if (!row?.columns || typeof row.columns !== 'object') return false;
+    return Object.values(row.columns).some((v) => Number(v) > 0);
+}
+
+function buildReviewView() {
+    const summaryByKey = new Map((summary?.items || []).map((row) => [row.itemKey, row]));
+    const rows = catalog.items
+        .map((catalogItem) => {
+            const summaryRow = summaryByKey.get(catalogItem.key);
+            if (!summaryRow || !summaryRowHasCounts(summaryRow)) return '';
+            return `<tr class="stock-count-entry-row">
+                <td class="stock-count-entry-cell" colspan="2">
+                    <div class="stock-count-entry-line">
+                        <div class="stock-count-name-slot">
+                            <span class="stock-count-unit-label stock-count-unit-label--spacer" aria-hidden="true">&nbsp;</span>
+                            <div class="stock-count-item-box">${escapeHtml(catalogItem.name)}</div>
+                        </div>
+                        <div class="stock-count-input-group">${buildReviewUnitSlotHtml(catalogItem, summaryRow)}</div>
+                    </div>
+                </td>
+            </tr>`;
+        })
+        .filter(Boolean)
+        .join('');
+
+    const emptyNote = rows
+        ? ''
+        : '<p class="stock-count-empty-location">No counts entered yet. Go back and enter quantities by location.</p>';
 
     return `
         <div class="stock-count-panel">
             <h2>Review — all locations combined</h2>
-            <table class="stock-count-table">
-                <thead><tr><th>Item</th>${header}</tr></thead>
+            <table class="stock-count-table stock-count-table--entry">
                 <tbody>${rows}</tbody>
             </table>
+            ${emptyNote}
             <div class="stock-count-review-note">Totals combine the same item across all storage locations.</div>
         </div>
         <div class="stock-count-actions">
             <button type="button" class="stock-count-btn stock-count-btn--secondary" id="sc-back-entry" ${draft?.submittedAt ? 'disabled' : ''}>Back to entry</button>
-            <button type="button" class="stock-count-btn" id="sc-submit" ${draft?.submittedAt || saving ? 'disabled' : ''}>Submit stock count</button>
-            <button type="button" class="stock-count-btn stock-count-btn--secondary" id="sc-done" ${draft?.submittedAt ? '' : 'disabled'}>Return to dashboard</button>
+            <button type="button" class="stock-count-btn" id="sc-send-mmx" ${draft?.submittedAt || saving ? 'disabled' : ''}>Send to MMX</button>
+            <button type="button" class="stock-count-btn stock-count-btn--secondary" id="sc-done">Return to dashboard</button>
         </div>
     `;
 }
@@ -323,20 +404,54 @@ function bindEvents() {
         }
     });
 
-    document.getElementById('sc-review')?.addEventListener('click', () => void goToReview());
+    document.getElementById('sc-review')?.addEventListener('click', () => void sendToMmx());
+    document.getElementById('sc-send-mmx')?.addEventListener('click', () => void sendToMmx());
     document.getElementById('sc-back-entry')?.addEventListener('click', () => {
         viewMode = 'entry';
         statusMessage = '';
         render();
     });
-    document.getElementById('sc-submit')?.addEventListener('click', () => void submitCounts());
     document.getElementById('sc-done')?.addEventListener('click', () => {
         window.location.href = dashboardPath();
     });
 }
 
+let stockCountScrollHideTimer = null;
+
+function setupStockCountScrollbars() {
+    if (!window.matchMedia('(min-width: 901px)').matches) return;
+
+    const root = document.documentElement;
+    const reveal = () => root.classList.add('stock-count-scroll-active');
+    const scheduleHide = () => {
+        if (stockCountScrollHideTimer) clearTimeout(stockCountScrollHideTimer);
+        stockCountScrollHideTimer = setTimeout(() => {
+            root.classList.remove('stock-count-scroll-active');
+            stockCountScrollHideTimer = null;
+        }, 900);
+    };
+
+    window.addEventListener(
+        'scroll',
+        () => {
+            reveal();
+            scheduleHide();
+        },
+        { passive: true }
+    );
+
+    document.body.addEventListener('mouseenter', reveal);
+    document.body.addEventListener('mouseleave', () => {
+        if (!stockCountScrollHideTimer) {
+            root.classList.remove('stock-count-scroll-active');
+        }
+    });
+}
+
 async function init() {
+    document.documentElement.classList.add('stock-count-page');
     document.body.classList.add('stock-count-page');
+    setupStockCountScrollbars();
     if (!STORE_NUMBER || !VENDOR_SLUG) {
         app.textContent = 'Invalid stock count URL.';
         return;

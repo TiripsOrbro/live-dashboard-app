@@ -21,14 +21,23 @@ require('dotenv').config({ path: path.join(__dirname, '../.env.production'), ove
 const scrapeData = require('./services/scraper');
 const { notifyScrapeFailure } = require('./services/alertNotifier');
 const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./services/storeList');
+const {
+    TEST_STORE_SLUG,
+    isTestStore,
+    normalizeStoreKey,
+    buildTestStoreSalesSlice,
+    testStoreListEntry,
+} = require('./services/testStore');
 const { listConfiguredVendors, getVendorCatalog } = require('./services/vendorCatalog');
 const {
     getDraft,
     saveDraftLocation,
     getSummary,
     submitStockCount,
+    clearStockCountDay,
     getCompletedVendorLabelsForStore,
 } = require('./services/stockCountState');
+const { sendStockCountToMmx } = require('./services/stockCountMmxPipeline');
 const {
     getDismissalPeriodKey,
     getAuditSchedule,
@@ -50,6 +59,38 @@ const AUDIT_STATE_FILE = process.env.AUDIT_STATE_FILE || path.join(__dirname, '.
 
 function isScheduledOrdersDateTestEnabled() {
     return /^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_ENABLE_ORDER_DATE_TEST ?? '').trim());
+}
+
+function isStockCountTestEnabled() {
+    return /^(1|true|yes|on)$/i.test(String(process.env.ENABLE_STOCK_COUNT_TEST ?? '').trim());
+}
+
+function isStockCountTestPendingAlways() {
+    return /^(1|true|yes|on)$/i.test(String(process.env.STOCK_COUNT_TEST_PENDING ?? '').trim());
+}
+
+/** Test helpers: explicit env, or any request that already passed dashboard cookie auth. */
+function canRunStockCountTest(req) {
+    if (isStockCountTestEnabled() || isStockCountTestPendingAlways()) return true;
+    if (isNologinUser(req.dashboardUser)) return false;
+    if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) return true;
+    return false;
+}
+
+function wantsTestStockCountPending(req) {
+    if (isStockCountTestPendingAlways()) return true;
+    if (!canRunStockCountTest(req)) return false;
+    return /^(1|true|yes|on)$/i.test(String(req.query.testStockCountPending ?? '').trim());
+}
+
+function applyTestPendingVendors(slice) {
+    const labels = listConfiguredVendors()
+        .filter((v) => v.configured)
+        .map((v) => v.label);
+    const merged = new Set([...(Array.isArray(slice.pendingVendors) ? slice.pendingVendors : []), ...labels]);
+    slice.pendingVendors = Array.from(merged).sort((a, b) => a.localeCompare(b));
+    slice.stockCountTestPending = true;
+    return slice;
 }
 
 /** Test-date scrapes: explicit env, or any request that already passed dashboard cookie auth. */
@@ -238,8 +279,9 @@ function isLoginPublicPath(reqPath) {
 }
 
 function isKnownStoreNumber(storeNumber) {
-    const num = String(storeNumber || '').replace(/[^0-9]/g, '');
-    if (!/^\d{3,6}$/.test(num)) return false;
+    if (isTestStore(storeNumber)) return true;
+    const num = normalizeStoreKey(storeNumber);
+    if (!num) return false;
     const stores = getStoreList();
     if (!stores.length) return true;
     return stores.some((s) => String(s.storeNumber) === num);
@@ -256,10 +298,16 @@ function isDashboardAssetPath(reqPath) {
 }
 
 function nologinAllowsPath(reqPath, storeNumber) {
-    const store = String(storeNumber || '').replace(/[^0-9]/g, '');
+    const store = normalizeStoreKey(storeNumber);
     if (!store) return false;
-    if (new RegExp(`^/${store}/nologin/?$`).test(reqPath)) return true;
-    if (new RegExp(`^/${store}/stock-count/[a-z0-9-]+(?:/nologin)?/?$`).test(reqPath)) return true;
+    if (isTestStore(store)) {
+        if (new RegExp(`^/${TEST_STORE_SLUG}/nologin/?$`, 'i').test(reqPath)) return true;
+        if (new RegExp(`^/${TEST_STORE_SLUG}/?$`, 'i').test(reqPath)) return true;
+        if (new RegExp(`^/${TEST_STORE_SLUG}/stock-count/[a-z0-9-]+(?:/nologin)?/?$`, 'i').test(reqPath)) return true;
+    } else {
+        if (new RegExp(`^/${store}/nologin/?$`).test(reqPath)) return true;
+        if (new RegExp(`^/${store}/stock-count/[a-z0-9-]+(?:/nologin)?/?$`).test(reqPath)) return true;
+    }
     if (isDashboardAssetPath(reqPath)) return true;
     if (reqPath === '/api/me' || reqPath === '/api/audit-schedule') return true;
     if (reqPath === '/api/sales' || reqPath === '/api/audits') return true;
@@ -374,9 +422,9 @@ app.get('/logout', (req, res) => {
     res.redirect('/login');
 });
 
-// Direct store link without login — e.g. /3811/nologin (not linked from the app UI).
-app.get(/^\/(\d{3,6})\/nologin\/?$/, (req, res) => {
-    const storeNumber = (req.path.match(/^\/(\d{3,6})\/nologin\/?$/) || [])[1];
+// Direct store link without login — e.g. /3811/nologin or /teststore/nologin (not linked from the app UI).
+app.get(/^\/(teststore|\d{3,6})\/nologin\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/nologin\/?$/i) || [])[1]);
     if (!NOLOGIN_LINKS_ENABLED) {
         res.status(404).send('Not found.');
         return;
@@ -443,7 +491,8 @@ function normalizeAuditLabels(labels) {
 
 /** Bucket key for a store's dismissals (digits only; falls back to a shared default bucket). */
 function auditStoreKey(storeNumber) {
-    return String(storeNumber || '').replace(/[^0-9]/g, '') || '__default__';
+    const key = normalizeStoreKey(storeNumber);
+    return key || '__default__';
 }
 
 function emptyAuditState() {
@@ -715,13 +764,16 @@ function assertStoreAccess(req, res, storeNumber) {
     return true;
 }
 
-async function enrichSalesSliceWithStockCount(slice) {
+async function enrichSalesSliceWithStockCount(slice, options = {}) {
     if (!slice || typeof slice !== 'object') return slice;
     const storeNumber = String(slice.storeNumber || '').trim();
     slice.stockCountVendors = listConfiguredVendors();
     if (!storeNumber) {
         slice.stockCountCompleted = [];
         return slice;
+    }
+    if (options.testPending) {
+        applyTestPendingVendors(slice);
     }
     const completed = await getCompletedVendorLabelsForStore(storeNumber);
     slice.stockCountCompleted = completed;
@@ -733,7 +785,7 @@ async function enrichSalesSliceWithStockCount(slice) {
 }
 
 function stockCountStoreFromQuery(req) {
-    return String(req.query.store || '').replace(/[^0-9]/g, '');
+    return normalizeStoreKey(req.query.store);
 }
 
 function stockCountVendorFromQuery(req) {
@@ -758,8 +810,17 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '../public', 'stores.html'));
 });
 
-// Per-store dashboard pages, e.g. /3811. The SPA reads the store number from the path.
-// Static assets and /api/* are matched earlier, so this only catches a bare numeric segment.
+// Per-store dashboard pages, e.g. /3811 or /teststore. The SPA reads the store from the path.
+// Static assets and /api/* are matched earlier, so this only catches a bare store segment.
+app.get(/^\/teststore\/?$/i, (req, res) => {
+    if (isNologinUser(req.dashboardUser) && !userCanAccessStore(req.dashboardUser, TEST_STORE_SLUG)) {
+        sendForbidden(req, res, 'Use your direct store link to view this dashboard.');
+        return;
+    }
+    if (!assertStoreAccess(req, res, TEST_STORE_SLUG)) return;
+    res.sendFile(path.join(__dirname, '../public', 'index.html'));
+});
+
 app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
     const storeNumber = (req.path.match(/^\/(\d{3,6})\/?$/) || [])[1];
     if (isNologinUser(req.dashboardUser)) {
@@ -775,13 +836,15 @@ function sendStockCountPage(req, res, storeNumber) {
     res.sendFile(path.join(__dirname, '../public', 'stock-count.html'));
 }
 
-app.get(/^\/(\d{3,6})\/stock-count\/([a-z0-9-]+)\/?$/, (req, res) => {
-    const storeNumber = (req.path.match(/^\/(\d{3,6})\/stock-count\/[a-z0-9-]+\/?$/) || [])[1];
+app.get(/^\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/stock-count\/[a-z0-9-]+\/?$/i) || [])[1]);
     sendStockCountPage(req, res, storeNumber);
 });
 
-app.get(/^\/(\d{3,6})\/stock-count\/([a-z0-9-]+)\/nologin\/?$/, (req, res) => {
-    const storeNumber = (req.path.match(/^\/(\d{3,6})\/stock-count\/[a-z0-9-]+\/nologin\/?$/) || [])[1];
+app.get(/^\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)\/nologin\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey(
+        (req.path.match(/^\/(teststore|\d{3,6})\/stock-count\/[a-z0-9-]+\/nologin\/?$/i) || [])[1]
+    );
     sendStockCountPage(req, res, storeNumber);
 });
 
@@ -909,6 +972,45 @@ app.get('/api/stock-count/completed', async (req, res) => {
     }
 });
 
+app.post('/api/stock-count/test/reset', async (req, res) => {
+    if (!canRunStockCountTest(req)) {
+        res.status(404).json({ success: false, error: 'Stock count test helpers are disabled.' });
+        return;
+    }
+    try {
+        const store = stockCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const vendorSlug = String(req.query.vendor || req.body?.vendor || '').trim() || null;
+        const dateKey = parseScheduledOrdersTestYmd(req.query.date || req.body?.date)?.ymd;
+        const result = await clearStockCountDay(store, { vendorSlug, dateKey });
+        const labels = result.cleared.map((slug) => getVendorCatalog(slug)?.label || slug);
+        console.log(
+            `[StockCount] Test reset store ${result.storeNumber} date ${result.dateKey}` +
+                (labels.length ? `: ${labels.join(', ')}` : ' (nothing to clear)')
+        );
+        res.json({ success: true, ...result, vendorLabels: labels });
+    } catch (error) {
+        console.error('API: Error resetting stock count test state:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/stock-count/send-to-mmx', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        const vendorSlug = stockCountVendorFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+
+        console.log(`[StockCount] Send to MMX — store ${store} vendor ${vendorSlug}`);
+        const result = await sendStockCountToMmx(store, vendorSlug);
+        res.json({ success: true, ...result });
+    } catch (error) {
+        console.error('API: Error sending stock count to MMX:', error);
+        const status = /No stock count draft|already submitted|not found/i.test(error.message) ? 400 : 500;
+        res.status(status).json({ success: false, error: error.message });
+    }
+});
+
 app.post('/api/stock-count/submit', async (req, res) => {
     try {
         const store = stockCountStoreFromQuery(req);
@@ -953,6 +1055,14 @@ app.get('/api/sales', async (req, res) => {
     if (requestedStore && !assertStoreAccess(req, res, requestedStore)) return;
     try {
         console.log('API: Sales data requested', requestedStore ? `(store ${requestedStore})` : '');
+        if (isTestStore(requestedStore)) {
+            const slice = await enrichSalesSliceWithStockCount(
+                filterSalesSliceForUser(buildTestStoreSalesSlice(), req.dashboardUser || getRequestUser(req)),
+                { testPending: true }
+            );
+            res.json(slice);
+            return;
+        }
         const testPick = parseScheduledOrdersTestYmd(req.query.testScheduledOrdersDate);
         let fullPayload;
         if (testPick && canRunScheduledOrdersDateTest(req, testPick)) {
@@ -968,11 +1078,13 @@ app.get('/api/sales', async (req, res) => {
                 stores: Array.isArray(result.stores) ? result.stores : [],
             };
             logDashboardScrapeComplete(fullPayload);
+            const testPending = wantsTestStockCountPending(req);
             const slice = await enrichSalesSliceWithStockCount(
                 filterSalesSliceForUser(
                     storeSliceFromPayload(fullPayload, requestedStore),
                     req.dashboardUser || getRequestUser(req)
-                )
+                ),
+                { testPending }
             );
             slice.testScheduledOrdersDate = testPick.ymd;
             res.json(slice);
@@ -980,27 +1092,32 @@ app.get('/api/sales', async (req, res) => {
         }
 
         fullPayload = await getSalesDataCached();
+        const testPending = wantsTestStockCountPending(req);
         res.json(
             await enrichSalesSliceWithStockCount(
                 filterSalesSliceForUser(
                     storeSliceFromPayload(fullPayload, requestedStore),
                     req.dashboardUser || getRequestUser(req)
-                )
+                ),
+                { testPending }
             )
         );
     } catch (error) {
         console.error('API: Error fetching sales data:', error);
         if (salesCache) {
             res.json(
-                await enrichSalesSliceWithStockCount({
-                    ...filterSalesSliceForUser(
-                        storeSliceFromPayload(salesCache, requestedStore),
-                        req.dashboardUser || getRequestUser(req)
-                    ),
-                    stale: true,
-                    staleAgeSeconds: Math.round((Date.now() - salesCacheAt) / 1000),
-                    warning: 'Serving stale cached sales due to scrape error.',
-                })
+                await enrichSalesSliceWithStockCount(
+                    {
+                        ...filterSalesSliceForUser(
+                            storeSliceFromPayload(salesCache, requestedStore),
+                            req.dashboardUser || getRequestUser(req)
+                        ),
+                        stale: true,
+                        staleAgeSeconds: Math.round((Date.now() - salesCacheAt) / 1000),
+                        warning: 'Serving stale cached sales due to scrape error.',
+                    },
+                    { testPending: wantsTestStockCountPending(req) }
+                )
             );
             return;
         }
@@ -1031,6 +1148,9 @@ app.get('/api/stores', async (req, res) => {
 
         const user = req.dashboardUser || getRequestUser(req);
         stores = filterStoresForUser(user, stores);
+        if (isAdminUser(user)) {
+            stores = [testStoreListEntry(), ...stores];
+        }
 
         res.json({ success: true, stores, defaultStore: DASHBOARD_DEFAULT_STORE || (stores[0]?.storeNumber ?? '') });
     } catch (error) {

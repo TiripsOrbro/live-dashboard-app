@@ -1,0 +1,54 @@
+{
+  "scheduledOrdersUrl": "https://tacobellau.macromatix.net/mms_stores_scheduledorders.aspx",
+  "scheduledOrdersDate": "tomorrow",
+  "vendors": [
+    {
+      "id": "americold-dry",
+      "label": "Americold Vic DRY",
+      "vendorMatch": "americold",
+      "orderClass": "DRY",
+      "catalogSlug": "americold",
+      "orderClasses": ["DRY"]
+    },
+    {
+      "id": "americold-frg",
+      "label": "Americold Vic FRG",
+      "vendorMatch": "americold",
+      "orderClass": "FRG",
+      "catalogSlug": "americold",
+      "orderClasses": ["FRG"]
+    },
+    {
+      "id": "americold-frz",
+      "label": "Americold Vic FRZ",
+      "vendorMatch": "americold",
+      "orderClass": "FRZ",
+      "catalogSlug": "americold",
+      "orderClasses": ["FRZ"]
+    },
+    {
+      "id": "bega",
+      "label": "BEGA",
+      "vendorMatch": "bega",
+      "catalogSlug": "bega"
+    },
+    {
+      "id": "schweppes",
+      "label": "Schweppes VIC",
+      "vendorMatch": "schweppes",
+      "catalogSlug": "schweppes"
+    },
+    {
+      "id": "cutfresh",
+      "label": "Cut Fresh NSW",
+      "vendorMatch": "cut\\s*fresh",
+      "catalogSlug": "cutfresh"
+    }
+  ],
+  "orderEntry": {
+    "clearQuantitiesButtonText": "Clear Quantities",
+    "clearQuantitiesConfirmIncludes": "set to zero",
+    "updateButtonText": "Update",
+    "forbiddenSubmitTexts": ["Submit", "Place Order", "Send", "Confirm", "Save"]
+  }
+}

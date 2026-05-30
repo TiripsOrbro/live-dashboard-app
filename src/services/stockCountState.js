@@ -1,6 +1,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const { aggregateCounts, getVendorCatalog, vendorLabelToSlug } = require('./vendorCatalog');
+const { isTestStore, TEST_STORE_SLUG } = require('./testStore');
 
 const STATE_FILE =
     process.env.STOCK_COUNT_STATE_FILE || path.join(__dirname, '../../data/stock-count-state.json');
@@ -9,7 +10,10 @@ const TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
 let stateCache = null;
 
 function storeKey(storeNumber) {
-    return String(storeNumber || '').replace(/[^0-9]/g, '') || '__default__';
+    const raw = String(storeNumber || '').trim().toLowerCase();
+    if (isTestStore(raw)) return TEST_STORE_SLUG;
+    const digits = raw.replace(/[^0-9]/g, '');
+    return digits || '__default__';
 }
 
 function vendorSlugKey(vendorSlug) {
@@ -172,7 +176,7 @@ async function submitStockCount(storeNumber, vendorSlug, dateKey = melbourneDate
         return { ...summary, submittedAt: day.submittedAt, alreadySubmitted: true };
     }
 
-    day.submittedAt = new Date().toISOString();
+    day.submittedAt = day.submittedAt || new Date().toISOString();
     day.updatedAt = day.submittedAt;
     stateCache = all;
     await writeStateFile(all);
@@ -182,6 +186,67 @@ async function submitStockCount(storeNumber, vendorSlug, dateKey = melbourneDate
         submittedAt: day.submittedAt,
         payload: summary.items,
     };
+}
+
+async function markMmxSent(storeNumber, vendorSlug, dateKey = melbourneDateKey()) {
+    const all = await getStateAll();
+    const sk = storeKey(storeNumber);
+    const vk = vendorSlugKey(vendorSlug);
+    const day = all.stores[sk]?.[vk]?.[dateKey];
+    if (!day) throw new Error('No stock count state to mark MMX sent.');
+    day.mmxSentAt = new Date().toISOString();
+    day.updatedAt = day.mmxSentAt;
+    stateCache = all;
+    await writeStateFile(all);
+    return day.mmxSentAt;
+}
+
+async function getMmxSentVendorSlugs(storeNumber, dateKey = melbourneDateKey()) {
+    const all = await getStateAll();
+    const sk = storeKey(storeNumber);
+    const store = all.stores[sk];
+    if (!store) return [];
+    return Object.entries(store)
+        .filter(([, days]) => days?.[dateKey]?.mmxSentAt)
+        .map(([slug]) => slug)
+        .sort();
+}
+
+async function getSubmittedVendorSlugs(storeNumber, dateKey = melbourneDateKey()) {
+    const all = await getStateAll();
+    const sk = storeKey(storeNumber);
+    const store = all.stores[sk];
+    if (!store) return [];
+    return Object.entries(store)
+        .filter(([, days]) => days?.[dateKey]?.submittedAt)
+        .map(([slug]) => slug)
+        .sort();
+}
+
+async function clearStockCountDay(storeNumber, options = {}) {
+    const vendorSlug = options.vendorSlug != null ? vendorSlugKey(options.vendorSlug) : null;
+    const dateKey = options.dateKey || melbourneDateKey();
+    const all = await getStateAll();
+    const sk = storeKey(storeNumber);
+    const store = all.stores[sk];
+    if (!store) return { storeNumber: sk, dateKey, cleared: [] };
+
+    const cleared = [];
+    const vendorKeys = vendorSlug ? [vendorSlug] : Object.keys(store);
+
+    for (const vk of vendorKeys) {
+        if (!store[vk]?.[dateKey]) continue;
+        delete store[vk][dateKey];
+        cleared.push(vk);
+        if (!Object.keys(store[vk]).length) delete store[vk];
+    }
+
+    if (!Object.keys(store).length) delete all.stores[sk];
+
+    stateCache = all;
+    await writeStateFile(all);
+
+    return { storeNumber: sk, dateKey, cleared };
 }
 
 async function getCompletedVendorLabelsForStore(storeNumber, dateKey = melbourneDateKey()) {
@@ -212,6 +277,10 @@ module.exports = {
     saveDraftLocation,
     getSummary,
     submitStockCount,
+    markMmxSent,
+    getMmxSentVendorSlugs,
+    getSubmittedVendorSlugs,
+    clearStockCountDay,
     getCompletedVendorLabelsForStore,
     isVendorConfigured,
     vendorLabelToSlug,

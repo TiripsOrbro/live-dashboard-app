@@ -1,0 +1,15 @@
+{
+  "url": "https://tacobellau.macromatix.net/MMS_Stores_StockCount.aspx?MenuCustomItemID=156",
+  "countTypeValue": "0",
+  "countTypeText": "Key Item Count",
+  "locationTabMap": {
+    "Freezer": "FREEZER",
+    "Fridge": "FRIDGE (+ CARRYOVER)",
+    "Carryover": "FRIDGE (+ CARRYOVER)",
+    "In Use": "ON FLOOR - IN USE - THAW"
+  },
+  "createCountButtonId": "ctl00_ph_ButtonOK_input",
+  "countTypeSelectId": "ctl00_ph_DropDownListCount",
+  "saveButtonIds": ["ctl00_ph_ButtonUpdate2_input", "ctl00_ph_ButtonUpdate_input"],
+  "applyButtonId": "ctl00_ph_ButtonApply"
+}

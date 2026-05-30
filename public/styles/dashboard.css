@@ -670,6 +670,29 @@ body {
     border: var(--cell-border) var(--blank-border);
 }
 
+.grid-cell--placeholder {
+    color: transparent;
+    pointer-events: none;
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, var(--blank) 88%, var(--grey)) 0%,
+        color-mix(in srgb, var(--white) 70%, var(--grey)) 45%,
+        color-mix(in srgb, var(--blank) 88%, var(--grey)) 100%
+    );
+    background-size: 200% 100%;
+    animation: grid-skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+.meal-period-day-sales-placeholder {
+    width: 100%;
+    min-height: calc(var(--dashboard-grid-min-height) * 0.9);
+}
+
+.dashboard-grid--loading .portrait-summary-item-values.grid-cell--placeholder {
+    min-height: calc(52px * var(--dashboard-scale));
+    width: 100%;
+}
+
 .header-cell {
     background: var(--dark-purple-border);
     border: var(--cell-border) var(--dark-purple-border);

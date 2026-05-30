@@ -74,9 +74,9 @@ body.stock-count-page {
 }
 
 .stock-count-loc-btn {
-    border: var(--cell-border, 2px solid) var(--charcoal, #231e1f);
-    background: var(--blank, #fff);
-    color: var(--charcoal, #231e1f);
+    border: var(--cell-border, 2px solid) var(--dark-purple-border, #4b3a63);
+    background: color-mix(in srgb, var(--blank) 12%, var(--dark-purple-border, #4b3a63));
+    color: var(--blank, #fff);
     padding: 8px 12px;
     font: inherit;
     font-size: 0.82rem;
@@ -84,15 +84,22 @@ body.stock-count-page {
     cursor: pointer;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    transition: background 0.15s ease;
+}
+
+.stock-count-loc-btn:hover {
+    background: color-mix(in srgb, var(--blank) 22%, var(--dark-purple-border, #4b3a63));
 }
 
 .stock-count-loc-btn--active {
     background: var(--charcoal, #231e1f);
     color: var(--white, #fff);
+    border-color: var(--charcoal, #231e1f);
 }
 
 .stock-count-loc-btn--done:not(.stock-count-loc-btn--active) {
-    border-color: var(--good-border, #2e7d32);
+    background: color-mix(in srgb, var(--blank) 18%, var(--dark-purple-border, #4b3a63));
+    border-color: var(--dark-purple-border, #4b3a63);
 }
 
 .stock-count-panel {
@@ -150,9 +157,95 @@ body.stock-count-page {
     border-bottom: none;
 }
 
+.stock-count-table--entry td {
+    padding: 0;
+    border-bottom: var(--cell-border, 2px solid) color-mix(in srgb, var(--charcoal) 18%, var(--blank));
+}
+
+.stock-count-entry-row td {
+    vertical-align: middle;
+}
+
+.stock-count-entry-cell {
+    --stock-count-gutter: 12px;
+    padding: 10px var(--stock-count-gutter);
+    box-sizing: border-box;
+    overflow: visible;
+}
+
+.stock-count-entry-line {
+    --stock-count-field-height: 3.35rem;
+    display: grid;
+    grid-template-columns: minmax(0, 2.5fr) repeat(3, minmax(0, 1fr));
+    column-gap: 10px;
+    align-items: end;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.stock-count-input-group {
+    display: contents;
+}
+
+.stock-count-name-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    min-width: 0;
+}
+
+.stock-count-unit-label--spacer {
+    visibility: hidden;
+    user-select: none;
+}
+
+.stock-count-item-box {
+    box-sizing: border-box;
+    min-width: 0;
+    height: var(--stock-count-field-height);
+    min-height: var(--stock-count-field-height);
+    padding: 6px 12px;
+    border: var(--cell-border, 2px solid) var(--blank-border, #c8c0bc);
+    background: var(--blank, #fff);
+    font-weight: 600;
+    font-size: clamp(1.05rem, 3.2vw, 1.25rem);
+    line-height: 1.2;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    word-break: break-word;
+}
+
+.stock-count-unit-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    width: 100%;
+}
+
+.stock-count-unit-label {
+    font-size: clamp(0.72rem, 2vw, 0.82rem);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.75;
+    line-height: 1.1;
+    text-align: center;
+    width: 100%;
+}
+
+.stock-count-unit-slot--na .stock-count-unit-label {
+    opacity: 0.45;
+}
+
 .stock-count-item-cell {
     font-weight: 600;
     min-width: 7rem;
+    width: 100%;
 }
 
 .stock-count-item-cell .stock-count-item-code {
@@ -171,18 +264,54 @@ body.stock-count-page {
 
 .stock-count-input {
     width: 100%;
-    max-width: 6.5rem;
     box-sizing: border-box;
     border: var(--cell-border, 2px solid) var(--blank-border, #c8c0bc);
-    padding: 8px 10px;
+    padding: 6px 8px;
     font: inherit;
-    font-size: 0.95rem;
+    font-size: clamp(1.25rem, 4vw, 1.5rem);
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+    text-align: center;
+    height: var(--stock-count-field-height, 3.35rem);
+    min-height: var(--stock-count-field-height, 3.35rem);
 }
 
 .stock-count-input:focus {
     outline: 2px solid var(--tb-purple-light, #9c27b0);
     outline-offset: 1px;
+}
+
+.stock-count-input--na {
+    width: 100%;
+    height: var(--stock-count-field-height, 3.35rem);
+    min-height: var(--stock-count-field-height, 3.35rem);
+    background: color-mix(in srgb, var(--charcoal) 8%, var(--blank, #fff));
+    border: var(--cell-border, 2px solid) color-mix(in srgb, var(--charcoal) 12%, var(--blank-border, #c8c0bc));
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.stock-count-value-box {
+    width: 100%;
+    box-sizing: border-box;
+    border: var(--cell-border, 2px solid) var(--blank-border, #c8c0bc);
+    background: var(--blank, #fff);
+    height: var(--stock-count-field-height, 3.35rem);
+    min-height: var(--stock-count-field-height, 3.35rem);
+    padding: 6px 8px;
+    font-size: clamp(1.25rem, 4vw, 1.5rem);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.stock-count-value-box--empty {
+    color: color-mix(in srgb, var(--charcoal) 40%, var(--blank));
 }
 
 .stock-count-actions {
@@ -229,6 +358,58 @@ body.stock-count-page {
     color: color-mix(in srgb, var(--charcoal) 70%, var(--blank));
 }
 
+/* Desktop — page scroll (dashboard.css locks overflow on html/body/#app) + auto-hide scrollbar */
+@media (min-width: 901px) {
+    html.stock-count-page {
+        overflow-x: hidden;
+        overflow-y: auto;
+        height: 100%;
+        scrollbar-width: thin;
+        scrollbar-color: transparent transparent;
+    }
+
+    html.stock-count-page:hover,
+    html.stock-count-page.stock-count-scroll-active {
+        scrollbar-color: color-mix(in srgb, var(--charcoal) 32%, transparent) transparent;
+    }
+
+    html.stock-count-page::-webkit-scrollbar {
+        width: 10px;
+    }
+
+    html.stock-count-page::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    html.stock-count-page::-webkit-scrollbar-thumb {
+        background-color: transparent;
+        border-radius: 999px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+    }
+
+    html.stock-count-page:hover::-webkit-scrollbar-thumb,
+    html.stock-count-page.stock-count-scroll-active::-webkit-scrollbar-thumb {
+        background-color: color-mix(in srgb, var(--charcoal) 28%, transparent);
+    }
+
+    body.stock-count-page {
+        height: auto;
+        min-height: 100%;
+        overflow: visible;
+    }
+
+    body.stock-count-page #app {
+        height: auto;
+        min-height: 100%;
+        overflow: visible;
+    }
+
+    .stock-count-panel {
+        overflow: visible;
+    }
+}
+
 @media (max-width: 900px) and (orientation: portrait) {
     .stock-count-table thead {
         display: none;
@@ -242,37 +423,54 @@ body.stock-count-page {
         width: 100%;
     }
 
-    .stock-count-table tr {
+    .stock-count-table tr.stock-count-entry-row {
         border-bottom: var(--cell-border, 2px solid) color-mix(in srgb, var(--charcoal) 18%, var(--blank));
-        padding: 10px 12px;
+        padding: 0;
     }
 
-    .stock-count-table tr:last-child {
+    .stock-count-table tr.stock-count-entry-row:last-child {
         border-bottom: none;
     }
 
     .stock-count-table td {
         border: none;
-        padding: 4px 0;
+        padding: 0;
     }
 
-    .stock-count-table td::before {
-        content: attr(data-label);
-        display: block;
-        font-size: 0.72rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        opacity: 0.7;
-        margin-bottom: 4px;
+    .stock-count-entry-cell {
+        --stock-count-gutter: 12px;
+        padding: 10px var(--stock-count-gutter);
     }
 
-    .stock-count-item-cell::before {
-        content: 'Item';
+    .stock-count-entry-line {
+        --stock-count-field-height: 3.1rem;
+        grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+        column-gap: 8px;
     }
 
-    .stock-count-input {
-        max-width: none;
+    .stock-count-item-box {
+        padding: 6px 10px;
+        font-size: clamp(0.95rem, 3.8vw, 1.15rem);
+    }
+
+    .stock-count-unit-slot {
+        width: 100%;
+    }
+
+    .stock-count-input,
+    .stock-count-input--na,
+    .stock-count-value-box {
+        width: 100%;
+        font-size: clamp(1.15rem, 5vw, 1.4rem);
+    }
+
+    .stock-count-input,
+    .stock-count-input--na {
+        min-height: var(--stock-count-field-height, 3.1rem);
+    }
+
+    .stock-count-value-box {
+        min-height: var(--stock-count-field-height, 3.1rem);
     }
 
     .stock-count-actions {

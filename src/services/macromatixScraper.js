@@ -1073,6 +1073,42 @@ async function scrapePendingVendors(page, opts = {}) {
     };
 }
 
+/** Lightweight check: pending scheduled-order vendors per store for one calendar date. */
+async function probePendingOrdersForStores(page, stores, options = {}) {
+    const pickYmd = options.pickYmd || null;
+    const results = [];
+
+    for (const store of stores) {
+        const storeNumber = String(store.storeNumber || '').trim();
+        const label = storeNumber || '(default)';
+        try {
+            const pendingResult = await scrapePendingVendors(page, {
+                storeNumber,
+                pickYmd,
+            });
+            const vendors = pendingResult.vendors || [];
+            results.push({
+                storeNumber,
+                storeName: store.storeName || storeNumber,
+                pendingVendors: vendors,
+                hasOrders: vendors.length > 0,
+            });
+            console.log(`[Macromatix] Probe ${label} (${pickYmd ? 'dated' : 'default date'}):`, vendors.join(', ') || '(none)');
+        } catch (err) {
+            console.warn(`[Macromatix] Probe ${label} failed:`, err.message);
+            results.push({
+                storeNumber,
+                storeName: store.storeName || storeNumber,
+                pendingVendors: [],
+                hasOrders: false,
+                error: err.message,
+            });
+        }
+    }
+
+    return results;
+}
+
 /**
  * Scrape one store on an already-logged-in page: select the store on the labour scheduler, enter Day view,
  * read actual/forecast, then read pending vendors from scheduled orders for that same store.
@@ -1404,14 +1440,34 @@ async function listStores() {
     }
 }
 
-async function submitStockCountToMacromatix(_page, storeNumber, vendorSlug, aggregatedPayload) {
-    void _page;
-    void storeNumber;
-    void vendorSlug;
+async function submitStockCountToMacromatix(page, storeNumber, vendorSlug, aggregatedPayload) {
     void aggregatedPayload;
-    throw new Error('Not implemented — awaiting Macromatix flow instructions');
+    const { sendStockCountToMmx } = require('./stockCountMmxPipeline');
+    return sendStockCountToMmx(storeNumber, vendorSlug, page ? { page, browser: null } : {});
+}
+
+/** Launch Puppeteer, log in, and return `{ browser, page }` for one-off automation (e.g. report downloads). */
+async function openMacromatixBrowser(options = {}) {
+    const { username, password } = getMacromatixCredentials();
+    if (!String(username || '').trim() || !String(password || '').trim()) {
+        throw new Error('Macromatix credentials are not configured (SCRAPER_USERNAME / SCRAPER_PASSWORD or encrypted creds).');
+    }
+
+    const browser = await puppeteer.launch(getPuppeteerLaunchOptions());
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 720 });
+    await applyResourceBlocking(page);
+    await loginPage(page, username, password);
+    if (typeof options.onBrowser === 'function') {
+        options.onBrowser(browser);
+    }
+    return { browser, page };
 }
 
 module.exports = scrapeMacromatix;
 module.exports.listStores = listStores;
 module.exports.submitStockCountToMacromatix = submitStockCountToMacromatix;
+module.exports.openMacromatixBrowser = openMacromatixBrowser;
+module.exports.closeBrowserQuietly = closeBrowserQuietly;
+module.exports.probePendingOrdersForStores = probePendingOrdersForStores;
+module.exports.selectStoreOnPage = selectStoreOnPage;

@@ -30,7 +30,37 @@ function slugifyKey(value) {
 }
 
 function isNaUnit(label) {
-    return /^n\/a$/i.test(String(label || '').trim());
+    return /^n\s*\/\s*a$/i.test(String(label || '').trim());
+}
+
+/** Three fixed unit slots matching the vendor file column order (N/a keeps its position). */
+function normalizeUnitSlots(item) {
+    if (Array.isArray(item.unitSlots) && item.unitSlots.length === UNIT_SLOTS) {
+        return item.unitSlots;
+    }
+    const cols = Array.isArray(item.columns) ? item.columns : [];
+    if (cols.length === 2) {
+        return [
+            { key: cols[0].key, label: cols[0].label, na: false },
+            { key: null, label: 'N/a', na: true },
+            { key: cols[1].key, label: cols[1].label, na: false },
+        ];
+    }
+    if (cols.length === 1) {
+        return [
+            { key: null, label: 'N/a', na: true },
+            { key: null, label: 'N/a', na: true },
+            { key: cols[0].key, label: cols[0].label, na: false },
+        ];
+    }
+    if (cols.length >= UNIT_SLOTS) {
+        return cols.slice(0, UNIT_SLOTS).map((col) => ({ key: col.key, label: col.label, na: false }));
+    }
+    const slots = cols.map((col) => ({ key: col.key, label: col.label, na: false }));
+    while (slots.length < UNIT_SLOTS) {
+        slots.push({ key: null, label: 'N/a', na: true });
+    }
+    return slots.slice(0, UNIT_SLOTS);
 }
 
 function resolveCatalogPath(def) {
@@ -120,10 +150,18 @@ function isItemCode(value) {
     return /^\d{3,10}$/.test(String(value || '').trim());
 }
 
+function sectionToMmxOrderClass(sectionName) {
+    const s = String(sectionName || '').toLowerCase();
+    if (s.includes('dry')) return 'DRY';
+    if (s.includes('fridge')) return 'FRG';
+    return 'FRZ';
+}
+
 function parseCatalogText(text, def) {
     const vendorDefaultLocations = [];
     const locationOrder = [];
     let vendorName = def.label;
+    let currentSection = '';
     const items = [];
 
     for (const rawLine of String(text || '').split(/\r?\n/)) {
@@ -137,6 +175,8 @@ function parseCatalogText(text, def) {
             if (order?.length) locationOrder.push(...order);
             const vendor = parseVendorFromComment(trimmed);
             if (vendor) vendorName = vendor;
+            const sectionMatch = trimmed.match(/^#\s*(.+?)\s*[-—]/);
+            if (sectionMatch) currentSection = sectionMatch[1].trim();
             continue;
         }
 
@@ -147,17 +187,21 @@ function parseCatalogText(text, def) {
         if (!identity) continue;
 
         const { itemCode, name, unitStart } = identity;
-        const unitParts = parts.slice(unitStart, unitStart + UNIT_SLOTS);
+        const rawUnitParts = parts.slice(unitStart, unitStart + UNIT_SLOTS);
+        while (rawUnitParts.length < UNIT_SLOTS) rawUnitParts.push('N/a');
+        const unitSlots = rawUnitParts.slice(0, UNIT_SLOTS).map((label) => {
+            const trimmed = String(label || '').trim();
+            if (!trimmed || isNaUnit(trimmed)) {
+                return { key: null, label: 'N/a', na: true };
+            }
+            return { key: slugifyKey(trimmed), label: trimmed, na: false };
+        });
+        const columns = unitSlots.filter((slot) => !slot.na).map((slot) => ({ key: slot.key, label: slot.label }));
         const locationParts = parts
             .slice(unitStart + UNIT_SLOTS)
             .map((p) => p.trim())
             .filter((p) => p && !isNaUnit(p));
 
-        const columns = [];
-        for (const label of unitParts) {
-            if (!label || isNaUnit(label)) continue;
-            columns.push({ key: slugifyKey(label), label });
-        }
         if (!columns.length || !name) continue;
 
         let itemLocations = locationParts.length
@@ -170,7 +214,9 @@ function parseCatalogText(text, def) {
             itemCode: itemCode || '',
             name,
             columns,
+            unitSlots,
             locations: itemLocations,
+            mmxOrderClass: sectionToMmxOrderClass(currentSection),
         });
     }
 
@@ -238,7 +284,13 @@ function getVendorCatalog(slug) {
     if (!def) return null;
     const catalog = readCatalogForDefinition(def);
     if (!catalog || !catalog.items.length) return null;
-    return catalog;
+    return {
+        ...catalog,
+        items: catalog.items.map((item) => ({
+            ...item,
+            unitSlots: normalizeUnitSlots(item),
+        })),
+    };
 }
 
 function aggregateCounts(catalog, locationCounts) {
@@ -282,5 +334,6 @@ module.exports = {
     getVendorCatalog,
     getVendorDefinition,
     aggregateCounts,
+    normalizeUnitSlots,
     UNIT_SLOTS,
 };

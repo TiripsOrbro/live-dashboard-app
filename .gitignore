@@ -6,4 +6,12 @@ node_modules/
 vendors/*
 !vendors/examples/
 tmp/
+Reports/
+config/reports-pipeline.json
+config/vendor-orders.json
+config/mmx-stock-count.json
+data/report-download-schedule-state.json
+data/stock-count-state.json
+.Users.test
+scripts/probe-stock-count.png
 *.log

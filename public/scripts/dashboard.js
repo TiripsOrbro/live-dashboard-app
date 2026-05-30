@@ -3,10 +3,10 @@
 ----------------------------------------------------------- */
 const app = document.getElementById('app');
 
-/** Store number from the URL path (e.g. /3811 or /3811/nologin). Empty on `/` → server uses the default store. */
-const NOLOGIN_MODE = /\/(\d{3,6})\/nologin\/?$/.test(window.location.pathname);
+/** Store id from the URL path (e.g. /3811, /teststore, or /3811/nologin). Empty on `/` → server uses the default store. */
+const NOLOGIN_MODE = /\/(teststore|\d{3,6})\/nologin\/?$/i.test(window.location.pathname);
 const STORE_NUMBER =
-    (window.location.pathname.match(/\/(\d{3,6})(?:\/nologin)?\/?$/) || [])[1] || '';
+    (window.location.pathname.match(/\/(teststore|\d{3,6})(?:\/nologin)?\/?$/i) || [])[1]?.toLowerCase() || '';
 const STORE_QUERY = STORE_NUMBER ? `?store=${encodeURIComponent(STORE_NUMBER)}` : '';
 
 function withStore(url) {
@@ -19,6 +19,22 @@ const SALES_API_URL =
     typeof window !== 'undefined' && window.__DASHBOARD_SALES_API__
         ? window.__DASHBOARD_SALES_API__
         : withStore(`${window.location.origin}/api/sales`);
+const STOCK_COUNT_TEST_PENDING =
+    typeof window !== 'undefined' &&
+    /^(1|true|yes|on)$/i.test(String(new URLSearchParams(window.location.search).get('testStockCountPending') || ''));
+
+function salesApiUrl(extraParams = {}) {
+    let url = SALES_API_URL;
+    const params = new URLSearchParams();
+    if (STOCK_COUNT_TEST_PENDING) params.set('testStockCountPending', '1');
+    for (const [key, value] of Object.entries(extraParams)) {
+        if (value != null && value !== '') params.set(key, String(value));
+    }
+    const qs = params.toString();
+    if (!qs) return url;
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}${qs}`;
+}
 const AUDITS_API_URL = withStore(`${window.location.origin}/api/audits`);
 const AUDIT_SCHEDULE_URL = `${window.location.origin}/api/audit-schedule`;
 const SALES_REFRESH_MINUTES = 2;
@@ -92,6 +108,10 @@ function tradingEndHourExclusive() {
 ----------------------------------------------------------- */
 let forecastSales = [];
 let liveSales = [];
+/** True while the sales API request is in flight (first load shows placeholder grid). */
+let salesDataLoading = false;
+/** True after at least one sales payload has been applied for this page session. */
+let salesDataLoadedOnce = false;
 /** Display labels for vendors with scheduled orders still in Create / In Progress (no order #). */
 let pendingVendors = [];
 /** Vendors with stock-count catalogs ({ slug, label }). */
@@ -367,10 +387,7 @@ async function saveAuditState() {
 ----------------------------------------------------------- */
 function applySalesPayload(data) {
     if (Number.isFinite(data.openHour) && Number.isFinite(data.closeHour)) {
-        const changed = data.openHour !== TRADING_GRID_START_HOUR || data.closeHour !== tradingCloseHour;
         setTradingHours(data.openHour, data.closeHour);
-        // Hours only change at runtime if they weren't known at first render; rebuild the shell once.
-        if (changed && typeof renderDashboard === 'function') renderDashboard();
     }
     // Trim the raw Macromatix hourly arrays (index 0 ≈ RAW_BASE_HOUR) down to this store's trading window.
     const sliceStart = clampInt(TRADING_GRID_START_HOUR - RAW_BASE_HOUR, 0, Number.MAX_SAFE_INTEGER);
@@ -446,6 +463,10 @@ async function loadSalesData() {
     if (orderDateTestYmd) {
         return;
     }
+    salesDataLoading = true;
+    if (!salesDataLoadedOnce) {
+        updateGrid();
+    }
     try {
         const res = await fetch(SALES_API_URL, { credentials: 'include' });
         if (!res.ok) {
@@ -461,21 +482,26 @@ async function loadSalesData() {
         applySalesPayload(data);
 
         await loadAuditSchedule();
-        updateGrid();
         updateTimestamp(data.timestamp);
         updateSalesStatus(data);
-
     } catch (err) {
         console.error('Failed to load sales data:', err);
         updateSalesStatus({ stale: true, warning: 'Unable to refresh sales data. If issue persists, contact Ash.' });
         const grid = document.querySelector('.dashboard-grid');
-        if (grid && !liveSales.length) {
-            grid.innerHTML = '<div class="grid-error">Unable to load sales data. Let Ash know so he can sort something, it cannot be fixed if he is at work.</div>';
+        if (grid && !salesDataLoadedOnce) {
+            grid.innerHTML =
+                '<div class="grid-error">Unable to load sales data. Let Ash know so he can sort something, it cannot be fixed if he is at work.</div>';
             pendingVendors = [];
             dismissedPendingVendors.clear();
             dismissedAudits.clear();
             auditPeriodKey = null;
             updatePendingVendorsPanel();
+        }
+    } finally {
+        salesDataLoading = false;
+        if (document.querySelector('.dashboard-grid') && !document.querySelector('.grid-error')) {
+            salesDataLoadedOnce = true;
+            updateGrid();
         }
     }
 }
@@ -1309,6 +1335,100 @@ function buildHourlyDataCell({ index, hourProgress, forecast, actual, displayVal
 /* -----------------------------------------------------------
    Sales grid rows — HTML for forecast row and actual row
 ----------------------------------------------------------- */
+function buildPlaceholderHourCell(extraClass = '') {
+    const cls = extraClass ? ` grid-cell--placeholder ${extraClass}` : ' grid-cell--placeholder';
+    return `<div class="grid-cell${cls}" aria-hidden="true"></div>`;
+}
+
+function buildLoadingForecastRow() {
+    return `
+        <div class="grid-label">Forecast Sales</div>
+        ${times.map(() => buildPlaceholderHourCell()).join('')}
+    `;
+}
+
+function buildLoadingActualRow() {
+    return `
+        <div class="grid-label">Actual Sales</div>
+        ${times.map(() => buildPlaceholderHourCell()).join('')}
+    `;
+}
+
+function buildLoadingMealPeriodRow() {
+    const lunchSpanEnd = 2 + clampInt(PART_LUNCH_END, 0, times.length);
+    const gridEnd = 2 + times.length;
+    return `
+        <div class="grid-label meal-period-label meal-period-day-sales-total">
+            <div class="grid-cell grid-cell--placeholder meal-period-day-sales-placeholder"></div>
+        </div>
+        <div class="grid-cell grid-cell--placeholder meal-period-cell" style="grid-column: 2 / ${lunchSpanEnd}"></div>
+        <div class="grid-cell grid-cell--placeholder meal-period-cell" style="grid-column: ${lunchSpanEnd} / ${gridEnd}"></div>
+    `;
+}
+
+function buildLoadingGridContent() {
+    return `
+        ${buildHeaderRow()}
+        ${buildLoadingForecastRow()}
+        ${buildLoadingActualRow()}
+        ${buildLoadingMealPeriodRow()}
+        ${buildGridFooterRow()}
+    `;
+}
+
+function buildLoadingPortraitHourRows() {
+    return times
+        .map(
+            (time) => `
+        <div class="grid-label portrait-hour-label">${time}</div>
+        ${buildPlaceholderHourCell('portrait-data-cell')}
+        ${buildPlaceholderHourCell('portrait-data-cell')}
+    `
+        )
+        .join('');
+}
+
+function buildLoadingPortraitMealRows() {
+    return `
+        <div class="portrait-summary-box" role="region" aria-label="Lunch, dinner and day totals">
+            <div class="portrait-summary-item">
+                <div class="portrait-summary-item-label">Lunch</div>
+                <div class="grid-cell grid-cell--placeholder portrait-summary-item-values"></div>
+            </div>
+            <div class="portrait-summary-item">
+                <div class="portrait-summary-item-label">Dinner</div>
+                <div class="grid-cell grid-cell--placeholder portrait-summary-item-values"></div>
+            </div>
+            <div class="portrait-summary-item portrait-summary-item--day">
+                <div class="portrait-summary-item-label">Day total</div>
+                <div class="grid-cell grid-cell--placeholder portrait-summary-item-values"></div>
+            </div>
+            <div class="portrait-summary-caption">Actual / Forecast</div>
+        </div>
+    `;
+}
+
+function buildLoadingPortraitGridContent() {
+    return `
+        ${buildPortraitHeaderRow()}
+        ${buildLoadingPortraitHourRows()}
+        ${buildLoadingPortraitMealRows()}
+        ${buildGridFooterRow()}
+    `;
+}
+
+function shouldShowSalesLoadingGrid() {
+    return salesDataLoading || !salesDataLoadedOnce;
+}
+
+function gridForecastValues() {
+    return Array.from({ length: times.length }, (_, i) => Number(forecastSales[i]) || 0);
+}
+
+function gridActualValues() {
+    return Array.from({ length: times.length }, (_, i) => Number(liveSales[i]) || 0);
+}
+
 function buildHeaderRow() {
     return `
         <div class="grid-label header-label">Time</div>
@@ -1561,24 +1681,26 @@ function buildPortraitHeaderRow() {
 
 function buildPortraitHourRows() {
     const hourProgress = getCurrentHourProgress();
+    const forecasts = gridForecastValues();
+    const actuals = gridActualValues();
     return times
         .map((time, index) => {
             const forecastCell = portraitCellClass(
                 buildHourlyDataCell({
                     index,
                     hourProgress,
-                    forecast: forecastSales[index],
-                    actual: liveSales[index],
-                    displayValue: forecastSales[index],
+                    forecast: forecasts[index],
+                    actual: actuals[index],
+                    displayValue: forecasts[index],
                 })
             );
             const actualCell = portraitCellClass(
                 buildHourlyDataCell({
                     index,
                     hourProgress,
-                    forecast: forecastSales[index],
-                    actual: liveSales[index],
-                    displayValue: liveSales[index],
+                    forecast: forecasts[index],
+                    actual: actuals[index],
+                    displayValue: actuals[index],
                 })
             );
             return `
@@ -1656,10 +1778,12 @@ function buildPortraitMealRows(forecasts, actuals) {
 }
 
 function buildPortraitGridContent() {
+    const forecasts = gridForecastValues();
+    const actuals = gridActualValues();
     return `
         ${buildPortraitHeaderRow()}
         ${buildPortraitHourRows()}
-        ${buildPortraitMealRows(forecastSales, liveSales)}
+        ${buildPortraitMealRows(forecasts, actuals)}
         ${buildGridFooterRow()}
     `;
 }
@@ -1684,7 +1808,7 @@ function onDashboardLayoutChange() {
     lastPortraitLayout = portrait;
     const grid = document.querySelector('.dashboard-grid');
     if (!grid) return;
-    if (forecastSales.length) {
+    if (salesDataLoadedOnce && !salesDataLoading) {
         updateGrid();
     } else {
         showGridSkeleton();
@@ -1899,33 +2023,14 @@ function showGridSkeleton() {
     if (!grid) return;
 
     syncAuditPeriodState();
+    syncDashboardLayoutMode();
     grid.classList.remove('dashboard-grid--skeleton');
     grid.classList.toggle('dashboard-grid--portrait', isPortraitMobileView());
-    grid.classList.add('dashboard-grid--skeleton');
+    grid.classList.toggle('dashboard-grid--loading', true);
     grid.setAttribute('aria-busy', 'true');
-
-    if (isPortraitMobileView()) {
-        const rows = Math.max(times.length || 8, 6);
-        grid.innerHTML = `
-            <div class="grid-skeleton-block portrait-skeleton-header"></div>
-            <div class="grid-skeleton-block portrait-skeleton-header"></div>
-            <div class="grid-skeleton-block portrait-skeleton-header"></div>
-            ${Array.from(
-                { length: rows },
-                () =>
-                    '<div class="grid-skeleton-block"></div><div class="grid-skeleton-block"></div><div class="grid-skeleton-block"></div>'
-            ).join('')}
-        `;
-        return;
-    }
-
-    const cols = Math.max(times.length || 12, 8);
-    grid.innerHTML = `
-        <div class="grid-skeleton-row">${'<div class="grid-skeleton-block"></div>'.repeat(cols + 1)}</div>
-        <div class="grid-skeleton-row">${'<div class="grid-skeleton-block"></div>'.repeat(cols + 1)}</div>
-        <div class="grid-skeleton-row">${'<div class="grid-skeleton-block"></div>'.repeat(cols + 1)}</div>
-        <div class="grid-skeleton-row grid-skeleton-row--wide">${'<div class="grid-skeleton-block"></div>'.repeat(Math.min(cols + 1, 6))}</div>
-    `;
+    grid.innerHTML = isPortraitMobileView() ? buildLoadingPortraitGridContent() : buildLoadingGridContent();
+    updateAuditsPanel();
+    updatePendingVendorsPanel();
 }
 
 function updateGrid() {
@@ -1935,17 +2040,31 @@ function updateGrid() {
     syncAuditPeriodState();
     syncDashboardLayoutMode();
 
-    grid.classList.remove('dashboard-grid--skeleton');
+    grid.classList.remove('dashboard-grid--skeleton', 'dashboard-grid--loading');
+
+    if (shouldShowSalesLoadingGrid()) {
+        grid.classList.toggle('dashboard-grid--portrait', isPortraitMobileView());
+        grid.classList.add('dashboard-grid--loading');
+        grid.setAttribute('aria-busy', 'true');
+        grid.innerHTML = isPortraitMobileView() ? buildLoadingPortraitGridContent() : buildLoadingGridContent();
+        updateAuditsPanel();
+        updatePendingVendorsPanel();
+        return;
+    }
+
     grid.classList.toggle('dashboard-grid--portrait', isPortraitMobileView());
     grid.removeAttribute('aria-busy');
+
+    const forecasts = gridForecastValues();
+    const actuals = gridActualValues();
 
     grid.innerHTML = isPortraitMobileView()
         ? buildPortraitGridContent()
         : `
         ${buildHeaderRow()}
-        ${buildForecastRow(forecastSales, liveSales)}
-        ${buildActualRow(liveSales, forecastSales)}
-        ${buildMealPeriodRow(forecastSales, liveSales)}
+        ${buildForecastRow(forecasts, actuals)}
+        ${buildActualRow(actuals, forecasts)}
+        ${buildMealPeriodRow(forecasts, actuals)}
         ${buildGridFooterRow()}
     `;
     updateAuditsPanel();
@@ -2045,7 +2164,7 @@ setInterval(updateClock, 1000);
 /* Rebuild grid on a short cadence so day-part / current-hour fill tracks wall clock between sales API polls */
 const GRID_PROGRESS_REFRESH_MS = 10000;
 setInterval(() => {
-    if (forecastSales.length && document.querySelector('.dashboard-grid')) {
+    if (salesDataLoadedOnce && !salesDataLoading && document.querySelector('.dashboard-grid')) {
         updateGrid();
     }
 }, GRID_PROGRESS_REFRESH_MS);
@@ -2079,7 +2198,7 @@ async function initTradingHours() {
         const data = await res.json();
         const stores = Array.isArray(data.stores) ? data.stores : [];
         const target = STORE_NUMBER
-            ? stores.find((s) => String(s.storeNumber) === STORE_NUMBER)
+            ? stores.find((s) => String(s.storeNumber).toLowerCase() === STORE_NUMBER)
             : stores.find((s) => String(s.storeNumber) === String(data.defaultStore)) || stores[0];
         if (target && Number.isFinite(target.openHour) && Number.isFinite(target.closeHour)) {
             setTradingHours(target.openHour, target.closeHour);

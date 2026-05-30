@@ -57,5 +57,21 @@ module.exports = {
             kill_timeout: 15000,
             env,
         },
+        {
+            name: 'report-download-scheduler',
+            cwd: ROOT,
+            script: 'scripts/run-report-download-scheduler.js',
+            interpreter: 'node',
+            autorestart: true,
+            max_restarts: 50,
+            min_uptime: '30s',
+            restart_delay: 10000,
+            max_memory_restart: '400M',
+            kill_timeout: 120000,
+            env: {
+                ...env,
+                REPORT_DOWNLOAD_SCHEDULE_ENABLED: env.REPORT_DOWNLOAD_SCHEDULE_ENABLED || '1',
+            },
+        },
     ],
 };

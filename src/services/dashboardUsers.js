@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { isTestStore, normalizeStoreKey, TEST_STORE_SLUG } = require('./testStore');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const USERS_PATH = path.join(PROJECT_ROOT, '.Users');
@@ -325,7 +326,7 @@ function legacyAccessToken(accessKey) {
 }
 
 function createNologinToken(storeNumber) {
-    const store = String(storeNumber || '').replace(/[^0-9]/g, '');
+    const store = normalizeStoreKey(storeNumber);
     if (!store) return '';
     return signSessionPayload({
         nl: 1,
@@ -349,8 +350,8 @@ function parseNologinToken(token) {
         return null;
     }
     if (!payload?.nl || !payload?.exp || Date.now() > Number(payload.exp)) return null;
-    const store = String(payload.s || '').replace(/[^0-9]/g, '');
-    if (!/^\d{3,6}$/.test(store)) return null;
+    const store = normalizeStoreKey(payload.s);
+    if (!store) return null;
     return store;
 }
 
@@ -405,8 +406,13 @@ function isAdminUser(user) {
 
 function userCanAccessStore(user, storeNumber) {
     if (!user) return false;
+    if (isTestStore(storeNumber)) {
+        if (isAdminUser(user)) return true;
+        if (isNologinUser(user)) return user.stores.includes(TEST_STORE_SLUG);
+        return false;
+    }
     if (isAdminUser(user)) return true;
-    const num = String(storeNumber || '').replace(/[^0-9]/g, '');
+    const num = normalizeStoreKey(storeNumber);
     if (!num) return false;
     return user.stores.includes(num);
 }

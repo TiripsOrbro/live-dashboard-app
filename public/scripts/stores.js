@@ -34,20 +34,31 @@ function renderStores(stores) {
         return;
     }
 
-    const sorted = [...stores].sort((a, b) => String(a.storeNumber).localeCompare(String(b.storeNumber), undefined, { numeric: true }));
+    const sorted = [...stores].sort((a, b) => {
+        if (a.testStore && !b.testStore) return -1;
+        if (b.testStore && !a.testStore) return 1;
+        return String(a.storeNumber).localeCompare(String(b.storeNumber), undefined, { numeric: true });
+    });
 
     grid.innerHTML = sorted
         .map((s) => {
-            const number = String(s.storeNumber || '').replace(/[^0-9]/g, '');
+            const isTest = Boolean(s.testStore);
+            const number = isTest ? 'teststore' : String(s.storeNumber || '').replace(/[^0-9]/g, '');
             if (!number) return '';
-            const name = s.storeName && s.storeName !== number ? s.storeName : '';
+            const name = isTest
+                ? s.storeName || 'All vendor orders'
+                : s.storeName && s.storeName !== number
+                  ? s.storeName
+                  : '';
             const hours =
-                Number.isFinite(s.openHour) && Number.isFinite(s.closeHour)
+                !isTest && Number.isFinite(s.openHour) && Number.isFinite(s.closeHour)
                     ? `${hourLabel(s.openHour)}–${hourLabel(s.closeHour)}`
                     : '';
+            const tileClass = isTest ? 'store-tile store-tile--test' : 'store-tile';
+            const label = isTest ? 'Test' : number;
             return `
-                <a class="store-tile" href="/${number}">
-                    <span class="store-tile-number">${number}</span>
+                <a class="${tileClass}" href="/${number}">
+                    <span class="store-tile-number">${label}</span>
                     ${name ? `<span class="store-tile-name">${name}</span>` : ''}
                     ${hours ? `<span class="store-tile-hours">${hours}</span>` : ''}
                 </a>`;

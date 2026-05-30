@@ -1234,18 +1234,24 @@ body.rotate-hint-active .dashboard {
         display: flex;
         flex-direction: column;
         gap: 12px;
+        width: 100%;
     }
 
     .dashboard-grid--portrait .dashboard-colour-note {
         order: 1;
+        width: 100%;
     }
 
     .dashboard-grid--portrait .dashboard-grid-footer-lead {
         order: 2;
+        width: 100%;
+        display: block;
     }
 
     .dashboard-grid--portrait .dashboard-grid-footer-trail {
         order: 3;
+        width: 100%;
+        display: block;
     }
 
     .dashboard-grid--portrait .dashboard-grid-footer-lead,
@@ -1257,6 +1263,7 @@ body.rotate-hint-active .dashboard {
 
     .dashboard-grid--portrait .audits-aside,
     .dashboard-grid--portrait .pending-vendors-aside {
+        width: 100%;
         max-width: none;
         min-width: 0;
     }

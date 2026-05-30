@@ -15,7 +15,17 @@ const WELCOME_SKIP_KEY = 'dashboard-welcome-shown';
 const DASHBOARD_TIME_ZONE = 'Australia/Melbourne';
 
 const BRAND_MARK_DUR = '2.4s';
+const BRAND_MARK_DOT_DUR = '4.2s';
 const BRAND_MARK_DUR_BUSY = '1.15s';
+const BRAND_MARK_DOT_DUR_BUSY = '2s';
+
+const DOT_MOTION_KEY_TIMES = '0;0.06;0.72;0.82;0.86;1';
+const DOT_LEAD_POINTS = '0;0;1;1;1;0';
+const DOT_TRAIL_POINTS = '0;0;0.86;0.86;0.86;0';
+const DOT_LEAD_OPACITY = '0;0;1;1;1;0;0';
+const DOT_LEAD_OPACITY_TIMES = '0;0.06;0.10;0.72;0.82;0.86;1';
+const DOT_TRAIL_OPACITY = '0;0;0.75;0.9;0.9;0;0';
+const DOT_TRAIL_OPACITY_TIMES = '0;0.06;0.10;0.72;0.82;0.86;1';
 
 function brandMarkSvg(uid) {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="brand-mark" aria-hidden="true">
@@ -43,19 +53,19 @@ function brandMarkSvg(uid) {
     pathLength="520"
     d="M96 268 L168 268 L208 168 L256 332 L304 204 L352 268 L416 268"
   />
-  <circle class="brand-mark-dot--trail" r="8" fill="#ff4081" opacity="0">
-    <animate class="brand-mark-dot-opacity" attributeName="opacity" dur="${BRAND_MARK_DUR}" repeatCount="indefinite"
-      values="0;0.75;0.9;0.9;0" keyTimes="0;0.12;0.42;0.58;1"/>
-    <animateMotion class="brand-mark-dot-motion" dur="${BRAND_MARK_DUR}" repeatCount="indefinite" calcMode="linear"
-      keyTimes="0;0.12;0.42;0.58;1" keyPoints="0;0;0.86;0.86;0">
+  <circle class="brand-mark-dot--trail" r="11" fill="#ff4081" opacity="0">
+    <animate class="brand-mark-dot-opacity" attributeName="opacity" dur="${BRAND_MARK_DOT_DUR}" repeatCount="indefinite"
+      values="${DOT_TRAIL_OPACITY}" keyTimes="${DOT_TRAIL_OPACITY_TIMES}"/>
+    <animateMotion class="brand-mark-dot-motion" dur="${BRAND_MARK_DOT_DUR}" repeatCount="indefinite" calcMode="linear"
+      keyTimes="${DOT_MOTION_KEY_TIMES}" keyPoints="${DOT_TRAIL_POINTS}">
       <mpath href="#${uid}-pulse-path"/>
     </animateMotion>
   </circle>
-  <circle class="brand-mark-dot--lead" r="12" fill="#ffc72c" opacity="0.45">
-    <animate class="brand-mark-dot-opacity" attributeName="opacity" dur="${BRAND_MARK_DUR}" repeatCount="indefinite"
-      values="0.45;1;1;1;0" keyTimes="0;0.12;0.42;0.58;1"/>
-    <animateMotion class="brand-mark-dot-motion" dur="${BRAND_MARK_DUR}" repeatCount="indefinite" calcMode="linear"
-      keyTimes="0;0.12;0.42;0.58;1" keyPoints="0;0;1;1;0">
+  <circle class="brand-mark-dot--lead" r="16" fill="#ffc72c" opacity="0.45">
+    <animate class="brand-mark-dot-opacity" attributeName="opacity" dur="${BRAND_MARK_DOT_DUR}" repeatCount="indefinite"
+      values="${DOT_LEAD_OPACITY}" keyTimes="${DOT_LEAD_OPACITY_TIMES}"/>
+    <animateMotion class="brand-mark-dot-motion" dur="${BRAND_MARK_DOT_DUR}" repeatCount="indefinite" calcMode="linear"
+      keyTimes="${DOT_MOTION_KEY_TIMES}" keyPoints="${DOT_LEAD_POINTS}">
       <mpath href="#${uid}-pulse-path"/>
     </animateMotion>
   </circle>
@@ -69,9 +79,9 @@ function mountBrandMark(hostId, uid) {
 }
 
 function setBrandMarkBusy(busy) {
-    const dur = busy ? BRAND_MARK_DUR_BUSY : BRAND_MARK_DUR;
+    const dotDur = busy ? BRAND_MARK_DOT_DUR_BUSY : BRAND_MARK_DOT_DUR;
     document.querySelectorAll('.brand-mark-dot-motion, .brand-mark-dot-opacity').forEach((node) => {
-        node.setAttribute('dur', dur);
+        node.setAttribute('dur', dotDur);
     });
     document.querySelectorAll('.brand-mark').forEach((mark) => {
         mark.classList.toggle('brand-mark--busy', busy);

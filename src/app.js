@@ -19,20 +19,24 @@ require('dotenv').config({ path: path.join(__dirname, '../.env.production'), ove
 })();
 
 const scrapeData = require('./services/scraper');
+const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./services/storeList');
 const {
     getDismissalPeriodKey,
     getAuditSchedule,
     instantForYmdInTimeZone,
     loadAuditRecurrenceConfigSync,
 } = require('./utils/auditRecurrence');
-const { readOrdersReadyForReview, markOrdersReadyAcknowledged, readOrdersReadyAck } = require('./utils/ordersReadySignal');
-
 const app = express();
 const PORT = process.env.PORT || 3000;
-const SALES_CACHE_SECONDS = Number(process.env.SALES_CACHE_SECONDS || 90);
-/** Full Macromatix run (login + labour + scheduled orders); default 120s for slow pages */
-const SCRAPE_TIMEOUT_MS = Number(process.env.SCRAPE_TIMEOUT_MS || 120000);
+/** Multi-store scrapes take minutes (≈45-60s per store), so cache the whole cycle for a while. */
+const SALES_CACHE_SECONDS = Number(process.env.SALES_CACHE_SECONDS || 300);
+/** Background refresh interval — keeps the cache warm for all stores so browser requests never wait on a scrape. */
+const SALES_REFRESH_SECONDS = Number(process.env.SALES_REFRESH_SECONDS || 240);
+/** Full Macromatix run (login + every store's labour + scheduled orders). ~1 min/store, so allow plenty for a slow Pi. */
+const SCRAPE_TIMEOUT_MS = Number(process.env.SCRAPE_TIMEOUT_MS || 900000);
 const SCRAPE_RETRIES = Number(process.env.SCRAPE_RETRIES || 1);
+/** Store shown at `/` (no store in the path). Empty = first store the scrape returns. */
+const DASHBOARD_DEFAULT_STORE = String(process.env.DASHBOARD_DEFAULT_STORE || '').trim();
 const AUDIT_STATE_FILE = process.env.AUDIT_STATE_FILE || path.join(__dirname, '../data/audit-state.json');
 
 function isScheduledOrdersDateTestEnabled() {
@@ -225,8 +229,9 @@ app.post('/unlock', (req, res) => {
 
 app.use(dashboardAuthMiddleware);
 
-// Middleware to serve static files
-app.use(express.static(path.join(__dirname, '../public')));
+// Middleware to serve static files. `index: false` so `/` is handled by our store-picker route below
+// rather than being auto-served from public/index.html (the per-store dashboard).
+app.use(express.static(path.join(__dirname, '../public'), { index: false }));
 
 function isSalesCacheFresh() {
     if (!salesCache || !salesCacheAt) return false;
@@ -241,13 +246,17 @@ function logDashboardScrapeComplete(payload) {
     } catch {
         when = payload.timestamp || new Date().toISOString();
     }
-    const actualHours = Array.isArray(payload.actual) ? payload.actual.length : 0;
-    const forecastHours = Array.isArray(payload.forecast) ? payload.forecast.length : 0;
-    const pending = Array.isArray(payload.pendingVendors) ? payload.pendingVendors : [];
-    const pendingPart =
-        pending.length > 0 ? `${pending.length} (${pending.join(', ')})` : '0';
+    const stores = Array.isArray(payload.stores) ? payload.stores : [];
+    const summary = stores
+        .map((s) => {
+            const actualHours = Array.isArray(s.actual) ? s.actual.length : 0;
+            const pending = Array.isArray(s.pendingVendors) ? s.pendingVendors.length : 0;
+            const flag = s.error ? ' ERROR' : '';
+            return `${s.storeNumber || '?'}(${actualHours}h, ${pending} pending${flag})`;
+        })
+        .join(', ');
     console.log(
-        `[Dashboard] Scrape cycle complete — ${when} ${tz} | actual: ${actualHours}h | forecast: ${forecastHours}h | pending vendors: ${pendingPart}`
+        `[Dashboard] Scrape cycle complete — ${when} ${tz} | ${stores.length} store(s): ${summary || '(none)'}`
     );
 }
 
@@ -256,21 +265,36 @@ function normalizeAuditLabels(labels) {
     return [...new Set(labels.map((label) => String(label || '').trim()).filter(Boolean))];
 }
 
+/** Bucket key for a store's dismissals (digits only; falls back to a shared default bucket). */
+function auditStoreKey(storeNumber) {
+    return String(storeNumber || '').replace(/[^0-9]/g, '') || '__default__';
+}
+
+function emptyAuditState() {
+    const k = getDismissalPeriodKey();
+    return { periodKey: k, weekKey: k, stores: {} };
+}
+
 async function readAuditStateFile() {
     try {
         const raw = await fs.readFile(AUDIT_STATE_FILE, 'utf8');
         const parsed = JSON.parse(raw);
         const storedKey = String(parsed.periodKey || parsed.weekKey || '');
-        return {
-            weekKey: storedKey,
-            periodKey: storedKey,
-            dismissed: normalizeAuditLabels(parsed.dismissed),
-        };
+        const stores = {};
+        if (parsed.stores && typeof parsed.stores === 'object') {
+            for (const [k, v] of Object.entries(parsed.stores)) {
+                stores[auditStoreKey(k)] = normalizeAuditLabels(v);
+            }
+        } else if (Array.isArray(parsed.dismissed)) {
+            // Migrate a pre-multi-store (global) file into the default bucket.
+            stores.__default__ = normalizeAuditLabels(parsed.dismissed);
+        }
+        return { periodKey: storedKey, weekKey: storedKey, stores };
     } catch (error) {
         if (error.code !== 'ENOENT') {
             console.warn('API: Failed to read audit state file:', error.message);
         }
-        return { weekKey: getDismissalPeriodKey(), periodKey: getDismissalPeriodKey(), dismissed: [] };
+        return emptyAuditState();
     }
 }
 
@@ -279,27 +303,33 @@ async function writeAuditStateFile(state) {
     await fs.writeFile(AUDIT_STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
 }
 
-async function getAuditState() {
+/** Whole multi-store state, resetting every store's dismissals when the week rolls over. */
+async function getAuditStateAll() {
     const currentKey = getDismissalPeriodKey();
     if (!auditStateCache) {
         auditStateCache = await readAuditStateFile();
     }
-    if (auditStateCache.weekKey !== currentKey) {
-        auditStateCache = { weekKey: currentKey, periodKey: currentKey, dismissed: [] };
+    if (auditStateCache.periodKey !== currentKey) {
+        auditStateCache = emptyAuditState();
         await writeAuditStateFile(auditStateCache);
     }
     return auditStateCache;
 }
 
-async function saveAuditDismissals(labels) {
-    const k = getDismissalPeriodKey();
-    auditStateCache = {
-        weekKey: k,
-        periodKey: k,
-        dismissed: normalizeAuditLabels(labels),
-    };
-    await writeAuditStateFile(auditStateCache);
-    return auditStateCache;
+/** One store's dismissal view: `{ periodKey, weekKey, dismissed }`. */
+async function getAuditState(storeNumber) {
+    const all = await getAuditStateAll();
+    const dismissed = all.stores[auditStoreKey(storeNumber)] || [];
+    return { periodKey: all.periodKey, weekKey: all.periodKey, dismissed };
+}
+
+async function saveAuditDismissals(storeNumber, labels) {
+    const all = await getAuditStateAll();
+    const key = auditStoreKey(storeNumber);
+    all.stores[key] = normalizeAuditLabels(labels);
+    auditStateCache = all;
+    await writeAuditStateFile(all);
+    return { periodKey: all.periodKey, weekKey: all.periodKey, dismissed: all.stores[key] };
 }
 
 async function withTimeout(promise, ms, onTimeout) {
@@ -356,39 +386,141 @@ async function scrapeWithRetry(scrapeOptions = {}) {
     throw lastError;
 }
 
-async function getSalesDataCached() {
-    if (isSalesCacheFresh()) {
-        return salesCache;
-    }
-
-    if (salesInFlight) {
-        return salesInFlight;
-    }
-
-    salesInFlight = (async () => {
-        const result = await scrapeWithRetry();
-        const payload = {
-            success: true,
-            actual: result.actual,
-            forecast: result.forecast,
-            timestamp: result.timestamp,
-            pendingVendors: Array.isArray(result.pendingVendors) ? result.pendingVendors : [],
-        };
-        salesCache = payload;
-        salesCacheAt = Date.now();
-        logDashboardScrapeComplete(payload);
-        return payload;
-    })();
-
-    try {
-        return await salesInFlight;
-    } finally {
-        salesInFlight = null;
-    }
+/** Does a store payload carry usable hourly data (vs an empty/errored placeholder)? */
+function storeHasData(store) {
+    return Boolean(
+        store &&
+            ((Array.isArray(store.actual) && store.actual.length) ||
+                (Array.isArray(store.forecast) && store.forecast.length))
+    );
 }
 
-// Route to serve the main HTML file
+/**
+ * Merge a fresh scrape over the previous cache, per store: if a store's new pull came back
+ * empty or errored, keep its previous good actual/forecast (and pending vendors) so the
+ * dashboard retains the last-known values instead of blanking out for a cycle. Trading
+ * hours/name from the fresh result are carried forward (they may change across the day).
+ */
+function mergeStoresPreservingGood(prevPayload, freshPayload) {
+    const prevByNum = new Map();
+    if (prevPayload && Array.isArray(prevPayload.stores)) {
+        for (const s of prevPayload.stores) prevByNum.set(String(s.storeNumber), s);
+    }
+    return (freshPayload.stores || []).map((fresh) => {
+        if (storeHasData(fresh) && !fresh.error) return fresh;
+        const prev = prevByNum.get(String(fresh.storeNumber));
+        if (storeHasData(prev)) {
+            return {
+                ...prev,
+                openHour: Number.isFinite(fresh.openHour) ? fresh.openHour : prev.openHour,
+                closeHour: Number.isFinite(fresh.closeHour) ? fresh.closeHour : prev.closeHour,
+                storeName: fresh.storeName || prev.storeName,
+                pendingVendors: Array.isArray(fresh.pendingVendors) ? fresh.pendingVendors : prev.pendingVendors,
+                retained: true,
+            };
+        }
+        return fresh; // no previous good data to fall back on
+    });
+}
+
+/** Run a scrape and merge it into the cache (per-store retention). De-duped via salesInFlight. */
+function runScrapeIntoCache(options) {
+    if (salesInFlight) return salesInFlight;
+    salesInFlight = (async () => {
+        const result = await scrapeWithRetry(options);
+        const fresh = {
+            success: true,
+            timestamp: result.timestamp,
+            stores: Array.isArray(result.stores) ? result.stores : [],
+        };
+        salesCache = { success: true, timestamp: fresh.timestamp, stores: mergeStoresPreservingGood(salesCache, fresh) };
+        salesCacheAt = Date.now();
+        logDashboardScrapeComplete(salesCache);
+        return salesCache;
+    })();
+    salesInFlight.catch(() => {}).finally(() => {
+        salesInFlight = null;
+    });
+    return salesInFlight;
+}
+
+async function getSalesDataCached() {
+    // Stale-while-revalidate: as long as we have *any* cached data, serve it instantly and
+    // refresh in the background when stale — the dashboard never waits through a scrape.
+    if (salesCache) {
+        if (!isSalesCacheFresh() && !salesInFlight) {
+            runScrapeIntoCache(); // fire-and-forget
+        }
+        return salesCache;
+    }
+    // Cold start — nothing cached yet, so this first caller waits for the initial scrape.
+    return runScrapeIntoCache();
+}
+
+/** Trading hours for a store from `.storelist`, falling back to defaults. */
+function storeHours(storeNumber) {
+    const cfg = getStoreConfig(storeNumber);
+    return {
+        openHour: cfg ? cfg.openHour : DEFAULT_OPEN_HOUR,
+        closeHour: cfg ? cfg.closeHour : DEFAULT_CLOSE_HOUR,
+    };
+}
+
+/** Empty per-store grid (no actual/forecast yet) so the dashboard can still render. */
+function emptyStorePayload(storeNumber, storeName) {
+    const hours = storeHours(storeNumber);
+    return {
+        actual: [],
+        forecast: [],
+        pendingVendors: [],
+        storeNumber: storeNumber || '',
+        storeName: storeName || storeNumber || '',
+        openHour: hours.openHour,
+        closeHour: hours.closeHour,
+    };
+}
+
+/** Pick one store out of a multi-store payload, shaped like the old single-store response. */
+function storeSliceFromPayload(payload, requestedStore) {
+    const stores = Array.isArray(payload.stores) ? payload.stores : [];
+    let store = null;
+    if (requestedStore) {
+        store = stores.find((s) => String(s.storeNumber) === String(requestedStore)) || null;
+    } else if (DASHBOARD_DEFAULT_STORE) {
+        store = stores.find((s) => String(s.storeNumber) === DASHBOARD_DEFAULT_STORE) || null;
+    }
+    if (!store) store = stores[0] || null;
+
+    const base = store
+        ? {
+              actual: Array.isArray(store.actual) ? store.actual : [],
+              forecast: Array.isArray(store.forecast) ? store.forecast : [],
+              pendingVendors: Array.isArray(store.pendingVendors) ? store.pendingVendors : [],
+              storeNumber: store.storeNumber || '',
+              storeName: store.storeName || store.storeNumber || '',
+              openHour: Number.isFinite(store.openHour) ? store.openHour : storeHours(store.storeNumber).openHour,
+              closeHour: Number.isFinite(store.closeHour) ? store.closeHour : storeHours(store.storeNumber).closeHour,
+              ...(store.error ? { storeError: store.error } : {}),
+          }
+        : emptyStorePayload(requestedStore, '');
+
+    return {
+        success: true,
+        timestamp: payload.timestamp,
+        availableStores: stores.map((s) => ({ storeNumber: s.storeNumber, storeName: s.storeName })),
+        storeNotFound: requestedStore ? !stores.some((s) => String(s.storeNumber) === String(requestedStore)) : false,
+        ...base,
+    };
+}
+
+// Root path is the store picker — a grid of clickable store tiles (see public/stores.html).
 app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, '../public', 'stores.html'));
+});
+
+// Per-store dashboard pages, e.g. /3811. The SPA reads the store number from the path.
+// Static assets and /api/* are matched earlier, so this only catches a bare numeric segment.
+app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
     res.sendFile(path.join(__dirname, '../public', 'index.html'));
 });
 
@@ -409,8 +541,8 @@ app.get('/api/audit-schedule', (req, res) => {
 
 app.get('/api/audits', async (req, res) => {
     try {
-        const state = await getAuditState();
-        res.json({ success: true, ...state });
+        const state = await getAuditState(req.query.store);
+        res.json({ success: true, store: auditStoreKey(req.query.store), ...state });
     } catch (error) {
         console.error('API: Error reading audit state:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -419,8 +551,8 @@ app.get('/api/audits', async (req, res) => {
 
 app.put('/api/audits', async (req, res) => {
     try {
-        const state = await saveAuditDismissals(req.body?.dismissed);
-        res.json({ success: true, ...state });
+        const state = await saveAuditDismissals(req.query.store, req.body?.dismissed);
+        res.json({ success: true, store: auditStoreKey(req.query.store), ...state });
     } catch (error) {
         console.error('API: Error saving audit state:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -444,41 +576,44 @@ app.get('/api/test-scraper', async (req, res) => {
     }
 });
 
-// Main API endpoint to get sales data
+// Main API endpoint to get sales data (one store's slice of the cached multi-store payload)
 app.get('/api/sales', async (req, res) => {
+    const requestedStore = String(req.query.store || '').trim();
     try {
-        console.log('API: Sales data requested');
+        console.log('API: Sales data requested', requestedStore ? `(store ${requestedStore})` : '');
         const testPick = parseScheduledOrdersTestYmd(req.query.testScheduledOrdersDate);
-        let payload;
+        let fullPayload;
         if (testPick && canRunScheduledOrdersDateTest(req, testPick)) {
             console.log('API: Scheduled-orders test scrape for Melbourne date', testPick.ymd);
             const result = await scrapeWithRetry({
                 scheduledOrdersPickYmd: { year: testPick.year, month: testPick.month, day: testPick.day },
                 skipScheduledOrdersPersistence: true,
+                storeNumber: requestedStore || undefined,
             });
-            payload = {
+            fullPayload = {
                 success: true,
-                actual: result.actual,
-                forecast: result.forecast,
                 timestamp: result.timestamp,
-                pendingVendors: Array.isArray(result.pendingVendors) ? result.pendingVendors : [],
-                testScheduledOrdersDate: testPick.ymd,
+                stores: Array.isArray(result.stores) ? result.stores : [],
             };
-            logDashboardScrapeComplete(payload);
-        } else {
-            payload = await getSalesDataCached();
+            logDashboardScrapeComplete(fullPayload);
+            const slice = storeSliceFromPayload(fullPayload, requestedStore);
+            slice.testScheduledOrdersDate = testPick.ymd;
+            res.json(slice);
+            return;
         }
-        payload.ordersReadyForReview = await readOrdersReadyForReview();
-        res.json(payload);
+
+        fullPayload = await getSalesDataCached();
+        const slice = storeSliceFromPayload(fullPayload, requestedStore);
+        res.json(slice);
     } catch (error) {
         console.error('API: Error fetching sales data:', error);
         if (salesCache) {
+            const slice = storeSliceFromPayload(salesCache, requestedStore);
             res.json({
-                ...salesCache,
+                ...slice,
                 stale: true,
                 staleAgeSeconds: Math.round((Date.now() - salesCacheAt) / 1000),
                 warning: 'Serving stale cached sales due to scrape error.',
-                ordersReadyForReview: await readOrdersReadyForReview(),
             });
             return;
         }
@@ -486,27 +621,84 @@ app.get('/api/sales', async (req, res) => {
     }
 });
 
-app.get('/api/orders-ready', async (req, res) => {
+// List of stores (number, name, trading hours) for the store picker and per-store grid.
+// Served straight from `.storelist` so it returns instantly without waiting on a scrape.
+app.get('/api/stores', async (req, res) => {
     try {
-        res.json({ success: true, ...(await readOrdersReadyForReview()) });
-    } catch (error) {
-        console.error('API: Error reading orders-ready signal:', error);
-        res.status(500).json({ success: false, active: false, showPopup: false, error: error.message });
-    }
-});
+        let stores = getStoreList().map((s) => ({
+            storeNumber: s.storeNumber,
+            storeName: s.storeName,
+            openHour: s.openHour,
+            closeHour: s.closeHour,
+        }));
 
-app.post('/api/orders-ready/ack', async (req, res) => {
-    try {
-        await markOrdersReadyAcknowledged(req.body?.completedAt);
-        const ack = await readOrdersReadyAck();
-        res.json({ success: true, date: ack.date });
+        // Fallback: no .storelist configured — use whatever the last scrape discovered.
+        if (!stores.length && salesCache) {
+            stores = (Array.isArray(salesCache.stores) ? salesCache.stores : []).map((s) => ({
+                storeNumber: s.storeNumber,
+                storeName: s.storeName,
+                openHour: Number.isFinite(s.openHour) ? s.openHour : DEFAULT_OPEN_HOUR,
+                closeHour: Number.isFinite(s.closeHour) ? s.closeHour : DEFAULT_CLOSE_HOUR,
+            }));
+        }
+
+        res.json({ success: true, stores, defaultStore: DASHBOARD_DEFAULT_STORE || (stores[0]?.storeNumber ?? '') });
     } catch (error) {
-        console.error('API: Error acknowledging orders-ready popup:', error);
+        console.error('API: Error listing stores:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Start the server
-app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+// Background refresh: keep the multi-store cache warm so browser requests never wait through a full scrape.
+let refreshTimer = null;
+function startBackgroundRefresh() {
+    if (SALES_REFRESH_SECONDS <= 0) {
+        console.log('[Dashboard] Background refresh disabled (SALES_REFRESH_SECONDS <= 0)');
+        return;
+    }
+    const tick = async () => {
+        try {
+            await runScrapeIntoCache();
+        } catch (error) {
+            console.warn('[Dashboard] Background refresh failed:', error.message);
+        }
+    };
+    // Prime the cache shortly after boot, then on the configured interval.
+    setTimeout(tick, 3000).unref?.();
+    refreshTimer = setInterval(tick, SALES_REFRESH_SECONDS * 1000);
+    refreshTimer.unref?.();
+    console.log(`[Dashboard] Background sales refresh every ${SALES_REFRESH_SECONDS}s`);
+}
+
+// Start the server (bind all interfaces so other LAN devices can reach the Pi).
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is running on http://0.0.0.0:${PORT}`);
+    startBackgroundRefresh();
+});
+
+// Graceful shutdown so PM2 restarts / systemctl stop release the port cleanly.
+let shuttingDown = false;
+function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[Dashboard] ${signal} received — closing server…`);
+    if (refreshTimer) clearInterval(refreshTimer);
+    const force = setTimeout(() => {
+        console.warn('[Dashboard] Forced exit after shutdown timeout');
+        process.exit(0);
+    }, 10000);
+    force.unref();
+    server.close(() => {
+        clearTimeout(force);
+        console.log('[Dashboard] Server closed — exiting');
+        process.exit(0);
+    });
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+// A scrape failure must never take the whole dashboard down.
+process.on('unhandledRejection', (reason) => {
+    console.error('[Dashboard] Unhandled promise rejection:', reason);
 });

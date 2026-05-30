@@ -1,0 +1,34 @@
+# Master store list for the dashboard.
+# Copy this file to `.storelist` and edit it. The `.storelist` file is the single
+# source of truth: it controls WHICH stores are scraped/served AND their trading hours.
+# Add a line to add a store; remove a line to drop it.
+#
+# Format (pipe-delimited):  store# | name | openHour | closeHour
+#   - openHour  = first trading hour shown (24h clock)
+#   - closeHour = closing hour (24h clock); the last column shown is closeHour - 1
+#   - midnight close may be written as 24 or 0; hours past midnight as 25, 26 (1AM = 25)
+# Lines starting with # and blank lines are ignored.
+#
+# Different hours on different days:
+#   Leave the hours off the store line, then add one line per weekday beneath it.
+#   Day names: Monday..Sunday (or Mon/Tue/Wed/Thu/Fri/Sat/Sun). Indenting is optional.
+#   Any weekday you don't list falls back to the store's plain line (if it has hours)
+#   or the 10-22 default. Hours are resolved for "today" in Australia/Melbourne.
+#
+# Examples — same hours every day:
+3806 | Dandenong South | 10 | 23
+3808 | Berwick South | 10 | 23
+3811 | Chirnside Park | 10 | 22
+3902 | Ellenbrook North | 10 | 22
+3903 | Canning Vale | 10 | 23
+3904 | Butler | 10 | 22
+#
+# Example — per-day hours (open 10 daily, late on Fri/Sat):
+3901 | Midland
+    Monday    | 10 | 23
+    Tuesday   | 10 | 23
+    Wednesday | 10 | 23
+    Thursday  | 10 | 23
+    Friday    | 10 | 24
+    Saturday  | 10 | 24
+    Sunday    | 10 | 23

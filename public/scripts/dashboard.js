@@ -3,27 +3,82 @@
 ----------------------------------------------------------- */
 const app = document.getElementById('app');
 
+/** Store number from the URL path (e.g. /3811). Empty on `/` → server uses the default store. */
+const STORE_NUMBER = (window.location.pathname.match(/\/(\d{3,6})(?:\/)?$/) || [])[1] || '';
+const STORE_QUERY = STORE_NUMBER ? `?store=${encodeURIComponent(STORE_NUMBER)}` : '';
+
+function withStore(url) {
+    if (!STORE_NUMBER) return url;
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}store=${encodeURIComponent(STORE_NUMBER)}`;
+}
+
 const SALES_API_URL =
     typeof window !== 'undefined' && window.__DASHBOARD_SALES_API__
         ? window.__DASHBOARD_SALES_API__
-        : `${window.location.origin}/api/sales`;
-const AUDITS_API_URL = `${window.location.origin}/api/audits`;
+        : withStore(`${window.location.origin}/api/sales`);
+const AUDITS_API_URL = withStore(`${window.location.origin}/api/audits`);
 const AUDIT_SCHEDULE_URL = `${window.location.origin}/api/audit-schedule`;
 const SALES_REFRESH_MINUTES = 2;
+
+/** Store name/number from the latest sales payload, shown in the header. */
+let currentStoreLabel = STORE_NUMBER || '';
 const DASHBOARD_TIME_ZONE = 'Australia/Melbourne';
 
 /** DEBUG: when set to `YYYY-MM-DD`, order rules + audit schedule use that Melbourne date; “Apply” runs test scheduled-orders scrape (see server `canRunScheduledOrdersDateTest`). */
 let orderDateTestYmd = null;
 
 /* -----------------------------------------------------------
-   Grid columns — one label per trading hour (10AM–9PM) uncomment for 10PM
+   Trading hours — grid columns and the lunch/dinner split are derived from the
+   store's open/close (from .storelist, delivered by the API). Defaults to 10AM–10PM
+   until the store's hours load. See setTradingHours().
 ----------------------------------------------------------- */
-const times = [
-    '10AM', '11AM', '12PM', '1PM', '2PM', '3PM',
-    '4PM', '5PM', '6PM', '7PM', '8PM', '9PM', //'10PM'
-];
+/** Absolute hour of index 0 in the raw Macromatix hourly arrays (the day-view grid starts ~5AM). */
+const RAW_BASE_HOUR = 5;
+/** Lunch/dinner boundary (3PM). */
+const MEAL_SPLIT_HOUR = 15;
 
-const TRADING_GRID_START_HOUR = 10;
+let times = [];
+let TRADING_GRID_START_HOUR = 10;
+let tradingCloseHour = 22;
+/** First index of the dinner block within the trimmed hourly arrays (3PM column). */
+let PART_LUNCH_END = 5;
+let LUNCH_WALL_START = 10;
+let LUNCH_WALL_END_EXCLUSIVE = MEAL_SPLIT_HOUR;
+let DINNER_WALL_START = MEAL_SPLIT_HOUR;
+
+function clampInt(n, lo, hi) {
+    return Math.max(lo, Math.min(hi, n));
+}
+
+/** Format a 24h hour (may exceed 24 for after-midnight closes) as 8AM / 1PM / 12AM. */
+function hourLabel(hour) {
+    const h = (((Math.trunc(hour) % 24) + 24) % 24);
+    const period = h < 12 ? 'AM' : 'PM';
+    const display = h % 12 === 0 ? 12 : h % 12;
+    return `${display}${period}`;
+}
+
+/** Recompute grid columns and meal-period split for a store's open/close hours. */
+function setTradingHours(open, close) {
+    const openHour = Number.isFinite(open) ? Math.trunc(open) : 10;
+    const closeHour = Number.isFinite(close) && close > openHour ? Math.trunc(close) : openHour + 12;
+    TRADING_GRID_START_HOUR = openHour;
+    tradingCloseHour = closeHour;
+    const len = closeHour - openHour;
+    times = Array.from({ length: len }, (_, i) => hourLabel(openHour + i));
+    // Drive the CSS grid column count off the actual number of trading hours so the
+    // grid stays aligned for any store (12h, 13h, etc.) — see --grid-hours in the CSS.
+    if (typeof document !== 'undefined' && document.documentElement) {
+        document.documentElement.style.setProperty('--grid-hours', String(len));
+    }
+    PART_LUNCH_END = clampInt(MEAL_SPLIT_HOUR - openHour, 0, len);
+    LUNCH_WALL_START = openHour;
+    LUNCH_WALL_END_EXCLUSIVE = clampInt(MEAL_SPLIT_HOUR, openHour, closeHour);
+    DINNER_WALL_START = clampInt(MEAL_SPLIT_HOUR, openHour, closeHour);
+}
+
+setTradingHours(10, 22);
 
 function tradingEndHourExclusive() {
     return TRADING_GRID_START_HOUR + times.length;
@@ -296,11 +351,33 @@ async function saveAuditState() {
    Sales API — fetch JSON from API, trim hours, refresh grid & timestamp
 ----------------------------------------------------------- */
 function applySalesPayload(data) {
-    forecastSales = Array.isArray(data.forecast) ? data.forecast.slice(5, -4) : [];
-    liveSales = Array.isArray(data.actual) ? data.actual.slice(5, -4) : [];
+    if (Number.isFinite(data.openHour) && Number.isFinite(data.closeHour)) {
+        const changed = data.openHour !== TRADING_GRID_START_HOUR || data.closeHour !== tradingCloseHour;
+        setTradingHours(data.openHour, data.closeHour);
+        // Hours only change at runtime if they weren't known at first render; rebuild the shell once.
+        if (changed && typeof renderDashboard === 'function') renderDashboard();
+    }
+    // Trim the raw Macromatix hourly arrays (index 0 ≈ RAW_BASE_HOUR) down to this store's trading window.
+    const sliceStart = clampInt(TRADING_GRID_START_HOUR - RAW_BASE_HOUR, 0, Number.MAX_SAFE_INTEGER);
+    const sliceEnd = tradingCloseHour - RAW_BASE_HOUR;
+    forecastSales = Array.isArray(data.forecast) ? data.forecast.slice(sliceStart, sliceEnd) : [];
+    liveSales = Array.isArray(data.actual) ? data.actual.slice(sliceStart, sliceEnd) : [];
     pendingVendors = Array.isArray(data.pendingVendors) ? data.pendingVendors : [];
     for (const d of [...dismissedPendingVendors]) {
         if (!pendingVendors.includes(d)) dismissedPendingVendors.delete(d);
+    }
+    if (data.storeName || data.storeNumber) {
+        currentStoreLabel = data.storeName || data.storeNumber;
+        updateStoreHeader();
+    }
+}
+
+/** Reflect the current store in the header title and the browser tab. */
+function updateStoreHeader() {
+    const el = document.getElementById('store-label');
+    if (el) el.textContent = currentStoreLabel ? `Store ${currentStoreLabel}` : '';
+    if (currentStoreLabel) {
+        document.title = `Sales Dashboard — ${currentStoreLabel}`;
     }
 }
 
@@ -366,7 +443,6 @@ async function loadSalesData() {
 
         // Remove early hours (store closed) and keep only 10AM–9PM, can -4 to -5 for a 10PM store
         applySalesPayload(data);
-        maybeShowOrdersReadyPopup(data.ordersReadyForReview);
 
         await loadAuditSchedule();
         updateGrid();
@@ -709,14 +785,6 @@ const NOTIFICATIONS = {
     printReports: {name: 'MIC- print reports',instruction: 'Print Daily Roster and Prep Guide', icon: 'Clean', seconds: 600},
     shutDownTills: {name: 'MIC - Shut down tills',instruction: 'Close tills and deposit money into safe for the night', icon: 'Clean', seconds: 3600},
 
-    ordersReadyForReview: {
-        name: 'Orders are ready to be reviewed',
-        instruction: '',
-        icon: 'Close',
-        seconds: 600,
-    },
-
-
 };						
 
 /* ============================================================
@@ -739,7 +807,7 @@ const SCHEDULE = [
     { time: '8:00', show: ['cook8PM'] },
 
     //OPEN
-    { time: '8:00', show: [safeCount, AMStockCount, recieveOrders, completeFryPrep, completeSaladPrep, checkToilets, stockUpPaperStockOnLine, stockUpDeserts, thawing]},
+    { time: '8:00', show: ['safeCount', 'AMStockCount', 'recieveOrders', 'completeFryPrep', 'completeSaladPrep', 'checkToilets', 'stockUpPaperStockOnLine', 'stockUpDeserts', 'thawing']},
 
 
     // "Before 9:30PM"
@@ -830,58 +898,6 @@ function showNotificationGroup(keys) {
     if (list.length > 3) console.warn('[Notifications] Only 3 cards at once; ignoring extras.');
     const configs = list.map(presetKeyToCardConfig).filter(Boolean);
     openNotificationCards(configs);
-}
-
-const ORDERS_READY_POLL_SECONDS = 30;
-const ORDERS_READY_MAX_MS = 600000;
-let _ordersReadyPopupInFlight = false;
-
-async function acknowledgeOrdersReadyPopup(completedAt) {
-    try {
-        const res = await fetch(`${window.location.origin}/api/orders-ready/ack`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ completedAt }),
-        });
-        return res.ok;
-    } catch (err) {
-        console.warn('Orders-ready ack failed:', err);
-        return false;
-    }
-}
-
-async function maybeShowOrdersReadyPopup(info) {
-    if (!info || !info.showPopup || !info.completedAt) return;
-    if (_ordersReadyPopupInFlight) return;
-
-    const preset = presetKeyToCardConfig('ordersReadyForReview');
-    if (!preset) return;
-
-    _ordersReadyPopupInFlight = true;
-    const ackOk = await acknowledgeOrdersReadyPopup(info.completedAt);
-    if (!ackOk) {
-        _ordersReadyPopupInFlight = false;
-        return;
-    }
-
-    const remaining = Number(info.remainingMs);
-    preset.duration = Number.isFinite(remaining)
-        ? Math.max(5000, Math.min(ORDERS_READY_MAX_MS, remaining))
-        : ORDERS_READY_MAX_MS;
-    openNotificationCards([preset]);
-}
-
-async function pollOrdersReadyForReview() {
-    try {
-        const res = await fetch(`${window.location.origin}/api/orders-ready`, { credentials: 'include' });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!data.success) return;
-        maybeShowOrdersReadyPopup(data);
-    } catch (err) {
-        console.warn('Orders-ready poll failed:', err);
-    }
 }
 
 function registerSchedule(rows) {
@@ -1241,20 +1257,6 @@ function buildLiveProgressLayersHtml(timeFillPercent, outcomeClass, paceClass) {
     </div>`;
 }
 
-function hasBeatenHourForecast(actual, forecast) {
-    const f = Number(forecast) || 0;
-    const a = Number(actual) || 0;
-    if (f <= 0) return true;
-    return a >= f;
-}
-
-function hasBeatenPeriodForecast(totalActual, totalForecast) {
-    const f = Number(totalForecast) || 0;
-    const a = Number(totalActual) || 0;
-    if (f <= 0) return true;
-    return a >= f;
-}
-
 function buildHourlyDataCell({ index, hourProgress, forecast, actual, displayValue }) {
     const isFuture = index > hourProgress.hourIndex;
     if (isFuture) {
@@ -1270,11 +1272,8 @@ function buildHourlyDataCell({ index, hourProgress, forecast, actual, displayVal
         return `<div class="grid-cell${cellClass ? ` ${cellClass}` : ''}">${formatCurrency(displayValue)}</div>`;
     }
 
-    if (hasBeatenHourForecast(an, fn)) {
-        const cellClass = getActualCellClass(an, fn);
-        return `<div class="grid-cell${cellClass ? ` ${cellClass}` : ''}">${formatCurrency(displayValue)}</div>`;
-    }
-
+    // Current hour: the bar fills with wall-clock time through the hour (not by sales).
+    // Colour still reflects pace/outcome, but width tracks time even once forecast is beaten.
     const { progress } = hourProgress;
     const paceClass = getPaceClass(an, fn, progress);
     const outcomeClass = getActualCellClass(an, fn);
@@ -1328,13 +1327,10 @@ function buildActualRow(values, forecasts) {
 
 /* -----------------------------------------------------------
    Day part row — charcoal cell shows full-day total (colour bar only).
-   Lunch 10AM–3PM (hourly slice + wall) | Dinner 3PM–close
+   Lunch open–3PM (hourly slice + wall) | Dinner 3PM–close.
+   The split indices/hours (PART_LUNCH_END, LUNCH_WALL_*, DINNER_WALL_START)
+   are derived per store in setTradingHours().
 ----------------------------------------------------------- */
-/** First index of 3PM column in `times` / hourly arrays (dinner starts here). */
-const PART_LUNCH_END = 5;
-const LUNCH_WALL_START = 10;
-const LUNCH_WALL_END_EXCLUSIVE = 15;
-const DINNER_WALL_START = 15;
 
 function sumHourSlice(values, start, end) {
     return values.slice(start, end).reduce((sum, v) => sum + (Number(v) || 0), 0);
@@ -1405,11 +1401,8 @@ function getDayPartPresentation(forecasts, actuals, startIdx, endExclusive, wall
         }
     }
 
-    if (hasBeatenPeriodForecast(totalActual, totalForecast)) {
-        const finalClass = totalForecast > 0 ? getActualCellClass(totalActual, totalForecast) : 'cell-green';
-        return { phase: 'during', cellClass: finalClass, inlineStyle: '', liveLayersHtml: '', outcomeBorderColor: '' };
-    }
-
+    // During the period the bar fills with wall-clock time (10–3 lunch, 3–close dinner),
+    // not by sales — so it never snaps to full just because forecast was beaten.
     const mainClass = totalForecast > 0 ? getActualCellClass(totalActual, totalForecast) : 'cell-green';
     const liveLayersHtml = buildLiveProgressLayersHtml(wallPct, mainClass, paceClass);
     const outcomeBorderColor = paceBorderMap[mainClass] || 'var(--blank-border)';
@@ -1483,15 +1476,20 @@ function buildMealPeriodRow(forecasts, actuals) {
     if (dinnerPres.cellClass) dinnerCellClasses.push(dinnerPres.cellClass);
     if (dinnerPres.liveLayersHtml) dinnerCellClasses.push('meal-period-cell--live');
 
+    // Grid line 1 = day-part label cell, hour columns start at line 2. Lunch spans the
+    // hours before 3PM (PART_LUNCH_END of them), dinner spans the rest — derived from the
+    // store's trading hours so a 12h or 13h store both stay aligned.
+    const lunchSpanEnd = 2 + clampInt(PART_LUNCH_END, 0, times.length);
+    const gridEnd = 2 + times.length;
     const lunchStyleAttr = [
-        'grid-column: 2 / 7',
+        `grid-column: 2 / ${lunchSpanEnd}`,
         lunchPres.inlineStyle,
         lunchPres.outcomeBorderColor ? `border: var(--cell-border) ${lunchPres.outcomeBorderColor}` : '',
     ]
         .filter(Boolean)
         .join('; ');
     const dinnerStyleAttr = [
-        'grid-column: 7 / 14',
+        `grid-column: ${lunchSpanEnd} / ${gridEnd}`,
         dinnerPres.inlineStyle,
         dinnerPres.outcomeBorderColor ? `border: var(--cell-border) ${dinnerPres.outcomeBorderColor}` : '',
     ]
@@ -1768,6 +1766,7 @@ function renderDashboard() {
                 <div class="dashboard-title">
                     <h1>SALES DASHBOARD</h1>
                     <p class="subtitle">Real-time sales data updated automatically.</p>
+                    <p id="store-label" class="store-label">${currentStoreLabel ? `Store ${currentStoreLabel}` : ''}</p>
                 </div>
                 <div class="top-info">
                     <div class="top-info-group">
@@ -1812,8 +1811,6 @@ setInterval(() => {
 function startSyncedUpdates() {
     // Load immediately
     loadSalesData();
-    pollOrdersReadyForReview();
-    setInterval(pollOrdersReadyForReview, ORDERS_READY_POLL_SECONDS * 1000);
 
     // Calculate time until next refresh boundary
     const now = new Date();
@@ -1829,10 +1826,48 @@ function startSyncedUpdates() {
     }, msUntilNext);
 }
 
+/** Load this store's trading hours (from .storelist via /api/stores) before the first render. */
+async function initTradingHours() {
+    try {
+        const res = await fetch(`${window.location.origin}/api/stores`, { credentials: 'include' });
+        if (!res.ok) return;
+        const data = await res.json();
+        const stores = Array.isArray(data.stores) ? data.stores : [];
+        const target = STORE_NUMBER
+            ? stores.find((s) => String(s.storeNumber) === STORE_NUMBER)
+            : stores.find((s) => String(s.storeNumber) === String(data.defaultStore)) || stores[0];
+        if (target && Number.isFinite(target.openHour) && Number.isFinite(target.closeHour)) {
+            setTradingHours(target.openHour, target.closeHour);
+            if (target.storeName || target.storeNumber) {
+                currentStoreLabel = target.storeName || target.storeNumber;
+            }
+        }
+    } catch (err) {
+        console.warn('Failed to load store hours:', err);
+    }
+}
+
+/**
+ * Compute the responsive scale multiplier in JS and publish it as a unitless
+ * custom property. CSS calc() can't divide viewport units to a plain number,
+ * so the CSS default (--dashboard-scale: 1) is only a fallback; this is the
+ * real responsive value consumed by every calc(... * var(--dashboard-scale)).
+ * Mirrors the original intent: scale to fit a 1920x1080 design, clamped to
+ * [0.72, 1] so it never grows past full size or shrinks too far.
+ */
+function applyDashboardScale() {
+    const ratio = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    const scale = Math.max(0.72, Math.min(ratio, 1));
+    document.documentElement.style.setProperty('--dashboard-scale', String(scale));
+}
+
 /* -----------------------------------------------------------
    Boot — render dashboard shell, then start clock & sales sync
 ----------------------------------------------------------- */
 (async () => {
+    applyDashboardScale();
+    window.addEventListener('resize', applyDashboardScale);
+    await initTradingHours();
     renderDashboard();
     await loadAuditSchedule();
     await loadAuditState();

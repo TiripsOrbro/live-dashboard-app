@@ -3,7 +3,10 @@
    Scale 1 = largest … 5 = smallest
 ----------------------------------------------------------- */
 :root {
-    --dashboard-scale: clamp(0.72, min(calc(100vw / 1920), calc(100vh / 1080)), 1);
+    /* Unitless scale multiplier. CSS calc() can't derive a unitless ratio from
+       viewport units, so this is a valid fallback (full size); the responsive
+       value is computed in JS (applyDashboardScale) and set on :root. */
+    --dashboard-scale: 1;
     --font-size-1: 2.35rem;
     --font-size-2: 1.65rem;
     --font-size-3: 1.35rem;
@@ -169,6 +172,18 @@ body {
     font-weight: var(--font-weight-subtitle);
 }
 
+.store-label {
+    margin: 4px 0 0;
+    color: var(--charcoal);
+    font-size: var(--font-size-3, 1.1rem);
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.store-label:empty {
+    display: none;
+}
+
 .note,
 .dashboard-colour-note {
     margin-top: 0;
@@ -234,7 +249,7 @@ body {
 ----------------------------------------------------------- */
 .dashboard-grid {
     display: grid;
-    grid-template-columns: var(--dashboard-grid-label-col) repeat(12, minmax(0, 1fr));
+    grid-template-columns: var(--dashboard-grid-label-col) repeat(var(--grid-hours, 12), minmax(0, 1fr));
     gap: calc(8px * var(--dashboard-scale));
     align-items: stretch;
     min-width: 0;

@@ -1,0 +1,17 @@
+# Master store list — store# | name | openHour | closeHour  (24h)
+# Uncomment a line to scrape/show that store. Edit hours per store.
+
+3806 | Dandenong South | 10 | 23
+3808 | Berwick South | 10 | 23
+3811 | Chirnside Park | 10 | 22
+3901 | Midland
+    Monday    | 10 | 22
+    Tuesday   | 10 | 22
+    Wednesday | 10 | 22
+    Thursday  | 10 | 23
+    Friday    | 10 | 23
+    Saturday  | 10 | 23
+    Sunday    | 10 | 22
+3902 | Ellenbrook North | 10 | 22
+3903 | Canning Vale | 10 | 23
+3904 | Butler | 10 | 22

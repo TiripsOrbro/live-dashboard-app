@@ -1,7 +1,7 @@
 const scrapeMacromatix = require('./macromatixScraper');
 
 /**
- * Macromatix hourly forecast and actual sales for the dashboard grid.
+ * Macromatix hourly forecast and actual sales for the dashboard grid — one entry per store.
  */
 async function scrapeData(options = {}) {
     const mm = await scrapeMacromatix(options);
@@ -9,10 +9,8 @@ async function scrapeData(options = {}) {
     return {
         success: true,
         message: 'Macromatix',
-        actual: mm.actual,
-        forecast: mm.forecast,
         timestamp: mm.timestamp,
-        pendingVendors: Array.isArray(mm.pendingVendors) ? mm.pendingVendors : [],
+        stores: Array.isArray(mm.stores) ? mm.stores : [],
     };
 }
 

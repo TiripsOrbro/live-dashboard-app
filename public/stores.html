@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Store Dashboards</title>
+
+    <link rel="stylesheet" href="/styles/dashboard.css">
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 4vh 4vw;
+            box-sizing: border-box;
+        }
+
+        .stores-header {
+            text-align: center;
+            margin-bottom: 4vh;
+        }
+
+        .stores-title {
+            font-size: var(--font-size-1);
+            font-weight: var(--font-weight-page-title);
+            color: var(--charcoal);
+            margin: 0;
+        }
+
+        .stores-subtitle {
+            font-size: var(--font-size-4);
+            font-weight: var(--font-weight-subtitle);
+            color: color-mix(in srgb, var(--charcoal) 70%, var(--grey));
+            margin: 0.5rem 0 0;
+        }
+
+        .store-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: clamp(12px, 2vw, 24px);
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .store-tile {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            padding: clamp(20px, 3vw, 36px) 16px;
+            background: var(--charcoal);
+            color: var(--white);
+            border: 2px solid var(--dark-purple-border);
+            border-radius: 14px;
+            text-decoration: none;
+            transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+        }
+
+        .store-tile:hover,
+        .store-tile:focus-visible {
+            transform: translateY(-3px);
+            border-color: var(--tb-purple-light);
+            background: color-mix(in srgb, var(--tb-purple-light) 18%, var(--charcoal));
+            outline: none;
+        }
+
+        .store-tile-number {
+            font-size: var(--font-size-1);
+            font-weight: var(--font-weight-heavy);
+            line-height: 1;
+        }
+
+        .store-tile-name {
+            font-size: var(--font-size-4);
+            font-weight: var(--font-weight-medium);
+            text-align: center;
+            color: color-mix(in srgb, var(--white) 82%, var(--charcoal));
+        }
+
+        .store-tile-hours {
+            font-size: var(--font-size-5);
+            font-weight: var(--font-weight-normal);
+            color: color-mix(in srgb, var(--white) 60%, var(--charcoal));
+        }
+
+        .stores-message {
+            font-size: var(--font-size-3);
+            color: var(--charcoal);
+            text-align: center;
+            margin-top: 6vh;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="stores-header">
+        <h1 class="stores-title">Store Dashboards</h1>
+        <p class="stores-subtitle">Select a store to open its live sales dashboard</p>
+    </header>
+
+    <main id="store-grid" class="store-grid" aria-label="Store list"></main>
+
+    <script src="/scripts/stores.js"></script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const puppeteer = require('puppeteer');
+const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./storeList');
 
 const BASE_URL = 'https://tacobellau.macromatix.net/';
 const LABOUR_URL = 'https://tacobellau.macromatix.net/MMS_Stores_LabourScheduler.aspx?MenuCustomItemID=249';
@@ -11,10 +12,13 @@ const GOTO_OPTS = { waitUntil: 'load', timeout: 45000 };
 const DASHBOARD_TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
 const CONFIRMED_EMPTY_ORDER_CHECKS = Number(process.env.CONFIRMED_EMPTY_ORDER_CHECKS || 2);
 
-let forecastCache = { dateKey: null, values: null };
-let scheduledOrdersCompleteDateKey = null;
-let scheduledOrdersEmptyCheck = { dateKey: null, count: 0 };
-let lastKnownPendingVendors = { dateKey: null, values: [] };
+/* Per-store state keyed by store number (e.g. "3811"). A multi-store account scrapes each store in turn. */
+const forecastCacheByStore = new Map();
+const scheduledOrdersCompleteByStore = new Map();
+const scheduledOrdersEmptyCheckByStore = new Map();
+const lastKnownPendingVendorsByStore = new Map();
+
+const DEFAULT_STORE_KEY = '__default__';
 
 function decryptCredentialPayload(encryptedPayload, keyText) {
     if (!encryptedPayload || !keyText) return null;
@@ -73,8 +77,18 @@ function dashboardDateKey(d = new Date()) {
     return `${yyyy}-${mm}-${dd}`;
 }
 
-function getCachedForecastForToday(dateKey) {
-    return forecastCache.dateKey === dateKey && Array.isArray(forecastCache.values) ? forecastCache.values : null;
+function storeStateKey(storeNumber) {
+    const s = String(storeNumber || '').trim();
+    return s || DEFAULT_STORE_KEY;
+}
+
+function getCachedForecastForToday(storeNumber, dateKey) {
+    const entry = forecastCacheByStore.get(storeStateKey(storeNumber));
+    return entry && entry.dateKey === dateKey && Array.isArray(entry.values) ? entry.values : null;
+}
+
+function setCachedForecast(storeNumber, dateKey, values) {
+    forecastCacheByStore.set(storeStateKey(storeNumber), { dateKey, values });
 }
 
 function getConfirmedEmptyOrderChecks() {
@@ -83,24 +97,31 @@ function getConfirmedEmptyOrderChecks() {
         : 2;
 }
 
-function getLastKnownPendingVendors(dateKey) {
-    return lastKnownPendingVendors.dateKey === dateKey ? lastKnownPendingVendors.values : [];
+function getLastKnownPendingVendors(storeNumber, dateKey) {
+    const entry = lastKnownPendingVendorsByStore.get(storeStateKey(storeNumber));
+    return entry && entry.dateKey === dateKey ? entry.values : [];
 }
 
-function recordScheduledOrdersResult(dateKey, vendors) {
-    lastKnownPendingVendors = { dateKey, values: vendors };
+function isScheduledOrdersCompleteToday(storeNumber, dateKey) {
+    return scheduledOrdersCompleteByStore.get(storeStateKey(storeNumber)) === dateKey;
+}
+
+function recordScheduledOrdersResult(storeNumber, dateKey, vendors) {
+    const key = storeStateKey(storeNumber);
+    lastKnownPendingVendorsByStore.set(key, { dateKey, values: vendors });
 
     if (vendors.length > 0) {
-        scheduledOrdersEmptyCheck = { dateKey, count: 0 };
-        scheduledOrdersCompleteDateKey = null;
+        scheduledOrdersEmptyCheckByStore.set(key, { dateKey, count: 0 });
+        scheduledOrdersCompleteByStore.delete(key);
         return;
     }
 
-    const nextCount = scheduledOrdersEmptyCheck.dateKey === dateKey ? scheduledOrdersEmptyCheck.count + 1 : 1;
-    scheduledOrdersEmptyCheck = { dateKey, count: nextCount };
+    const prev = scheduledOrdersEmptyCheckByStore.get(key);
+    const nextCount = prev && prev.dateKey === dateKey ? prev.count + 1 : 1;
+    scheduledOrdersEmptyCheckByStore.set(key, { dateKey, count: nextCount });
 
     if (nextCount >= getConfirmedEmptyOrderChecks()) {
-        scheduledOrdersCompleteDateKey = dateKey;
+        scheduledOrdersCompleteByStore.set(key, dateKey);
     }
 }
 
@@ -324,7 +345,10 @@ function resolveChromiumExecutablePath() {
         '/usr/bin/chromium',
         '/usr/bin/chromium-browser',
         '/snap/bin/chromium',
+        '/usr/lib/chromium/chromium',
+        '/usr/lib/chromium-browser/chromium-browser',
         '/usr/bin/google-chrome-stable',
+        '/usr/bin/google-chrome',
     ];
     for (const p of candidates) {
         if (fs.existsSync(p)) {
@@ -332,6 +356,16 @@ function resolveChromiumExecutablePath() {
         }
     }
     return undefined;
+}
+
+/** Does this Puppeteer install have a usable bundled Chromium? (We skip the download on Pi via .npmrc.) */
+function hasBundledChromium() {
+    try {
+        const p = typeof puppeteer.executablePath === 'function' ? puppeteer.executablePath() : '';
+        return Boolean(p) && fs.existsSync(p);
+    } catch {
+        return false;
+    }
 }
 
 /** Visible window: set SCRAPER_HEADLESS to 0, false, no, or off. Optional SCRAPER_SLOW_MO_MS (ms), SCRAPER_DEVTOOLS=1 */
@@ -360,6 +394,12 @@ function getPuppeteerLaunchOptions() {
     if (chromiumPath) {
         opts.executablePath = chromiumPath;
         console.log('[Macromatix] Using Chromium executable:', chromiumPath);
+    } else if (!hasBundledChromium()) {
+        throw new Error(
+            'No Chromium found. On a Raspberry Pi run "sudo apt install -y chromium" (or chromium-browser), ' +
+                'then set SCRAPER_EXECUTABLE_PATH in .env.production (e.g. /usr/bin/chromium). ' +
+                'Puppeteer\'s bundled Chromium download is skipped via .npmrc, so a system browser is required.'
+        );
     }
     const slowMo = Number(process.env.SCRAPER_SLOW_MO_MS);
     if (Number.isFinite(slowMo) && slowMo > 0) {
@@ -528,6 +568,297 @@ async function setScheduledOrdersDateOffset(page, offsetDays) {
     await setScheduledOrdersToYmd(page, d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 
+/* -----------------------------------------------------------
+   Multi-store support
+----------------------------------------------------------- */
+
+/** Optional allowlist/order of store numbers; default = every store the account can see. */
+function getConfiguredStoreNumbers() {
+    return String(process.env.DASHBOARD_STORE_NUMBERS || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+}
+
+/** Pull a 3–6 digit store number out of an option label like "3811 Chirnside Park". */
+function storeNumberFromLabel(label) {
+    const m = String(label || '').match(/\b(\d{3,6})\b/);
+    return m ? m[1] : '';
+}
+
+/** Load-on-demand store combo: how long to poll for items after triggering the fetch. */
+const STORE_COMBO_LOAD_TIMEOUT_MS = Number(process.env.SCRAPER_STORE_COMBO_TIMEOUT_MS || 9000);
+
+/**
+ * The store picker on the labour scheduler is a Telerik RadComboBox (id `..._ddlEntity`,
+ * input `..._ddlEntity_Input`), not a native `<select>`. Find its component id so we can drive it.
+ */
+async function findStoreComboId(page) {
+    return page.evaluate(() => {
+        const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
+        for (const el of document.querySelectorAll('td, label, span, div')) {
+            if (/^store\s*:?$/i.test(norm(el.textContent))) {
+                const scope = el.closest('tr, table, div') || el.parentElement;
+                const combo = scope && scope.querySelector('.RadComboBox[id]');
+                if (combo) return combo.id;
+            }
+        }
+        const byId = document.querySelector(
+            '.RadComboBox[id$="ddlEntity"], .RadComboBox[id*="Entity"], .RadComboBox[id*="Store" i]'
+        );
+        return byId ? byId.id : '';
+    });
+}
+
+/** Read RadComboBox items via the Telerik client API ($find). */
+async function readStoreComboItems(page, comboId) {
+    return page.evaluate((id) => {
+        const c = typeof window.$find === 'function' ? window.$find(id) : null;
+        if (!c || typeof c.get_items !== 'function') return [];
+        const list = c.get_items();
+        const out = [];
+        for (let i = 0; i < list.get_count(); i++) {
+            const text = (list.getItem(i).get_text() || '').replace(/\s+/g, ' ').trim();
+            if (text) out.push({ storeName: text, optionValue: list.getItem(i).get_value() });
+        }
+        return out;
+    }, comboId);
+}
+
+/** Current selected text of the store combo (e.g. "3904 Butler"). */
+async function getStoreComboText(page, comboId) {
+    return page.evaluate((id) => {
+        const c = typeof window.$find === 'function' ? window.$find(id) : null;
+        return c && typeof c.get_text === 'function' ? (c.get_text() || '').trim() : '';
+    }, comboId);
+}
+
+/**
+ * Open the store RadComboBox and return its items. The picker is load-on-demand, so clicking the
+ * arrow cell triggers the server fetch (showDropDown alone does not); then poll until items populate.
+ */
+async function openStoreComboAndReadItems(page, comboId) {
+    const arrow = await page.$(`#${comboId} .rcbArrowCell, #${comboId} .rcbArrowCellRight`);
+    if (arrow) {
+        await arrow.click().catch(() => {});
+    } else {
+        await page.evaluate((id) => {
+            const c = typeof window.$find === 'function' ? window.$find(id) : null;
+            if (c && typeof c.requestItems === 'function') c.requestItems('', false);
+            else if (c && typeof c.showDropDown === 'function') c.showDropDown();
+        }, comboId);
+    }
+    const deadline = Date.now() + STORE_COMBO_LOAD_TIMEOUT_MS;
+    let items = [];
+    while (Date.now() < deadline) {
+        await page.waitForTimeout(400);
+        items = await readStoreComboItems(page, comboId);
+        if (items.length) break;
+    }
+    return items;
+}
+
+/** Read rendered `<li>` items straight from the dropdown element (fallback when the client API is empty). */
+async function readStoreComboDropdownLis(page, comboId) {
+    return page.evaluate((id) => {
+        const dd = document.getElementById(`${id}_DropDown`) || document;
+        const out = [];
+        dd.querySelectorAll('li.rcbItem').forEach((li) => {
+            const t = (li.textContent || '').replace(/\s+/g, ' ').trim();
+            if (t) out.push({ storeName: t, optionValue: t });
+        });
+        return out;
+    }, comboId);
+}
+
+/** Native `<select>` fallback for accounts/pages where the store picker is a plain dropdown. */
+async function readNativeStoreSelect(page) {
+    return page.evaluate(() => {
+        const out = [];
+        for (const sel of document.querySelectorAll('select')) {
+            const ctx = ((sel.closest('tr, td, div, table') || sel).innerText || '').toLowerCase();
+            const looks = Array.from(sel.options).some((o) => /\b\d{3,6}\b/.test(o.text || ''));
+            if (!ctx.includes('store') && !looks) continue;
+            for (const opt of sel.options) {
+                const text = (opt.textContent || '').replace(/\s+/g, ' ').trim();
+                if (text && /\b\d{3,6}\b/.test(text) && !/select|choose/i.test(text)) {
+                    out.push({ storeName: text, optionValue: opt.value });
+                }
+            }
+            if (out.length) break;
+        }
+        return out;
+    });
+}
+
+/**
+ * Enumerate every store the account can access. Tries the RadComboBox client API, then the opened
+ * dropdown's `<li>` items, then a native `<select>`. Returns `[{ storeNumber, storeName, optionValue }]`.
+ */
+async function enumerateStores(page) {
+    const comboId = await findStoreComboId(page);
+    let raw = [];
+
+    if (comboId) {
+        raw = await readStoreComboItems(page, comboId);
+        if (!raw.length) {
+            raw = await openStoreComboAndReadItems(page, comboId);
+        }
+        if (!raw.length) {
+            raw = await readStoreComboDropdownLis(page, comboId);
+        }
+    }
+    if (!raw.length) {
+        raw = await readNativeStoreSelect(page);
+    }
+
+    const seen = new Set();
+    const stores = [];
+    for (const r of raw) {
+        const storeNumber = storeNumberFromLabel(r.storeName);
+        if (!storeNumber || seen.has(storeNumber)) continue;
+        seen.add(storeNumber);
+        stores.push({ storeNumber, storeName: r.storeName, optionValue: r.optionValue });
+    }
+
+    const configured = getConfiguredStoreNumbers();
+    if (configured.length) {
+        const byNumber = new Map(stores.map((s) => [s.storeNumber, s]));
+        const ordered = configured.map((n) => byNumber.get(n)).filter(Boolean);
+        const missing = configured.filter((n) => !byNumber.has(n));
+        if (missing.length) {
+            console.warn('[Macromatix] DASHBOARD_STORE_NUMBERS not found on the account:', missing.join(', '));
+        }
+        return ordered.length ? ordered : stores;
+    }
+
+    return stores;
+}
+
+/**
+ * Select a store by number on the current page. Drives the RadComboBox (open + click the matching item,
+ * which fires the ASP.NET postback), with a client-API path and a native `<select>` fallback.
+ * Returns the selected option text, or null if nothing matched.
+ */
+async function selectStoreOnPage(page, storeNumber) {
+    const want = String(storeNumber).replace(/[^0-9]/g, '');
+    if (!want) return null;
+
+    const comboId = await findStoreComboId(page);
+    if (comboId) {
+        // Already on this store? Skip — its <li> may not render in the dropdown when selected.
+        const current = await getStoreComboText(page, comboId);
+        if (new RegExp(`(^|\\D)${want}(\\D|$)`).test(current)) {
+            return current;
+        }
+
+        await openStoreComboAndReadItems(page, comboId);
+
+        const clicked = await page.evaluate(
+            ({ id, w }) => {
+                const re = new RegExp(`(^|\\D)${w}(\\D|$)`);
+                const dd = document.getElementById(`${id}_DropDown`) || document;
+                for (const li of dd.querySelectorAll('li.rcbItem')) {
+                    const t = (li.textContent || '').replace(/\s+/g, ' ').trim();
+                    if (re.test(t)) {
+                        li.scrollIntoView({ block: 'center' });
+                        li.click();
+                        return t;
+                    }
+                }
+                return null;
+            },
+            { id: comboId, w: want }
+        );
+        if (clicked) return clicked;
+
+        const viaApi = await page.evaluate(
+            ({ id, w }) => {
+                const c = typeof window.$find === 'function' ? window.$find(id) : null;
+                if (!c || typeof c.get_items !== 'function') return null;
+                const re = new RegExp(`(^|\\D)${w}(\\D|$)`);
+                const list = c.get_items();
+                for (let i = 0; i < list.get_count(); i++) {
+                    const it = list.getItem(i);
+                    if (re.test((it.get_text() || '').trim())) {
+                        if (typeof it.select === 'function') it.select();
+                        if (typeof c.set_text === 'function') c.set_text(it.get_text());
+                        return it.get_text();
+                    }
+                }
+                return null;
+            },
+            { id: comboId, w: want }
+        );
+        if (viaApi) return viaApi;
+    }
+
+    return page.evaluate((w) => {
+        const re = new RegExp(`(^|\\D)${w}(\\D|$)`);
+        for (const sel of document.querySelectorAll('select')) {
+            const ctx = ((sel.closest('tr, td, div, table') || sel).innerText || '').toLowerCase();
+            const looks = Array.from(sel.options).some((o) => /\b\d{3,6}\b/.test(o.text || ''));
+            if (!ctx.includes('store') && !looks) continue;
+            for (const opt of sel.options) {
+                if (re.test((opt.textContent || '').trim())) {
+                    if (sel.value !== opt.value) {
+                        sel.value = opt.value;
+                        sel.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    return (opt.textContent || '').trim();
+                }
+            }
+        }
+        return null;
+    }, want);
+}
+
+/** Day view tab on the labour scheduler (re-clicked after each store change because the grid reloads). */
+const DAY_VIEW_TAB_SELECTOR =
+    '#ctl00_ph_scheduleLabour_rdScheduler_C_rtbLabour > div > div > div > ul > li:nth-child(12) > a';
+
+async function openDayViewAndReadSales(page, shouldReadForecast) {
+    await page.waitForSelector(DAY_VIEW_TAB_SELECTOR, { timeout: 15000 });
+    await page.click(DAY_VIEW_TAB_SELECTOR);
+
+    await Promise.race([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {}),
+        page.waitForTimeout(4000),
+    ]);
+    await page.waitForTimeout(1200);
+
+    await page.waitForFunction(
+        () => {
+            const row = document.querySelector('tr[data-kpi="ActualSalesKpi"]');
+            if (!row) return false;
+            return row.querySelectorAll('td').length > 10;
+        },
+        { timeout: 15000 }
+    );
+
+    return page.evaluate((readForecast) => {
+        const parseHourlyRow = (row) => {
+            const cells = row.querySelectorAll('td');
+            const values = [];
+            for (let i = 2; i < cells.length; i++) {
+                const raw = cells[i].textContent.replace(/[^0-9.-]/g, '').trim();
+                const value = parseFloat(raw);
+                if (!Number.isNaN(value)) values.push(value);
+            }
+            return values;
+        };
+
+        const actualRow = document.querySelector('tr[data-kpi="ActualSalesKpi"]');
+        const forecastRow = document.querySelector('tr[data-kpi="ForecastSalesKpi"]');
+        if (!actualRow || (readForecast && !forecastRow)) throw new Error('Sales data rows not found');
+
+        return {
+            actual: parseHourlyRow(actualRow),
+            forecast: readForecast ? parseHourlyRow(forecastRow) : null,
+        };
+    }, shouldReadForecast);
+}
+
 /** Raw vendor text from Macromatix → short label for the dashboard (only these are listed). */
 const VENDOR_LABEL_RULES = [
     { re: /americold/i, label: 'Americold' },
@@ -586,6 +917,20 @@ async function withPageContextRetry(page, label, fn) {
 async function scrapePendingVendors(page, opts = {}) {
     await page.goto(SCHEDULED_ORDERS_URL, GOTO_OPTS);
     await page.waitForTimeout(700);
+
+    if (opts.storeNumber) {
+        const picked = await selectStoreOnPage(page, opts.storeNumber);
+        if (picked) {
+            console.log('[Macromatix] Scheduled orders store selected:', picked);
+            await Promise.race([
+                page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {}),
+                page.waitForTimeout(1500),
+            ]);
+            await page.waitForFunction(() => document.readyState === 'complete', { timeout: 15000 }).catch(() => {});
+        } else {
+            console.warn(`[Macromatix] Scheduled orders: store ${opts.storeNumber} not selectable; using current view`);
+        }
+    }
 
     // await withPageContextRetry(page, 'scheduled orders date', async () => {
     //     await setScheduledOrdersDateOffset(page, SCHEDULED_ORDERS_DAY_OFFSET);
@@ -729,12 +1074,164 @@ async function scrapePendingVendors(page, opts = {}) {
 }
 
 /**
- * Taco Bell AU Macromatix — labour scheduler (hourly sales) + scheduled orders (pending vendor labels).
+ * Scrape one store on an already-logged-in page: select the store on the labour scheduler, enter Day view,
+ * read actual/forecast, then read pending vendors from scheduled orders for that same store.
+ */
+async function scrapeStoreData(page, store, ctx) {
+    const { todayKey, testScheduledOrdersPick, pickYmd, skipScheduledPersistence } = ctx;
+    const storeNumber = String(store.storeNumber || '').trim();
+    const label = storeNumber || '(default)';
+
+    await page.goto(LABOUR_URL, GOTO_OPTS);
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+
+    if (storeNumber) {
+        const picked = await selectStoreOnPage(page, storeNumber);
+        if (picked) {
+            console.log(`[Macromatix] Labour scheduler store selected: ${picked}`);
+            // Entity change is a postback that reloads the scheduler panel — wait for it to settle.
+            await Promise.race([
+                page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 12000 }).catch(() => {}),
+                page.waitForTimeout(2500),
+            ]);
+            await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+            await page.waitForTimeout(1200);
+        } else {
+            console.warn(`[Macromatix] Labour scheduler: store ${storeNumber} not selectable; reading current view`);
+        }
+    }
+
+    const cachedForecast = getCachedForecastForToday(storeNumber, todayKey);
+    const sales = await openDayViewAndReadSales(page, !cachedForecast);
+    if (cachedForecast) {
+        sales.forecast = cachedForecast;
+    } else {
+        setCachedForecast(storeNumber, todayKey, sales.forecast);
+    }
+
+    console.log(
+        `[Macromatix] Store ${label} — actual ${sales.actual.length}h, forecast ${sales.forecast.length}h ${cachedForecast ? '(cached)' : '(fresh)'}`
+    );
+
+    let pendingVendors = [];
+    const skipPendingForCompletedToday =
+        !testScheduledOrdersPick && isScheduledOrdersCompleteToday(storeNumber, todayKey);
+    if (skipPendingForCompletedToday) {
+        console.log(`[Macromatix] Store ${label}: scheduled orders already complete today; skipping check`);
+        pendingVendors = getLastKnownPendingVendors(storeNumber, todayKey);
+    } else {
+        try {
+            const pendingResult = await scrapePendingVendors(page, {
+                storeNumber,
+                pickYmd: testScheduledOrdersPick ? pickYmd : null,
+            });
+            pendingVendors = pendingResult.vendors;
+            console.log(`[Macromatix] Store ${label} pending vendors:`, pendingVendors.join(', ') || '(none)');
+            if (!skipScheduledPersistence) {
+                recordScheduledOrdersResult(storeNumber, todayKey, pendingVendors);
+            }
+        } catch (vendorErr) {
+            console.warn(`[Macromatix] Store ${label} scheduled orders scrape failed:`, vendorErr.message);
+            pendingVendors = getLastKnownPendingVendors(storeNumber, todayKey);
+        }
+    }
+
+    const hours = resolveStoreHours(store, storeNumber);
+    return {
+        storeNumber,
+        storeName: store.storeName || storeNumber,
+        openHour: hours.openHour,
+        closeHour: hours.closeHour,
+        actual: sales.actual,
+        forecast: sales.forecast,
+        pendingVendors,
+    };
+}
+
+/** Trading hours for a store: prefer the passed store object, then .storelist, then defaults. */
+function resolveStoreHours(store, storeNumber) {
+    const cfg = getStoreConfig(storeNumber);
+    const openHour = Number.isFinite(store && store.openHour)
+        ? store.openHour
+        : cfg
+          ? cfg.openHour
+          : DEFAULT_OPEN_HOUR;
+    const closeHour = Number.isFinite(store && store.closeHour)
+        ? store.closeHour
+        : cfg
+          ? cfg.closeHour
+          : DEFAULT_CLOSE_HOUR;
+    return { openHour, closeHour };
+}
+
+/** Resource types worth aborting — they don't affect the data we read but cost time/bandwidth. */
+const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font']);
+
+/**
+ * Abort heavy, irrelevant requests (images/media/fonts) to speed up navigation.
+ * Stylesheets and scripts are kept so Telerik widgets and visibility-based waits still work.
+ * Disable with SCRAPER_BLOCK_RESOURCES=0 if a page ever misbehaves.
+ */
+async function applyResourceBlocking(page) {
+    if (/^(0|false|no|off)$/i.test(String(process.env.SCRAPER_BLOCK_RESOURCES ?? 'true').trim())) {
+        return;
+    }
+    try {
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            if (BLOCKED_RESOURCE_TYPES.has(req.resourceType())) {
+                req.abort().catch(() => {});
+            } else {
+                req.continue().catch(() => {});
+            }
+        });
+    } catch (err) {
+        console.warn('[Macromatix] Resource blocking unavailable:', err.message);
+    }
+}
+
+/** Log in on a fresh page (each isolated context needs its own session). */
+async function loginPage(page, username, password) {
+    console.log('[Macromatix] Navigating to login...');
+    await page.goto(BASE_URL, GOTO_OPTS);
+    console.log('[Macromatix] Logging in...');
+    await page.type('#Login_UserName', username);
+    await page.type('#Login_Password', password);
+    const loginButton = await page.$('input[type="submit"]');
+    if (!loginButton) throw new Error('Login button not found');
+    await loginButton.click();
+    await page.waitForNavigation({ waitUntil: 'load', timeout: 45000 });
+    console.log('[Macromatix] Logged in');
+}
+
+/** Placeholder result used when a single store's scrape throws — keeps the store in the payload. */
+function buildErrorResult(store, err, todayKey) {
+    const hours = resolveStoreHours(store, store.storeNumber);
+    return {
+        storeNumber: store.storeNumber || '',
+        storeName: store.storeName || store.storeNumber || '',
+        openHour: hours.openHour,
+        closeHour: hours.closeHour,
+        actual: [],
+        forecast: [],
+        pendingVendors: getLastKnownPendingVendors(store.storeNumber, todayKey),
+        error: err.message,
+    };
+}
+
+/** Create an isolated (incognito-style) browser context, across Puppeteer versions. */
+function createIsolatedContext(browser) {
+    const fn = browser.createBrowserContext || browser.createIncognitoBrowserContext;
+    return fn.call(browser);
+}
+
+/**
+ * Taco Bell AU Macromatix — for every store the account can access: labour scheduler (hourly sales) +
+ * scheduled orders (pending vendor labels). Returns `{ success, timestamp, stores: [...] }`.
  */
 async function scrapeMacromatix(options = {}) {
     const { username, password } = getMacromatixCredentials();
     const todayKey = dashboardDateKey();
-    const cachedForecast = getCachedForecastForToday(todayKey);
     const pickYmd = options.scheduledOrdersPickYmd;
     const testScheduledOrdersPick =
         pickYmd &&
@@ -742,6 +1239,7 @@ async function scrapeMacromatix(options = {}) {
         Number.isFinite(pickYmd.month) &&
         Number.isFinite(pickYmd.day);
     const skipScheduledPersistence = Boolean(options.skipScheduledOrdersPersistence);
+    const onlyStore = String(options.storeNumber || '').trim();
 
     if (!String(username || '').trim() || !String(password || '').trim()) {
         const hint =
@@ -764,116 +1262,99 @@ async function scrapeMacromatix(options = {}) {
 
         const page = await browser.newPage();
         await page.setViewport({ width: 1280, height: 720 });
+        await applyResourceBlocking(page);
 
-        console.log('[Macromatix] Navigating to login...');
-        await page.goto(BASE_URL, GOTO_OPTS);
+        await loginPage(page, username, password);
 
-        console.log('[Macromatix] Logging in...');
-        await page.type('#Login_UserName', username);
-        await page.type('#Login_Password', password);
-
-        const loginButton = await page.$('input[type="submit"]');
-        if (!loginButton) throw new Error('Login button not found');
-        await loginButton.click();
-
-        await page.waitForNavigation({ waitUntil: 'load', timeout: 45000 });
-        console.log('[Macromatix] Logged in');
-
-        console.log('[Macromatix] Opening labour scheduler...');
-        await page.goto(LABOUR_URL, GOTO_OPTS);
-
-        console.log('[Macromatix] Day view...');
-        await page.waitForSelector(
-            '#ctl00_ph_scheduleLabour_rdScheduler_C_rtbLabour > div > div > div > ul > li:nth-child(12) > a > span > span > span > span',
-            { timeout: 5000 }
-        );
-        await page.click('#ctl00_ph_scheduleLabour_rdScheduler_C_rtbLabour > div > div > div > ul > li:nth-child(12) > a');
-
-        await Promise.race([
-            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {}),
-            page.waitForTimeout(4000),
-        ]);
-        await page.waitForTimeout(1200);
-
-        await page.waitForFunction(
-            () => {
-                const row = document.querySelector('tr[data-kpi="ActualSalesKpi"]');
-                if (!row) return false;
-                return row.querySelectorAll('td').length > 10;
-            },
-            { timeout: 10000 }
-        );
-
-        const salesData = await page.evaluate((shouldReadForecast) => {
-            const parseHourlyRow = (row) => {
-                const cells = row.querySelectorAll('td');
-                const values = [];
-                for (let i = 2; i < cells.length; i++) {
-                    const raw = cells[i].textContent.replace(/[^0-9.-]/g, '').trim();
-                    const value = parseFloat(raw);
-                    if (!Number.isNaN(value)) values.push(value);
-                }
-                return values;
-            };
-
-            const actualRow = document.querySelector('tr[data-kpi="ActualSalesKpi"]');
-            const forecastRow = document.querySelector('tr[data-kpi="ForecastSalesKpi"]');
-            if (!actualRow || (shouldReadForecast && !forecastRow)) throw new Error('Sales data rows not found');
-
-            return {
-                actual: parseHourlyRow(actualRow),
-                forecast: shouldReadForecast ? parseHourlyRow(forecastRow) : null,
-            };
-        }, !cachedForecast);
-
-        if (cachedForecast) {
-            salesData.forecast = cachedForecast;
+        // `.storelist` is the master list of stores to scrape. If it's empty (not yet configured),
+        // fall back to enumerating every store the account can access.
+        let stores = getStoreList();
+        if (stores.length) {
+            console.log(
+                `[Macromatix] Store list (.storelist) — ${stores.length}:`,
+                stores.map((s) => s.storeNumber).join(', ')
+            );
         } else {
-            forecastCache = { dateKey: todayKey, values: salesData.forecast };
+            console.log('[Macromatix] No .storelist configured — enumerating accessible stores...');
+            await page.goto(LABOUR_URL, GOTO_OPTS);
+            await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+            stores = await enumerateStores(page);
+            if (stores.length) {
+                console.log(
+                    `[Macromatix] Stores available (${stores.length}):`,
+                    stores.map((s) => s.storeNumber).join(', ')
+                );
+            } else {
+                console.log('[Macromatix] No store selector found — scraping the account default store only');
+                stores = [{ storeNumber: onlyStore, storeName: '' }];
+            }
         }
 
-        console.log(
-            '[Macromatix] actual hours:',
-            salesData.actual.length,
-            'forecast:',
-            salesData.forecast.length,
-            cachedForecast ? '(cached)' : '(fresh)'
-        );
+        if (onlyStore) {
+            const match = stores.find((s) => s.storeNumber === onlyStore);
+            stores = [match || getStoreConfig(onlyStore) || { storeNumber: onlyStore, storeName: '' }];
+            console.log(`[Macromatix] Restricting scrape to store ${onlyStore}`);
+        }
 
-        let pendingVendors = [];
-        const skipPendingForCompletedToday =
-            !testScheduledOrdersPick && scheduledOrdersCompleteDateKey === todayKey;
-        if (skipPendingForCompletedToday) {
-            console.log('[Macromatix] Scheduled orders already complete today; skipping check');
-            pendingVendors = getLastKnownPendingVendors(todayKey);
+        const ctx = { todayKey, testScheduledOrdersPick, pickYmd, skipScheduledPersistence };
+        const results = new Array(stores.length);
+
+        // Shared queue: workers pull the next store index until exhausted. `nextIndex++` is
+        // synchronous (no await between read+increment) so it's atomic on Node's single thread.
+        let nextIndex = 0;
+        const takeNext = () => (nextIndex < stores.length ? nextIndex++ : -1);
+
+        const scrapeWithPage = async (workerPage) => {
+            for (;;) {
+                const i = takeNext();
+                if (i < 0) break;
+                const store = stores[i];
+                const label = store.storeNumber || '(default)';
+                try {
+                    results[i] = await scrapeStoreData(workerPage, store, ctx);
+                } catch (storeErr) {
+                    console.error(`[Macromatix] Store ${label} scrape failed:`, storeErr.message);
+                    results[i] = buildErrorResult(store, storeErr, todayKey);
+                }
+            }
+        };
+
+        const requestedConc = Number(process.env.SCRAPER_CONCURRENCY);
+        const maxConc = Number.isFinite(requestedConc) && requestedConc > 0 ? Math.floor(requestedConc) : 3;
+        const concurrency = Math.max(1, Math.min(maxConc, stores.length));
+
+        if (concurrency <= 1) {
+            await scrapeWithPage(page);
         } else {
-            try {
-                console.log('[Macromatix] Opening scheduled orders...');
-                if (testScheduledOrdersPick) {
-                    console.log(
-                        '[Macromatix] Scheduled orders date pick (test):',
-                        pickYmd.year,
-                        pickYmd.month,
-                        pickYmd.day
-                    );
-                }
-                const pendingResult = await scrapePendingVendors(page, {
-                    pickYmd: testScheduledOrdersPick ? pickYmd : null,
-                });
-                pendingVendors = pendingResult.vendors;
-                console.log('[Macromatix] pending vendor labels:', pendingVendors.join(', ') || '(none)');
-                console.log(
-                    '[Macromatix] scheduled order tables:',
-                    pendingResult.matchedTableCount,
-                    'rows:',
-                    pendingResult.dataRowCount
+            console.log(`[Macromatix] Scraping ${stores.length} store(s) with concurrency ${concurrency}`);
+            // Worker 0 reuses the already-logged-in main page; extra workers get their own
+            // isolated context + session so each store's server-side entity selection is independent.
+            const extraContexts = [];
+            const workers = [scrapeWithPage(page)];
+            for (let w = 1; w < concurrency; w++) {
+                const context = await createIsolatedContext(browser);
+                extraContexts.push(context);
+                workers.push(
+                    (async () => {
+                        const wp = await context.newPage();
+                        await wp.setViewport({ width: 1280, height: 720 });
+                        await applyResourceBlocking(wp);
+                        try {
+                            await loginPage(wp, username, password);
+                            await scrapeWithPage(wp);
+                        } catch (workerErr) {
+                            console.error(`[Macromatix] Worker ${w} failed:`, workerErr.message);
+                        }
+                    })()
                 );
-                if (!skipScheduledPersistence) {
-                    recordScheduledOrdersResult(todayKey, pendingVendors);
+            }
+            await Promise.all(workers);
+            for (const context of extraContexts) {
+                try {
+                    await context.close();
+                } catch {
+                    /* ignore */
                 }
-            } catch (vendorErr) {
-                console.warn('[Macromatix] Scheduled orders scrape failed:', vendorErr.message);
-                pendingVendors = getLastKnownPendingVendors(todayKey);
             }
         }
 
@@ -882,10 +1363,8 @@ async function scrapeMacromatix(options = {}) {
 
         return {
             success: true,
-            actual: salesData.actual,
-            forecast: salesData.forecast,
             timestamp: new Date().toISOString(),
-            pendingVendors,
+            stores: results,
         };
     } catch (error) {
         await closeBrowserQuietly(browser, 'error cleanup');
@@ -894,4 +1373,36 @@ async function scrapeMacromatix(options = {}) {
     }
 }
 
+/**
+ * Discovery helper: log in and return every store the account can access, as
+ * `[{ storeNumber, storeName }]`. Used by `npm run list-stores` to build `.storelist`.
+ * Does NOT use `.storelist` (it ignores it on purpose, so you can see the full account).
+ */
+async function listStores() {
+    const { username, password } = getMacromatixCredentials();
+    if (!String(username || '').trim() || !String(password || '').trim()) {
+        throw new Error('Macromatix credentials are not configured (set SCRAPER_USERNAME / SCRAPER_PASSWORD in .env).');
+    }
+
+    let browser;
+    try {
+        browser = await puppeteer.launch(getPuppeteerLaunchOptions());
+        const page = await browser.newPage();
+        await page.setViewport({ width: 1280, height: 720 });
+        await applyResourceBlocking(page);
+
+        await loginPage(page, username, password);
+
+        console.log('[Macromatix] Opening labour scheduler to enumerate stores...');
+        await page.goto(LABOUR_URL, GOTO_OPTS);
+        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+
+        const stores = await enumerateStores(page);
+        return stores.map((s) => ({ storeNumber: s.storeNumber, storeName: s.storeName }));
+    } finally {
+        await closeBrowserQuietly(browser, 'list-stores');
+    }
+}
+
 module.exports = scrapeMacromatix;
+module.exports.listStores = listStores;

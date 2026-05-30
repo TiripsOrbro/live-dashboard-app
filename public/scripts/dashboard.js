@@ -1703,7 +1703,6 @@ function buildGridFooterRow() {
 
 function updateGrid() {
     const grid = document.querySelector('.dashboard-grid');
-    const footerHost = document.getElementById('dashboard-footer');
     if (!grid) return;
 
     syncAuditPeriodState();
@@ -1713,13 +1712,8 @@ function updateGrid() {
         ${buildForecastRow(forecastSales, liveSales)}
         ${buildActualRow(liveSales, forecastSales)}
         ${buildMealPeriodRow(forecastSales, liveSales)}
+        ${buildGridFooterRow()}
     `;
-    const footerHtml = buildGridFooterRow();
-    if (footerHost) {
-        footerHost.innerHTML = footerHtml;
-    } else {
-        grid.insertAdjacentHTML('beforeend', footerHtml);
-    }
     updateAuditsPanel();
     updatePendingVendorsPanel();
 }
@@ -1797,16 +1791,14 @@ function renderDashboard() {
             <div id="sales-status" class="sales-status" role="status" aria-live="polite" hidden></div>
             <div id="audit-schedule-status" class="audit-schedule-status" role="alert" aria-live="assertive" hidden></div>
 
-            <div class="dashboard-grid-scroll">
-                <div class="dashboard-grid"></div>
-            </div>
-            <div id="dashboard-footer"></div>
+            <div class="dashboard-grid"></div>
 
             <div id="popup-container"></div>
         </div>
     `;
     bindFooterChipDismissOnce();
     // bindOrderDateTestPanelOnce();
+    applyDashboardScale();
     updateRotateHint();
 }
 
@@ -1866,25 +1858,37 @@ async function initTradingHours() {
 }
 
 /**
- * Compute the responsive scale multiplier in JS and publish it as a unitless
- * custom property. CSS calc() can't divide viewport units to a plain number,
- * so the CSS default (--dashboard-scale: 1) is only a fallback; this is the
- * real responsive value consumed by every calc(... * var(--dashboard-scale)).
- * Mirrors the original intent: scale to fit a 1920x1080 design, clamped to
- * [0.72, 1] so it never grows past full size or shrinks too far.
+ * Fit the 1920×1080 dashboard design to the viewport.
+ * Desktop: scale typography/spacing via --dashboard-scale.
+ * Mobile: keep desktop layout at full internal scale and shrink the whole
+ * card with CSS zoom so it reads as a miniature of the desktop view.
  */
 function applyDashboardScale() {
     const ratio = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
-    let scale = Math.max(0.72, Math.min(ratio, 1));
     const mobile = window.matchMedia('(max-width: 900px)').matches;
+    const minScale = mobile ? 0.28 : 0.72;
+    const scale = Math.max(minScale, Math.min(ratio, 1));
+    const dash = document.querySelector('.dashboard');
+
     if (mobile) {
-        if (window.matchMedia('(orientation: landscape)').matches) {
-            scale = Math.max(0.5, Math.min(window.innerHeight / 680, 0.92));
-        } else {
-            scale = Math.max(0.55, Math.min(window.innerWidth / 900, 0.85));
+        document.documentElement.style.setProperty('--dashboard-scale', '1');
+        if (dash) {
+            dash.style.zoom = String(scale);
+            dash.style.width = '1920px';
+            dash.style.maxWidth = 'none';
+            dash.style.marginLeft = 'auto';
+            dash.style.marginRight = 'auto';
+        }
+    } else {
+        document.documentElement.style.setProperty('--dashboard-scale', String(scale));
+        if (dash) {
+            dash.style.zoom = '';
+            dash.style.width = '';
+            dash.style.maxWidth = '';
+            dash.style.marginLeft = '';
+            dash.style.marginRight = '';
         }
     }
-    document.documentElement.style.setProperty('--dashboard-scale', String(scale));
 }
 
 const LANDSCAPE_PREF_KEY = 'dashboard-prefer-landscape';

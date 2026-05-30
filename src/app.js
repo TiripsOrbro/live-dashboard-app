@@ -47,6 +47,7 @@ function isScheduledOrdersDateTestEnabled() {
 /** Test-date scrapes: explicit env, or any request that already passed dashboard cookie auth. */
 function canRunScheduledOrdersDateTest(req, testPick) {
     if (!testPick) return false;
+    if (isNologinUser(req.dashboardUser)) return false;
     if (isScheduledOrdersDateTestEnabled()) return true;
     if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) return true;
     return false;
@@ -66,23 +67,30 @@ function parseScheduledOrdersTestYmd(raw) {
 const {
     SESSION_COOKIE,
     LEGACY_COOKIE,
+    NOLOGIN_COOKIE,
     usersFileConfigured,
     authenticate,
     createSessionToken,
+    createNologinToken,
     legacyAccessToken,
     resolveUser,
+    resolveNologinUser,
     isAuthenticated,
+    isNologinUser,
     isAdminUser,
     userCanAccessStore,
     filterStoresForUser,
     getLoginRedirectPath,
     sessionCookieOptions,
+    nologinCookieOptions,
     userProfileForClient,
     timingSafeEqualString,
     readUsersFileSync,
     resolveUsersFilePath,
 } = require('./services/dashboardUsers');
 const DASHBOARD_ACCESS_KEY = String(process.env.DASHBOARD_ACCESS_KEY || '');
+const NOLOGIN_LINKS_ENABLED =
+    !/^(0|false|no|off)$/i.test(String(process.env.DASHBOARD_NOLOGIN_LINKS ?? '1').trim());
 const DASHBOARD_ALLOWED_IPS = String(process.env.DASHBOARD_ALLOWED_IPS || '')
     .split(',')
     .map((ip) => normalizeIp(ip))
@@ -221,6 +229,34 @@ function isLoginPublicPath(reqPath) {
     return false;
 }
 
+function isKnownStoreNumber(storeNumber) {
+    const num = String(storeNumber || '').replace(/[^0-9]/g, '');
+    if (!/^\d{3,6}$/.test(num)) return false;
+    const stores = getStoreList();
+    if (!stores.length) return true;
+    return stores.some((s) => String(s.storeNumber) === num);
+}
+
+function isDashboardAssetPath(reqPath) {
+    if (reqPath.startsWith('/styles/') || reqPath.startsWith('/scripts/') || reqPath.startsWith('/assets/')) {
+        return true;
+    }
+    if (reqPath === '/manifest.json' || reqPath === '/icon.svg' || reqPath === '/icon-mark.svg') {
+        return true;
+    }
+    return false;
+}
+
+function nologinAllowsPath(reqPath, storeNumber) {
+    const store = String(storeNumber || '').replace(/[^0-9]/g, '');
+    if (!store) return false;
+    if (new RegExp(`^/${store}/nologin/?$`).test(reqPath)) return true;
+    if (isDashboardAssetPath(reqPath)) return true;
+    if (reqPath === '/api/me' || reqPath === '/api/audit-schedule') return true;
+    if (reqPath === '/api/sales' || reqPath === '/api/audits') return true;
+    return false;
+}
+
 function dashboardAuthMiddleware(req, res, next) {
     if (isLoginPublicPath(req.path)) {
         next();
@@ -230,6 +266,17 @@ function dashboardAuthMiddleware(req, res, next) {
     if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
         req.dashboardUser = getRequestUser(req);
         next();
+        return;
+    }
+
+    const nologinUser = NOLOGIN_LINKS_ENABLED ? resolveNologinUser(req) : null;
+    if (nologinUser) {
+        req.dashboardUser = nologinUser;
+        if (nologinAllowsPath(req.path, nologinUser.stores[0])) {
+            next();
+            return;
+        }
+        sendForbidden(req, res, 'This link only provides access to one store dashboard.');
         return;
     }
 
@@ -313,7 +360,37 @@ app.post('/unlock', (req, res) => {
 app.get('/logout', (req, res) => {
     res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
     res.clearCookie(LEGACY_COOKIE, sessionCookieOptions());
+    res.clearCookie(NOLOGIN_COOKIE, nologinCookieOptions());
     res.redirect('/login');
+});
+
+// Direct store link without login — e.g. /3811/nologin (not linked from the app UI).
+app.get(/^\/(\d{3,6})\/nologin\/?$/, (req, res) => {
+    const storeNumber = (req.path.match(/^\/(\d{3,6})\/nologin\/?$/) || [])[1];
+    if (!NOLOGIN_LINKS_ENABLED) {
+        res.status(404).send('Not found.');
+        return;
+    }
+    if (!authRequired()) {
+        res.redirect(`/${storeNumber}`);
+        return;
+    }
+    if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
+        const user = getRequestUser(req);
+        if (userCanAccessStore(user, storeNumber)) {
+            res.redirect(`/${storeNumber}`);
+            return;
+        }
+        res.status(403).send('You do not have access to this store.');
+        return;
+    }
+    if (!isKnownStoreNumber(storeNumber)) {
+        res.status(404).send('Store not found.');
+        return;
+    }
+    res.cookie(NOLOGIN_COOKIE, createNologinToken(storeNumber), nologinCookieOptions());
+    console.log(`[Auth] Nologin link opened: store ${storeNumber} from ${getRequestIp(req)}`);
+    res.sendFile(path.join(__dirname, '../public', 'index.html'));
 });
 
 app.use(dashboardAuthMiddleware);
@@ -634,6 +711,10 @@ app.get('/welcome', (req, res) => {
 
 // Root path is the store picker — a grid of clickable store tiles (see public/stores.html).
 app.get('/', (req, res) => {
+    if (isNologinUser(req.dashboardUser)) {
+        sendForbidden(req, res, 'Use your direct store link to view this dashboard.');
+        return;
+    }
     const user = req.dashboardUser || getRequestUser(req);
     if (user && !isAdminUser(user) && user.stores !== '*' && user.stores.length === 1) {
         res.redirect(`/${user.stores[0]}`);
@@ -646,6 +727,10 @@ app.get('/', (req, res) => {
 // Static assets and /api/* are matched earlier, so this only catches a bare numeric segment.
 app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
     const storeNumber = (req.path.match(/^\/(\d{3,6})\/?$/) || [])[1];
+    if (isNologinUser(req.dashboardUser)) {
+        sendForbidden(req, res, 'Use your direct store link to view this dashboard.');
+        return;
+    }
     if (!assertStoreAccess(req, res, storeNumber)) return;
     res.sendFile(path.join(__dirname, '../public', 'index.html'));
 });
@@ -827,6 +912,9 @@ function startBackgroundRefresh() {
         console.log('[Auth] Legacy access-key mode (.Users not configured)');
     } else {
         console.log('[Auth] Open access (no login configured)');
+    }
+    if (authRequired() && NOLOGIN_LINKS_ENABLED) {
+        console.log('[Auth] Per-store nologin links enabled (/{store}/nologin)');
     }
 })();
 

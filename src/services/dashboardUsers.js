@@ -7,7 +7,10 @@ const USERS_PATH = path.join(PROJECT_ROOT, '.Users');
 
 const SESSION_COOKIE = 'dashboard_session';
 const LEGACY_COOKIE = 'dashboard_access';
+const NOLOGIN_COOKIE = 'dashboard_nologin';
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/** Long-lived cookie for direct /{store}/nologin kiosk links. */
+const NOLOGIN_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 /** Browser-session cookie when “Stay signed in” is unchecked (Express: omit maxAge). */
 
 const FIELD_LABELS = {
@@ -321,6 +324,47 @@ function legacyAccessToken(accessKey) {
     return crypto.createHmac('sha256', authSecret()).update(`dashboard:${accessKey}`).digest('hex');
 }
 
+function createNologinToken(storeNumber) {
+    const store = String(storeNumber || '').replace(/[^0-9]/g, '');
+    if (!store) return '';
+    return signSessionPayload({
+        nl: 1,
+        s: store,
+        exp: Date.now() + NOLOGIN_MAX_AGE_MS,
+    });
+}
+
+function parseNologinToken(token) {
+    const raw = String(token || '');
+    const dot = raw.lastIndexOf('.');
+    if (dot <= 0) return null;
+    const body = raw.slice(0, dot);
+    const sig = raw.slice(dot + 1);
+    const expected = crypto.createHmac('sha256', authSecret()).update(body).digest('base64url');
+    if (!timingSafeEqualString(sig, expected)) return null;
+    let payload;
+    try {
+        payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    } catch {
+        return null;
+    }
+    if (!payload?.nl || !payload?.exp || Date.now() > Number(payload.exp)) return null;
+    const store = String(payload.s || '').replace(/[^0-9]/g, '');
+    if (!/^\d{3,6}$/.test(store)) return null;
+    return store;
+}
+
+function resolveNologinUser(req) {
+    const cookies = parseCookies(req.headers.cookie);
+    const store = parseNologinToken(cookies[NOLOGIN_COOKIE]);
+    if (!store) return null;
+    return { username: '__nologin__', role: 'nologin', stores: [store] };
+}
+
+function isNologinUser(user) {
+    return Boolean(user && user.role === 'nologin');
+}
+
 function parseCookies(header) {
     return String(header || '')
         .split(';')
@@ -395,6 +439,20 @@ function sessionCookieOptions(options = {}) {
 }
 
 function userProfileForClient(user) {
+    if (isNologinUser(user)) {
+        const store = user.stores[0] || '';
+        return {
+            username: '',
+            displayName: '',
+            welcomeName: '',
+            role: 'nologin',
+            stores: [...user.stores],
+            skipStorePicker: true,
+            defaultPath: store ? `/${store}/nologin` : '/login',
+            colorBlind: false,
+            nologin: true,
+        };
+    }
     if (!user || user.username.startsWith('__')) {
         return {
             username: '',
@@ -405,6 +463,7 @@ function userProfileForClient(user) {
             skipStorePicker: false,
             defaultPath: '/',
             colorBlind: false,
+            nologin: false,
         };
     }
     const stores = user.stores === '*' ? '*' : [...user.stores];
@@ -420,12 +479,24 @@ function userProfileForClient(user) {
         skipStorePicker,
         defaultPath: getLoginRedirectPath(user),
         colorBlind: Boolean(user.colorBlind),
+        nologin: false,
+    };
+}
+
+function nologinCookieOptions() {
+    const secureCookie = /^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_SECURE_COOKIE ?? '').trim());
+    return {
+        httpOnly: true,
+        sameSite: 'strict',
+        secure: secureCookie,
+        maxAge: NOLOGIN_MAX_AGE_MS,
     };
 }
 
 module.exports = {
     SESSION_COOKIE,
     LEGACY_COOKIE,
+    NOLOGIN_COOKIE,
     SESSION_MAX_AGE_MS,
     USERS_PATH,
     hashPassword,
@@ -436,14 +507,18 @@ module.exports = {
     usersFileConfigured,
     authenticate,
     createSessionToken,
+    createNologinToken,
     legacyAccessToken,
     resolveUser,
+    resolveNologinUser,
     isAuthenticated,
+    isNologinUser,
     isAdminUser,
     userCanAccessStore,
     filterStoresForUser,
     getLoginRedirectPath,
     sessionCookieOptions,
+    nologinCookieOptions,
     userProfileForClient,
     timingSafeEqualString,
 };

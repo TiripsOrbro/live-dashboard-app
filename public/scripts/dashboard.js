@@ -3,8 +3,10 @@
 ----------------------------------------------------------- */
 const app = document.getElementById('app');
 
-/** Store number from the URL path (e.g. /3811). Empty on `/` → server uses the default store. */
-const STORE_NUMBER = (window.location.pathname.match(/\/(\d{3,6})(?:\/)?$/) || [])[1] || '';
+/** Store number from the URL path (e.g. /3811 or /3811/nologin). Empty on `/` → server uses the default store. */
+const NOLOGIN_MODE = /\/(\d{3,6})\/nologin\/?$/.test(window.location.pathname);
+const STORE_NUMBER =
+    (window.location.pathname.match(/\/(\d{3,6})(?:\/nologin)?\/?$/) || [])[1] || '';
 const STORE_QUERY = STORE_NUMBER ? `?store=${encodeURIComponent(STORE_NUMBER)}` : '';
 
 function withStore(url) {
@@ -1967,7 +1969,7 @@ function renderDashboard() {
                 <div class="rotate-hint-icon" aria-hidden="true">↻</div>
                 <h2>Rotate to landscape</h2>
                 <p>The sales grid is built for a wide view. Turn your phone sideways for the best layout.</p>
-                <a class="rotate-hint-back" href="/">← All stores</a>
+                ${NOLOGIN_MODE ? '' : '<a class="rotate-hint-back" href="/">← All stores</a>'}
             </div>
         </div>
         <div class="dashboard">

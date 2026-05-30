@@ -158,7 +158,7 @@ body.login-body--dashboard-reveal .login-root {
 }
 
 .brand-mark-pulse {
-    stroke-dasharray: 520;
+    stroke-dasharray: 520 1040;
     stroke-dashoffset: 520;
 }
 
@@ -460,16 +460,16 @@ body.login-body--dashboard-reveal .login-root {
 
 .welcome-stage--exit {
     opacity: 0;
-    background-color: var(--grey);
+    background-color: transparent;
     pointer-events: none;
     transition:
-        opacity 0.85s var(--apple-ease) 0.08s,
-        background-color 0.9s var(--apple-ease) 0.06s;
+        opacity 0.9s var(--apple-ease) 0.04s,
+        background-color 0.95s var(--apple-ease) 0.02s;
 }
 
 .welcome-stage--exit .welcome-brand,
 .welcome-stage--exit .welcome-message {
-    animation: welcome-copy-out 0.75s var(--apple-ease) forwards;
+    animation: welcome-copy-out 0.85s var(--apple-ease) forwards;
 }
 
 @keyframes welcome-logo-in {

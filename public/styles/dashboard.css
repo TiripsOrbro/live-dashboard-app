@@ -1137,6 +1137,135 @@ body.rotate-hint-active .dashboard {
     }
 }
 
+/* Portrait phone — hours | forecast | actual columns, scrollable page */
+@media (max-width: 900px) and (orientation: portrait) {
+    body.dashboard--portrait #app {
+        align-items: stretch;
+        width: 100%;
+        padding: 0;
+    }
+
+    body.dashboard--portrait .dashboard {
+        width: 100% !important;
+        max-width: 100%;
+        margin: 0;
+        padding: max(10px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right))
+            max(calc(56px + env(safe-area-inset-bottom)), 64px) max(8px, env(safe-area-inset-left));
+        overflow: visible;
+    }
+
+    body.dashboard--portrait .dashboard-header {
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+
+    body.dashboard--portrait .dashboard-title,
+    body.dashboard--portrait .top-info {
+        grid-column: 1;
+        justify-self: center;
+        text-align: center;
+    }
+
+    body.dashboard--portrait .top-info {
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+
+    body.dashboard--portrait .dashboard h1 {
+        font-size: 1.35rem;
+    }
+
+    .dashboard-grid--portrait {
+        display: grid;
+        grid-template-columns: minmax(4.5rem, 0.82fr) minmax(0, 1fr) minmax(0, 1fr);
+        gap: 6px;
+        width: 100%;
+        min-width: 0;
+        overflow: visible;
+    }
+
+    .dashboard-grid--portrait .grid-label,
+    .dashboard-grid--portrait .grid-cell {
+        min-height: 44px;
+        padding: 10px 8px;
+        font-size: 0.82rem;
+    }
+
+    .dashboard-grid--portrait .portrait-hour-label {
+        justify-content: center;
+        background: var(--dark-purple-border);
+        color: var(--blank);
+        font-weight: var(--font-weight-grid-label);
+    }
+
+    .dashboard-grid--portrait .portrait-header {
+        min-height: 40px;
+    }
+
+    .dashboard-grid--portrait .portrait-summary-label {
+        background: var(--charcoal);
+        color: var(--white);
+        font-weight: var(--font-weight-grid-label);
+    }
+
+    .dashboard-grid--portrait .portrait-summary-label--day {
+        margin-top: 4px;
+    }
+
+    .dashboard-grid--portrait .portrait-meal-cell {
+        min-height: 48px;
+    }
+
+    .dashboard-grid--portrait .dashboard-grid-footer {
+        grid-column: 1 / -1;
+        margin-top: 14px;
+        overflow: visible;
+    }
+
+    .dashboard-grid--portrait .dashboard-grid-footer-ledger {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .dashboard-grid--portrait .dashboard-grid-footer-lead,
+    .dashboard-grid--portrait .dashboard-grid-footer-trail,
+    .dashboard-grid--portrait .dashboard-colour-note {
+        grid-column: 1;
+        max-width: none;
+    }
+
+    .dashboard-grid--portrait .audits-aside,
+    .dashboard-grid--portrait .pending-vendors-aside {
+        max-width: none;
+        min-width: 0;
+    }
+
+    .dashboard-grid--portrait.dashboard-grid--skeleton {
+        grid-template-columns: minmax(4.5rem, 0.82fr) minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .dashboard-grid--portrait .grid-skeleton-block {
+        min-height: 44px;
+    }
+
+    .dashboard-grid--portrait .portrait-skeleton-header {
+        min-height: 40px;
+        opacity: 0.9;
+    }
+
+    .dashboard-grid--portrait .grid-cell--live-hour,
+    .dashboard-grid--portrait .meal-period-cell--live {
+        min-height: 52px;
+    }
+
+    .dashboard-grid--portrait .portrait-cell-value {
+        position: relative;
+        z-index: 2;
+    }
+}
+
 /* -----------------------------------------------------------
    Notifications — container & panel
 ----------------------------------------------------------- */

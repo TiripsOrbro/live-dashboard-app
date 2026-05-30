@@ -30,6 +30,7 @@ function brandMarkSvg(uid) {
   <circle class="brand-mark-ring--outer" cx="256" cy="256" r="178" fill="none" stroke="#702082" stroke-width="12" opacity="0.45"/>
   <circle class="brand-mark-ring--inner" cx="256" cy="256" r="142" fill="none" stroke="url(#${uid}-purple)" stroke-width="6" opacity="0.65"/>
   <path
+    id="${uid}-pulse-path"
     class="brand-mark-pulse"
     fill="none"
     stroke="#ffc72c"
@@ -39,8 +40,8 @@ function brandMarkSvg(uid) {
     pathLength="520"
     d="M96 268 L168 268 L208 168 L256 332 L304 204 L352 268 L416 268"
   />
-  <circle class="brand-mark-dot--peak" cx="256" cy="332" r="10" fill="#ff4081"/>
-  <circle class="brand-mark-dot--center" cx="256" cy="256" r="12" fill="#ffc72c"/>
+  <circle class="brand-mark-dot--trail" r="8" fill="#ff4081" cx="96" cy="268"/>
+  <circle class="brand-mark-dot--lead" r="12" fill="#ffc72c" cx="96" cy="268"/>
 </svg>`;
 }
 

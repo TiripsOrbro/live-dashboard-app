@@ -113,15 +113,19 @@ body.login-body {
 }
 
 .brand-mark-ring--outer,
-.brand-mark-ring--inner,
-.brand-mark-dot--center {
+.brand-mark-ring--inner {
     transform-box: fill-box;
     transform-origin: 256px 256px;
 }
 
-.brand-mark-dot--peak {
-    transform-box: fill-box;
-    transform-origin: 256px 332px;
+.brand-mark-dot--lead,
+.brand-mark-dot--trail {
+    -webkit-offset-path: path("M96 268 L168 268 L208 168 L256 332 L304 204 L352 268 L416 268");
+    offset-path: path("M96 268 L168 268 L208 168 L256 332 L304 204 L352 268 L416 268");
+    -webkit-offset-anchor: center;
+    offset-anchor: center;
+    -webkit-offset-rotate: 0deg;
+    offset-rotate: 0deg;
 }
 
 .brand-mark-ring--outer {
@@ -138,13 +142,12 @@ body.login-body {
     animation: brand-mark-pulse-draw 2.4s ease-in-out infinite;
 }
 
-.brand-mark-dot--center {
-    animation: brand-mark-heartbeat 2.4s ease-in-out infinite;
+.brand-mark-dot--lead {
+    animation: brand-mark-dot-lead 2.4s ease-in-out infinite;
 }
 
-.brand-mark-dot--peak {
-    opacity: 0;
-    animation: brand-mark-peak-flash 2.4s ease-in-out infinite;
+.brand-mark-dot--trail {
+    animation: brand-mark-dot-trail 2.4s ease-in-out infinite;
 }
 
 .brand-mark--busy .brand-mark-pulse {
@@ -153,8 +156,8 @@ body.login-body {
 
 .brand-mark--busy .brand-mark-ring--outer,
 .brand-mark--busy .brand-mark-ring--inner,
-.brand-mark--busy .brand-mark-dot--center,
-.brand-mark--busy .brand-mark-dot--peak {
+.brand-mark--busy .brand-mark-dot--lead,
+.brand-mark--busy .brand-mark-dot--trail {
     animation-duration: 1.15s;
 }
 
@@ -192,39 +195,47 @@ body.login-body {
     }
 }
 
-@keyframes brand-mark-heartbeat {
-    0%,
-    100% {
-        transform: scale(1);
+@keyframes brand-mark-dot-lead {
+    0% {
+        offset-distance: 0%;
+        opacity: 0.45;
     }
-    38% {
-        transform: scale(1.22);
+    12% {
+        opacity: 1;
     }
-    48% {
-        transform: scale(1);
+    42% {
+        offset-distance: 100%;
+        opacity: 1;
     }
     58% {
-        transform: scale(1.1);
+        offset-distance: 100%;
+        opacity: 1;
     }
-    68% {
-        transform: scale(1);
+    100% {
+        offset-distance: 0%;
+        opacity: 0;
     }
 }
 
-@keyframes brand-mark-peak-flash {
-    0%,
-    34%,
-    100% {
+@keyframes brand-mark-dot-trail {
+    0% {
+        offset-distance: 0%;
         opacity: 0;
-        transform: scale(0.6);
+    }
+    12% {
+        opacity: 0.75;
     }
     42% {
-        opacity: 1;
-        transform: scale(1.15);
+        offset-distance: 86%;
+        opacity: 0.9;
     }
-    52% {
-        opacity: 0.35;
-        transform: scale(1);
+    58% {
+        offset-distance: 86%;
+        opacity: 0.9;
+    }
+    100% {
+        offset-distance: 0%;
+        opacity: 0;
     }
 }
 
@@ -564,11 +575,17 @@ body.login-body {
     .brand-mark-ring--outer,
     .brand-mark-ring--inner,
     .brand-mark-pulse,
-    .brand-mark-dot--center,
-    .brand-mark-dot--peak {
+    .brand-mark-dot--lead,
+    .brand-mark-dot--trail {
         animation: none !important;
         stroke-dashoffset: 0 !important;
         opacity: 1 !important;
         transform: none !important;
+        offset-distance: 72% !important;
+    }
+
+    .brand-mark-dot--trail {
+        offset-distance: 64% !important;
+        opacity: 0.85 !important;
     }
 }

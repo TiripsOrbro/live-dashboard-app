@@ -1526,6 +1526,144 @@ function buildMealPeriodRow(forecasts, actuals) {
     `;
 }
 
+function isPortraitMobileView() {
+    return window.matchMedia('(max-width: 900px) and (orientation: portrait)').matches;
+}
+
+function portraitCellClass(html, extra = '') {
+    const add = extra ? ` portrait-data-cell ${extra}` : ' portrait-data-cell';
+    return html.replace(/class="grid-cell([^"]*)"/, `class="grid-cell${add}$1"`);
+}
+
+function buildPortraitHeaderRow() {
+    return `
+        <div class="grid-cell header-cell portrait-header portrait-header--time">Time</div>
+        <div class="grid-cell header-cell portrait-header portrait-header--forecast">Forecast</div>
+        <div class="grid-cell header-cell portrait-header portrait-header--actual">Actual</div>
+    `;
+}
+
+function buildPortraitHourRows() {
+    const hourProgress = getCurrentHourProgress();
+    return times
+        .map((time, index) => {
+            const forecastCell = portraitCellClass(
+                buildHourlyDataCell({
+                    index,
+                    hourProgress,
+                    forecast: forecastSales[index],
+                    actual: liveSales[index],
+                    displayValue: forecastSales[index],
+                })
+            );
+            const actualCell = portraitCellClass(
+                buildHourlyDataCell({
+                    index,
+                    hourProgress,
+                    forecast: forecastSales[index],
+                    actual: liveSales[index],
+                    displayValue: liveSales[index],
+                })
+            );
+            return `
+                <div class="grid-label portrait-hour-label">${time}</div>
+                ${forecastCell}
+                ${actualCell}
+            `;
+        })
+        .join('');
+}
+
+function buildPortraitMealActualCell(pres, value) {
+    const classes = ['grid-cell', 'meal-period-cell', 'portrait-data-cell', 'portrait-meal-cell'];
+    if (pres.cellClass) classes.push(pres.cellClass);
+    if (pres.liveLayersHtml) {
+        classes.push('meal-period-cell--live', 'grid-cell--live-hour');
+    }
+    const styleAttr = pres.outcomeBorderColor
+        ? ` style="border: var(--cell-border) ${pres.outcomeBorderColor}"`
+        : '';
+    return `<div class="${classes.join(' ')}"${styleAttr}>${pres.liveLayersHtml || ''}<span class="grid-cell-live-value portrait-cell-value">${formatCurrency(value)}</span></div>`;
+}
+
+function buildPortraitMealRows(forecasts, actuals) {
+    const lunchForecast = sumHourSlice(forecasts, 0, PART_LUNCH_END);
+    const lunchActual = sumHourSlice(actuals, 0, PART_LUNCH_END);
+    const dinnerForecast = sumHourSlice(forecasts, PART_LUNCH_END, times.length);
+    const dinnerActual = sumHourSlice(actuals, PART_LUNCH_END, times.length);
+    const dayForecast = sumHourSlice(forecasts, 0, times.length);
+    const dayActual = sumHourSlice(actuals, 0, times.length);
+    const dinnerWallEnd = tradingEndHourExclusive();
+    const lunchPres = getDayPartPresentation(
+        forecasts,
+        actuals,
+        0,
+        PART_LUNCH_END,
+        LUNCH_WALL_START,
+        LUNCH_WALL_END_EXCLUSIVE
+    );
+    const dinnerPres = getDayPartPresentation(
+        forecasts,
+        actuals,
+        PART_LUNCH_END,
+        times.length,
+        DINNER_WALL_START,
+        dinnerWallEnd
+    );
+    let dayClass = 'cell-green';
+    if (dayForecast > 0) {
+        dayClass = getActualCellClass(dayActual, dayForecast);
+    }
+
+    return `
+        <div class="grid-label portrait-summary-label">Lunch</div>
+        <div class="grid-cell portrait-data-cell portrait-meal-cell">${formatCurrency(lunchForecast)}</div>
+        ${buildPortraitMealActualCell(lunchPres, lunchActual)}
+        <div class="grid-label portrait-summary-label">Dinner</div>
+        <div class="grid-cell portrait-data-cell portrait-meal-cell">${formatCurrency(dinnerForecast)}</div>
+        ${buildPortraitMealActualCell(dinnerPres, dinnerActual)}
+        <div class="grid-label portrait-summary-label portrait-summary-label--day">Day total</div>
+        <div class="grid-cell portrait-data-cell portrait-meal-cell">${formatCurrency(dayForecast)}</div>
+        <div class="grid-cell portrait-data-cell portrait-meal-cell ${dayClass}">${formatCurrency(dayActual)}</div>
+    `;
+}
+
+function buildPortraitGridContent() {
+    return `
+        ${buildPortraitHeaderRow()}
+        ${buildPortraitHourRows()}
+        ${buildPortraitMealRows(forecastSales, liveSales)}
+        ${buildGridFooterRow()}
+    `;
+}
+
+let lastPortraitLayout = null;
+
+function syncDashboardLayoutMode() {
+    const portrait = isPortraitMobileView();
+    document.body.classList.toggle('dashboard--portrait', portrait);
+    document.body.classList.toggle(
+        'dashboard--mobile-landscape',
+        window.matchMedia('(max-width: 900px) and (orientation: landscape)').matches
+    );
+    return portrait;
+}
+
+function onDashboardLayoutChange() {
+    applyDashboardScale();
+    updateRotateHint();
+    const portrait = syncDashboardLayoutMode();
+    if (portrait === lastPortraitLayout) return;
+    lastPortraitLayout = portrait;
+    const grid = document.querySelector('.dashboard-grid');
+    if (!grid) return;
+    if (forecastSales.length) {
+        updateGrid();
+    } else {
+        showGridSkeleton();
+    }
+}
+
 /* -----------------------------------------------------------
    Refresh sales grid — header row + forecast + actual from global arrays
 ----------------------------------------------------------- */
@@ -1711,9 +1849,29 @@ function buildGridFooterRow() {
 function showGridSkeleton() {
     const grid = document.querySelector('.dashboard-grid');
     if (!grid) return;
-    const cols = Math.max(times.length || 12, 8);
+
+    syncAuditPeriodState();
+    grid.classList.remove('dashboard-grid--skeleton');
+    grid.classList.toggle('dashboard-grid--portrait', isPortraitMobileView());
     grid.classList.add('dashboard-grid--skeleton');
     grid.setAttribute('aria-busy', 'true');
+
+    if (isPortraitMobileView()) {
+        const rows = Math.max(times.length || 8, 6);
+        grid.innerHTML = `
+            <div class="grid-skeleton-block portrait-skeleton-header"></div>
+            <div class="grid-skeleton-block portrait-skeleton-header"></div>
+            <div class="grid-skeleton-block portrait-skeleton-header"></div>
+            ${Array.from(
+                { length: rows },
+                () =>
+                    '<div class="grid-skeleton-block"></div><div class="grid-skeleton-block"></div><div class="grid-skeleton-block"></div>'
+            ).join('')}
+        `;
+        return;
+    }
+
+    const cols = Math.max(times.length || 12, 8);
     grid.innerHTML = `
         <div class="grid-skeleton-row">${'<div class="grid-skeleton-block"></div>'.repeat(cols + 1)}</div>
         <div class="grid-skeleton-row">${'<div class="grid-skeleton-block"></div>'.repeat(cols + 1)}</div>
@@ -1727,11 +1885,15 @@ function updateGrid() {
     if (!grid) return;
 
     syncAuditPeriodState();
+    syncDashboardLayoutMode();
 
     grid.classList.remove('dashboard-grid--skeleton');
+    grid.classList.toggle('dashboard-grid--portrait', isPortraitMobileView());
     grid.removeAttribute('aria-busy');
 
-    grid.innerHTML = `
+    grid.innerHTML = isPortraitMobileView()
+        ? buildPortraitGridContent()
+        : `
         ${buildHeaderRow()}
         ${buildForecastRow(forecastSales, liveSales)}
         ${buildActualRow(liveSales, forecastSales)}
@@ -1898,15 +2060,28 @@ function getMobileLayoutHeight() {
 }
 
 function applyDashboardScale() {
+    syncDashboardLayoutMode();
+    const portrait = isPortraitMobileView();
     const mobile = window.matchMedia('(max-width: 900px)').matches;
     const viewW = window.visualViewport?.width ?? window.innerWidth;
     const viewH = getMobileLayoutHeight();
-    const ratio = mobile
-        ? viewW / 1920
-        : Math.min(viewW / 1920, viewH / 1080);
+    const dash = document.querySelector('.dashboard');
+
+    if (portrait) {
+        document.documentElement.style.setProperty('--dashboard-scale', '1');
+        if (dash) {
+            dash.style.zoom = '';
+            dash.style.width = '';
+            dash.style.maxWidth = '';
+            dash.style.marginLeft = '';
+            dash.style.marginRight = '';
+        }
+        return;
+    }
+
+    const ratio = mobile ? viewW / 1920 : Math.min(viewW / 1920, viewH / 1080);
     const minScale = mobile ? 0.28 : 0.72;
     const scale = Math.max(minScale, Math.min(ratio, 1));
-    const dash = document.querySelector('.dashboard');
 
     if (mobile) {
         document.documentElement.style.setProperty('--dashboard-scale', '1');
@@ -1938,16 +2113,9 @@ function isMobileDashboardView() {
 function updateRotateHint() {
     const hint = document.getElementById('rotate-hint');
     if (!hint) return;
-    let prefer = false;
-    try {
-        prefer = sessionStorage.getItem(LANDSCAPE_PREF_KEY) === '1';
-    } catch {
-        prefer = false;
-    }
-    const show = prefer && isMobileDashboardView() && window.matchMedia('(orientation: portrait)').matches;
-    hint.hidden = !show;
-    hint.setAttribute('aria-hidden', show ? 'false' : 'true');
-    document.body.classList.toggle('rotate-hint-active', show);
+    hint.hidden = true;
+    hint.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('rotate-hint-active');
 }
 
 async function tryLockLandscape() {
@@ -1971,23 +2139,10 @@ function initMobileLandscape() {
     }
 
     updateRotateHint();
-    window.addEventListener('orientationchange', () => {
-        applyDashboardScale();
-        updateRotateHint();
-    });
-    window.addEventListener('resize', () => {
-        applyDashboardScale();
-        updateRotateHint();
-    });
+    window.addEventListener('orientationchange', onDashboardLayoutChange);
+    window.addEventListener('resize', onDashboardLayoutChange);
     if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', () => {
-            applyDashboardScale();
-            updateRotateHint();
-        });
-    }
-
-    if (STORE_NUMBER && isMobileDashboardView()) {
-        tryLockLandscape();
+        window.visualViewport.addEventListener('resize', onDashboardLayoutChange);
     }
 }
 
@@ -1995,8 +2150,9 @@ function initMobileLandscape() {
    Boot — render dashboard shell, then start clock & sales sync
 ----------------------------------------------------------- */
 (async () => {
+    syncDashboardLayoutMode();
+    lastPortraitLayout = isPortraitMobileView();
     applyDashboardScale();
-    window.addEventListener('resize', applyDashboardScale);
     await initTradingHours();
     renderDashboard();
     initMobileLandscape();

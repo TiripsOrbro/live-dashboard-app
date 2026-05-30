@@ -118,17 +118,21 @@ your-admin-password |
 
 # Chirnside Park
 3811 |
+CB3811 |
 store-3811-password |
 3811
 
-# Regional manager
-regional |
-regional-password |
-3806, 3808, 3811
+# Dandenong South
+3806 |
+CB3806 |
+store-3806-password |
+3806
 ```
 
-Each block is one person. The `#` line is a display name shown on the welcome screen after login (e.g. `# Thomas` → “Welcome, Thomas”). The next three lines are username, password, and access. A trailing `|` on each line is optional. Usernames are matched case-insensitively (`Admin` and `admin` are the same).
+Each block is one store (or person). The `#` line is a display name shown on the welcome screen after login (e.g. `# Chirnside Park` → “Welcome, Chirnside Park”). The next lines are username, optional **colour-blind username** (`CB` + store number), password, and access. A trailing `|` on each line is optional. Usernames are matched case-insensitively (`Admin` and `admin` are the same).
 
+- **Regular username** (e.g. `3811`) — standard green / yellow / red grid
+- **CB username** (e.g. `CB3811`) — same password and welcome name; **blue** replaces green for “on track”
 - **access: `*` or `all`** — every store (admin store picker)
 - **access: store numbers** — comma-separated list; one store skips the picker and opens that dashboard directly
 - Passwords can be plaintext for quick setup; hash them for production:

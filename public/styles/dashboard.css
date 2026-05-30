@@ -72,6 +72,12 @@
     --popup-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Colour-blind mode — “on track” uses blue instead of green (CB… logins) */
+body.color-blind-mode {
+    --good: #6b9fd4;
+    --good-border: #3d7ab8;
+}
+
 /* -----------------------------------------------------------
    Page shell
 ----------------------------------------------------------- */
@@ -1225,8 +1231,21 @@ body.rotate-hint-active .dashboard {
     }
 
     .dashboard-grid--portrait .dashboard-grid-footer-ledger {
-        grid-template-columns: 1fr;
+        display: flex;
+        flex-direction: column;
         gap: 12px;
+    }
+
+    .dashboard-grid--portrait .dashboard-colour-note {
+        order: 1;
+    }
+
+    .dashboard-grid--portrait .dashboard-grid-footer-lead {
+        order: 2;
+    }
+
+    .dashboard-grid--portrait .dashboard-grid-footer-trail {
+        order: 3;
     }
 
     .dashboard-grid--portrait .dashboard-grid-footer-lead,

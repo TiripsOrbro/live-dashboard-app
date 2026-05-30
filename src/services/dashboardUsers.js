@@ -90,6 +90,10 @@ function parseAccessToken(raw) {
     return { role: 'store', stores: [...new Set(stores)] };
 }
 
+function isCbUsername(name) {
+    return /^CB[A-Za-z0-9]+$/i.test(String(name || '').trim());
+}
+
 function parseAccessBlock(block) {
     const lines = block.filter((line) => line.trim() && !line.trim().startsWith('#'));
     if (!lines.length) return null;
@@ -118,11 +122,18 @@ function parseAccessBlock(block) {
         }
     }
 
-    // Positional fallback: username, password, access (in that order).
+    // Positional fallback: username, [cbUsername], password, access.
     const positional = lines.map((line) => parseFieldLine(line, []));
     if (!username && positional[0]) username = positional[0];
-    if (!password && positional[1]) password = positional[1];
-    if (!accessRaw && positional[2]) accessRaw = positional[2];
+    let cbUsername = '';
+    if (positional.length >= 4 && isCbUsername(positional[1])) {
+        cbUsername = positional[1];
+        if (!password && positional[2]) password = positional[2];
+        if (!accessRaw && positional[3]) accessRaw = positional[3];
+    } else {
+        if (!password && positional[1]) password = positional[1];
+        if (!accessRaw && positional[2]) accessRaw = positional[2];
+    }
 
     if (!username || !password || !accessRaw) return null;
 
@@ -131,6 +142,7 @@ function parseAccessBlock(block) {
 
     return {
         username,
+        cbUsername,
         password,
         role: access.role,
         stores: access.stores,
@@ -141,6 +153,7 @@ function parseAccessBlock(block) {
  * Parse `.Users` blocks:
  *   # Display name (optional label)
  *   username |
+ *   [CBusername |]   optional colour-blind login (same password + welcome name)
  *   password |
  *   access |
  */
@@ -154,8 +167,21 @@ function parseUsersFile(text) {
     function flushBlock() {
         const row = parseAccessBlock(block);
         if (row) {
-            if (blockName) row.displayName = blockName;
-            users.push(row);
+            const base = {
+                displayName: blockName,
+                password: row.password,
+                role: row.role,
+                stores: row.stores,
+            };
+            if (row.username && !isCbUsername(row.username)) {
+                users.push({ ...base, username: row.username, colorBlind: false });
+            }
+            if (row.cbUsername) {
+                users.push({ ...base, username: row.cbUsername, colorBlind: true });
+            }
+            if (row.username && isCbUsername(row.username)) {
+                users.push({ ...base, username: row.username, colorBlind: true });
+            }
         }
         block = [];
         blockName = '';
@@ -228,6 +254,7 @@ function normalizeUser(row) {
         displayName: row.displayName || '',
         role: row.role === 'admin' ? 'admin' : 'store',
         stores,
+        colorBlind: Boolean(row.colorBlind),
     };
 }
 
@@ -274,6 +301,7 @@ function parseSessionToken(token) {
         role,
         stores,
         displayName: String(payload.d || '').trim(),
+        colorBlind: payload.c === 1,
     };
 }
 
@@ -284,6 +312,7 @@ function createSessionToken(user) {
         d: user.displayName || lookupDisplayName(user.username) || '',
         r: user.role,
         s: stores,
+        c: user.colorBlind ? 1 : 0,
         exp: Date.now() + SESSION_MAX_AGE_MS,
     });
 }
@@ -375,6 +404,7 @@ function userProfileForClient(user) {
             stores: '*',
             skipStorePicker: false,
             defaultPath: '/',
+            colorBlind: false,
         };
     }
     const stores = user.stores === '*' ? '*' : [...user.stores];
@@ -389,6 +419,7 @@ function userProfileForClient(user) {
         stores,
         skipStorePicker,
         defaultPath: getLoginRedirectPath(user),
+        colorBlind: Boolean(user.colorBlind),
     };
 }
 

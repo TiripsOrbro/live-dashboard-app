@@ -14,6 +14,9 @@ const rememberInput = document.getElementById('remember-me');
 const WELCOME_SKIP_KEY = 'dashboard-welcome-shown';
 const DASHBOARD_TIME_ZONE = 'Australia/Melbourne';
 
+const BRAND_MARK_DUR = '2.4s';
+const BRAND_MARK_DUR_BUSY = '1.15s';
+
 function brandMarkSvg(uid) {
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="brand-mark" aria-hidden="true">
   <defs>
@@ -40,8 +43,22 @@ function brandMarkSvg(uid) {
     pathLength="520"
     d="M96 268 L168 268 L208 168 L256 332 L304 204 L352 268 L416 268"
   />
-  <circle class="brand-mark-dot--trail" r="8" fill="#ff4081" cx="96" cy="268"/>
-  <circle class="brand-mark-dot--lead" r="12" fill="#ffc72c" cx="96" cy="268"/>
+  <circle class="brand-mark-dot--trail" r="8" fill="#ff4081" opacity="0">
+    <animate class="brand-mark-dot-opacity" attributeName="opacity" dur="${BRAND_MARK_DUR}" repeatCount="indefinite"
+      values="0;0.75;0.9;0.9;0" keyTimes="0;0.12;0.42;0.58;1"/>
+    <animateMotion class="brand-mark-dot-motion" dur="${BRAND_MARK_DUR}" repeatCount="indefinite" calcMode="linear"
+      keyTimes="0;0.12;0.42;0.58;1" keyPoints="0;0;0.86;0.86;0">
+      <mpath href="#${uid}-pulse-path"/>
+    </animateMotion>
+  </circle>
+  <circle class="brand-mark-dot--lead" r="12" fill="#ffc72c" opacity="0.45">
+    <animate class="brand-mark-dot-opacity" attributeName="opacity" dur="${BRAND_MARK_DUR}" repeatCount="indefinite"
+      values="0.45;1;1;1;0" keyTimes="0;0.12;0.42;0.58;1"/>
+    <animateMotion class="brand-mark-dot-motion" dur="${BRAND_MARK_DUR}" repeatCount="indefinite" calcMode="linear"
+      keyTimes="0;0.12;0.42;0.58;1" keyPoints="0;0;1;1;0">
+      <mpath href="#${uid}-pulse-path"/>
+    </animateMotion>
+  </circle>
 </svg>`;
 }
 
@@ -52,6 +69,10 @@ function mountBrandMark(hostId, uid) {
 }
 
 function setBrandMarkBusy(busy) {
+    const dur = busy ? BRAND_MARK_DUR_BUSY : BRAND_MARK_DUR;
+    document.querySelectorAll('.brand-mark-dot-motion, .brand-mark-dot-opacity').forEach((node) => {
+        node.setAttribute('dur', dur);
+    });
     document.querySelectorAll('.brand-mark').forEach((mark) => {
         mark.classList.toggle('brand-mark--busy', busy);
     });

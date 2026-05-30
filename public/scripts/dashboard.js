@@ -1796,14 +1796,29 @@ function bindFooterChipDismissOnce() {
 }
 
 function buildColourGuideNoteHtml() {
+    const onTrack = document.body.classList.contains('color-blind-mode') ? 'Blue' : 'Green';
     return `
         <div class="dashboard-colour-note">
             <strong>Colour guide:</strong>
-            <strong>Red:</strong> Not on track. <strong>Yellow:</strong> Almost on track (90%). <strong>Green:</strong> On track.
+            <strong>Red:</strong> Not on track. <strong>Yellow:</strong> Almost on track (90%). <strong>${onTrack}:</strong> On track.
             <br>
             <strong>Current hour</strong> fills with time indicates actual sales vs forecast; the <strong>bottom strip</strong> fills with time and indicates if you are "on track" to meet sales at this minute.
         </div>
     `;
+}
+
+async function applyUserPreferences() {
+    try {
+        const res = await fetch(`${window.location.origin}/api/me`, { credentials: 'include' });
+        if (!res.ok) return;
+        const me = await res.json();
+        if (me.success && me.colorBlind) {
+            document.body.classList.add('color-blind-mode');
+            document.documentElement.classList.add('color-blind-mode');
+        }
+    } catch {
+        /* ignore */
+    }
 }
 
 function buildAuditsAsideHtml() {
@@ -2154,6 +2169,7 @@ function initMobileLandscape() {
     lastPortraitLayout = isPortraitMobileView();
     applyDashboardScale();
     await initTradingHours();
+    await applyUserPreferences();
     renderDashboard();
     initMobileLandscape();
     await loadAuditSchedule();

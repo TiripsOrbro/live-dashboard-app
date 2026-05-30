@@ -4,6 +4,9 @@
 # access: * or all = every store (admin picker). Otherwise comma-separated store numbers.
 # Usernames are case-insensitive at login (Admin = admin). Passwords are case-sensitive.
 # Passwords: plaintext for quick setup, or scrypt:… from scripts/hash-dashboard-password.js
+#
+# Optional CB username (e.g. CB3811): same password and welcome name, opens the dashboard
+# with blue/yellow/red colours instead of green/yellow/red (colour-blind friendly).
 
 # Admin
 admin |
@@ -12,11 +15,13 @@ changeme-admin-password |
 
 # Chirnside Park
 3811 |
+CB3811 |
 changeme-3811-password |
 3811
 
 # Dandenong South
 3806 |
+CB3806 |
 changeme-3806-password |
 3806
 

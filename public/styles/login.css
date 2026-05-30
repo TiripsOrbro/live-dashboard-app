@@ -118,16 +118,6 @@ body.login-body {
     transform-origin: 256px 256px;
 }
 
-.brand-mark-dot--lead,
-.brand-mark-dot--trail {
-    -webkit-offset-path: path("M96 268 L168 268 L208 168 L256 332 L304 204 L352 268 L416 268");
-    offset-path: path("M96 268 L168 268 L208 168 L256 332 L304 204 L352 268 L416 268");
-    -webkit-offset-anchor: center;
-    offset-anchor: center;
-    -webkit-offset-rotate: 0deg;
-    offset-rotate: 0deg;
-}
-
 .brand-mark-ring--outer {
     animation: brand-mark-ring-pulse 2.4s ease-in-out infinite;
 }
@@ -142,22 +132,12 @@ body.login-body {
     animation: brand-mark-pulse-draw 2.4s ease-in-out infinite;
 }
 
-.brand-mark-dot--lead {
-    animation: brand-mark-dot-lead 2.4s ease-in-out infinite;
-}
-
-.brand-mark-dot--trail {
-    animation: brand-mark-dot-trail 2.4s ease-in-out infinite;
-}
-
 .brand-mark--busy .brand-mark-pulse {
     animation-duration: 1.15s;
 }
 
 .brand-mark--busy .brand-mark-ring--outer,
-.brand-mark--busy .brand-mark-ring--inner,
-.brand-mark--busy .brand-mark-dot--lead,
-.brand-mark--busy .brand-mark-dot--trail {
+.brand-mark--busy .brand-mark-ring--inner {
     animation-duration: 1.15s;
 }
 
@@ -192,50 +172,6 @@ body.login-body {
     100% {
         stroke-dashoffset: -60;
         opacity: 0.5;
-    }
-}
-
-@keyframes brand-mark-dot-lead {
-    0% {
-        offset-distance: 0%;
-        opacity: 0.45;
-    }
-    12% {
-        opacity: 1;
-    }
-    42% {
-        offset-distance: 100%;
-        opacity: 1;
-    }
-    58% {
-        offset-distance: 100%;
-        opacity: 1;
-    }
-    100% {
-        offset-distance: 0%;
-        opacity: 0;
-    }
-}
-
-@keyframes brand-mark-dot-trail {
-    0% {
-        offset-distance: 0%;
-        opacity: 0;
-    }
-    12% {
-        opacity: 0.75;
-    }
-    42% {
-        offset-distance: 86%;
-        opacity: 0.9;
-    }
-    58% {
-        offset-distance: 86%;
-        opacity: 0.9;
-    }
-    100% {
-        offset-distance: 0%;
-        opacity: 0;
     }
 }
 
@@ -574,18 +510,20 @@ body.login-body {
 
     .brand-mark-ring--outer,
     .brand-mark-ring--inner,
-    .brand-mark-pulse,
-    .brand-mark-dot--lead,
-    .brand-mark-dot--trail {
+    .brand-mark-pulse {
         animation: none !important;
         stroke-dashoffset: 0 !important;
         opacity: 1 !important;
         transform: none !important;
-        offset-distance: 72% !important;
     }
 
+    .brand-mark-dot--lead,
     .brand-mark-dot--trail {
-        offset-distance: 64% !important;
-        opacity: 0.85 !important;
+        opacity: 1 !important;
+    }
+
+    .brand-mark-dot-motion,
+    .brand-mark-dot-opacity {
+        display: none;
     }
 }

@@ -106,7 +106,45 @@ SCRAPER_USERNAME=your-macromatix-username
 SCRAPER_PASSWORD=your-macromatix-password
 ```
 
-## Multiple stores
+## Dashboard login accounts
+
+Per-store logins live in `.Users` on the server (copy from `.Users.example`). This file is git-ignored — create it on the Pi and give each store their own username/password.
+
+```
+# Admin
+admin |
+your-admin-password |
+*
+
+# Chirnside Park
+3811 |
+store-3811-password |
+3811
+
+# Regional manager
+regional |
+regional-password |
+3806, 3808, 3811
+```
+
+Each block is one person. The `#` line is a display name shown on the welcome screen after login (e.g. `# Thomas` → “Welcome, Thomas”). The next three lines are username, password, and access. A trailing `|` on each line is optional. Usernames are matched case-insensitively (`Admin` and `admin` are the same).
+
+- **access: `*` or `all`** — every store (admin store picker)
+- **access: store numbers** — comma-separated list; one store skips the picker and opens that dashboard directly
+- Passwords can be plaintext for quick setup; hash them for production:
+
+```sh
+node scripts/hash-dashboard-password.js "your-password"
+```
+
+Paste the `scrypt:…` output into `.Users` as the password line.
+
+When `.Users` exists, username/password login is required. If no users file exists, the app falls back to the legacy single `DASHBOARD_ACCESS_KEY` (full admin access). With neither configured, the dashboard is open (dev only).
+
+Sign out: `/logout`. Old `/unlock` bookmarks redirect to `/login`.
+
+After sign-in, the login page cross-fades to a charcoal welcome screen (using the `#` name from `.Users`), then transitions to the store picker or your store dashboard.
+
 
 ### `.storelist` — the master list
 

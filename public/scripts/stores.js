@@ -56,6 +56,16 @@ function renderStores(stores) {
 
 async function loadStores() {
     try {
+        const meRes = await fetch(`${window.location.origin}/api/me`, { credentials: 'include' });
+        if (meRes.ok) {
+            const me = await meRes.json();
+            if (me.success && me.skipStorePicker && me.defaultPath) {
+                markLandscapePreference();
+                window.location.replace(me.defaultPath);
+                return;
+            }
+        }
+
         const res = await fetch(`${window.location.origin}/api/stores`, { credentials: 'include' });
         if (!res.ok) throw new Error(`API responded with ${res.status}`);
         const data = await res.json();

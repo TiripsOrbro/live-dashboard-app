@@ -47,7 +47,7 @@ function isScheduledOrdersDateTestEnabled() {
 function canRunScheduledOrdersDateTest(req, testPick) {
     if (!testPick) return false;
     if (isScheduledOrdersDateTestEnabled()) return true;
-    if (isDashboardAuthenticated(req)) return true;
+    if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) return true;
     return false;
 }
 
@@ -62,12 +62,30 @@ function parseScheduledOrdersTestYmd(raw) {
     if (d > dim) return null;
     return { year: y, month: m, day: d, ymd: s };
 }
+const {
+    SESSION_COOKIE,
+    LEGACY_COOKIE,
+    usersFileConfigured,
+    authenticate,
+    createSessionToken,
+    legacyAccessToken,
+    resolveUser,
+    isAuthenticated,
+    isAdminUser,
+    userCanAccessStore,
+    filterStoresForUser,
+    getLoginRedirectPath,
+    sessionCookieOptions,
+    userProfileForClient,
+    timingSafeEqualString,
+    readUsersFileSync,
+    resolveUsersFilePath,
+} = require('./services/dashboardUsers');
 const DASHBOARD_ACCESS_KEY = String(process.env.DASHBOARD_ACCESS_KEY || '');
 const DASHBOARD_ALLOWED_IPS = String(process.env.DASHBOARD_ALLOWED_IPS || '')
     .split(',')
     .map((ip) => normalizeIp(ip))
     .filter(Boolean);
-const DASHBOARD_COOKIE_NAME = 'dashboard_access';
 
 const cors = require('cors');
 if (/^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_ENABLE_CORS ?? '').trim())) {
@@ -93,34 +111,13 @@ function getRequestIp(req) {
     return normalizeIp(req.socket?.remoteAddress || req.ip);
 }
 
-function timingSafeEqualString(a, b) {
-    const aBuf = Buffer.from(String(a));
-    const bBuf = Buffer.from(String(b));
-    return aBuf.length === bBuf.length && crypto.timingSafeEqual(aBuf, bBuf);
+function authRequired() {
+    if (usersFileConfigured()) return true;
+    return Boolean(DASHBOARD_ACCESS_KEY);
 }
 
-function parseCookies(header) {
-    return String(header || '')
-        .split(';')
-        .map((part) => part.trim())
-        .filter(Boolean)
-        .reduce((cookies, part) => {
-            const eq = part.indexOf('=');
-            if (eq < 0) return cookies;
-            cookies[decodeURIComponent(part.slice(0, eq))] = decodeURIComponent(part.slice(eq + 1));
-            return cookies;
-        }, {});
-}
-
-function dashboardAccessToken() {
-    const secret = process.env.DASHBOARD_AUTH_SECRET || DASHBOARD_ACCESS_KEY;
-    return crypto.createHmac('sha256', secret).update(`dashboard:${DASHBOARD_ACCESS_KEY}`).digest('hex');
-}
-
-function isDashboardAuthenticated(req) {
-    if (!DASHBOARD_ACCESS_KEY) return true;
-    const cookies = parseCookies(req.headers.cookie);
-    return timingSafeEqualString(cookies[DASHBOARD_COOKIE_NAME] || '', dashboardAccessToken());
+function getRequestUser(req) {
+    return resolveUser(req, DASHBOARD_ACCESS_KEY);
 }
 
 function isApiRequest(req) {
@@ -129,40 +126,57 @@ function isApiRequest(req) {
 
 function sendUnauthorized(req, res) {
     if (isApiRequest(req)) {
-        res.status(401).json({ success: false, error: 'Dashboard access required.' });
+        res.status(401).json({ success: false, error: 'Dashboard login required.' });
         return;
     }
-    res.redirect('/unlock');
+    res.redirect('/login');
 }
 
-function renderUnlockPage(error = '') {
-    return `<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Dashboard Unlock</title>
-    <style>
-        body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: Arial, sans-serif; background: #231e1f; color: #fff; }
-        form { width: min(360px, calc(100vw - 32px)); display: grid; gap: 14px; padding: 28px; background: #312a2c; border: 2px solid #7a3eb1; }
-        h1 { margin: 0; font-size: 1.5rem; }
-        input, button { font: inherit; padding: 12px; border: 0; }
-        button { background: #7a3eb1; color: #fff; font-weight: 700; cursor: pointer; }
-        .error { color: #f8cb6f; min-height: 1.2em; }
-    </style>
-</head>
-<body>
-    <form method="post" action="/unlock">
-        <h1>Unlock Dashboard</h1>
-        <label>
-            Access key
-            <input name="accessKey" type="password" autocomplete="current-password" autofocus required>
-        </label>
-        <button type="submit">Unlock</button>
-        <div class="error">${error}</div>
-    </form>
-</body>
-</html>`;
+function sendForbidden(req, res, message = 'You do not have access to this store.') {
+    if (isApiRequest(req)) {
+        res.status(403).json({ success: false, error: message });
+        return;
+    }
+    const user = getRequestUser(req);
+    res.redirect(getLoginRedirectPath(user));
+}
+
+function wantsJsonResponse(req) {
+    const contentType = String(req.headers['content-type'] || '');
+    const accept = String(req.headers.accept || '');
+    return /\bapplication\/json\b/i.test(contentType) || /\bjson\b/i.test(accept);
+}
+
+function sendLoginSuccess(req, res, user) {
+    const profile = userProfileForClient(user);
+    const dest = profile.defaultPath || getLoginRedirectPath(user);
+    if (wantsJsonResponse(req)) {
+        res.json({
+            success: true,
+            welcomeName: profile.welcomeName || '',
+            defaultPath: dest,
+        });
+        return;
+    }
+    res.redirect(dest);
+}
+
+function sendLoginFailure(req, res, message = 'Incorrect username or password.') {
+    if (wantsJsonResponse(req)) {
+        res.status(401).json({ success: false, error: message });
+        return;
+    }
+    res.redirect('/login?error=invalid');
+}
+
+function setSessionCookie(res, user) {
+    res.cookie(SESSION_COOKIE, createSessionToken(user), sessionCookieOptions());
+    res.clearCookie(LEGACY_COOKIE, sessionCookieOptions());
+}
+
+function setLegacyAccessCookie(res) {
+    res.cookie(LEGACY_COOKIE, legacyAccessToken(DASHBOARD_ACCESS_KEY), sessionCookieOptions());
+    res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
 }
 
 function ipAllowlistMiddleware(req, res, next) {
@@ -182,12 +196,24 @@ function ipAllowlistMiddleware(req, res, next) {
 }
 
 function dashboardAuthMiddleware(req, res, next) {
-    if (req.path === '/unlock') {
+    if (req.path === '/login' || req.path === '/unlock' || req.path === '/logout') {
         next();
         return;
     }
 
-    if (isDashboardAuthenticated(req)) {
+    if (req.path === '/styles/login.css' || req.path === '/scripts/login.js') {
+        next();
+        return;
+    }
+
+    if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
+        req.dashboardUser = getRequestUser(req);
+        next();
+        return;
+    }
+
+    if (!authRequired()) {
+        req.dashboardUser = getRequestUser(req);
         next();
         return;
     }
@@ -198,33 +224,69 @@ function dashboardAuthMiddleware(req, res, next) {
 app.use(ipAllowlistMiddleware);
 
 app.get('/unlock', (req, res) => {
-    if (!DASHBOARD_ACCESS_KEY || isDashboardAuthenticated(req)) {
+    res.redirect('/login');
+});
+
+app.get('/login', (req, res) => {
+    if (!authRequired() || isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
+        const user = getRequestUser(req);
+        res.redirect(getLoginRedirectPath(user));
+        return;
+    }
+    res.sendFile(path.join(__dirname, '../public', 'login.html'));
+});
+
+app.post('/login', (req, res) => {
+    if (!authRequired()) {
+        if (wantsJsonResponse(req)) {
+            res.json({ success: true, welcomeName: '', defaultPath: '/' });
+            return;
+        }
         res.redirect('/');
         return;
     }
-    res.send(renderUnlockPage());
+
+    const username = String(req.body?.username || '').trim();
+    const password = String(req.body?.password || req.body?.accessKey || '');
+
+    if (!username && DASHBOARD_ACCESS_KEY && timingSafeEqualString(password, DASHBOARD_ACCESS_KEY)) {
+        setLegacyAccessCookie(res);
+        sendLoginSuccess(req, res, { username: '__legacy__', role: 'admin', stores: '*' });
+        return;
+    }
+
+    const user = authenticate(username, password);
+    if (!user) {
+        sendLoginFailure(req, res);
+        return;
+    }
+
+    setSessionCookie(res, user);
+    sendLoginSuccess(req, res, user);
 });
 
 app.post('/unlock', (req, res) => {
-    if (!DASHBOARD_ACCESS_KEY) {
+    const password = String(req.body?.accessKey || '');
+    if (!authRequired()) {
+        if (wantsJsonResponse(req)) {
+            res.json({ success: true, welcomeName: '', defaultPath: '/' });
+            return;
+        }
         res.redirect('/');
         return;
     }
-
-    const accessKey = String(req.body?.accessKey || '');
-    if (!timingSafeEqualString(accessKey, DASHBOARD_ACCESS_KEY)) {
-        res.status(401).send(renderUnlockPage('Incorrect access key.'));
+    if (DASHBOARD_ACCESS_KEY && timingSafeEqualString(password, DASHBOARD_ACCESS_KEY)) {
+        setLegacyAccessCookie(res);
+        sendLoginSuccess(req, res, { username: '__legacy__', role: 'admin', stores: '*' });
         return;
     }
+    sendLoginFailure(req, res, 'Incorrect access key.');
+});
 
-    const secureCookie = /^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_SECURE_COOKIE ?? '').trim());
-    res.cookie(DASHBOARD_COOKIE_NAME, dashboardAccessToken(), {
-        httpOnly: true,
-        sameSite: 'strict',
-        secure: secureCookie,
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
-    res.redirect('/');
+app.get('/logout', (req, res) => {
+    res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
+    res.clearCookie(LEGACY_COOKIE, sessionCookieOptions());
+    res.redirect('/login');
 });
 
 app.use(dashboardAuthMiddleware);
@@ -513,15 +575,52 @@ function storeSliceFromPayload(payload, requestedStore) {
     };
 }
 
+function filterSalesSliceForUser(slice, user) {
+    if (!slice || isAdminUser(user)) return slice;
+    const allowed = new Set((user.stores === '*' ? [] : user.stores).map(String));
+    if (!allowed.size) return slice;
+    return {
+        ...slice,
+        availableStores: (Array.isArray(slice.availableStores) ? slice.availableStores : []).filter((s) =>
+            allowed.has(String(s.storeNumber))
+        ),
+    };
+}
+
+function assertStoreAccess(req, res, storeNumber) {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!userCanAccessStore(user, storeNumber)) {
+        sendForbidden(req, res);
+        return false;
+    }
+    return true;
+}
+
+app.get('/welcome', (req, res) => {
+    res.redirect('/login');
+});
+
 // Root path is the store picker — a grid of clickable store tiles (see public/stores.html).
 app.get('/', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (user && !isAdminUser(user) && user.stores !== '*' && user.stores.length === 1) {
+        res.redirect(`/${user.stores[0]}`);
+        return;
+    }
     res.sendFile(path.join(__dirname, '../public', 'stores.html'));
 });
 
 // Per-store dashboard pages, e.g. /3811. The SPA reads the store number from the path.
 // Static assets and /api/* are matched earlier, so this only catches a bare numeric segment.
 app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
+    const storeNumber = (req.path.match(/^\/(\d{3,6})\/?$/) || [])[1];
+    if (!assertStoreAccess(req, res, storeNumber)) return;
     res.sendFile(path.join(__dirname, '../public', 'index.html'));
+});
+
+app.get('/api/me', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    res.json({ success: true, ...userProfileForClient(user) });
 });
 
 app.get('/api/audit-schedule', (req, res) => {
@@ -541,8 +640,10 @@ app.get('/api/audit-schedule', (req, res) => {
 
 app.get('/api/audits', async (req, res) => {
     try {
+        const store = auditStoreKey(req.query.store);
+        if (!assertStoreAccess(req, res, store)) return;
         const state = await getAuditState(req.query.store);
-        res.json({ success: true, store: auditStoreKey(req.query.store), ...state });
+        res.json({ success: true, store, ...state });
     } catch (error) {
         console.error('API: Error reading audit state:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -551,8 +652,10 @@ app.get('/api/audits', async (req, res) => {
 
 app.put('/api/audits', async (req, res) => {
     try {
+        const store = auditStoreKey(req.query.store);
+        if (!assertStoreAccess(req, res, store)) return;
         const state = await saveAuditDismissals(req.query.store, req.body?.dismissed);
-        res.json({ success: true, store: auditStoreKey(req.query.store), ...state });
+        res.json({ success: true, store, ...state });
     } catch (error) {
         console.error('API: Error saving audit state:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -579,6 +682,7 @@ app.get('/api/test-scraper', async (req, res) => {
 // Main API endpoint to get sales data (one store's slice of the cached multi-store payload)
 app.get('/api/sales', async (req, res) => {
     const requestedStore = String(req.query.store || '').trim();
+    if (requestedStore && !assertStoreAccess(req, res, requestedStore)) return;
     try {
         console.log('API: Sales data requested', requestedStore ? `(store ${requestedStore})` : '');
         const testPick = parseScheduledOrdersTestYmd(req.query.testScheduledOrdersDate);
@@ -596,21 +700,30 @@ app.get('/api/sales', async (req, res) => {
                 stores: Array.isArray(result.stores) ? result.stores : [],
             };
             logDashboardScrapeComplete(fullPayload);
-            const slice = storeSliceFromPayload(fullPayload, requestedStore);
+            const slice = filterSalesSliceForUser(
+                storeSliceFromPayload(fullPayload, requestedStore),
+                req.dashboardUser || getRequestUser(req)
+            );
             slice.testScheduledOrdersDate = testPick.ymd;
             res.json(slice);
             return;
         }
 
         fullPayload = await getSalesDataCached();
-        const slice = storeSliceFromPayload(fullPayload, requestedStore);
-        res.json(slice);
+        res.json(
+            filterSalesSliceForUser(
+                storeSliceFromPayload(fullPayload, requestedStore),
+                req.dashboardUser || getRequestUser(req)
+            )
+        );
     } catch (error) {
         console.error('API: Error fetching sales data:', error);
         if (salesCache) {
-            const slice = storeSliceFromPayload(salesCache, requestedStore);
             res.json({
-                ...slice,
+                ...filterSalesSliceForUser(
+                    storeSliceFromPayload(salesCache, requestedStore),
+                    req.dashboardUser || getRequestUser(req)
+                ),
                 stale: true,
                 staleAgeSeconds: Math.round((Date.now() - salesCacheAt) / 1000),
                 warning: 'Serving stale cached sales due to scrape error.',
@@ -642,6 +755,9 @@ app.get('/api/stores', async (req, res) => {
             }));
         }
 
+        const user = req.dashboardUser || getRequestUser(req);
+        stores = filterStoresForUser(user, stores);
+
         res.json({ success: true, stores, defaultStore: DASHBOARD_DEFAULT_STORE || (stores[0]?.storeNumber ?? '') });
     } catch (error) {
         console.error('API: Error listing stores:', error);
@@ -671,6 +787,16 @@ function startBackgroundRefresh() {
 }
 
 // Start the server (bind all interfaces so other LAN devices can reach the Pi).
+(function logDashboardAuthMode() {
+    if (usersFileConfigured()) {
+        console.log(`[Auth] ${readUsersFileSync().length} dashboard account(s) from ${path.basename(resolveUsersFilePath())}`);
+    } else if (DASHBOARD_ACCESS_KEY) {
+        console.log('[Auth] Legacy access-key mode (.Users not configured)');
+    } else {
+        console.log('[Auth] Open access (no login configured)');
+    }
+})();
+
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on http://0.0.0.0:${PORT}`);
     startBackgroundRefresh();

@@ -1,0 +1,26 @@
+# Dashboard login accounts — copy to `.Users` on the server and edit.
+# One block per person. Lines may be indented; a trailing | on each field is optional.
+#
+# access: * or all = every store (admin picker). Otherwise comma-separated store numbers.
+# Usernames are case-insensitive at login (Admin = admin). Passwords are case-sensitive.
+# Passwords: plaintext for quick setup, or scrypt:… from scripts/hash-dashboard-password.js
+
+# Admin
+admin |
+changeme-admin-password |
+*
+
+# Chirnside Park
+3811 |
+changeme-3811-password |
+3811
+
+# Dandenong South
+3806 |
+changeme-3806-password |
+3806
+
+# Regional manager (multiple stores)
+# regional |
+# changeme-regional |
+# 3806, 3808, 3811

@@ -15,10 +15,9 @@ const WELCOME_SKIP_KEY = 'dashboard-welcome-shown';
 const DASHBOARD_TIME_ZONE = 'Australia/Melbourne';
 
 const TIMING = {
-    loginFade: 650,
-    bgFadeIn: 850,
-    welcomeSequence: 4200,
-    exit: 1050,
+    loginFade: 400,
+    welcomeDisplay: 1800,
+    exit: 550,
 };
 
 function delay(ms) {
@@ -129,10 +128,10 @@ async function playWelcomeTransition(welcomeName, dest) {
 
     markWelcomeShownToday();
 
-    await delay(reduced ? 350 : TIMING.bgFadeIn + TIMING.welcomeSequence);
+    await delay(reduced ? 200 : TIMING.welcomeDisplay);
 
     welcomeStage.classList.add('welcome-stage--exit');
-    await delay(reduced ? 150 : TIMING.exit);
+    await delay(reduced ? 120 : TIMING.exit);
 
     window.location.replace(dest || '/');
 }

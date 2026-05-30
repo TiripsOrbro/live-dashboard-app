@@ -14,10 +14,55 @@ const rememberInput = document.getElementById('remember-me');
 const WELCOME_SKIP_KEY = 'dashboard-welcome-shown';
 const DASHBOARD_TIME_ZONE = 'Australia/Melbourne';
 
+function brandMarkSvg(uid) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" class="brand-mark" aria-hidden="true">
+  <defs>
+    <radialGradient id="${uid}-bg" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" stop-color="#2d0a3d"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+    <linearGradient id="${uid}-purple" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e040fb"/>
+      <stop offset="100%" stop-color="#702082"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#${uid}-bg)"/>
+  <circle class="brand-mark-ring--outer" cx="256" cy="256" r="178" fill="none" stroke="#702082" stroke-width="12" opacity="0.45"/>
+  <circle class="brand-mark-ring--inner" cx="256" cy="256" r="142" fill="none" stroke="url(#${uid}-purple)" stroke-width="6" opacity="0.65"/>
+  <path
+    class="brand-mark-pulse"
+    fill="none"
+    stroke="#ffc72c"
+    stroke-width="14"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    pathLength="520"
+    d="M96 268 L168 268 L208 168 L256 332 L304 204 L352 268 L416 268"
+  />
+  <circle class="brand-mark-dot--peak" cx="256" cy="332" r="10" fill="#ff4081"/>
+  <circle class="brand-mark-dot--center" cx="256" cy="256" r="12" fill="#ffc72c"/>
+</svg>`;
+}
+
+function mountBrandMark(hostId, uid) {
+    const host = document.getElementById(hostId);
+    if (!host) return;
+    host.innerHTML = brandMarkSvg(uid);
+}
+
+function setBrandMarkBusy(busy) {
+    document.querySelectorAll('.brand-mark').forEach((mark) => {
+        mark.classList.toggle('brand-mark--busy', busy);
+    });
+}
+
+mountBrandMark('login-brand-mark', 'login-mark');
+mountBrandMark('welcome-brand-mark', 'welcome-mark');
+
 const TIMING = {
-    loginFade: 400,
-    welcomeDisplay: 1800,
-    exit: 550,
+    loginFade: 550,
+    welcomeDisplay: 3400,
+    exit: 900,
 };
 
 function delay(ms) {
@@ -79,6 +124,7 @@ function setFormBusy(busy) {
     rememberInput.disabled = busy;
     submitBtn.classList.toggle('login-submit--loading', busy);
     submitLabel.textContent = busy ? 'Signing in…' : 'Sign in';
+    setBrandMarkBusy(busy);
 }
 
 function readQueryError() {
@@ -107,7 +153,7 @@ async function playWelcomeTransition(welcomeName, dest) {
     welcomeMessage.textContent = buildWelcomeText(welcomeName);
 
     loginStage.classList.add('login-stage--hide');
-    await delay(reduced ? 100 : TIMING.loginFade);
+    await delay(reduced ? 150 : TIMING.loginFade);
 
     welcomeStage.hidden = false;
     welcomeStage.setAttribute('aria-hidden', 'false');
@@ -128,10 +174,10 @@ async function playWelcomeTransition(welcomeName, dest) {
 
     markWelcomeShownToday();
 
-    await delay(reduced ? 200 : TIMING.welcomeDisplay);
+    await delay(reduced ? 280 : TIMING.welcomeDisplay);
 
     welcomeStage.classList.add('welcome-stage--exit');
-    await delay(reduced ? 120 : TIMING.exit);
+    await delay(reduced ? 180 : TIMING.exit);
 
     window.location.replace(dest || '/');
 }

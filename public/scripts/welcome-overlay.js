@@ -61,13 +61,15 @@ function injectWelcomeOverlay(welcomeName) {
     stage.className = 'welcome-stage welcome-stage--dashboard welcome-stage--visible';
     stage.setAttribute('aria-live', 'polite');
     stage.innerHTML = `
-        <div class="welcome-brand" aria-hidden="true">
-            <div class="welcome-logo" id="welcome-brand-mark" aria-hidden="true"></div>
-        </div>
-        <div class="welcome-copy">
-            <p class="welcome-line">
-                <span class="welcome-message"></span>
-            </p>
+        <div class="welcome-stage-inner">
+            <div class="welcome-brand" aria-hidden="true">
+                <div class="welcome-logo" id="welcome-brand-mark" aria-hidden="true"></div>
+            </div>
+            <div class="welcome-copy">
+                <p class="welcome-line">
+                    <span class="welcome-message"></span>
+                </p>
+            </div>
         </div>
     `;
 

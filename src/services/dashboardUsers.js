@@ -8,7 +8,10 @@ const USERS_PATH = path.join(PROJECT_ROOT, '.Users');
 
 const SESSION_COOKIE = 'dashboard_session';
 const LEGACY_COOKIE = 'dashboard_access';
+const NOLOGIN_COOKIE = 'dashboard_nologin';
 const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/** Long-lived cookie for direct /nologin/{store} kiosk links. */
+const NOLOGIN_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 /** Browser-session cookie when “Stay signed in” is unchecked (Express: omit maxAge). */
 
 const FIELD_LABELS = {
@@ -318,6 +321,71 @@ function createSessionToken(user) {
     });
 }
 
+function nologinEnabled() {
+    return /^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_NOLOGIN_ENABLED ?? '').trim());
+}
+
+function nologinAllowedStoreNumbers() {
+    const raw = String(process.env.DASHBOARD_NOLOGIN_STORES ?? '*').trim();
+    if (!raw || raw === '*' || /^all$/i.test(raw)) return null;
+    return raw
+        .split(/[,;\s]+/)
+        .map((s) => normalizeStoreKey(s))
+        .filter(Boolean);
+}
+
+function isNologinStoreAllowed(storeNumber) {
+    if (!nologinEnabled()) return false;
+    const num = normalizeStoreKey(storeNumber);
+    if (!num) return false;
+    const allowlist = nologinAllowedStoreNumbers();
+    if (allowlist && !allowlist.includes(num)) return false;
+    return true;
+}
+
+function nologinSecretRequired() {
+    return String(process.env.DASHBOARD_NOLOGIN_SECRET || '').trim();
+}
+
+function verifyNologinSecret(provided) {
+    const expected = nologinSecretRequired();
+    if (!expected) return true;
+    return timingSafeEqualString(String(provided || '').trim(), expected);
+}
+
+function createNologinToken(storeNumber, displayName = '') {
+    return signSessionPayload({
+        u: '__nologin__',
+        d: String(displayName || '').trim(),
+        r: 'store',
+        s: String(storeNumber),
+        c: 0,
+        exp: Date.now() + NOLOGIN_MAX_AGE_MS,
+    });
+}
+
+function parseNologinSession(token) {
+    const user = parseSessionToken(token);
+    if (!user || user.username !== '__nologin__') return null;
+    if (user.role !== 'store' || user.stores === '*' || user.stores.length !== 1) return null;
+    return user;
+}
+
+function isNologinUser(user) {
+    return Boolean(user && user.username === '__nologin__');
+}
+
+function nologinCookieOptions() {
+    const secureCookie = /^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_SECURE_COOKIE ?? '').trim());
+    return {
+        httpOnly: true,
+        sameSite: 'strict',
+        secure: secureCookie,
+        maxAge: NOLOGIN_MAX_AGE_MS,
+        path: '/',
+    };
+}
+
 function legacyAccessToken(accessKey) {
     return crypto.createHmac('sha256', authSecret()).update(`dashboard:${accessKey}`).digest('hex');
 }
@@ -340,6 +408,9 @@ function resolveUser(req, legacyAccessKey = '') {
 
     const session = parseSessionToken(cookies[SESSION_COOKIE]);
     if (session) return session;
+
+    const nologin = parseNologinSession(cookies[NOLOGIN_COOKIE]);
+    if (nologin && isNologinStoreAllowed(nologin.stores[0])) return nologin;
 
     if (legacyAccessKey && timingSafeEqualString(cookies[LEGACY_COOKIE] || '', legacyAccessToken(legacyAccessKey))) {
         return { username: '__legacy__', role: 'admin', stores: '*' };
@@ -423,6 +494,22 @@ function sessionCookieOptions(options = {}) {
 }
 
 function userProfileForClient(user) {
+    if (isNologinUser(user)) {
+        const stores = user.stores === '*' ? [] : user.stores.map(String);
+        const store = stores[0] || '';
+        const displayName = String(user.displayName || '').trim();
+        return {
+            username: '',
+            displayName,
+            welcomeName: displayName || (store ? `Store ${store}` : ''),
+            role: 'store',
+            stores,
+            skipStorePicker: true,
+            defaultPath: store ? `/${store}` : '/',
+            colorBlind: false,
+            nologin: true,
+        };
+    }
     if (!user || user.username.startsWith('__')) {
         return {
             username: '',
@@ -454,7 +541,9 @@ function userProfileForClient(user) {
 module.exports = {
     SESSION_COOKIE,
     LEGACY_COOKIE,
+    NOLOGIN_COOKIE,
     SESSION_MAX_AGE_MS,
+    NOLOGIN_MAX_AGE_MS,
     USERS_PATH,
     hashPassword,
     verifyPassword,
@@ -464,10 +553,15 @@ module.exports = {
     usersFileConfigured,
     authenticate,
     createSessionToken,
+    createNologinToken,
     legacyAccessToken,
     resolveUser,
     isAuthenticated,
     isAdminUser,
+    isNologinUser,
+    isNologinStoreAllowed,
+    verifyNologinSecret,
+    nologinCookieOptions,
     userCanAccessStore,
     filterStoresForUser,
     getLoginRedirectPath,

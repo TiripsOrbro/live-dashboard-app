@@ -125,9 +125,11 @@ function parseScheduledOrdersTestYmd(raw) {
 const {
     SESSION_COOKIE,
     LEGACY_COOKIE,
+    NOLOGIN_COOKIE,
     usersFileConfigured,
     authenticate,
     createSessionToken,
+    createNologinToken,
     legacyAccessToken,
     resolveUser,
     isAuthenticated,
@@ -136,6 +138,9 @@ const {
     filterStoresForUser,
     getLoginRedirectPath,
     sessionCookieOptions,
+    nologinCookieOptions,
+    isNologinStoreAllowed,
+    verifyNologinSecret,
     userProfileForClient,
     timingSafeEqualString,
     readUsersFileSync,
@@ -289,6 +294,7 @@ function ipAllowlistMiddleware(req, res, next) {
 
 function isLoginPublicPath(reqPath) {
     if (reqPath === '/login' || reqPath === '/unlock' || reqPath === '/logout') return true;
+    if (/^\/nologin\/\d{3,6}\/?$/i.test(reqPath)) return true;
     if (reqPath === '/icon.svg' || reqPath === '/icon-mark.svg') return true;
     if (reqPath === '/styles/login.css' || reqPath === '/styles/brand-mark.css') return true;
     if (reqPath === '/scripts/login.js' || reqPath === '/scripts/brand-mark.js') return true;
@@ -387,7 +393,33 @@ app.post('/unlock', (req, res) => {
 app.get('/logout', (req, res) => {
     res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
     res.clearCookie(LEGACY_COOKIE, sessionCookieOptions());
+    res.clearCookie(NOLOGIN_COOKIE, nologinCookieOptions());
     res.redirect('/login');
+});
+
+/** Kiosk link — sets a long-lived single-store cookie, then opens that dashboard. */
+app.get(/^\/nologin\/(\d{3,6})\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/nologin\/(\d{3,6})\/?$/i) || [])[1]);
+    if (!storeNumber || !isNologinStoreAllowed(storeNumber) || !verifyNologinSecret(req.query.key)) {
+        res.status(404).send('Not found');
+        return;
+    }
+
+    const storeEntry = getStoreList().find((s) => String(s.storeNumber) === String(storeNumber));
+    if (!storeEntry) {
+        res.status(404).send('Not found');
+        return;
+    }
+
+    res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
+    res.clearCookie(LEGACY_COOKIE, sessionCookieOptions());
+    res.cookie(
+        NOLOGIN_COOKIE,
+        createNologinToken(storeNumber, storeEntry.storeName || ''),
+        nologinCookieOptions()
+    );
+    console.log(`[Auth] Nologin: store ${storeNumber} from ${getRequestIp(req)}`);
+    res.redirect(302, `/${storeNumber}`);
 });
 
 /** Login page assets — must be reachable before authentication (for sign-in screen animation). */

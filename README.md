@@ -147,6 +147,20 @@ When `.Users` exists, username/password login is required. If no users file exis
 
 Sign out: `/logout`. Old `/unlock` bookmarks redirect to `/login`.
 
+### Kiosk / no-login store links (optional)
+
+For wall-mounted tablets that should open one store without signing in, enable nologin links in `.env.production`:
+
+```ini
+DASHBOARD_NOLOGIN_ENABLED=1
+# Comma-separated store numbers, or * for every store in .storelist
+DASHBOARD_NOLOGIN_STORES=3811
+# Optional shared secret — then use /nologin/3811?key=your-secret
+# DASHBOARD_NOLOGIN_SECRET=change-this-long-random-string
+```
+
+Open `https://tbadashboard.com/nologin/3811` (add `?key=…` if `DASHBOARD_NOLOGIN_SECRET` is set). The browser gets a long-lived **single-store** cookie and lands on `/3811`. It cannot open other stores or the admin store picker. Use `/logout` to clear it.
+
 After sign-in, the login page cross-fades to a charcoal welcome screen (using the `#` name from `.Users`), then transitions to the store picker or your store dashboard. The welcome animation is shown once per day per browser; later sign-ins the same day go straight through.
 
 The **login and welcome screens use a dedicated dark theme** (black background, light text). The sales dashboard itself stays on the light grey layout for grid readability.

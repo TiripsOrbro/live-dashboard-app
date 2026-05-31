@@ -159,7 +159,9 @@ DASHBOARD_NOLOGIN_STORES=3811
 # DASHBOARD_NOLOGIN_SECRET=change-this-long-random-string
 ```
 
-Open `https://tbadashboard.com/nologin/3811` (add `?key=…` if `DASHBOARD_NOLOGIN_SECRET` is set). The browser gets a long-lived **single-store** cookie and lands on `/3811`. It cannot open other stores or the admin store picker. Use `/logout` to clear it.
+Open `https://tbadashboard.com/nologin/3811` (add `?key=…` if `DASHBOARD_NOLOGIN_SECRET` is set). The page loads **in place** (no redirect) with a long-lived **single-store** session. Cookies use `SameSite=None` by default so embedded players (Yodeck, etc.) can authenticate; if cookies are blocked, assets and API calls carry a signed `kiosk` token instead. The session cannot open other stores or the admin store picker. Use `/logout` to clear it.
+
+Optional override: `DASHBOARD_NOLOGIN_SAMESITE=strict|lax|none` (default `none` for signage players).
 
 After sign-in, the login page cross-fades to a charcoal welcome screen (using the `#` name from `.Users`), then transitions to the store picker or your store dashboard. The welcome animation is shown once per day per browser; later sign-ins the same day go straight through.
 

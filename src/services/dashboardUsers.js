@@ -375,15 +375,30 @@ function isNologinUser(user) {
     return Boolean(user && user.username === '__nologin__');
 }
 
+function nologinSameSiteMode() {
+    const raw = String(process.env.DASHBOARD_NOLOGIN_SAMESITE ?? 'none').trim().toLowerCase();
+    if (raw === 'strict' || raw === 'lax' || raw === 'none') return raw;
+    return 'none';
+}
+
 function nologinCookieOptions() {
-    const secureCookie = /^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_SECURE_COOKIE ?? '').trim());
+    const sameSite = nologinSameSiteMode();
+    const secureCookie =
+        sameSite === 'none' ||
+        /^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_SECURE_COOKIE ?? '').trim());
     return {
         httpOnly: true,
-        sameSite: 'strict',
+        sameSite,
         secure: secureCookie,
         maxAge: NOLOGIN_MAX_AGE_MS,
         path: '/',
     };
+}
+
+function resolveNologinToken(token) {
+    const user = parseNologinSession(String(token || '').trim());
+    if (!user || !isNologinStoreAllowed(user.stores[0])) return null;
+    return user;
 }
 
 function legacyAccessToken(accessKey) {
@@ -409,8 +424,14 @@ function resolveUser(req, legacyAccessKey = '') {
     const session = parseSessionToken(cookies[SESSION_COOKIE]);
     if (session) return session;
 
-    const nologin = parseNologinSession(cookies[NOLOGIN_COOKIE]);
-    if (nologin && isNologinStoreAllowed(nologin.stores[0])) return nologin;
+    const nologin = resolveNologinToken(cookies[NOLOGIN_COOKIE]);
+    if (nologin) return nologin;
+
+    const kioskQuery = String(req.query?.kiosk || '').trim();
+    if (kioskQuery) {
+        const kioskUser = resolveNologinToken(kioskQuery);
+        if (kioskUser) return kioskUser;
+    }
 
     if (legacyAccessKey && timingSafeEqualString(cookies[LEGACY_COOKIE] || '', legacyAccessToken(legacyAccessKey))) {
         return { username: '__legacy__', role: 'admin', stores: '*' };
@@ -562,6 +583,7 @@ module.exports = {
     isNologinStoreAllowed,
     verifyNologinSecret,
     nologinCookieOptions,
+    resolveNologinToken,
     userCanAccessStore,
     filterStoresForUser,
     getLoginRedirectPath,

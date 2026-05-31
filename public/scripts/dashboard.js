@@ -3,15 +3,28 @@
 ----------------------------------------------------------- */
 const app = document.getElementById('app');
 
-/** Store id from the URL path (e.g. /3811 or /teststore). Empty on `/` → server uses the default store. */
+/** Store id from the URL path (e.g. /3811, /nologin/3811, or /teststore). Empty on `/` → server uses the default store. */
 const STORE_NUMBER =
-    (window.location.pathname.match(/\/(teststore|\d{3,6})\/?$/i) || [])[1]?.toLowerCase() || '';
+    (window.location.pathname.match(/\/nologin\/(\d{3,6})\/?$/i) ||
+        window.location.pathname.match(/\/(teststore|\d{3,6})\/?$/i) ||
+        [])[1]?.toLowerCase() || '';
+const KIOSK_TOKEN =
+    typeof window !== 'undefined' && window.__DASHBOARD_KIOSK__
+        ? String(window.__DASHBOARD_KIOSK__)
+        : '';
 const STORE_QUERY = STORE_NUMBER ? `?store=${encodeURIComponent(STORE_NUMBER)}` : '';
 
 function withStore(url) {
-    if (!STORE_NUMBER) return url;
-    const sep = url.includes('?') ? '&' : '?';
-    return `${url}${sep}store=${encodeURIComponent(STORE_NUMBER)}`;
+    let out = url;
+    if (STORE_NUMBER) {
+        const sep = out.includes('?') ? '&' : '?';
+        out = `${out}${sep}store=${encodeURIComponent(STORE_NUMBER)}`;
+    }
+    if (KIOSK_TOKEN) {
+        const sep = out.includes('?') ? '&' : '?';
+        out = `${out}${sep}kiosk=${encodeURIComponent(KIOSK_TOKEN)}`;
+    }
+    return out;
 }
 
 const SALES_API_URL =
@@ -35,7 +48,7 @@ function salesApiUrl(extraParams = {}) {
     return `${url}${sep}${qs}`;
 }
 const AUDITS_API_URL = withStore(`${window.location.origin}/api/audits`);
-const AUDIT_SCHEDULE_URL = `${window.location.origin}/api/audit-schedule`;
+const AUDIT_SCHEDULE_URL = withStore(`${window.location.origin}/api/audit-schedule`);
 const SALES_REFRESH_MINUTES = 2;
 
 /** Store name/number from the latest sales payload, shown in the header. */
@@ -2056,7 +2069,7 @@ function buildColourGuideNoteHtml() {
 
 async function applyUserPreferences() {
     try {
-        const res = await fetch(`${window.location.origin}/api/me`, { credentials: 'include' });
+        const res = await fetch(withStore(`${window.location.origin}/api/me`), { credentials: 'include' });
         if (!res.ok) return;
         const me = await res.json();
         if (me.success && me.colorBlind) {
@@ -2313,7 +2326,7 @@ function startSyncedUpdates() {
 /** Load this store's trading hours (from .storelist via /api/stores) before the first render. */
 async function initTradingHours() {
     try {
-        const res = await fetch(`${window.location.origin}/api/stores`, { credentials: 'include' });
+        const res = await fetch(withStore(`${window.location.origin}/api/stores`), { credentials: 'include' });
         if (!res.ok) return;
         const data = await res.json();
         const stores = Array.isArray(data.stores) ? data.stores : [];

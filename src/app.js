@@ -397,8 +397,27 @@ app.get('/logout', (req, res) => {
     res.redirect('/login');
 });
 
-/** Kiosk link — sets a long-lived single-store cookie, then opens that dashboard. */
-app.get(/^\/nologin\/(\d{3,6})\/?$/i, (req, res) => {
+/** Kiosk link — sets a long-lived single-store cookie and serves the dashboard in-place (no redirect). */
+const DASHBOARD_HTML_PATH = path.join(__dirname, '../public', 'index.html');
+
+function injectKioskToken(html, token) {
+    const q = `kiosk=${encodeURIComponent(token)}`;
+    const addParam = (url) => {
+        if (!url.startsWith('/') || url.includes('kiosk=')) return url;
+        return url.includes('?') ? `${url}&${q}` : `${url}?${q}`;
+    };
+    let out = html.replace(/(\s(?:href|src))="(\/[^"]+)"/g, (_, attr, url) => `${attr}="${addParam(url)}"`);
+    const boot = `<script>window.__DASHBOARD_KIOSK__=${JSON.stringify(token)};</script>`;
+    out = out.replace('</head>', `${boot}\n</head>`);
+    return out;
+}
+
+async function sendKioskDashboard(res, token) {
+    const html = await fs.readFile(DASHBOARD_HTML_PATH, 'utf8');
+    res.type('html').send(injectKioskToken(html, token));
+}
+
+app.get(/^\/nologin\/(\d{3,6})\/?$/i, async (req, res) => {
     const storeNumber = normalizeStoreKey((req.path.match(/^\/nologin\/(\d{3,6})\/?$/i) || [])[1]);
     if (!storeNumber || !isNologinStoreAllowed(storeNumber) || !verifyNologinSecret(req.query.key)) {
         res.status(404).send('Not found');
@@ -411,15 +430,18 @@ app.get(/^\/nologin\/(\d{3,6})\/?$/i, (req, res) => {
         return;
     }
 
+    const token = createNologinToken(storeNumber, storeEntry.storeName || '');
+
     res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
     res.clearCookie(LEGACY_COOKIE, sessionCookieOptions());
-    res.cookie(
-        NOLOGIN_COOKIE,
-        createNologinToken(storeNumber, storeEntry.storeName || ''),
-        nologinCookieOptions()
-    );
+    res.cookie(NOLOGIN_COOKIE, token, nologinCookieOptions());
     console.log(`[Auth] Nologin: store ${storeNumber} from ${getRequestIp(req)}`);
-    res.redirect(302, `/${storeNumber}`);
+    try {
+        await sendKioskDashboard(res, token);
+    } catch (err) {
+        console.error('[Auth] Nologin dashboard send failed:', err.message);
+        res.status(500).send('Dashboard unavailable');
+    }
 });
 
 /** Login page assets — must be reachable before authentication (for sign-in screen animation). */

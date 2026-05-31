@@ -27,6 +27,8 @@
 
 html {
     color-scheme: dark;
+    width: 100%;
+    overflow-x: clip;
 }
 
 html,
@@ -40,13 +42,27 @@ body.login-body {
     background: var(--login-bg);
     color: var(--login-text);
     overflow: hidden;
+    overflow-x: clip;
+    width: 100%;
+    max-width: 100%;
     -webkit-font-smoothing: antialiased;
+}
+
+body.login-body--welcome-active {
+    overflow: hidden;
+}
+
+body.login-body--welcome-active .login-root {
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .login-root {
     position: relative;
     min-height: 100%;
     width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
     background:
         radial-gradient(ellipse 80% 55% at 50% -10%, color-mix(in srgb, var(--tb-purple-light) 14%, transparent), transparent),
         var(--login-bg);
@@ -420,15 +436,20 @@ body.login-body--dashboard-reveal .login-root {
 /* ── Welcome stage — quick reveal, brief hold, fade to dashboard ── */
 .welcome-stage {
     position: fixed;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     z-index: 20;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    display: grid;
+    place-items: center;
     width: 100%;
-    min-height: 100vh;
-    min-height: 100dvh;
-    min-height: 100svh;
+    height: 100%;
+    height: 100dvh;
+    height: 100svh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
     background: var(--login-bg);
     color: var(--white);
     opacity: 0;
@@ -438,8 +459,6 @@ body.login-body--dashboard-reveal .login-root {
     transition:
         opacity 0.65s var(--apple-ease-out),
         background-color 0.85s var(--apple-ease) 0.05s;
-    padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
-        max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
     box-sizing: border-box;
 }
 
@@ -449,9 +468,15 @@ body.login-body--dashboard-reveal .login-root {
     align-items: center;
     justify-content: center;
     gap: 1.75rem;
-    width: 100%;
-    max-width: min(92vw, 640px);
+    width: min(100%, 640px);
+    max-width: 100%;
     margin: 0 auto;
+    padding:
+        env(safe-area-inset-top)
+        env(safe-area-inset-right)
+        env(safe-area-inset-bottom)
+        env(safe-area-inset-left);
+    box-sizing: border-box;
     text-align: center;
 }
 
@@ -461,6 +486,15 @@ body.login-body--dashboard-reveal .login-root {
 
 body.welcome-overlay-active {
     overflow: hidden;
+    overflow-x: clip;
+}
+
+body.welcome-overlay-active #app,
+body.welcome-overlay-active .stores-header,
+body.welcome-overlay-active .store-grid,
+body.welcome-overlay-active .stores-sign-out-btn {
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .welcome-brand {
@@ -480,7 +514,15 @@ body.welcome-overlay-active {
     height: 88px;
     border-radius: 22px;
     margin: 0 auto;
-    overflow: visible;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.welcome-logo svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    margin: 0 auto;
 }
 
 .welcome-brand.welcome-reveal-active {
@@ -646,7 +688,8 @@ body.welcome-overlay-active {
 
     .login-brand-hero .login-title {
         font-size: clamp(1.38rem, 6.2vw, 1.82rem);
-        min-width: 142%;
+        min-width: 0;
+        max-width: calc(100vw - 3rem);
         bottom: 12%;
         letter-spacing: 0.1em;
     }
@@ -662,17 +705,13 @@ body.welcome-overlay-active {
     }
 
     .welcome-stage {
-        min-height: 100dvh;
-        min-height: 100svh;
-        padding:
-            max(24px, env(safe-area-inset-top))
-            max(20px, env(safe-area-inset-right))
-            max(24px, env(safe-area-inset-bottom))
-            max(20px, env(safe-area-inset-left));
+        height: 100dvh;
+        height: 100svh;
     }
 
     .welcome-stage-inner {
         gap: clamp(1.25rem, 5vw, 1.75rem);
+        width: 100%;
     }
 
     .welcome-logo {
@@ -684,6 +723,19 @@ body.welcome-overlay-active {
         font-size: clamp(1.65rem, 7vw, 2.25rem);
         padding: 0 clamp(12px, 4vw, 20px);
         box-sizing: border-box;
+    }
+}
+
+/* Small screens — welcome centering even in landscape */
+@media (max-width: 900px) {
+    .welcome-stage {
+        display: grid;
+        place-items: center;
+    }
+
+    .welcome-stage-inner {
+        width: 100%;
+        max-width: 100%;
     }
 }
 

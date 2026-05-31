@@ -133,6 +133,10 @@ function resetWelcomeAnimation() {
     welcomeStage.classList.remove('welcome-stage--visible', 'welcome-stage--exit');
 }
 
+function setWelcomeActive(active) {
+    document.body.classList.toggle('login-body--welcome-active', active);
+}
+
 function buildWelcomeText(welcomeName) {
     const name = String(welcomeName || '').trim();
     return name ? `Welcome, ${name}` : 'Welcome';
@@ -234,6 +238,7 @@ function completePreloadedTransition(dest) {
     welcomeStage.classList.remove('welcome-stage--visible', 'welcome-stage--exit');
     welcomeStage.hidden = true;
     welcomeStage.setAttribute('aria-hidden', 'true');
+    setWelcomeActive(false);
 
     loginRoot?.setAttribute('hidden', '');
     loginStage?.setAttribute('hidden', '');
@@ -261,6 +266,7 @@ async function playWelcomeTransition(welcomeName, dest) {
 
     welcomeStage.hidden = false;
     welcomeStage.setAttribute('aria-hidden', 'false');
+    setWelcomeActive(true);
     mountBrandMark('welcome-brand-mark', `welcome-mark-${Date.now()}`);
 
     requestAnimationFrame(() => {

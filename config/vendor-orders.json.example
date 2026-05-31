@@ -30,7 +30,10 @@
       "id": "bega",
       "label": "BEGA",
       "vendorMatch": "bega",
-      "catalogSlug": "bega"
+      "catalogSlug": "bega",
+      "orderRoundToByItemCode": {
+        "38239": 6
+      }
     },
     {
       "id": "schweppes",

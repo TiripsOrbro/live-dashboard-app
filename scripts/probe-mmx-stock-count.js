@@ -23,7 +23,9 @@ async function main() {
                 .filter(Boolean);
             const locationTabs = [...document.querySelectorAll('a, span, li, button')]
                 .map((el) => (el.textContent || '').replace(/\s+/g, ' ').trim())
-                .filter((t) => /^(freezer|fridge|dry|carryover|in use)$/i.test(t));
+                .filter((t) =>
+                    /^(freezer|carry over|fridge|on floor|dry|soft drinks|count as 0)$/i.test(t)
+                );
 
             const inputs = [...document.querySelectorAll('input[type="text"]:not([type="hidden"])')]
                 .slice(0, 30)

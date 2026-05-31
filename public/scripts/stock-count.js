@@ -2,27 +2,72 @@ const app = document.getElementById('app');
 const pathMatch = window.location.pathname.match(/\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)/i);
 const STORE_NUMBER = pathMatch ? pathMatch[1].toLowerCase() : '';
 const VENDOR_SLUG = pathMatch ? pathMatch[2] : '';
-const NOLOGIN_MODE = /\/nologin\/?$/.test(window.location.pathname);
-
-const MACROMATIX_URL = 'https://tacobellau.macromatix.net/';
 
 let catalog = null;
 let draft = null;
-let summary = null;
+let queueStatus = null;
 let currentLocationIndex = 0;
 let viewMode = 'entry';
+let mmxSessionId = '';
+let mmxVariances = [];
+let mmxVendorSlugs = [];
+let recountCatalog = null;
+let recountDrafts = {};
+let varianceDrafts = {};
+let vendorCatalogsCache = new Map();
 let statusMessage = '';
 let statusKind = '';
 let saving = false;
+let processing = false;
+let processingComplete = false;
 
 function dashboardPath() {
     if (!STORE_NUMBER) return '/';
-    return NOLOGIN_MODE ? `/${STORE_NUMBER}/nologin` : `/${STORE_NUMBER}`;
+    return `/${STORE_NUMBER}`;
 }
 
-function apiQuery(base) {
+function apiQuery(base, vendorSlug = VENDOR_SLUG) {
     const sep = base.includes('?') ? '&' : '?';
-    return `${window.location.origin}${base}${sep}store=${encodeURIComponent(STORE_NUMBER)}&vendor=${encodeURIComponent(VENDOR_SLUG)}`;
+    return `${window.location.origin}${base}${sep}store=${encodeURIComponent(STORE_NUMBER)}&vendor=${encodeURIComponent(vendorSlug)}`;
+}
+
+async function fetchJson(url, options = {}) {
+    const headers = { Accept: 'application/json', ...(options.headers || {}) };
+    const res = await fetch(url, { ...options, headers, credentials: 'include' });
+    const text = await res.text();
+    if (!text) return { res, data: {} };
+    try {
+        return { res, data: JSON.parse(text) };
+    } catch {
+        if (/^<!DOCTYPE/i.test(text) || /^<html/i.test(text)) {
+            if (res.status === 401 || res.status === 403) {
+                throw new Error('Session expired — refresh the page and log in again.');
+            }
+            if (res.status === 404) {
+                throw new Error('Dashboard API not found — restart the server (pm2 restart dashboard).');
+            }
+            throw new Error('Server returned a page instead of JSON — log in again or restart the dashboard.');
+        }
+        throw new Error(`Invalid server response (HTTP ${res.status}).`);
+    }
+}
+
+function buildLocalQueueStatus() {
+    const submitted = Boolean(draft?.submittedAt || draft?.mmxSentAt);
+    return {
+        success: true,
+        queue: [
+            {
+                slug: VENDOR_SLUG,
+                label: catalog?.label || VENDOR_SLUG,
+                submittedAt: draft?.submittedAt || (draft?.mmxSentAt ? draft.updatedAt : null),
+                mmxSentAt: draft?.mmxSentAt || null,
+            },
+        ],
+        canSendToMmx: submitted,
+        allMmxSent: Boolean(draft?.mmxSentAt),
+        readyToSend: submitted ? [catalog?.label || VENDOR_SLUG] : [],
+    };
 }
 
 function escapeHtml(value) {
@@ -33,18 +78,549 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
+function isMmxSent() {
+    return Boolean(draft?.mmxSentAt);
+}
+
+function isSubmitted() {
+    return Boolean(draft?.submittedAt) && !isMmxSent();
+}
+
+function vendorHasCountableData() {
+    if (!catalog || !draft?.locations) return false;
+    return Object.values(draft.locations).some(
+        (items) =>
+            items &&
+            typeof items === 'object' &&
+            Object.values(items).some(
+                (counts) =>
+                    counts &&
+                    typeof counts === 'object' &&
+                    Object.values(counts).some((n) => Number(n) > 0)
+            )
+    );
+}
+
+function currentLocationHasFormData() {
+    return Object.keys(readFormValues()).length > 0;
+}
+
+function canShowSendToMmx() {
+    if (vendorHasCountableData() || currentLocationHasFormData()) return true;
+    return Boolean(queueStatus?.canSendToMmx);
+}
+
+async function loadQueueStatus() {
+    try {
+        const { res, data } = await fetchJson(apiQuery('/api/stock-count/queue-status'));
+        if (res.status === 404) {
+            queueStatus = buildLocalQueueStatus();
+            return queueStatus;
+        }
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Failed to load vendor queue.');
+        }
+        queueStatus = data;
+        return data;
+    } catch (error) {
+        if (/Dashboard API not found|restart the server/i.test(error.message)) {
+            queueStatus = buildLocalQueueStatus();
+            return queueStatus;
+        }
+        throw error;
+    }
+}
+
 function setStatus(message, kind = '') {
     statusMessage = message;
     statusKind = kind;
     render();
 }
 
+function getActiveCatalog() {
+    if (viewMode === 'recount' && recountCatalog) return recountCatalog;
+    return catalog;
+}
+
 function getItemsForLocation(locationName) {
-    if (!catalog) return [];
-    return catalog.items.filter((item) => item.locations.includes(locationName));
+    const cat = getActiveCatalog();
+    if (!cat) return [];
+    return cat.items.filter((item) => item.locations.includes(locationName));
+}
+
+function normalizeItemCode(code) {
+    return String(code || '')
+        .trim()
+        .toUpperCase()
+        .replace(/^0+/, '');
+}
+
+function normalizeItemName(name) {
+    return String(name || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+async function loadVendorCatalogsForSlugs(slugs) {
+    const unique = [...new Set(slugs.filter(Boolean))];
+    await Promise.all(
+        unique.map(async (slug) => {
+            if (vendorCatalogsCache.has(slug)) return;
+            const { res, data } = await fetchJson(apiQuery('/api/stock-count/catalog', slug));
+            if (res.ok && data.success) vendorCatalogsCache.set(slug, data.catalog);
+        })
+    );
+}
+
+function productNameWithoutSize(name) {
+    return normalizeItemName(name)
+        .replace(/\b(\d+(?:\.\d+)?)\s*(kg|g|l|ml|lb|oz|ltr|litres?|liters?)\b/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function getDraftsBySlugForMatching() {
+    const out = {};
+    for (const slug of [...new Set([VENDOR_SLUG, ...mmxVendorSlugs])]) {
+        if (slug === VENDOR_SLUG && draft?.locations) out[slug] = draft;
+        else if (varianceDrafts[slug]?.locations) out[slug] = varianceDrafts[slug];
+        else if (recountDrafts[slug]?.locations) out[slug] = recountDrafts[slug];
+    }
+    return out;
+}
+
+function findCatalogItemInCatalog(catalogsBySlug, vendorSlug, catalogKey) {
+    if (!vendorSlug || !catalogKey) return null;
+    const vendorCatalog = catalogsBySlug.get(vendorSlug);
+    return vendorCatalog?.items?.find((item) => item.key === catalogKey) || null;
+}
+
+function draftCountsToMmxSlotValues(catalogItem, counts) {
+    const slots = resolveUnitSlots(catalogItem);
+    const out = [null, null, null];
+    let mmxIdx = 0;
+    for (const slot of slots.slice(0, 3)) {
+        if (mmxIdx >= 3) break;
+        if (!slot.na && slot.key) {
+            const val = counts?.[slot.key];
+            if (val != null && val !== '' && Number.isFinite(Number(val))) {
+                out[mmxIdx] = Number(val);
+            }
+        }
+        mmxIdx++;
+    }
+    return out;
+}
+
+function scoreVarianceToDraftCounts(variance, catalogItem, draft) {
+    if (!draft?.locations || !catalogItem) return 0;
+    const vSlots = [
+        parseClosingValue(variance.closingBox),
+        parseClosingValue(variance.closingInner),
+        parseClosingValue(variance.closingUnit),
+    ];
+    let best = 0;
+    for (const loc of Object.values(draft.locations)) {
+        const counts = loc?.[catalogItem.key];
+        if (!counts) continue;
+        const dSlots = draftCountsToMmxSlotValues(catalogItem, counts);
+        let score = 0;
+        let comparisons = 0;
+        for (let i = 0; i < 3; i++) {
+            const vVal = vSlots[i];
+            const dVal = dSlots[i];
+            if (vVal == null && dVal == null) continue;
+            if (vVal != null && dVal != null) {
+                comparisons++;
+                if (Math.abs(Number(vVal) - Number(dVal)) < 0.015) score += 50;
+                else score -= 20;
+            }
+        }
+        if (comparisons && score > best) best = score;
+    }
+    const code = normalizeItemCode(variance.itemCode);
+    if (code && normalizeItemCode(catalogItem.itemCode) === code) best += 30;
+    return best;
+}
+
+function findBestCatalogMatchByClosingValues(variance, catalogsBySlug, draftsBySlug) {
+    let best = null;
+    let bestSlug = null;
+    let bestScore = 0;
+
+    for (const [slug, vendorCatalog] of catalogsBySlug) {
+        const draft = draftsBySlug?.[slug];
+        if (!draft?.locations) continue;
+        for (const item of vendorCatalog.items || []) {
+            if (!draftHasCountsForItem(draft, item.key)) continue;
+            const score = scoreVarianceToDraftCounts(variance, item, draft);
+            if (score > bestScore) {
+                bestScore = score;
+                best = item;
+                bestSlug = slug;
+            }
+        }
+    }
+
+    return bestScore >= 45 ? { item: best, slug: bestSlug } : null;
+}
+
+function resolveVarianceCatalogMatch(variance) {
+    const slugs = mmxVendorSlugs.length ? mmxVendorSlugs : [VENDOR_SLUG];
+    const catalogsBySlug = new Map();
+    for (const slug of [...new Set([VENDOR_SLUG, ...slugs])]) {
+        const vendorCatalog = vendorCatalogsCache.get(slug) || (slug === VENDOR_SLUG ? catalog : null);
+        if (vendorCatalog) catalogsBySlug.set(slug, vendorCatalog);
+    }
+    const draftsBySlug = getDraftsBySlugForMatching();
+
+    if (variance.vendorSlug && variance.catalogKey) {
+        const enriched = findCatalogItemInCatalog(catalogsBySlug, variance.vendorSlug, variance.catalogKey);
+        if (enriched) return { item: enriched, slug: variance.vendorSlug };
+    }
+
+    const scopedSlugs = variance.vendorSlug ? [variance.vendorSlug] : [...catalogsBySlug.keys()];
+    const scopedCatalogs = new Map(
+        scopedSlugs.filter((slug) => catalogsBySlug.has(slug)).map((slug) => [slug, catalogsBySlug.get(slug)])
+    );
+
+    const tryMatch = (map) => {
+        const closing = findBestCatalogMatchByClosingValues(variance, map, draftsBySlug);
+        if (closing) return closing;
+        const draft = findBestCatalogMatchFromDrafts(variance, map, draftsBySlug);
+        if (draft) return draft;
+        return findBestCatalogMatchForVariance(variance, map);
+    };
+
+    if (scopedCatalogs.size && scopedCatalogs.size < catalogsBySlug.size) {
+        const scoped = tryMatch(scopedCatalogs);
+        if (scoped) return scoped;
+    }
+
+    return tryMatch(catalogsBySlug);
+}
+
+function findCatalogItemForVarianceAcrossVendors(variance) {
+    return resolveVarianceCatalogMatch(variance)?.item || null;
+}
+
+function extractProductSizeKey(name) {
+    const n = normalizeItemName(name);
+    const m = n.match(/(\d+(?:\.\d+)?)\s*(kg|g|l|ml|lb|oz|ltr|litres?|liters?)\b/);
+    return m ? `${m[1]}${m[2]}` : '';
+}
+
+function nameMatchScore(varianceName, itemName) {
+    const v = normalizeItemName(varianceName);
+    const i = normalizeItemName(itemName);
+    if (!v || !i) return 0;
+    if (v === i) return 100;
+
+    const vSize = extractProductSizeKey(varianceName);
+    const iSize = extractProductSizeKey(itemName);
+    if (vSize && iSize && vSize !== iSize) return 0;
+
+    if (v.includes(i) || i.includes(v)) {
+        return vSize && iSize ? 95 : 80;
+    }
+
+    const vTokens = v.split(/\s+/).filter((token) => token.length > 1);
+    const iTokens = i.split(/\s+/).filter((token) => token.length > 1);
+    let score = 0;
+    for (const vt of vTokens) {
+        for (const it of iTokens) {
+            if (vt === it) score += 20;
+            else if (vt.includes(it) || it.includes(vt)) score += 10;
+        }
+    }
+    if (vSize && iSize && vSize === iSize) score += 40;
+    return score;
+}
+
+function draftHasCountsForItem(draft, itemKey) {
+    if (!draft?.locations) return false;
+    for (const loc of Object.values(draft.locations)) {
+        if (countsHaveValues(loc?.[itemKey])) return true;
+    }
+    return false;
+}
+
+function pickDraftWhenMmxCodeWrong(codeItem, itemsWithDraft) {
+    const codeFamily = productNameWithoutSize(codeItem.name);
+    const sameFamily = itemsWithDraft.filter((item) => productNameWithoutSize(item.name) === codeFamily);
+    if (sameFamily.length === 1) return sameFamily[0];
+    return null;
+}
+
+function findBestCatalogMatchFromDrafts(variance, catalogsBySlug, draftsBySlug) {
+    let overallBest = null;
+    let overallBestSlug = null;
+    let overallBestScore = 0;
+    const code = normalizeItemCode(variance.itemCode);
+
+    for (const [slug, vendorCatalog] of catalogsBySlug) {
+        const draft = draftsBySlug?.[slug];
+        if (!draft?.locations) continue;
+
+        const itemsWithDraft = (vendorCatalog.items || []).filter((item) =>
+            draftHasCountsForItem(draft, item.key)
+        );
+        if (!itemsWithDraft.length) continue;
+
+        if (code) {
+            const codeWithDraft = itemsWithDraft.find((item) => normalizeItemCode(item.itemCode) === code);
+            if (codeWithDraft) return { item: codeWithDraft, slug };
+        }
+
+        for (const item of itemsWithDraft) {
+            const score = nameMatchScore(variance.itemName, item.name);
+            if (score > overallBestScore) {
+                overallBestScore = score;
+                overallBest = item;
+                overallBestSlug = slug;
+            }
+        }
+
+        if (code) {
+            const codeItem = vendorCatalog.items.find((item) => normalizeItemCode(item.itemCode) === code);
+            const codeHasDraft = codeItem && draftHasCountsForItem(draft, codeItem.key);
+            if (codeItem && !codeHasDraft) {
+                const closingPick = findBestCatalogMatchByClosingValues(
+                    variance,
+                    new Map([[slug, vendorCatalog]]),
+                    draftsBySlug
+                );
+                if (closingPick?.item) return closingPick;
+
+                if (
+                    itemsWithDraft.length === 1 &&
+                    scoreVarianceToDraftCounts(variance, itemsWithDraft[0], draft) >= 45
+                ) {
+                    return { item: itemsWithDraft[0], slug };
+                }
+                const familyPick = pickDraftWhenMmxCodeWrong(codeItem, itemsWithDraft);
+                if (familyPick) return { item: familyPick, slug };
+            }
+        }
+
+        if (itemsWithDraft.length === 1 && overallBestScore < 30) {
+            const only = itemsWithDraft[0];
+            if (scoreVarianceToDraftCounts(variance, only, draft) >= 45) {
+                return { item: only, slug };
+            }
+        }
+    }
+
+    return overallBestScore >= 30 ? { item: overallBest, slug: overallBestSlug } : null;
+}
+
+function findCatalogItemForVariance(variance, vendorCatalog) {
+    if (!vendorCatalog?.items?.length) return null;
+    const code = normalizeItemCode(variance.itemCode);
+    if (code) {
+        const byCode = vendorCatalog.items.find((item) => normalizeItemCode(item.itemCode) === code);
+        if (byCode) return byCode;
+    }
+    const varianceName = normalizeItemName(variance.itemName);
+    if (!varianceName) return null;
+
+    let best = null;
+    let bestScore = 0;
+    for (const item of vendorCatalog.items) {
+        const score = nameMatchScore(variance.itemName, item.name);
+        if (score > bestScore) {
+            bestScore = score;
+            best = item;
+        }
+    }
+    return bestScore >= 30 ? best : null;
+}
+
+function findBestCatalogMatchForVariance(variance, catalogsBySlug) {
+    let best = null;
+    let bestSlug = null;
+    let bestScore = 0;
+    for (const [slug, vendorCatalog] of catalogsBySlug) {
+        const item = findCatalogItemForVariance(variance, vendorCatalog);
+        if (!item) continue;
+        const codeBoost =
+            normalizeItemCode(variance.itemCode) &&
+            normalizeItemCode(variance.itemCode) === normalizeItemCode(item.itemCode)
+                ? 100
+                : 0;
+        const score = nameMatchScore(variance.itemName, item.name) + codeBoost;
+        if (score > bestScore) {
+            bestScore = score;
+            best = item;
+            bestSlug = slug;
+        }
+    }
+    return best ? { item: best, slug: bestSlug } : null;
+}
+
+function defaultRecountLocations() {
+    if (catalog?.locations?.length) return [...catalog.locations];
+    const cat = getActiveCatalog();
+    if (cat?.locations?.length) return [...cat.locations];
+    return ['Default'];
+}
+
+function fallbackLocationForUnmatched() {
+    return defaultRecountLocations()[0] || 'Default';
+}
+
+function parseClosingValue(raw) {
+    if (raw == null || raw === '' || raw === '—' || raw === '-') return null;
+    const n = Number(String(raw).replace(/,/g, '').trim());
+    return Number.isFinite(n) ? n : null;
+}
+
+function inferUnitSlotsFromVariance(variance) {
+    const box = parseClosingValue(variance.closingBox);
+    const inner = parseClosingValue(variance.closingInner);
+    const unit = parseClosingValue(variance.closingUnit);
+    return [
+        { key: box != null ? 'box' : null, label: 'Box', na: box == null },
+        { key: inner != null ? 'bag' : null, label: 'Bag', na: inner == null },
+        { key: unit != null ? 'kg' : null, label: 'KG', na: unit == null },
+    ];
+}
+
+function mapVarianceClosingToCounts(item, variance) {
+    const counts = {};
+    const slots = resolveUnitSlots(item);
+    const values = [variance.closingBox, variance.closingInner, variance.closingUnit];
+    slots.forEach((slot, idx) => {
+        if (slot.na || !slot.key) return;
+        const n = parseClosingValue(values[idx]);
+        if (n != null && n >= 0) counts[slot.key] = n;
+    });
+    return counts;
+}
+
+function countsHaveValues(counts) {
+    return (
+        counts &&
+        typeof counts === 'object' &&
+        Object.values(counts).some((n) => Number(n) > 0 || n === 0)
+    );
+}
+
+function getRecountItemCounts(item, locationName) {
+    const slug = item.sourceVendorSlug || VENDOR_SLUG;
+    const draftCounts = recountDrafts[slug]?.locations?.[locationName]?.[item.key];
+    if (draftCounts && typeof draftCounts === 'object') return draftCounts;
+    return {};
+}
+
+function readRecountFormValuesForLocation(locationName) {
+    const grouped = {};
+    for (const item of getItemsForLocation(locationName)) {
+        const slug = item.sourceVendorSlug || VENDOR_SLUG;
+        const row = {};
+        for (const col of item.columns) {
+            const input = document.querySelector(`input[data-item="${item.key}"][data-col="${col.key}"]`);
+            if (!input) continue;
+            const raw = String(input.value || '').trim();
+            if (!raw) continue;
+            const n = Number(raw);
+            if (Number.isFinite(n) && n >= 0) row[col.key] = n;
+        }
+        if (!Object.keys(row).length) continue;
+        if (!grouped[slug]) grouped[slug] = {};
+        grouped[slug][item.key] = row;
+    }
+    return grouped;
+}
+
+function mergeRecountLocations(items) {
+    return defaultRecountLocations();
+}
+
+async function loadVendorCatalogAndDraft(slug) {
+    const [catResult, draftResult] = await Promise.all([
+        fetchJson(apiQuery('/api/stock-count/catalog', slug)),
+        fetchJson(apiQuery('/api/stock-count/draft', slug)),
+    ]);
+    if (!catResult.res.ok || !catResult.data.success) {
+        throw new Error(catResult.data.error || `Catalog not found for ${slug}.`);
+    }
+    if (!draftResult.res.ok || !draftResult.data.success) {
+        throw new Error(draftResult.data.error || `Draft not found for ${slug}.`);
+    }
+    return { catalog: catResult.data.catalog, draft: draftResult.data };
+}
+
+async function loadAllVendorCatalogsForRecount(slugs) {
+    const unique = [...new Set([VENDOR_SLUG, ...slugs.filter(Boolean)])];
+    const catalogsBySlug = new Map();
+    recountDrafts = {};
+
+    for (const slug of unique) {
+        const loaded = await loadVendorCatalogAndDraft(slug);
+        catalogsBySlug.set(slug, loaded.catalog);
+        recountDrafts[slug] = loaded.draft;
+        vendorCatalogsCache.set(slug, loaded.catalog);
+    }
+
+    return catalogsBySlug;
+}
+
+async function buildRecountCatalog() {
+    const slugs = mmxVendorSlugs.length ? mmxVendorSlugs : [VENDOR_SLUG];
+    const catalogsBySlug = await loadAllVendorCatalogsForRecount(slugs);
+    const matchedItems = [];
+    const seenVarianceKeys = new Set();
+
+    for (const variance of mmxVariances) {
+        const varianceKey =
+            normalizeItemCode(variance.itemCode) || normalizeItemName(variance.itemName);
+        if (varianceKey && seenVarianceKeys.has(varianceKey)) continue;
+        if (varianceKey) seenVarianceKeys.add(varianceKey);
+
+        const match = resolveVarianceCatalogMatch(variance);
+        if (match) {
+            matchedItems.push({
+                ...match.item,
+                variance,
+                sourceVendorSlug: match.slug,
+            });
+            continue;
+        }
+
+        const unitSlots = inferUnitSlotsFromVariance(variance);
+        const fallbackLocation = fallbackLocationForUnmatched();
+        matchedItems.push({
+            key: `var-${varianceKey || matchedItems.length}`,
+            itemCode: variance.itemCode || '',
+            name: variance.itemName || variance.itemCode || 'Unknown item',
+            columns: unitSlots
+                .filter((slot) => !slot.na && slot.key)
+                .map((slot) => ({ key: slot.key, label: slot.label })),
+            unitSlots,
+            locations: [fallbackLocation],
+            variance,
+            sourceVendorSlug: VENDOR_SLUG,
+            unmatched: true,
+        });
+    }
+
+    recountCatalog = {
+        label: 'Recount red variances',
+        locations: mergeRecountLocations(matchedItems),
+        items: matchedItems,
+    };
+    currentLocationIndex = 0;
 }
 
 function locationHasData(locationName) {
+    if (viewMode === 'recount') {
+        return getItemsForLocation(locationName).some((item) => {
+            const counts = getRecountItemCounts(item, locationName);
+            return countsHaveValues(counts);
+        });
+    }
     const loc = draft?.locations?.[locationName];
     if (!loc || typeof loc !== 'object') return false;
     const itemKeys = new Set(getItemsForLocation(locationName).map((i) => i.key));
@@ -59,8 +635,9 @@ function locationHasData(locationName) {
 
 function readFormValues() {
     const values = {};
-    if (!catalog) return values;
-    const locationName = catalog.locations[currentLocationIndex];
+    const cat = getActiveCatalog();
+    if (!cat) return values;
+    const locationName = cat.locations[currentLocationIndex];
     for (const item of getItemsForLocation(locationName)) {
         const row = {};
         for (const col of item.columns) {
@@ -77,7 +654,20 @@ function readFormValues() {
 }
 
 function fillFormFromDraft(locationName) {
-    if (!catalog) return;
+    const cat = getActiveCatalog();
+    if (!cat) return;
+    if (viewMode === 'recount') {
+        for (const item of getItemsForLocation(locationName)) {
+            const counts = getRecountItemCounts(item, locationName);
+            for (const col of item.columns) {
+                const input = document.querySelector(`input[data-item="${item.key}"][data-col="${col.key}"]`);
+                if (!input) continue;
+                const v = counts[col.key];
+                input.value = v != null && Number(v) >= 0 ? String(v) : '';
+            }
+        }
+        return;
+    }
     const loc = draft?.locations?.[locationName] || {};
     for (const item of getItemsForLocation(locationName)) {
         const counts = loc[item.key] || {};
@@ -90,18 +680,43 @@ function fillFormFromDraft(locationName) {
     }
 }
 
-async function saveCurrentLocation(showFeedback = true) {
-    if (!catalog || saving || draft?.submittedAt) return false;
-    const locationName = catalog.locations[currentLocationIndex];
-    saving = true;
+async function saveCurrentLocation(showFeedback = true, options = {}) {
+    const cat = getActiveCatalog();
+    if (!cat) return false;
+    if (saving && !options.force) return false;
+    const locationName = cat.locations[currentLocationIndex];
+    const manageSavingFlag = !options.force;
+    if (manageSavingFlag) saving = true;
     try {
-        const res = await fetch(apiQuery('/api/stock-count/draft'), {
+        if (viewMode === 'recount') {
+            const grouped = readRecountFormValuesForLocation(locationName);
+            const slugs = Object.keys(grouped);
+            if (!slugs.length) {
+                await clearRecountLocationDraft(locationName);
+                if (showFeedback) setStatus(`No counts for ${locationName} — cleared.`, '');
+                return true;
+            }
+            for (const slug of slugs) {
+                const { res, data } = await fetchJson(apiQuery('/api/stock-count/draft', slug), {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ location: locationName, items: grouped[slug] }),
+                });
+                if (!res.ok || !data.success) {
+                    throw new Error(data.error || `Failed to save counts for ${slug}.`);
+                }
+                recountDrafts[slug] = data;
+                if (slug === VENDOR_SLUG) draft = data;
+            }
+            if (showFeedback) setStatus(`Saved ${locationName}.`, 'success');
+            return true;
+        }
+
+        const { res, data } = await fetchJson(apiQuery('/api/stock-count/draft'), {
             method: 'PUT',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ location: locationName, items: readFormValues() }),
         });
-        const data = await res.json();
         if (!res.ok || !data.success) {
             throw new Error(data.error || 'Failed to save counts.');
         }
@@ -109,72 +724,443 @@ async function saveCurrentLocation(showFeedback = true) {
         if (showFeedback) setStatus(`Saved ${locationName}.`, 'success');
         return true;
     } catch (error) {
-        setStatus(error.message || 'Save failed.', 'error');
+        if (showFeedback || options.force) setStatus(error.message || 'Save failed.', 'error');
         return false;
     } finally {
-        saving = false;
+        if (manageSavingFlag) saving = false;
     }
 }
 
-async function loadSummary() {
-    const res = await fetch(apiQuery('/api/stock-count/summary'), { credentials: 'include' });
-    const data = await res.json();
-    if (!res.ok || !data.success) throw new Error(data.error || 'Failed to load summary.');
-    summary = data;
-    return data;
-}
-
-async function goToReview() {
-    const ok = await saveCurrentLocation(false);
+async function saveVendor() {
+    if (saving) return;
+    if (viewMode === 'recount') {
+        const ok = await saveAllRecountLocations();
+        if (!ok) return;
+        setStatus('Counts saved — send to Macromatix when ready.', 'success');
+        render();
+        return;
+    }
+    if (isMmxSent()) {
+        const ok = await saveCurrentLocation(false, { force: true });
+        if (!ok) return;
+        window.location.href = dashboardPath();
+        return;
+    }
+    const ok = await saveCurrentLocation(false, { force: isSubmitted() });
     if (!ok && !draft?.locations) return;
+    saving = true;
+    setStatus('Saving counts…', '');
+    render();
     try {
-        await loadSummary();
-        viewMode = 'review';
-        setStatus('', '');
+        const { res, data } = await fetchJson(apiQuery('/api/stock-count/submit'), { method: 'POST' });
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Save failed.');
+        }
+        window.location.href = dashboardPath();
     } catch (error) {
         setStatus(error.message, 'error');
+        saving = false;
+        render();
     }
 }
 
-function openMacromatix() {
-    window.open(MACROMATIX_URL, '_blank', 'noopener,noreferrer');
+function vendorSlugsForRecountLocation(locationName) {
+    const cat = getActiveCatalog();
+    if (!cat) return [];
+    const slugs = new Set();
+    for (const item of cat.items) {
+        if (!item.locations.includes(locationName)) continue;
+        slugs.add(item.sourceVendorSlug || VENDOR_SLUG);
+    }
+    return [...slugs];
+}
+
+async function clearRecountLocationDraft(locationName) {
+    for (const slug of vendorSlugsForRecountLocation(locationName)) {
+        const { res, data } = await fetchJson(apiQuery('/api/stock-count/draft', slug), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ location: locationName, items: {} }),
+        });
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || `Failed to clear counts for ${locationName}.`);
+        }
+        recountDrafts[slug] = data;
+        varianceDrafts[slug] = data;
+        if (slug === VENDOR_SLUG) draft = data;
+    }
+}
+
+async function saveAllRecountLocations() {
+    const cat = getActiveCatalog();
+    if (!cat || viewMode !== 'recount') {
+        return saveCurrentLocation(false, { force: true });
+    }
+    const prevIndex = currentLocationIndex;
+    let ok = true;
+
+    // Save the visible tab first — render() runs fillFormFromDraft and would wipe unsaved edits.
+    if (!(await saveCurrentLocation(false, { force: true }))) ok = false;
+
+    for (let i = 0; i < cat.locations.length; i++) {
+        if (i === prevIndex) continue;
+        currentLocationIndex = i;
+        render();
+        if (!(await saveCurrentLocation(false, { force: true }))) ok = false;
+    }
+
+    currentLocationIndex = prevIndex;
+    render();
+    varianceDrafts = { ...varianceDrafts, ...recountDrafts };
+    return ok;
+}
+
+async function resubmitAllVendorsForMmx() {
+    const slugs = mmxVendorSlugs.length ? [...new Set(mmxVendorSlugs)] : [VENDOR_SLUG];
+    for (const slug of slugs) {
+        const { res, data } = await fetchJson(apiQuery('/api/stock-count/submit', slug), { method: 'POST' });
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || `Submit failed for ${slug}.`);
+        }
+        if (slug === VENDOR_SLUG) draft = data;
+    }
+    await loadQueueStatus();
+}
+
+async function saveAndSubmitVendor() {
+    const ok = await saveCurrentLocation(false, { force: true });
+    if (!ok && currentLocationHasFormData()) {
+        throw new Error('Could not save your counts — check the values and try again.');
+    }
+    if (!ok && !draft?.locations && !currentLocationHasFormData()) return false;
+    if (!vendorHasCountableData() && !currentLocationHasFormData()) return false;
+
+    if (draft?.submittedAt) {
+        await loadQueueStatus();
+        return true;
+    }
+
+    const { res, data } = await fetchJson(apiQuery('/api/stock-count/submit'), { method: 'POST' });
+    if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Save failed.');
+    }
+    draft = data;
+    await loadQueueStatus();
+    return true;
 }
 
 async function sendToMmx() {
-    if (draft?.submittedAt || saving) return;
-    const ok = await saveCurrentLocation(false);
-    if (!ok && !draft?.locations) return;
+    if (!canShowSendToMmx() || saving) return;
+
+    try {
+        if (viewMode === 'recount') {
+            const saved = await saveAllRecountLocations();
+            if (!saved) {
+                throw new Error('Could not save your recount — check the values and try again.');
+            }
+            if (mmxSessionId) {
+                try {
+                    await fetchJson(apiQuery('/api/stock-count/send-to-mmx/recount'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sessionId: mmxSessionId }),
+                    });
+                } catch {
+                    /* prepare replaces session */
+                }
+                mmxSessionId = '';
+            }
+            await resubmitAllVendorsForMmx();
+        } else {
+            const saved = await saveAndSubmitVendor();
+            if (!saved || !canShowSendToMmx()) {
+                throw new Error('Enter at least one count before sending to Macromatix.');
+            }
+        }
+    } catch (error) {
+        setStatus(error.message, 'error');
+        render();
+        return;
+    }
+
     saving = true;
-    setStatus('Sending counts to Macromatix… this may take a few minutes.', '');
+    processing = true;
+    setStatus('', '');
     render();
     try {
-        const res = await fetch(apiQuery('/api/stock-count/send-to-mmx'), {
-            method: 'POST',
-            credentials: 'include',
-            headers: { Accept: 'application/json' },
-        });
-        const data = await res.json();
+        const { res, data } = await fetchJson(apiQuery('/api/stock-count/send-to-mmx'), { method: 'POST' });
         if (!res.ok || !data.success) {
             throw new Error(data.error || 'Send to Macromatix failed.');
         }
-        draft = { ...draft, submittedAt: data.submittedAt || new Date().toISOString(), mmxSentAt: true };
-        await loadSummary();
-        viewMode = 'review';
-        let msg = 'Counts sent to Macromatix Key Item Count.';
-        if (data.ordersRan) {
-            const okOrders = (data.orders?.processed || []).filter((p) => p.ok).length;
-            const totalOrders = (data.orders?.processed || []).length;
-            msg += ` Build-to orders entered (${okOrders}/${totalOrders} vendors updated).`;
-        } else {
-            msg += ' Complete remaining vendor counts to trigger build-to order entry.';
+        mmxSessionId = data.sessionId || '';
+        mmxVariances = Array.isArray(data.variances) ? data.variances : [];
+        mmxVendorSlugs = Array.isArray(data.vendorsSent) ? data.vendorsSent : [VENDOR_SLUG];
+        await loadVendorCatalogsForSlugs(mmxVendorSlugs);
+        varianceDrafts = { ...recountDrafts, [VENDOR_SLUG]: draft };
+        for (const slug of mmxVendorSlugs) {
+            if (slug === VENDOR_SLUG || varianceDrafts[slug]?.locations) continue;
+            const { res, data: draftData } = await fetchJson(apiQuery('/api/stock-count/draft', slug));
+            if (res.ok && draftData?.locations) varianceDrafts[slug] = draftData;
         }
-        setStatus(msg, 'success');
+        if (viewMode === 'recount') {
+            recountCatalog = null;
+        }
+        viewMode = 'variances';
+        setStatus('', '');
     } catch (error) {
         setStatus(error.message, 'error');
+    } finally {
+        saving = false;
+        if (viewMode === 'variances' && mmxSessionId && mmxVariances.length === 0) {
+            await applyMmxCount();
+            return;
+        }
+        processing = false;
+        render();
+    }
+}
+
+async function applyMmxCount() {
+    if (!mmxSessionId || saving) return;
+    saving = true;
+    processing = true;
+    processingComplete = false;
+    setStatus('', '');
+    render();
+    try {
+        const { res, data } = await fetchJson(apiQuery('/api/stock-count/send-to-mmx/apply'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionId: mmxSessionId }),
+        });
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Apply failed.');
+        }
+        mmxSessionId = '';
+        processing = false;
+        processingComplete = true;
+        render();
+    } catch (error) {
+        setStatus(error.message, 'error');
+        saving = false;
+        processing = false;
+        processingComplete = false;
+        render();
+    } finally {
+        if (processingComplete) saving = false;
+    }
+}
+
+async function recountMmx() {
+    if (saving) return;
+    saving = true;
+    setStatus('', '');
+    render();
+    try {
+        if (mmxSessionId) {
+            try {
+                await fetchJson(apiQuery('/api/stock-count/send-to-mmx/recount'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId: mmxSessionId }),
+                });
+            } catch {
+                /* still open recount editor */
+            }
+        }
+        mmxSessionId = '';
+        await buildRecountCatalog();
+        viewMode = 'recount';
+        setStatus('', '');
+    } catch (error) {
+        setStatus(error.message || 'Could not open recount.', 'error');
     } finally {
         saving = false;
         render();
     }
+}
+
+function formatQty(value) {
+    if (value == null || !Number.isFinite(Number(value))) return '—';
+    const n = Number(value);
+    if (Number.isInteger(n)) return String(n);
+    return n.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function formatMoney(value) {
+    if (value == null || !Number.isFinite(Number(value))) return '—';
+    const n = Number(value);
+    const abs = Math.abs(n).toLocaleString('en-AU', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+    if (n < 0) return `-$${abs}`;
+    return `$${abs}`;
+}
+
+function formatUnitLabel(label) {
+    const s = String(label || '').trim();
+    if (!s || /^n\/a/i.test(s) || s === '—') return '';
+    const lower = s.toLowerCase();
+    if (/^kg/i.test(s)) return 'kg';
+    if (/bottle/i.test(s)) return 'Bottles';
+    if (/can/i.test(s)) return 'cans';
+    if (/tub/i.test(s)) return 'tubs';
+    if (/bag/i.test(s)) return 'bags';
+    if (lower === 'ea' || lower === 'each') return 'each';
+    if (/box(es)?/i.test(s)) return 'boxes';
+    if (/carton/i.test(s)) return 'cartons';
+    if (/tender/i.test(s)) return 'tenders';
+    return s.toLowerCase();
+}
+
+function inferStockVarianceUnitLabel(row, item) {
+    const mmxUnit = formatUnitLabel(row.unit);
+    if (mmxUnit && mmxUnit !== 'each') return mmxUnit;
+
+    const slots = resolveUnitSlots(item);
+    for (const slot of slots) {
+        if (!slot.na && /bottle|tub|can|carton/i.test(slot.label)) {
+            return formatUnitLabel(slot.label);
+        }
+    }
+
+    for (const slot of slots) {
+        if (!slot.na && /kg/i.test(slot.label)) {
+            return formatUnitLabel(slot.label);
+        }
+    }
+
+    return mmxUnit || '';
+}
+
+function formatQtyWithUnit(value, unitLabel) {
+    const qty = formatQty(value);
+    if (qty === '—') return qty;
+    return unitLabel ? `${qty} ${unitLabel}` : qty;
+}
+
+function buildProcessingOverlay() {
+    if (processingComplete) {
+        return `
+        <div class="stock-count-processing" role="dialog" aria-labelledby="sc-complete-title">
+            <div class="stock-count-processing-card stock-count-processing-card--complete">
+                <p class="stock-count-processing-label stock-count-processing-label--complete" id="sc-complete-title">Orders are ready to be reviewed in MMX</p>
+                <a class="stock-count-btn stock-count-btn--mmx stock-count-processing-return" href="${escapeHtml(dashboardPath())}">Return to dashboard</a>
+            </div>
+        </div>`;
+    }
+    if (!processing) return '';
+    const markSvg = window.TbaBrandMark?.svg('sc-processing-mark') || '';
+    return `
+        <div class="stock-count-processing" role="progressbar" aria-label="Processing" aria-busy="true">
+            <div class="stock-count-processing-card">
+                <div class="stock-count-processing-mark">${markSvg}</div>
+                <p class="stock-count-processing-label">
+                    Processing<span class="stock-count-processing-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+                </p>
+            </div>
+        </div>
+    `;
+}
+
+function buildUnitSlotReadOnlyHtml(item, counts = {}) {
+    const slots = resolveUnitSlots(item);
+    return slots
+        .slice(0, 3)
+        .map((slot) => {
+            const label = slot.label || 'N/a';
+            if (slot.na) {
+                return `<div class="stock-count-unit-slot stock-count-unit-slot--na" data-label="${escapeHtml(label)}">
+                    <span class="stock-count-unit-label">${escapeHtml(label)}</span>
+                    <div class="stock-count-input stock-count-input--na" aria-hidden="true"></div>
+                </div>`;
+            }
+            const value = counts[slot.key];
+            const display =
+                value != null && Number.isFinite(Number(value))
+                    ? formatQty(value)
+                    : '—';
+            const emptyClass = display === '—' ? ' stock-count-value-box--empty' : '';
+            return `<div class="stock-count-unit-slot" data-label="${escapeHtml(label)}">
+                <span class="stock-count-unit-label">${escapeHtml(label)}</span>
+                <div class="stock-count-value-box${emptyClass}">${escapeHtml(display)}</div>
+            </div>`;
+        })
+        .join('');
+}
+
+function buildVarianceStatsHtml(row, item) {
+    const unitLabel = inferStockVarianceUnitLabel(row, item);
+    const varianceMoney = formatMoney(row.varianceValue);
+    const varianceClass =
+        Number(row.varianceValue) < 0 ? ' stock-count-value-box--variance-negative' : '';
+    return `
+        <div class="stock-count-variance-stats">
+            <div class="stock-count-variance-stat stock-count-variance-stat--spacer" aria-hidden="true"></div>
+            <div class="stock-count-variance-stat">
+                <span class="stock-count-unit-label">Stock counted</span>
+                <div class="stock-count-value-box stock-count-value-box--variance">${escapeHtml(formatQtyWithUnit(row.stockCounted, unitLabel))}</div>
+            </div>
+            <div class="stock-count-variance-stat">
+                <span class="stock-count-unit-label">Stock expected</span>
+                <div class="stock-count-value-box stock-count-value-box--variance">${escapeHtml(formatQtyWithUnit(row.stockExpected, unitLabel))}</div>
+            </div>
+            <div class="stock-count-variance-stat">
+                <span class="stock-count-unit-label">Variance value</span>
+                <div class="stock-count-value-box stock-count-value-box--variance stock-count-value-box--variance-money${varianceClass}">${escapeHtml(varianceMoney)}</div>
+            </div>
+        </div>
+    `;
+}
+
+function buildVarianceEntryRowHtml(row) {
+    const catalogItem = findCatalogItemForVarianceAcrossVendors(row);
+    const item = catalogItem || {
+        key: row.catalogKey || row.itemCode,
+        itemCode: row.matchedItemCode || row.itemCode,
+        name: row.catalogName || row.itemName || row.itemCode || 'Unknown item',
+        unitSlots: inferUnitSlotsFromVariance(row),
+        columns: inferUnitSlotsFromVariance(row)
+            .filter((slot) => !slot.na && slot.key)
+            .map((slot) => ({ key: slot.key, label: slot.label })),
+    };
+    const counts = mapVarianceClosingToCounts(item, row);
+    return `<tr class="stock-count-entry-row stock-count-variance-row">
+        <td class="stock-count-entry-cell stock-count-entry-cell--variance" colspan="2">
+            <div class="stock-count-entry-line stock-count-entry-line--variance">
+                <div class="stock-count-name-slot">
+                    <span class="stock-count-unit-label stock-count-unit-label--spacer" aria-hidden="true">&nbsp;</span>
+                    <div class="stock-count-item-box stock-count-item-box--variance">${escapeHtml(item.name)}</div>
+                </div>
+                <div class="stock-count-input-group">${buildUnitSlotReadOnlyHtml(item, counts)}</div>
+            </div>
+            ${buildVarianceStatsHtml(row, item)}
+        </td>
+    </tr>`;
+}
+
+function buildVarianceView() {
+    const rows = mmxVariances.map(buildVarianceEntryRowHtml).join('');
+    const tableHtml = rows
+        ? `<table class="stock-count-table stock-count-table--entry stock-count-table--variances"><tbody>${rows}</tbody></table>`
+        : '<p class="stock-count-empty-location">No red variances found — review looks clear.</p>';
+
+    const actionsHtml = rows
+        ? `<div class="stock-count-actions stock-count-actions--variances">
+            <button type="button" class="stock-count-btn stock-count-btn--secondary" id="sc-recount" ${saving ? 'disabled' : ''}>Recount</button>
+            <button type="button" class="stock-count-btn stock-count-btn--mmx" id="sc-apply-mmx" ${saving ? 'disabled' : ''}>Apply</button>
+        </div>`
+        : '';
+
+    return `
+        <div class="stock-count-panel">
+            <h2>Confirm count — red variances</h2>
+            ${tableHtml}
+            <div class="stock-count-review-note">Review variances before applying. Recount opens an editor with your counts pre-filled.</div>
+        </div>
+        ${actionsHtml}
+    `;
 }
 
 function resolveUnitSlots(item) {
@@ -215,14 +1201,32 @@ function buildUnitSlotHtml(item, ariaName) {
             }
             return `<div class="stock-count-unit-slot" data-label="${escapeHtml(label)}">
                 <span class="stock-count-unit-label">${escapeHtml(label)}</span>
-                <input type="number" min="0" step="any" class="stock-count-input" data-item="${escapeHtml(item.key)}" data-col="${escapeHtml(slot.key)}" inputmode="decimal" aria-label="${escapeHtml(ariaName)} ${escapeHtml(label)}"${draft?.submittedAt ? ' disabled' : ''}>
+                <input type="number" min="0" step="any" class="stock-count-input" data-item="${escapeHtml(item.key)}" data-col="${escapeHtml(slot.key)}" inputmode="decimal" aria-label="${escapeHtml(ariaName)} ${escapeHtml(label)}">
             </div>`;
         })
         .join('');
 }
 
-function buildEntryView() {
-    const locationName = catalog.locations[currentLocationIndex];
+function buildStatusNote() {
+    if (viewMode === 'recount') {
+        const tabName = getActiveCatalog()?.locations?.[currentLocationIndex] || '';
+        return `<div class="stock-count-review-note">Update counts for ${escapeHtml(tabName || 'this location')}, then save and send to Macromatix again.</div>`;
+    }
+    if (isMmxSent()) {
+        return '<div class="stock-count-review-note">Sent to Macromatix — edit counts below and send again if needed.</div>';
+    }
+    if (isSubmitted()) {
+        return '<div class="stock-count-review-note">Counts saved — edit below anytime, then save again to update.</div>';
+    }
+    if (canShowSendToMmx() && queueStatus?.readyToSend?.length) {
+        return `<div class="stock-count-review-note">Ready to send: ${escapeHtml(queueStatus.readyToSend.join(', '))}</div>`;
+    }
+    return '<div class="stock-count-review-note">Use the location tabs to enter counts, then save. You only need to save vendors you are counting today.</div>';
+}
+
+function buildView() {
+    const cat = getActiveCatalog();
+    const locationName = cat.locations[currentLocationIndex];
     const itemsAtLocation = getItemsForLocation(locationName);
     const rows = itemsAtLocation
         .map((item) => {
@@ -243,10 +1247,10 @@ function buildEntryView() {
 
     const emptyNote =
         itemsAtLocation.length === 0
-            ? '<p class="stock-count-empty-location">No items to count at this location.</p>'
+            ? `<p class="stock-count-empty-location">${viewMode === 'recount' ? `No red variance items at ${escapeHtml(locationName)}.` : 'No items to count at this location.'}</p>`
             : '';
 
-    const locButtons = catalog.locations
+    const locButtons = cat.locations
         .map((loc, idx) => {
             const classes = ['stock-count-loc-btn'];
             if (idx === currentLocationIndex) classes.push('stock-count-loc-btn--active');
@@ -255,93 +1259,30 @@ function buildEntryView() {
         })
         .join('');
 
+    const saveDisabled = saving;
+    const saveLabel = viewMode === 'recount' ? 'Save' : isMmxSent() ? 'Save changes' : 'Save';
+    const sendMmxBtn =
+        viewMode === 'recount' || canShowSendToMmx()
+            ? `<button type="button" class="stock-count-btn stock-count-btn--mmx" id="sc-send-mmx" ${saving ? 'disabled' : ''}>Send to MMX</button>`
+            : '';
+    const panelTitle = locationName;
+
     return `
         <div class="stock-count-locations" role="tablist" aria-label="Storage locations">${locButtons}</div>
         <div class="stock-count-panel" role="tabpanel">
-            <h2>${escapeHtml(locationName)}</h2>
+            <h2>${escapeHtml(panelTitle)}</h2>
             <table class="stock-count-table stock-count-table--entry">
                 <tbody>${rows}</tbody>
             </table>
             ${emptyNote}
-            <div class="stock-count-review-note">Enter counts for each item. Values combine across all locations on review.</div>
+            ${buildStatusNote()}
         </div>
         <div class="stock-count-actions">
-            <button type="button" class="stock-count-btn stock-count-btn--secondary" id="sc-prev" ${currentLocationIndex === 0 ? 'disabled' : ''}>Previous</button>
-            <button type="button" class="stock-count-btn" id="sc-save-next" ${draft?.submittedAt ? 'disabled' : ''}>${currentLocationIndex >= catalog.locations.length - 1 ? 'Save' : 'Save & next'}</button>
-            <button type="button" class="stock-count-btn stock-count-btn--secondary" id="sc-review" ${draft?.submittedAt || saving ? 'disabled' : ''}>Send to MMX</button>
-        </div>
-    `;
-}
-
-function buildReviewUnitSlotHtml(catalogItem, summaryRow) {
-    const slots = resolveUnitSlots(catalogItem);
-
-    return slots
-        .slice(0, 3)
-        .map((slot) => {
-            const label = slot.label || 'N/a';
-            if (slot.na) {
-                return `<div class="stock-count-unit-slot stock-count-unit-slot--na" data-label="${escapeHtml(label)}">
-                    <span class="stock-count-unit-label">${escapeHtml(label)}</span>
-                    <div class="stock-count-input stock-count-input--na" aria-hidden="true"></div>
-                </div>`;
-            }
-            const raw = summaryRow?.columns?.[slot.key];
-            const n = Number(raw);
-            const hasValue = Number.isFinite(n) && n > 0;
-            const display = hasValue ? String(raw) : '—';
-            const emptyClass = hasValue ? '' : ' stock-count-value-box--empty';
-            return `<div class="stock-count-unit-slot" data-label="${escapeHtml(label)}">
-                <span class="stock-count-unit-label">${escapeHtml(label)}</span>
-                <div class="stock-count-value-box${emptyClass}">${escapeHtml(display)}</div>
-            </div>`;
-        })
-        .join('');
-}
-
-function summaryRowHasCounts(row) {
-    if (!row?.columns || typeof row.columns !== 'object') return false;
-    return Object.values(row.columns).some((v) => Number(v) > 0);
-}
-
-function buildReviewView() {
-    const summaryByKey = new Map((summary?.items || []).map((row) => [row.itemKey, row]));
-    const rows = catalog.items
-        .map((catalogItem) => {
-            const summaryRow = summaryByKey.get(catalogItem.key);
-            if (!summaryRow || !summaryRowHasCounts(summaryRow)) return '';
-            return `<tr class="stock-count-entry-row">
-                <td class="stock-count-entry-cell" colspan="2">
-                    <div class="stock-count-entry-line">
-                        <div class="stock-count-name-slot">
-                            <span class="stock-count-unit-label stock-count-unit-label--spacer" aria-hidden="true">&nbsp;</span>
-                            <div class="stock-count-item-box">${escapeHtml(catalogItem.name)}</div>
-                        </div>
-                        <div class="stock-count-input-group">${buildReviewUnitSlotHtml(catalogItem, summaryRow)}</div>
-                    </div>
-                </td>
-            </tr>`;
-        })
-        .filter(Boolean)
-        .join('');
-
-    const emptyNote = rows
-        ? ''
-        : '<p class="stock-count-empty-location">No counts entered yet. Go back and enter quantities by location.</p>';
-
-    return `
-        <div class="stock-count-panel">
-            <h2>Review — all locations combined</h2>
-            <table class="stock-count-table stock-count-table--entry">
-                <tbody>${rows}</tbody>
-            </table>
-            ${emptyNote}
-            <div class="stock-count-review-note">Totals combine the same item across all storage locations.</div>
-        </div>
-        <div class="stock-count-actions">
-            <button type="button" class="stock-count-btn stock-count-btn--secondary" id="sc-back-entry" ${draft?.submittedAt ? 'disabled' : ''}>Back to entry</button>
-            <button type="button" class="stock-count-btn" id="sc-send-mmx" ${draft?.submittedAt || saving ? 'disabled' : ''}>Send to MMX</button>
-            <button type="button" class="stock-count-btn stock-count-btn--secondary" id="sc-done">Return to dashboard</button>
+            <div class="stock-count-actions-main">
+                <button type="button" class="stock-count-btn" id="sc-save" ${saveDisabled ? 'disabled' : ''}>${escapeHtml(saveLabel)}</button>
+                <a class="stock-count-btn stock-count-btn--secondary stock-count-btn--link" href="${escapeHtml(dashboardPath())}">Back to dashboard</a>
+            </div>
+            ${sendMmxBtn}
         </div>
     `;
 }
@@ -357,17 +1298,23 @@ function render() {
             <header class="stock-count-header">
                 <div>
                     <h1>Stock count</h1>
-                    <p class="stock-count-subtitle">Store ${escapeHtml(STORE_NUMBER)} · ${escapeHtml(catalog.label)}</p>
+                    ${viewMode !== 'variances' ? `<p class="stock-count-subtitle">Store ${escapeHtml(STORE_NUMBER)} · ${escapeHtml(catalog.label)}</p>` : ''}
                 </div>
-                <a class="stock-count-back" href="${escapeHtml(dashboardPath())}">← Dashboard</a>
             </header>
             ${statusHtml}
-            ${viewMode === 'review' ? buildReviewView() : buildEntryView()}
+            ${viewMode === 'variances' ? buildVarianceView() : buildView()}
+            ${buildProcessingOverlay()}
         </div>
     `;
 
-    if (viewMode === 'entry') {
-        fillFormFromDraft(catalog.locations[currentLocationIndex]);
+    if (processing) {
+        window.TbaBrandMark?.setBusy(true);
+    } else {
+        window.TbaBrandMark?.setBusy(false);
+    }
+
+    if (viewMode === 'entry' || viewMode === 'recount') {
+        fillFormFromDraft(getActiveCatalog().locations[currentLocationIndex]);
     }
 
     bindEvents();
@@ -378,42 +1325,17 @@ function bindEvents() {
         btn.addEventListener('click', async () => {
             const idx = Number(btn.getAttribute('data-loc-index'));
             if (!Number.isFinite(idx) || idx === currentLocationIndex) return;
-            await saveCurrentLocation(false);
+            await saveCurrentLocation(false, { force: true });
             currentLocationIndex = idx;
-            viewMode = 'entry';
             statusMessage = '';
             render();
         });
     });
 
-    const prev = document.getElementById('sc-prev');
-    prev?.addEventListener('click', async () => {
-        await saveCurrentLocation(false);
-        currentLocationIndex = Math.max(0, currentLocationIndex - 1);
-        render();
-    });
-
-    const saveNext = document.getElementById('sc-save-next');
-    saveNext?.addEventListener('click', async () => {
-        const ok = await saveCurrentLocation(true);
-        if (!ok) return;
-        if (currentLocationIndex < catalog.locations.length - 1) {
-            currentLocationIndex += 1;
-            statusMessage = '';
-            render();
-        }
-    });
-
-    document.getElementById('sc-review')?.addEventListener('click', () => void sendToMmx());
+    document.getElementById('sc-save')?.addEventListener('click', () => void saveVendor());
     document.getElementById('sc-send-mmx')?.addEventListener('click', () => void sendToMmx());
-    document.getElementById('sc-back-entry')?.addEventListener('click', () => {
-        viewMode = 'entry';
-        statusMessage = '';
-        render();
-    });
-    document.getElementById('sc-done')?.addEventListener('click', () => {
-        window.location.href = dashboardPath();
-    });
+    document.getElementById('sc-apply-mmx')?.addEventListener('click', () => void applyMmxCount());
+    document.getElementById('sc-recount')?.addEventListener('click', () => void recountMmx());
 }
 
 let stockCountScrollHideTimer = null;
@@ -458,20 +1380,17 @@ async function init() {
     }
 
     try {
-        const [catRes, draftRes] = await Promise.all([
-            fetch(apiQuery('/api/stock-count/catalog'), { credentials: 'include' }),
-            fetch(apiQuery('/api/stock-count/draft'), { credentials: 'include' }),
+        const [catResult, draftResult] = await Promise.all([
+            fetchJson(apiQuery('/api/stock-count/catalog')),
+            fetchJson(apiQuery('/api/stock-count/draft')),
         ]);
-        const catData = await catRes.json();
-        const draftData = await draftRes.json();
+        const { res: catRes, data: catData } = catResult;
+        const { res: draftRes, data: draftData } = draftResult;
         if (!catRes.ok || !catData.success) throw new Error(catData.error || 'Catalog not found.');
         if (!draftRes.ok || !draftData.success) throw new Error(draftData.error || 'Draft not found.');
         catalog = catData.catalog;
         draft = draftData;
-        if (draft.submittedAt) {
-            await loadSummary();
-            viewMode = 'review';
-        }
+        await loadQueueStatus();
         document.title = `Stock Count — ${catalog.label}`;
         render();
     } catch (error) {

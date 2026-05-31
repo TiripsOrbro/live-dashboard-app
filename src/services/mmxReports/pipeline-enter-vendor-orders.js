@@ -9,13 +9,7 @@ const {
     rowIsOpenable,
 } = require('./mmx-scheduled-orders');
 const log = require('./util-logging');
-
-function normalizeItemCode(code) {
-    return String(code || '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toUpperCase();
-}
+const { linesFromOrderGridByName } = require('../orderItemNameMatch');
 
 async function waitForOrderItemsGrid(page, timeoutMs = 30000) {
     await page.waitForFunction(
@@ -106,11 +100,10 @@ async function clickClearQuantities(page, orderEntryCfg) {
     await waitForOrderItemsGrid(page);
 }
 
-/** Map item code → quantity input id in the "Items in this order" grid. */
+/** Map item code + name → quantity input id in the "Items in this order" grid. */
 async function scrapeOrderGridByItemCode(page) {
     return page.evaluate(() => {
         const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
-        const normCode = (s) => norm(s).toUpperCase();
 
         for (const table of document.querySelectorAll('table')) {
             const trs = Array.from(table.querySelectorAll('tr'));
@@ -118,6 +111,7 @@ async function scrapeOrderGridByItemCode(page) {
 
             let headerRowIdx = -1;
             let codeCol = -1;
+            let nameCol = -1;
             let qtyCol = -1;
 
             for (let i = 0; i < Math.min(trs.length, 8); i++) {
@@ -125,9 +119,14 @@ async function scrapeOrderGridByItemCode(page) {
                 const headers = cells.map((c) => norm(c.textContent).toLowerCase());
                 const ci = headers.findIndex((h) => h.includes('item code'));
                 const qi = headers.findIndex((h) => h === 'quantity' || h.startsWith('quantity'));
+                let ni = headers.findIndex((h) => h === 'item' || h === 'item name' || h === 'description');
+                if (ni < 0) {
+                    ni = headers.findIndex((h) => h.includes('item') && !h.includes('code'));
+                }
                 if (ci >= 0 && qi >= 0) {
                     headerRowIdx = i;
                     codeCol = ci;
+                    nameCol = ni;
                     qtyCol = qi;
                     break;
                 }
@@ -142,6 +141,11 @@ async function scrapeOrderGridByItemCode(page) {
                 const itemCode = norm(cells[codeCol].textContent);
                 if (!itemCode || itemCode.toLowerCase() === 'item code') continue;
 
+                const itemName =
+                    nameCol >= 0 && cells[nameCol]
+                        ? norm(cells[nameCol].textContent)
+                        : norm(cells[Math.min(codeCol + 1, cells.length - 1)]?.textContent);
+
                 const qtyCell = cells[qtyCol];
                 const input = qtyCell.querySelector(
                     'input[type="text"], input:not([type="hidden"]):not([type="checkbox"])'
@@ -150,7 +154,7 @@ async function scrapeOrderGridByItemCode(page) {
 
                 rows.push({
                     itemCode,
-                    itemCodeKey: normCode(itemCode),
+                    itemName: itemName || itemCode,
                     inputId: input.id || '',
                 });
             }
@@ -183,13 +187,15 @@ async function typeQuantityIntoInput(page, inputId, quantity) {
     return true;
 }
 
-async function fillOrderLineQuantities(page, lines) {
-    const grid = await scrapeOrderGridByItemCode(page);
+const { normalizeItemCode } = require('../reportReader');
+
+async function fillOrderLineQuantities(page, lines, existingGrid = null) {
+    const grid = existingGrid || (await scrapeOrderGridByItemCode(page));
     if (!grid.tableFound || !grid.rows.length) {
         throw new Error('Order items grid (Item Code / Quantity columns) not found after Create');
     }
 
-    const byCode = new Map(grid.rows.map((r) => [r.itemCodeKey, r]));
+    const byCode = new Map(grid.rows.map((r) => [normalizeItemCode(r.itemCode), r]));
     const results = [];
 
     for (const line of lines) {
@@ -276,7 +282,7 @@ function matchVendorConfigForTableRow(tableRow, vendors) {
     );
 }
 
-function buildOrderQueue(parsed, vendorOrdersCfg, excelByVendorId, { vendorIdFilter } = {}) {
+function buildOrderQueue(parsed, vendorOrdersCfg, buildToByVendorId, { vendorIdFilter } = {}) {
     const queue = [];
 
     for (const tableRow of parsed.rows) {
@@ -289,15 +295,10 @@ function buildOrderQueue(parsed, vendorOrdersCfg, excelByVendorId, { vendorIdFil
         }
         if (vendorIdFilter && vendorCfg.id !== vendorIdFilter) continue;
 
-        const pack = excelByVendorId[vendorCfg.id];
-        if (!pack?.lines?.length) {
-            log.info(`Skip ${vendorCfg.label}: no order lines with qty > 0`);
-            continue;
-        }
-
+        const pack = buildToByVendorId[vendorCfg.id];
         queue.push({
             vendor: vendorCfg,
-            lines: pack.lines,
+            buildToEntries: pack?.buildToEntries || [],
             tableRow,
         });
     }
@@ -305,19 +306,30 @@ function buildOrderQueue(parsed, vendorOrdersCfg, excelByVendorId, { vendorIdFil
     return queue;
 }
 
-async function processOneVendorOrder(page, settings, vendor, lines) {
-    log.info(`${vendor.label}: ${lines.length} line(s) (qty from column K, codes from column L)`);
-    for (const line of lines) {
-        const name = line.itemName ? ` — ${line.itemName}` : '';
-        log.info(`  order line: ${line.itemCode} × ${line.quantity}${name}`);
-    }
-
+async function processOneVendorOrder(page, settings, vendor, buildToEntries) {
     await clickCreateForVendorRow(page, vendor);
     await waitForOrderItemsGrid(page);
 
     await withPageContextRetry(page, `fill order ${vendor.id}`, async () => {
         await clickClearQuantities(page, settings.vendorOrders.orderEntry);
-        await fillOrderLineQuantities(page, lines);
+
+        const grid = await scrapeOrderGridByItemCode(page);
+        if (!grid.tableFound || !grid.rows.length) {
+            throw new Error('Order items grid (Item Code / Quantity columns) not found after Create');
+        }
+
+        const lines = linesFromOrderGridByName(grid, buildToEntries);
+        log.info(
+            `${vendor.label}: ${grid.rows.length} item(s) on MMX order form — filling ${lines.length} by name match`
+        );
+        for (const line of lines) {
+            log.info(`  ${line.itemName || line.itemCode} × ${line.quantity} ← ${line.matchedFrom || '?'}`);
+        }
+        if (!lines.length) {
+            log.info(`${vendor.label}: no name-matched build-to quantities — saving cleared order`);
+        }
+
+        await fillOrderLineQuantities(page, lines, grid);
         await clickUpdateOnly(page, settings.vendorOrders.orderEntry);
     });
 }
@@ -338,18 +350,18 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
         storeContext
     );
     const table = await scrapeScheduledOrders(page);
-    const linesByVendorId =
+    const buildToByVendorId =
         settings.orderLinesByVendorId ||
         (() => {
             throw new Error('orderLinesByVendorId is required — run buildToOrderLines first');
         })();
 
-    const queue = buildOrderQueue(table, vendorOrdersCfg, linesByVendorId, { vendorIdFilter });
+    const queue = buildOrderQueue(table, vendorOrdersCfg, buildToByVendorId, { vendorIdFilter });
     if (!queue.length) {
         throw new Error(
             vendorIdFilter
-                ? `No openable scheduled order for vendor id "${vendorIdFilter}" with order lines`
-                : 'No openable scheduled orders with matching build-to order lines'
+                ? `No openable scheduled order for vendor id "${vendorIdFilter}"`
+                : 'No openable scheduled orders for configured vendors (BEGA, Cut Fresh, Americold, Schweppes, …)'
         );
     }
 
@@ -357,7 +369,7 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
 
     const processed = [];
     for (let i = 0; i < queue.length; i++) {
-        const { vendor, lines } = queue[i];
+        const { vendor, buildToEntries } = queue[i];
         log.info(`--- Order ${i + 1}/${queue.length}: ${vendor.label} ---`);
 
         if (i > 0) {
@@ -365,11 +377,10 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
         }
 
         try {
-            await processOneVendorOrder(page, settings, vendor, lines);
+            await processOneVendorOrder(page, settings, vendor, buildToEntries);
             processed.push({
                 vendorId: vendor.id,
                 label: vendor.label,
-                lines: lines.length,
                 ok: true,
             });
         } catch (err) {
@@ -377,7 +388,6 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
             processed.push({
                 vendorId: vendor.id,
                 label: vendor.label,
-                lines: lines.length,
                 ok: false,
                 error: err.message,
             });
@@ -404,7 +414,7 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
     return {
         processed,
         vendor: lastOk ? queue.find((q) => q.vendor.id === lastOk.vendorId)?.vendor : queue[0]?.vendor,
-        lines: lastOk ? queue.find((q) => q.vendor.id === lastOk.vendorId)?.lines : [],
+        buildToEntries: lastOk ? queue.find((q) => q.vendor.id === lastOk.vendorId)?.buildToEntries : null,
     };
 }
 
@@ -427,4 +437,5 @@ module.exports = {
     clickUpdateOnly,
     clickClearQuantities,
     waitForOrderItemsGrid,
+    scrapeOrderGridByItemCode,
 };

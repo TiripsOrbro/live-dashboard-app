@@ -1,6 +1,10 @@
 const fs = require('fs').promises;
 const path = require('path');
-const { aggregateCounts, getVendorCatalog, vendorLabelToSlug } = require('./vendorCatalog');
+const {
+    aggregateCounts,
+    getVendorCatalog,
+    vendorLabelToSlug,
+} = require('./vendorCatalog');
 const { isTestStore, TEST_STORE_SLUG } = require('./testStore');
 
 const STATE_FILE =
@@ -108,6 +112,88 @@ async function getDraft(storeNumber, vendorSlug, dateKey = melbourneDateKey()) {
         locations: day.locations || {},
         updatedAt: day.updatedAt || null,
         submittedAt: day.submittedAt || null,
+        mmxSentAt: day.mmxSentAt || null,
+    };
+}
+
+function summaryHasCounts(items) {
+    if (!Array.isArray(items)) return false;
+    return items.some(
+        (row) =>
+            row?.columns &&
+            typeof row.columns === 'object' &&
+            Object.values(row.columns).some((v) => Number(v) > 0)
+    );
+}
+
+async function getStockCountQueueStatus(storeNumber, options = {}) {
+    const dateKey = options.dateKey || melbourneDateKey();
+    const currentVendorSlug = vendorSlugKey(options.vendorSlug);
+    const all = await getStateAll();
+    const sk = storeKey(storeNumber);
+    const store = all.stores[sk] || {};
+
+    const queue = [];
+    const seen = new Set();
+
+    for (const slug of Object.keys(store).sort()) {
+        const day = store[slug]?.[dateKey];
+        if (!day) continue;
+        const catalog = getVendorCatalog(slug);
+        if (!catalog) continue;
+        const hasDraft =
+            day.locations &&
+            typeof day.locations === 'object' &&
+            Object.values(day.locations).some(
+                (items) =>
+                    items &&
+                    typeof items === 'object' &&
+                    Object.values(items).some(
+                        (counts) =>
+                            counts &&
+                            typeof counts === 'object' &&
+                            Object.values(counts).some((n) => Number(n) > 0)
+                    )
+            );
+        if (!day.submittedAt && !day.mmxSentAt && !hasDraft) continue;
+        queue.push({
+            slug,
+            label: catalog.label,
+            submittedAt: day.submittedAt || null,
+            mmxSentAt: day.mmxSentAt || null,
+        });
+        seen.add(slug);
+    }
+
+    if (currentVendorSlug && !seen.has(currentVendorSlug)) {
+        const catalog = getVendorCatalog(currentVendorSlug);
+        if (catalog) {
+            queue.push({
+                slug: currentVendorSlug,
+                label: catalog.label,
+                submittedAt: null,
+                mmxSentAt: null,
+            });
+        }
+    }
+
+    const submitted = queue.filter((entry) => entry.submittedAt);
+    const submittedNotSent = queue.filter((entry) => entry.submittedAt && !entry.mmxSentAt);
+    const submittedCount = submitted.length;
+    const canSendToMmx = submittedCount > 0;
+    const allMmxSent =
+        submittedCount > 0 && queue.filter((entry) => entry.submittedAt).every((entry) => entry.mmxSentAt);
+
+    return {
+        dateKey,
+        storeNumber: sk,
+        vendorSlug: currentVendorSlug,
+        queue,
+        canSendToMmx,
+        allMmxSent,
+        submittedCount,
+        readyToSend: submitted.map((entry) => entry.label),
+        pendingSubmitCount: queue.filter((entry) => !entry.submittedAt).length,
     };
 }
 
@@ -129,8 +215,11 @@ async function saveDraftLocation(storeNumber, vendorSlug, locationName, itemCoun
     if (!all.stores[sk][vk][dateKey]) all.stores[sk][vk][dateKey] = { locations: {} };
 
     const day = all.stores[sk][vk][dateKey];
+    if (day.mmxSentAt) {
+        day.mmxSentAt = null;
+    }
     if (day.submittedAt) {
-        throw new Error('Stock count already submitted for today.');
+        day.submittedAt = null;
     }
 
     day.locations[loc] = normalized;
@@ -164,6 +253,10 @@ async function submitStockCount(storeNumber, vendorSlug, dateKey = melbourneDate
     if (!catalog) return null;
 
     const summary = await getSummary(storeNumber, vendorSlug, dateKey);
+    if (!summaryHasCounts(summary.items)) {
+        throw new Error('Enter at least one count before submitting.');
+    }
+
     const all = await getStateAll();
     const sk = storeKey(storeNumber);
     const vk = vendorSlugKey(vendorSlug);
@@ -186,6 +279,25 @@ async function submitStockCount(storeNumber, vendorSlug, dateKey = melbourneDate
         submittedAt: day.submittedAt,
         payload: summary.items,
     };
+}
+
+async function reopenStockCount(storeNumber, vendorSlug, dateKey = melbourneDateKey()) {
+    const all = await getStateAll();
+    const sk = storeKey(storeNumber);
+    const vk = vendorSlugKey(vendorSlug);
+    const day = all.stores[sk]?.[vk]?.[dateKey];
+    if (!day) throw new Error('No stock count draft to reopen.');
+    if (day.mmxSentAt) {
+        day.mmxSentAt = null;
+    }
+    if (!day.submittedAt) {
+        return getDraft(storeNumber, vendorSlug, dateKey);
+    }
+    day.submittedAt = null;
+    day.updatedAt = new Date().toISOString();
+    stateCache = all;
+    await writeStateFile(all);
+    return getDraft(storeNumber, vendorSlug, dateKey);
 }
 
 async function markMmxSent(storeNumber, vendorSlug, dateKey = melbourneDateKey()) {
@@ -258,7 +370,7 @@ async function getCompletedVendorLabelsForStore(storeNumber, dateKey = melbourne
     const labels = [];
     for (const [vendorSlug, days] of Object.entries(store)) {
         const day = days?.[dateKey];
-        if (!day?.submittedAt) continue;
+        if (!day?.mmxSentAt) continue;
         const catalog = getVendorCatalog(vendorSlug);
         labels.push(catalog?.label || vendorSlug);
     }
@@ -277,9 +389,11 @@ module.exports = {
     saveDraftLocation,
     getSummary,
     submitStockCount,
+    reopenStockCount,
     markMmxSent,
     getMmxSentVendorSlugs,
     getSubmittedVendorSlugs,
+    getStockCountQueueStatus,
     clearStockCountDay,
     getCompletedVendorLabelsForStore,
     isVendorConfigured,

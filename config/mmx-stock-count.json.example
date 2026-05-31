@@ -4,12 +4,20 @@
   "countTypeText": "Key Item Count",
   "locationTabMap": {
     "Freezer": "FREEZER",
-    "Fridge": "FRIDGE (+ CARRYOVER)",
-    "Carryover": "FRIDGE (+ CARRYOVER)",
-    "In Use": "ON FLOOR - IN USE - THAW"
+    "Carryover": "CARRY OVER",
+    "Carry Over": "CARRY OVER",
+    "Fridge": "FRIDGE",
+    "In Use": "ON FLOOR - IN USE - THAW",
+    "Dry": "DRY",
+    "Soft Drinks": "SOFT DRINKS",
+    "Count As 0": "COUNT AS 0"
   },
   "createCountButtonId": "ctl00_ph_ButtonOK_input",
   "countTypeSelectId": "ctl00_ph_DropDownListCount",
+  "inProgressCountSelectId": "ctl00_ph_DropDownListCounts",
+  "batchNumberInputId": "ctl00_ph_TextBoxCountNo",
+  "statusInputId": "ctl00_ph_TextBoxStatus",
   "saveButtonIds": ["ctl00_ph_ButtonUpdate2_input", "ctl00_ph_ButtonUpdate_input"],
+  "continueButtonIds": ["ctl00_ph_ButtonContinue_input", "ctl00_ph_ButtonContinue2_input"],
   "applyButtonId": "ctl00_ph_ButtonApply"
 }

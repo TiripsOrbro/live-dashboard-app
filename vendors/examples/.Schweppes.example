@@ -1,7 +1,7 @@
 # Vendor stock-count catalog — copy to `vendors/.Schweppes` and edit item lists.
 #
 # vendor: Schweppes
-# locations: Dry
+# locations: Soft Drinks
 #
 # Format: itemCode | name | unit columns…
 

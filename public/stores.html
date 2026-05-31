@@ -8,6 +8,7 @@
     <title>Store Dashboards</title>
 
     <link rel="stylesheet" href="/styles/dashboard.css">
+    <link rel="stylesheet" href="/styles/brand-mark.css">
     <link rel="stylesheet" href="/styles/login.css">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -31,19 +32,37 @@
             max-width: 520px;
         }
 
+        .stores-sign-out-btn {
+            position: fixed;
+            top: max(12px, env(safe-area-inset-top));
+            left: max(12px, env(safe-area-inset-left));
+            z-index: 10;
+            font: inherit;
+            font-size: var(--font-size-5);
+            font-weight: var(--font-weight-semibold);
+            padding: 8px 14px;
+            cursor: pointer;
+            border: 1px solid var(--dark-purple-border);
+            background: var(--charcoal);
+            color: var(--white);
+            border-radius: 8px;
+            text-decoration: none;
+            transition: background 0.15s ease, border-color 0.15s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .stores-sign-out-btn:hover,
+        .stores-sign-out-btn:focus-visible {
+            background: color-mix(in srgb, var(--tb-purple-light) 22%, var(--charcoal));
+            border-color: var(--tb-purple-light);
+            outline: none;
+        }
+
         .stores-greeting {
             margin: 0 0 0.35rem;
             font-size: var(--font-size-4);
             font-weight: var(--font-weight-medium);
             color: color-mix(in srgb, var(--charcoal) 82%, var(--grey));
-        }
-
-        .stores-header-row {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            justify-content: center;
-            gap: 0.75rem 1.25rem;
         }
 
         .stores-title {
@@ -58,16 +77,6 @@
             font-weight: var(--font-weight-subtitle);
             color: color-mix(in srgb, var(--charcoal) 70%, var(--grey));
             margin: 0.5rem 0 0;
-        }
-
-        .stores-logout {
-            margin: 0.75rem 0 0;
-            font-size: var(--font-size-5);
-        }
-
-        .stores-logout a {
-            color: var(--tb-purple-light);
-            font-weight: var(--font-weight-semibold);
         }
 
         .store-grid {
@@ -176,16 +185,13 @@
 </head>
 
 <body>
+    <script src="/scripts/brand-mark.js"></script>
     <script src="/scripts/welcome-overlay.js"></script>
+    <a href="/logout" class="stores-sign-out-btn">Sign out</a>
     <header class="stores-header">
         <p id="stores-greeting" class="stores-greeting" hidden></p>
-        <div class="stores-header-row">
-            <div>
-                <h1 class="stores-title">Store Dashboards</h1>
-                <p class="stores-subtitle">Select a store to open its live sales dashboard</p>
-            </div>
-            <p class="stores-logout"><a href="/logout">Sign out</a></p>
-        </div>
+        <h1 class="stores-title">Store Dashboards</h1>
+        <p class="stores-subtitle">Select a store to open its live sales dashboard</p>
     </header>
 
     <main id="store-grid" class="store-grid" aria-label="Store list"></main>

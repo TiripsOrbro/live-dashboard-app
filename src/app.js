@@ -20,6 +20,7 @@ require('dotenv').config({ path: path.join(__dirname, '../.env.production'), ove
 
 const scrapeData = require('./services/scraper');
 const { notifyScrapeFailure } = require('./services/alertNotifier');
+const { waitUntilMmxResourceIdle, isMmxResourceBusy } = require('./services/mmxResourceGate');
 const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./services/storeList');
 const {
     TEST_STORE_SLUG,
@@ -34,10 +35,20 @@ const {
     saveDraftLocation,
     getSummary,
     submitStockCount,
+    reopenStockCount,
     clearStockCountDay,
     getCompletedVendorLabelsForStore,
+    getStockCountQueueStatus,
+    melbourneDateKey,
 } = require('./services/stockCountState');
-const { sendStockCountToMmx } = require('./services/stockCountMmxPipeline');
+const { getStoreScrapePhase, anyStoreInActiveScrapeWindow } = require('./services/scrapeSchedule');
+const {
+    getLastKnownPendingVendors,
+    onStoreOrdersComplete,
+    clearStoreScrapeCaches,
+    resetScheduledOrdersForNewDay,
+} = require('./services/macromatixScraper');
+const { prepareStockCountForMmx, applyStockCountSession, cancelStockCountSession, runScheduledOrdersOnly } = require('./services/stockCountMmxPipeline');
 const {
     getDismissalPeriodKey,
     getAuditSchedule,
@@ -72,7 +83,6 @@ function isStockCountTestPendingAlways() {
 /** Test helpers: explicit env, or any request that already passed dashboard cookie auth. */
 function canRunStockCountTest(req) {
     if (isStockCountTestEnabled() || isStockCountTestPendingAlways()) return true;
-    if (isNologinUser(req.dashboardUser)) return false;
     if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) return true;
     return false;
 }
@@ -96,7 +106,6 @@ function applyTestPendingVendors(slice) {
 /** Test-date scrapes: explicit env, or any request that already passed dashboard cookie auth. */
 function canRunScheduledOrdersDateTest(req, testPick) {
     if (!testPick) return false;
-    if (isNologinUser(req.dashboardUser)) return false;
     if (isScheduledOrdersDateTestEnabled()) return true;
     if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) return true;
     return false;
@@ -116,30 +125,23 @@ function parseScheduledOrdersTestYmd(raw) {
 const {
     SESSION_COOKIE,
     LEGACY_COOKIE,
-    NOLOGIN_COOKIE,
     usersFileConfigured,
     authenticate,
     createSessionToken,
-    createNologinToken,
     legacyAccessToken,
     resolveUser,
-    resolveNologinUser,
     isAuthenticated,
-    isNologinUser,
     isAdminUser,
     userCanAccessStore,
     filterStoresForUser,
     getLoginRedirectPath,
     sessionCookieOptions,
-    nologinCookieOptions,
     userProfileForClient,
     timingSafeEqualString,
     readUsersFileSync,
     resolveUsersFilePath,
 } = require('./services/dashboardUsers');
 const DASHBOARD_ACCESS_KEY = String(process.env.DASHBOARD_ACCESS_KEY || '');
-const NOLOGIN_LINKS_ENABLED =
-    !/^(0|false|no|off)$/i.test(String(process.env.DASHBOARD_NOLOGIN_LINKS ?? '1').trim());
 const DASHBOARD_ALLOWED_IPS = String(process.env.DASHBOARD_ALLOWED_IPS || '')
     .split(',')
     .map((ip) => normalizeIp(ip))
@@ -155,8 +157,22 @@ app.use(express.json());
 
 let salesCache = null;
 let salesCacheAt = 0;
+
+function patchSalesCachePendingVendors(storeNumber, pendingVendors) {
+    if (!salesCache?.stores) return;
+    const key = String(storeNumber);
+    salesCache.stores = salesCache.stores.map((store) =>
+        String(store.storeNumber) === key ? { ...store, pendingVendors: [...pendingVendors] } : store
+    );
+}
+
+onStoreOrdersComplete((storeNumber) => {
+    patchSalesCachePendingVendors(storeNumber, []);
+});
 let salesInFlight = null;
 let auditStateCache = null;
+/** Last scrape phase per store — drives idle wipe and new-day order-check reset. */
+const lastScrapePhaseByStore = new Map();
 
 function normalizeIp(ip) {
     return String(ip || '')
@@ -274,44 +290,8 @@ function ipAllowlistMiddleware(req, res, next) {
 function isLoginPublicPath(reqPath) {
     if (reqPath === '/login' || reqPath === '/unlock' || reqPath === '/logout') return true;
     if (reqPath === '/icon.svg' || reqPath === '/icon-mark.svg') return true;
-    if (reqPath === '/styles/login.css' || reqPath === '/scripts/login.js') return true;
-    return false;
-}
-
-function isKnownStoreNumber(storeNumber) {
-    if (isTestStore(storeNumber)) return true;
-    const num = normalizeStoreKey(storeNumber);
-    if (!num) return false;
-    const stores = getStoreList();
-    if (!stores.length) return true;
-    return stores.some((s) => String(s.storeNumber) === num);
-}
-
-function isDashboardAssetPath(reqPath) {
-    if (reqPath.startsWith('/styles/') || reqPath.startsWith('/scripts/') || reqPath.startsWith('/assets/')) {
-        return true;
-    }
-    if (reqPath === '/manifest.json' || reqPath === '/icon.svg' || reqPath === '/icon-mark.svg') {
-        return true;
-    }
-    return false;
-}
-
-function nologinAllowsPath(reqPath, storeNumber) {
-    const store = normalizeStoreKey(storeNumber);
-    if (!store) return false;
-    if (isTestStore(store)) {
-        if (new RegExp(`^/${TEST_STORE_SLUG}/nologin/?$`, 'i').test(reqPath)) return true;
-        if (new RegExp(`^/${TEST_STORE_SLUG}/?$`, 'i').test(reqPath)) return true;
-        if (new RegExp(`^/${TEST_STORE_SLUG}/stock-count/[a-z0-9-]+(?:/nologin)?/?$`, 'i').test(reqPath)) return true;
-    } else {
-        if (new RegExp(`^/${store}/nologin/?$`).test(reqPath)) return true;
-        if (new RegExp(`^/${store}/stock-count/[a-z0-9-]+(?:/nologin)?/?$`).test(reqPath)) return true;
-    }
-    if (isDashboardAssetPath(reqPath)) return true;
-    if (reqPath === '/api/me' || reqPath === '/api/audit-schedule') return true;
-    if (reqPath === '/api/sales' || reqPath === '/api/audits') return true;
-    if (reqPath.startsWith('/api/stock-count')) return true;
+    if (reqPath === '/styles/login.css' || reqPath === '/styles/brand-mark.css') return true;
+    if (reqPath === '/scripts/login.js' || reqPath === '/scripts/brand-mark.js') return true;
     return false;
 }
 
@@ -324,17 +304,6 @@ function dashboardAuthMiddleware(req, res, next) {
     if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
         req.dashboardUser = getRequestUser(req);
         next();
-        return;
-    }
-
-    const nologinUser = NOLOGIN_LINKS_ENABLED ? resolveNologinUser(req) : null;
-    if (nologinUser) {
-        req.dashboardUser = nologinUser;
-        if (nologinAllowsPath(req.path, nologinUser.stores[0])) {
-            next();
-            return;
-        }
-        sendForbidden(req, res, 'This link only provides access to one store dashboard.');
         return;
     }
 
@@ -418,38 +387,16 @@ app.post('/unlock', (req, res) => {
 app.get('/logout', (req, res) => {
     res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
     res.clearCookie(LEGACY_COOKIE, sessionCookieOptions());
-    res.clearCookie(NOLOGIN_COOKIE, nologinCookieOptions());
     res.redirect('/login');
 });
 
-// Direct store link without login — e.g. /3811/nologin or /teststore/nologin (not linked from the app UI).
-app.get(/^\/(teststore|\d{3,6})\/nologin\/?$/i, (req, res) => {
-    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/nologin\/?$/i) || [])[1]);
-    if (!NOLOGIN_LINKS_ENABLED) {
-        res.status(404).send('Not found.');
-        return;
-    }
-    if (!authRequired()) {
-        res.redirect(`/${storeNumber}`);
-        return;
-    }
-    if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
-        const user = getRequestUser(req);
-        if (userCanAccessStore(user, storeNumber)) {
-            res.redirect(`/${storeNumber}`);
-            return;
-        }
-        res.status(403).send('You do not have access to this store.');
-        return;
-    }
-    if (!isKnownStoreNumber(storeNumber)) {
-        res.status(404).send('Store not found.');
-        return;
-    }
-    res.cookie(NOLOGIN_COOKIE, createNologinToken(storeNumber), nologinCookieOptions());
-    console.log(`[Auth] Nologin link opened: store ${storeNumber} from ${getRequestIp(req)}`);
-    res.sendFile(path.join(__dirname, '../public', 'index.html'));
-});
+/** Login page assets — must be reachable before authentication (for sign-in screen animation). */
+const PUBLIC_ROOT = path.join(__dirname, '../public');
+for (const loginAsset of ['/scripts/brand-mark.js', '/styles/brand-mark.css']) {
+    app.get(loginAsset, (_req, res) => {
+        res.sendFile(path.join(PUBLIC_ROOT, loginAsset.slice(1)));
+    });
+}
 
 app.use(dashboardAuthMiddleware);
 
@@ -627,13 +574,20 @@ function storeHasData(store) {
  * hours/name from the fresh result are carried forward (they may change across the day).
  */
 function mergeStoresPreservingGood(prevPayload, freshPayload) {
+    const freshByNum = new Map();
+    if (freshPayload && Array.isArray(freshPayload.stores)) {
+        for (const s of freshPayload.stores) freshByNum.set(String(s.storeNumber), s);
+    }
     const prevByNum = new Map();
     if (prevPayload && Array.isArray(prevPayload.stores)) {
         for (const s of prevPayload.stores) prevByNum.set(String(s.storeNumber), s);
     }
-    return (freshPayload.stores || []).map((fresh) => {
+    const allKeys = new Set([...prevByNum.keys(), ...freshByNum.keys()]);
+    return [...allKeys].map((key) => {
+        const fresh = freshByNum.get(key);
+        if (!fresh) return prevByNum.get(key);
         if (storeHasData(fresh) && !fresh.error) return fresh;
-        const prev = prevByNum.get(String(fresh.storeNumber));
+        const prev = prevByNum.get(key);
         if (storeHasData(prev)) {
             return {
                 ...prev,
@@ -644,8 +598,68 @@ function mergeStoresPreservingGood(prevPayload, freshPayload) {
                 retained: true,
             };
         }
-        return fresh; // no previous good data to fall back on
+        return fresh;
+    }).filter(Boolean);
+}
+
+function buildCacheShellFromStoreList() {
+    const stores = getStoreList().map((store) => {
+        const payload = emptyStorePayload(store.storeNumber, store.storeName);
+        payload.scrapePhase = getStoreScrapePhase(store);
+        return payload;
     });
+    return { success: true, timestamp: new Date().toISOString(), stores };
+}
+
+function applyScrapeScheduleToCache(cache, now = new Date()) {
+    if (!cache) return cache;
+    if (!Array.isArray(cache.stores)) cache.stores = [];
+
+    const listed = getStoreList();
+    const byNum = new Map(cache.stores.map((s) => [String(s.storeNumber), s]));
+
+    for (const store of listed) {
+        const key = String(store.storeNumber);
+        if (!byNum.has(key)) {
+            const entry = emptyStorePayload(store.storeNumber, store.storeName);
+            cache.stores.push(entry);
+            byNum.set(key, entry);
+        }
+    }
+
+    for (const store of cache.stores) {
+        const key = String(store.storeNumber);
+        const listedStore = listed.find((s) => s.storeNumber === key) || store;
+        const phase = getStoreScrapePhase(listedStore, now);
+        const prev = lastScrapePhaseByStore.get(key);
+
+        const hours = storeHours(key);
+        store.openHour = hours.openHour;
+        store.closeHour = hours.closeHour;
+
+        if (phase === 'idle') {
+            if (prev && prev !== 'idle') {
+                clearStoreScrapeCaches(key);
+            }
+            store.actual = [];
+            store.forecast = [];
+            store.pendingVendors = [];
+            delete store.error;
+            delete store.retained;
+            store.scrapePhase = 'idle';
+        } else if (phase === 'retain') {
+            store.scrapePhase = 'retain';
+        } else {
+            if (prev === 'idle') {
+                resetScheduledOrdersForNewDay(key);
+            }
+            store.scrapePhase = 'active';
+        }
+
+        lastScrapePhaseByStore.set(key, phase);
+    }
+
+    return cache;
 }
 
 /** Run a scrape and merge it into the cache (per-store retention). De-duped via salesInFlight. */
@@ -653,14 +667,35 @@ function runScrapeIntoCache(options) {
     if (salesInFlight) return salesInFlight;
     salesInFlight = (async () => {
         try {
+            applyScrapeScheduleToCache(salesCache);
+
+            if (!anyStoreInActiveScrapeWindow()) {
+                if (!salesCache) {
+                    salesCache = buildCacheShellFromStoreList();
+                    salesCacheAt = Date.now();
+                }
+                applyScrapeScheduleToCache(salesCache);
+                return salesCache;
+            }
+
+            if (isMmxResourceBusy()) {
+                console.log('[Dashboard] Sales scrape waiting — MMX stock count / orders in progress');
+                await waitUntilMmxResourceIdle();
+            }
+
             const result = await scrapeWithRetry(options);
             const fresh = {
                 success: true,
                 timestamp: result.timestamp,
                 stores: Array.isArray(result.stores) ? result.stores : [],
             };
-            salesCache = { success: true, timestamp: fresh.timestamp, stores: mergeStoresPreservingGood(salesCache, fresh) };
+            salesCache = {
+                success: true,
+                timestamp: fresh.timestamp,
+                stores: mergeStoresPreservingGood(salesCache, fresh),
+            };
             salesCacheAt = Date.now();
+            applyScrapeScheduleToCache(salesCache);
             logDashboardScrapeComplete(salesCache);
             return salesCache;
         } catch (error) {
@@ -675,15 +710,22 @@ function runScrapeIntoCache(options) {
 }
 
 async function getSalesDataCached() {
-    // Stale-while-revalidate: as long as we have *any* cached data, serve it instantly and
-    // refresh in the background when stale — the dashboard never waits through a scrape.
+    applyScrapeScheduleToCache(salesCache);
+
     if (salesCache) {
-        if (!isSalesCacheFresh() && !salesInFlight) {
-            runScrapeIntoCache(); // fire-and-forget
+        if (anyStoreInActiveScrapeWindow() && !isSalesCacheFresh() && !salesInFlight) {
+            runScrapeIntoCache();
         }
         return salesCache;
     }
-    // Cold start — nothing cached yet, so this first caller waits for the initial scrape.
+
+    if (!anyStoreInActiveScrapeWindow()) {
+        salesCache = buildCacheShellFromStoreList();
+        salesCacheAt = Date.now();
+        applyScrapeScheduleToCache(salesCache);
+        return salesCache;
+    }
+
     return runScrapeIntoCache();
 }
 
@@ -777,10 +819,6 @@ async function enrichSalesSliceWithStockCount(slice, options = {}) {
     }
     const completed = await getCompletedVendorLabelsForStore(storeNumber);
     slice.stockCountCompleted = completed;
-    if (Array.isArray(slice.pendingVendors)) {
-        const done = new Set(completed.map(String));
-        slice.pendingVendors = slice.pendingVendors.filter((v) => !done.has(String(v)));
-    }
     return slice;
 }
 
@@ -792,19 +830,28 @@ function stockCountVendorFromQuery(req) {
     return String(req.query.vendor || '').trim().toLowerCase();
 }
 
+function pendingVendorLabelsForStockCount(req, storeNumber) {
+    const dateKey = melbourneDateKey();
+    let labels = getLastKnownPendingVendors(storeNumber, dateKey);
+    if (wantsTestStockCountPending(req)) {
+        const configured = listConfiguredVendors().map((v) => v.label);
+        labels = [...new Set([...(Array.isArray(labels) ? labels : []), ...configured])].sort((a, b) =>
+            a.localeCompare(b)
+        );
+    }
+    return labels;
+}
+
 app.get('/welcome', (req, res) => {
     res.redirect('/login');
 });
 
 // Root path is the store picker — a grid of clickable store tiles (see public/stores.html).
 app.get('/', (req, res) => {
-    if (isNologinUser(req.dashboardUser)) {
-        sendForbidden(req, res, 'Use your direct store link to view this dashboard.');
-        return;
-    }
     const user = req.dashboardUser || getRequestUser(req);
-    if (user && !isAdminUser(user) && user.stores !== '*' && user.stores.length === 1) {
-        res.redirect(`/${user.stores[0]}`);
+    const dest = user ? getLoginRedirectPath(user) : '/';
+    if (user && dest !== '/' && dest !== '/login') {
+        res.redirect(dest);
         return;
     }
     res.sendFile(path.join(__dirname, '../public', 'stores.html'));
@@ -813,20 +860,12 @@ app.get('/', (req, res) => {
 // Per-store dashboard pages, e.g. /3811 or /teststore. The SPA reads the store from the path.
 // Static assets and /api/* are matched earlier, so this only catches a bare store segment.
 app.get(/^\/teststore\/?$/i, (req, res) => {
-    if (isNologinUser(req.dashboardUser) && !userCanAccessStore(req.dashboardUser, TEST_STORE_SLUG)) {
-        sendForbidden(req, res, 'Use your direct store link to view this dashboard.');
-        return;
-    }
     if (!assertStoreAccess(req, res, TEST_STORE_SLUG)) return;
     res.sendFile(path.join(__dirname, '../public', 'index.html'));
 });
 
 app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
     const storeNumber = (req.path.match(/^\/(\d{3,6})\/?$/) || [])[1];
-    if (isNologinUser(req.dashboardUser)) {
-        sendForbidden(req, res, 'Use your direct store link to view this dashboard.');
-        return;
-    }
     if (!assertStoreAccess(req, res, storeNumber)) return;
     res.sendFile(path.join(__dirname, '../public', 'index.html'));
 });
@@ -838,13 +877,6 @@ function sendStockCountPage(req, res, storeNumber) {
 
 app.get(/^\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)\/?$/i, (req, res) => {
     const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/stock-count\/[a-z0-9-]+\/?$/i) || [])[1]);
-    sendStockCountPage(req, res, storeNumber);
-});
-
-app.get(/^\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)\/nologin\/?$/i, (req, res) => {
-    const storeNumber = normalizeStoreKey(
-        (req.path.match(/^\/(teststore|\d{3,6})\/stock-count\/[a-z0-9-]+\/nologin\/?$/i) || [])[1]
-    );
     sendStockCountPage(req, res, storeNumber);
 });
 
@@ -938,7 +970,7 @@ app.put('/api/stock-count/draft', async (req, res) => {
         res.json(draft);
     } catch (error) {
         console.error('API: Error saving stock count draft:', error);
-        const status = /already submitted|Unknown location/i.test(error.message) ? 400 : 500;
+        const status = /already sent|Unknown location/i.test(error.message) ? 400 : 500;
         res.status(status).json({ success: false, error: error.message });
     }
 });
@@ -972,6 +1004,25 @@ app.get('/api/stock-count/completed', async (req, res) => {
     }
 });
 
+app.post('/api/stock-count/reset', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const vendorSlug = String(req.query.vendor || req.body?.vendor || '').trim() || null;
+        const dateKey = parseScheduledOrdersTestYmd(req.query.date || req.body?.date)?.ymd;
+        const result = await clearStockCountDay(store, { vendorSlug, dateKey });
+        const labels = result.cleared.map((slug) => getVendorCatalog(slug)?.label || slug);
+        console.log(
+            `[StockCount] Reset store ${result.storeNumber} date ${result.dateKey}` +
+                (labels.length ? `: ${labels.join(', ')}` : ' (nothing to clear)')
+        );
+        res.json({ success: true, ...result, vendorLabels: labels });
+    } catch (error) {
+        console.error('API: Error resetting stock count:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.post('/api/stock-count/test/reset', async (req, res) => {
     if (!canRunStockCountTest(req)) {
         res.status(404).json({ success: false, error: 'Stock count test helpers are disabled.' });
@@ -995,19 +1046,130 @@ app.post('/api/stock-count/test/reset', async (req, res) => {
     }
 });
 
+app.get('/api/stock-count/queue-status', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        const vendorSlug = stockCountVendorFromQuery(req);
+        if (!store) {
+            res.status(400).json({ success: false, error: 'Store is required.' });
+            return;
+        }
+        if (!vendorSlug) {
+            res.status(400).json({ success: false, error: 'Vendor is required.' });
+            return;
+        }
+        if (!assertStoreAccess(req, res, store)) return;
+        const status = await getStockCountQueueStatus(store, {
+            vendorSlug,
+            pendingVendorLabels: pendingVendorLabelsForStockCount(req, store),
+        });
+        res.json({ success: true, ...status });
+    } catch (error) {
+        console.error('API: Error reading stock count queue status:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/stock-count/reopen', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        const vendorSlug = stockCountVendorFromQuery(req);
+        if (!store || !vendorSlug || !assertStoreAccess(req, res, store)) return;
+        const draft = await reopenStockCount(store, vendorSlug);
+        if (!draft) {
+            res.status(404).json({ success: false, error: 'Vendor catalog not found.' });
+            return;
+        }
+        res.json(draft);
+    } catch (error) {
+        console.error('API: Error reopening stock count:', error);
+        const status = /already sent|No stock count draft/i.test(error.message) ? 400 : 500;
+        res.status(status).json({ success: false, error: error.message });
+    }
+});
+
 app.post('/api/stock-count/send-to-mmx', async (req, res) => {
     try {
         const store = stockCountStoreFromQuery(req);
         const vendorSlug = stockCountVendorFromQuery(req);
         if (!store || !assertStoreAccess(req, res, store)) return;
 
-        console.log(`[StockCount] Send to MMX — store ${store} vendor ${vendorSlug}`);
-        const result = await sendStockCountToMmx(store, vendorSlug);
+        console.log(`[StockCount] Send to MMX (prepare) — store ${store} vendor ${vendorSlug}`);
+        const result = await prepareStockCountForMmx(store, vendorSlug, {
+            pendingVendorLabels: pendingVendorLabelsForStockCount(req, store),
+        });
         res.json({ success: true, ...result });
     } catch (error) {
-        console.error('API: Error sending stock count to MMX:', error);
-        const status = /No stock count draft|already submitted|not found/i.test(error.message) ? 400 : 500;
+        console.error('API: Error preparing stock count for MMX:', error);
+        const status = /No stock count draft|Submit at least one|not found|ready to send|Continue button/i.test(
+            error.message
+        )
+            ? 400
+            : 500;
         res.status(status).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/stock-count/send-to-mmx/apply', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        const ordersOnly = /^(1|true|yes|on)$/i.test(String(req.body?.ordersOnly ?? req.query.ordersOnly ?? ''));
+        if (!store || !assertStoreAccess(req, res, store)) return;
+
+        if (ordersOnly) {
+            console.log(`[StockCount] Scheduled orders only — store ${store}`);
+            const skipReportDownload = !/^(0|false|no|off)$/i.test(
+                String(req.body?.skipReportDownload ?? req.query.skipReportDownload ?? 'true')
+            );
+            const result = await runScheduledOrdersOnly(store, { skipReportDownload });
+            res.json({ success: true, ...result });
+            return;
+        }
+
+        if (!sessionId) {
+            res.status(400).json({ success: false, error: 'sessionId is required.' });
+            return;
+        }
+
+        console.log(`[StockCount] Apply MMX count — store ${store} session ${sessionId}`);
+        const result = await applyStockCountSession(store, sessionId);
+        res.json({ success: true, ...result });
+    } catch (error) {
+        console.error('API: Error applying stock count in MMX:', error);
+        const status = /session expired|not found|Apply button|Missing reports/i.test(error.message) ? 400 : 500;
+        res.status(status).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/stock-count/fill-orders', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+
+        const skipReportDownload = !/^(0|false|no|off)$/i.test(
+            String(req.body?.skipReportDownload ?? req.query.skipReportDownload ?? 'true')
+        );
+        console.log(`[StockCount] Fill scheduled orders — store ${store}`);
+        const result = await runScheduledOrdersOnly(store, { skipReportDownload });
+        res.json({ success: true, ...result });
+    } catch (error) {
+        console.error('API: Error filling scheduled orders:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/stock-count/send-to-mmx/recount', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+
+        await cancelStockCountSession(store, sessionId || null);
+        res.json({ success: true, storeNumber: store });
+    } catch (error) {
+        console.error('API: Error cancelling MMX count session:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -1027,7 +1189,7 @@ app.post('/api/stock-count/submit', async (req, res) => {
         res.json({ success: true, ...summary, macromatixPending: true });
     } catch (error) {
         console.error('API: Error submitting stock count:', error);
-        const status = /No stock count draft|already submitted/i.test(error.message) ? 400 : 500;
+        const status = /No stock count draft|already sent|Enter at least one count/i.test(error.message) ? 400 : 500;
         res.status(status).json({ success: false, error: error.message });
     }
 });
@@ -1168,6 +1330,8 @@ function startBackgroundRefresh() {
     }
     const tick = async () => {
         try {
+            applyScrapeScheduleToCache(salesCache);
+            if (!anyStoreInActiveScrapeWindow()) return;
             await runScrapeIntoCache();
         } catch (error) {
             console.warn('[Dashboard] Background refresh failed:', error.message);
@@ -1189,9 +1353,6 @@ function startBackgroundRefresh() {
         console.log('[Auth] Legacy access-key mode (.Users not configured)');
     } else {
         console.log('[Auth] Open access (no login configured)');
-    }
-    if (authRequired() && NOLOGIN_LINKS_ENABLED) {
-        console.log('[Auth] Per-store nologin links enabled (/{store}/nologin)');
     }
 })();
 

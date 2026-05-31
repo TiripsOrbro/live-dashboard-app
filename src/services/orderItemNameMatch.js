@@ -1,0 +1,191 @@
+/** Match MMX order-form item names to ISE / catalog names (codes often differ). */
+
+const MIN_NAME_MATCH_SCORE = 25;
+
+function normalizeItemName(name) {
+    return String(name || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function extractProductSizeKey(name) {
+    const n = normalizeItemName(name);
+    const m = n.match(/(\d+(?:\.\d+)?)\s*(kg|g|l|ml|lb|oz|ltr|litres?|liters?)\b/);
+    return m ? `${m[1]}${m[2]}` : '';
+}
+
+function singularizeToken(token) {
+    const t = String(token || '');
+    if (t.endsWith('ies') && t.length > 4) return `${t.slice(0, -3)}y`;
+    if (t.endsWith('es') && t.length > 4) return t.slice(0, -2);
+    if (t.endsWith('s') && t.length > 3 && !t.endsWith('ss')) return t.slice(0, -1);
+    return t;
+}
+
+function tokensMatch(a, b) {
+    if (a === b) return true;
+    if (a.includes(b) || b.includes(a)) return true;
+    const sa = singularizeToken(a);
+    const sb = singularizeToken(b);
+    if (sa === sb) return true;
+    if (sa.length >= 4 && sb.length >= 4 && (sa.startsWith(sb) || sb.startsWith(sa))) return true;
+    return false;
+}
+
+function nameMatchScore(leftName, rightName) {
+    const left = normalizeItemName(leftName);
+    const right = normalizeItemName(rightName);
+    if (!left || !right) return 0;
+    if (left === right) return 100;
+
+    const leftSize = extractProductSizeKey(leftName);
+    const rightSize = extractProductSizeKey(rightName);
+    if (leftSize && rightSize && leftSize !== rightSize) return 0;
+
+    if (left.includes(right) || right.includes(left)) {
+        return leftSize && rightSize ? 95 : 80;
+    }
+
+    const leftTokens = left.split(/\s+/).filter((token) => token.length > 1);
+    const rightTokens = right.split(/\s+/).filter((token) => token.length > 1);
+    let score = 0;
+    for (const lt of leftTokens) {
+        for (const rt of rightTokens) {
+            if (tokensMatch(lt, rt)) score += lt === rt ? 20 : 10;
+        }
+    }
+    if (leftSize && rightSize && leftSize === rightSize) score += 40;
+
+    // Accept common spelling variant (Corriander / Coriander).
+    if (score === 0 && leftTokens.length && rightTokens.length) {
+        for (const lt of leftTokens) {
+            for (const rt of rightTokens) {
+                if (lt.length >= 5 && rt.length >= 5 && levenshtein(lt, rt) <= 1) score += 25;
+            }
+        }
+    }
+
+    if (score > 0 && score < 30 && leftTokens.length <= 2) {
+        score = Math.max(score, 30);
+    }
+
+    return score;
+}
+
+function levenshtein(a, b) {
+    const m = a.length;
+    const n = b.length;
+    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 0; i <= m; i++) dp[i][0] = i;
+    for (let j = 0; j <= n; j++) dp[0][j] = j;
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+        }
+    }
+    return dp[m][n];
+}
+
+function bestNameMatchScore(gridName, ...candidates) {
+    let best = 0;
+    for (const candidate of candidates) {
+        if (!candidate) continue;
+        best = Math.max(best, nameMatchScore(gridName, candidate));
+    }
+    return best;
+}
+
+function buildToLineMatchScore(catalogName, line) {
+    let score = nameMatchScore(catalogName, line.description);
+    const desc = String(line.description || '').toUpperCase();
+    if (desc.includes('FINISHED PRODUCT')) score -= 20;
+    if (/\bTB\b/.test(desc)) score -= 5;
+    return score;
+}
+
+/**
+ * ISE build-to lines that belong to a vendor catalog (matched by item name, not code).
+ * Each catalog item picks at most one ISE line; each ISE line used at most once.
+ */
+function buildBuildToEntriesForVendor(vendorCfg, buildToLines, catalogItems, itemMatchesVendorConfig) {
+    const entries = [];
+    const usedIse = new Set();
+
+    for (const item of catalogItems || []) {
+        if (vendorCfg && itemMatchesVendorConfig && !itemMatchesVendorConfig(item, vendorCfg)) continue;
+
+        let bestLine = null;
+        let bestScore = 0;
+        for (const line of buildToLines || []) {
+            const iseKey = String(line.itemCode || '').trim().toUpperCase();
+            if (usedIse.has(iseKey)) continue;
+            const score = buildToLineMatchScore(item.name, line);
+            if (score > bestScore) {
+                bestScore = score;
+                bestLine = line;
+            }
+        }
+        if (!bestLine || bestScore < MIN_NAME_MATCH_SCORE) continue;
+
+        usedIse.add(String(bestLine.itemCode || '').trim().toUpperCase());
+        entries.push({
+            catalogName: item.name,
+            description: bestLine.description || '',
+            orderQty: bestLine.orderQty,
+            iseItemCode: bestLine.itemCode,
+            matchScore: bestScore,
+        });
+    }
+
+    return entries;
+}
+
+/**
+ * Map build-to entries onto MMX order grid rows by name.
+ * When several grid rows match the same entry, fill the second row (index 1).
+ */
+function linesFromOrderGridByName(grid, buildToEntries) {
+    const usedInputIds = new Set();
+    const lines = [];
+
+    for (const entry of buildToEntries || []) {
+        if (entry.orderQty <= 0) continue;
+
+        const matches = (grid.rows || [])
+            .map((row, idx) => ({
+                row,
+                idx,
+                score: nameMatchScore(row.itemName || row.itemCode, entry.description),
+            }))
+            .filter((m) => m.score >= MIN_NAME_MATCH_SCORE && !usedInputIds.has(m.row.inputId))
+            .sort((a, b) => a.idx - b.idx);
+
+        if (!matches.length) continue;
+
+        const topScore = Math.max(...matches.map((m) => m.score));
+        const tied = matches.filter((m) => m.score >= topScore - 1);
+        const pick = tied.length >= 2 ? tied[1] : tied[0];
+
+        usedInputIds.add(pick.row.inputId);
+        lines.push({
+            itemCode: pick.row.itemCode,
+            itemName: pick.row.itemName || pick.row.itemCode,
+            quantity: entry.orderQty,
+            matchedFrom: entry.description || entry.catalogName,
+        });
+    }
+
+    return lines;
+}
+
+module.exports = {
+    MIN_NAME_MATCH_SCORE,
+    normalizeItemName,
+    nameMatchScore,
+    bestNameMatchScore,
+    buildBuildToEntriesForVendor,
+    linesFromOrderGridByName,
+};

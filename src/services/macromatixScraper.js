@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const puppeteer = require('puppeteer');
 const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./storeList');
+const { getStoreScrapePhase, formatScrapeWindow } = require('./scrapeSchedule');
 
 const BASE_URL = 'https://tacobellau.macromatix.net/';
 const LABOUR_URL = 'https://tacobellau.macromatix.net/MMS_Stores_LabourScheduler.aspx?MenuCustomItemID=249';
@@ -121,8 +122,57 @@ function recordScheduledOrdersResult(storeNumber, dateKey, vendors) {
     scheduledOrdersEmptyCheckByStore.set(key, { dateKey, count: nextCount });
 
     if (nextCount >= getConfirmedEmptyOrderChecks()) {
+        const alreadyComplete = scheduledOrdersCompleteByStore.get(key) === dateKey;
         scheduledOrdersCompleteByStore.set(key, dateKey);
+        if (!alreadyComplete) {
+            notifyStoreOrdersComplete(storeNumber, dateKey);
+        }
     }
+}
+
+function clearStoreOrderCaches(storeNumber, dateKey) {
+    const key = storeStateKey(storeNumber);
+    lastKnownPendingVendorsByStore.set(key, { dateKey, values: [] });
+    scheduledOrdersEmptyCheckByStore.delete(key);
+}
+
+function clearStoreScrapeCaches(storeNumber) {
+    const key = storeStateKey(storeNumber);
+    forecastCacheByStore.delete(key);
+    lastKnownPendingVendorsByStore.delete(key);
+    scheduledOrdersEmptyCheckByStore.delete(key);
+    scheduledOrdersCompleteByStore.delete(key);
+}
+
+function resetScheduledOrdersForNewDay(storeNumber) {
+    const key = storeStateKey(storeNumber);
+    scheduledOrdersCompleteByStore.delete(key);
+    scheduledOrdersEmptyCheckByStore.delete(key);
+    lastKnownPendingVendorsByStore.delete(key);
+}
+
+let storeOrdersCompleteListener = null;
+
+function onStoreOrdersComplete(listener) {
+    storeOrdersCompleteListener = typeof listener === 'function' ? listener : null;
+}
+
+function notifyStoreOrdersComplete(storeNumber, dateKey) {
+    clearStoreOrderCaches(storeNumber, dateKey);
+    const { runStoreOrdersCompleteCleanup } = require('./storeOrdersCompleteCleanup');
+    runStoreOrdersCompleteCleanup(storeNumber, dateKey)
+        .then((summary) => {
+            if (storeOrdersCompleteListener) {
+                try {
+                    storeOrdersCompleteListener(storeNumber, dateKey, summary);
+                } catch (err) {
+                    console.warn('[Macromatix] storeOrdersComplete listener failed:', err.message);
+                }
+            }
+        })
+        .catch((err) => {
+            console.warn(`[Macromatix] Store ${storeNumber} orders-complete cleanup failed:`, err.message);
+        });
 }
 
 async function closeBrowserQuietly(browser, label) {
@@ -736,6 +786,18 @@ async function enumerateStores(page) {
 }
 
 /**
+ * ASP.NET postback after RadCombo store change — wait before the next page.evaluate.
+ */
+async function waitForStoreSelectionPostback(page) {
+    await Promise.race([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 12000 }).catch(() => {}),
+        page.waitForTimeout(2500),
+    ]);
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(300);
+}
+
+/**
  * Select a store by number on the current page. Drives the RadComboBox (open + click the matching item,
  * which fires the ASP.NET postback), with a client-API path and a native `<select>` fallback.
  * Returns the selected option text, or null if nothing matched.
@@ -770,7 +832,10 @@ async function selectStoreOnPage(page, storeNumber) {
             },
             { id: comboId, w: want }
         );
-        if (clicked) return clicked;
+        if (clicked) {
+            await waitForStoreSelectionPostback(page);
+            return clicked;
+        }
 
         const viaApi = await page.evaluate(
             ({ id, w }) => {
@@ -790,10 +855,13 @@ async function selectStoreOnPage(page, storeNumber) {
             },
             { id: comboId, w: want }
         );
-        if (viaApi) return viaApi;
+        if (viaApi) {
+            await waitForStoreSelectionPostback(page);
+            return viaApi;
+        }
     }
 
-    return page.evaluate((w) => {
+    const fromSelect = await page.evaluate((w) => {
         const re = new RegExp(`(^|\\D)${w}(\\D|$)`);
         for (const sel of document.querySelectorAll('select')) {
             const ctx = ((sel.closest('tr, td, div, table') || sel).innerText || '').toLowerCase();
@@ -801,16 +869,21 @@ async function selectStoreOnPage(page, storeNumber) {
             if (!ctx.includes('store') && !looks) continue;
             for (const opt of sel.options) {
                 if (re.test((opt.textContent || '').trim())) {
-                    if (sel.value !== opt.value) {
+                    const changed = sel.value !== opt.value;
+                    if (changed) {
                         sel.value = opt.value;
                         sel.dispatchEvent(new Event('change', { bubbles: true }));
                     }
-                    return (opt.textContent || '').trim();
+                    return { text: (opt.textContent || '').trim(), changed };
                 }
             }
         }
         return null;
     }, want);
+    if (fromSelect?.changed) {
+        await waitForStoreSelectionPostback(page);
+    }
+    return fromSelect?.text || null;
 }
 
 /** Day view tab on the labour scheduler (re-clicked after each store change because the grid reloads). */
@@ -1285,6 +1358,31 @@ async function scrapeMacromatix(options = {}) {
         throw new Error(`Macromatix scraper credentials are not configured. ${hint}`);
     }
 
+    const respectScrapeSchedule = !testScheduledOrdersPick && !options.bypassScrapeSchedule;
+    let prelistedStores = getStoreList();
+    if (onlyStore && prelistedStores.length) {
+        const match = prelistedStores.find((s) => s.storeNumber === onlyStore);
+        prelistedStores = [match || getStoreConfig(onlyStore) || { storeNumber: onlyStore, storeName: '' }];
+    }
+    if (respectScrapeSchedule && prelistedStores.length) {
+        const activeStores = prelistedStores.filter((s) => getStoreScrapePhase(s) === 'active');
+        const skipped = prelistedStores.filter((s) => getStoreScrapePhase(s) !== 'active');
+        for (const s of skipped) {
+            console.log(
+                `[Macromatix] Store ${s.storeNumber} outside scrape window (${getStoreScrapePhase(s)}) — ${formatScrapeWindow(s)}`
+            );
+        }
+        if (!activeStores.length) {
+            console.log('[Macromatix] No stores in active scrape window — skipping browser session');
+            return {
+                success: true,
+                timestamp: new Date().toISOString(),
+                stores: [],
+                scrapeSkipped: true,
+            };
+        }
+    }
+
     let browser;
     try {
         const launchOpts = getPuppeteerLaunchOptions();
@@ -1330,6 +1428,35 @@ async function scrapeMacromatix(options = {}) {
             const match = stores.find((s) => s.storeNumber === onlyStore);
             stores = [match || getStoreConfig(onlyStore) || { storeNumber: onlyStore, storeName: '' }];
             console.log(`[Macromatix] Restricting scrape to store ${onlyStore}`);
+        }
+
+        if (respectScrapeSchedule) {
+            const activeStores = stores.filter((s) => getStoreScrapePhase(s) === 'active');
+            const skipped = stores.filter((s) => getStoreScrapePhase(s) !== 'active');
+            if (skipped.length) {
+                for (const s of skipped) {
+                    const phase = getStoreScrapePhase(s);
+                    console.log(
+                        `[Macromatix] Store ${s.storeNumber} outside scrape window (${phase}) — ${formatScrapeWindow(s)}`
+                    );
+                }
+            }
+            if (!activeStores.length) {
+                console.log('[Macromatix] No stores in active scrape window — skipping remaining scrape');
+                await closeBrowserQuietly(browser, 'schedule idle');
+                browser = null;
+                return {
+                    success: true,
+                    timestamp: new Date().toISOString(),
+                    stores: [],
+                    scrapeSkipped: true,
+                };
+            }
+            stores = activeStores;
+            console.log(
+                `[Macromatix] Scraping ${stores.length} store(s) in active window:`,
+                stores.map((s) => s.storeNumber).join(', ')
+            );
         }
 
         const ctx = { todayKey, testScheduledOrdersPick, pickYmd, skipScheduledPersistence };
@@ -1471,3 +1598,8 @@ module.exports.openMacromatixBrowser = openMacromatixBrowser;
 module.exports.closeBrowserQuietly = closeBrowserQuietly;
 module.exports.probePendingOrdersForStores = probePendingOrdersForStores;
 module.exports.selectStoreOnPage = selectStoreOnPage;
+module.exports.getLastKnownPendingVendors = getLastKnownPendingVendors;
+module.exports.onStoreOrdersComplete = onStoreOrdersComplete;
+module.exports.isScheduledOrdersCompleteToday = isScheduledOrdersCompleteToday;
+module.exports.clearStoreScrapeCaches = clearStoreScrapeCaches;
+module.exports.resetScheduledOrdersForNewDay = resetScheduledOrdersForNewDay;

@@ -92,7 +92,7 @@ function parseStockOnHand(filePath, storeNumber) {
     return items;
 }
 
-/** SCM Items On Order (Flat) — sum outstanding qty (col 13) per item for store. */
+/** SCM Items On Order (Flat) — sum qty in column L (index 11) per item for store. */
 function parseStockOnOrder(filePath, storeNumber) {
     const { grid } = loadGrid(filePath);
     const want = String(storeNumber || '').trim();
@@ -102,11 +102,14 @@ function parseStockOnOrder(filePath, storeNumber) {
         if (!row || String(row[2] || '').trim() !== want) continue;
         const itemCode = normalizeItemCode(row[7]);
         if (!itemCode) continue;
-        const qty = num(row[13]) || num(row[11]);
+
+        const qty = num(row[11]);
+
         const existing = items.get(itemCode) || {
             itemCode,
             description: String(row[8] || '').trim(),
             unit: String(row[9] || '').trim(),
+            vendor: String(row[4] || '').trim(),
             quantity: 0,
         };
         existing.quantity += qty;
@@ -159,6 +162,11 @@ function onHandToCartons(onHandRow, iseUnit, isePackSize) {
     }
 
     return qty;
+}
+
+/** Convert on-order report qty to cartons (same unit rules as on-hand). */
+function onOrderToCartons(onOrderRow, iseUnit, isePackSize) {
+    return onHandToCartons(onOrderRow, iseUnit, isePackSize);
 }
 
 /** SCM flat exports often include every store — keep only rows for the target store (col 2 = store #). */
@@ -236,6 +244,7 @@ module.exports = {
     findLatestReportFile,
     resolveStoreReports,
     onHandToCartons,
+    onOrderToCartons,
     filterSpreadsheetByStoreColumn,
     splitSpreadsheetByStoreColumn,
 };

@@ -5,16 +5,23 @@ const {
     parseStockOnOrder,
     resolveStoreReports,
     onHandToCartons,
+    onOrderToCartons,
     packSizeFromUnit,
     normalizeItemCode,
 } = require('./reportReader');
 const { listConfiguredVendors, getVendorCatalog, aggregateCounts } = require('./vendorCatalog');
 const { getSummary, melbourneDateKey } = require('./stockCountState');
+const { lookupKeysForMmx, mmxCodeForOrderCode } = require('./itemCodes');
 
 const REPORTS_DIR = path.join(__dirname, '..', '..', 'Reports');
 
 const DEFAULT_BUILD_TO_DAYS = 10;
 const EXTENDED_BUILD_TO_DAYS = 13;
+const SALAD_BUILD_TO_DAYS = 7;
+
+/** Cut fresh / short shelf-life — 7-day build-to (lettuce, tomato, onion, herbs, pico). */
+const SALAD_NAME_RE =
+    /\blettuce\b|\btomato\b|\bonion\b|\bcorriander\b|\bcoriander\b|\bpico de gallo\b|\bsalad\b/i;
 
 /** Beef, tortillas, flatbread, nacho chips, tostadas, fries — 13-day build-to. */
 const BUILD_TO_13_DAY_ITEM_CODES = new Set(
@@ -30,14 +37,19 @@ const BUILD_TO_13_DAY_ITEM_CODES = new Set(
     ].map(normalizeItemCode)
 );
 
-function buildToDaysForItem(itemCode) {
+function isSaladItem(description) {
+    return SALAD_NAME_RE.test(String(description || ''));
+}
+
+function buildToDaysForItem(itemCode, description) {
+    if (isSaladItem(description)) return SALAD_BUILD_TO_DAYS;
     return BUILD_TO_13_DAY_ITEM_CODES.has(normalizeItemCode(itemCode))
         ? EXTENDED_BUILD_TO_DAYS
         : DEFAULT_BUILD_TO_DAYS;
 }
 
-function buildToTarget(avgDaily, itemCode) {
-    return num(avgDaily) * buildToDaysForItem(itemCode);
+function buildToTarget(avgDaily, itemCode, description) {
+    return num(avgDaily) * buildToDaysForItem(itemCode, description);
 }
 
 function parseWeightFromLabel(label) {
@@ -78,6 +90,14 @@ function manualCountToCartons(aggregatedItem, catalogItem, isePackSize) {
         if (val <= 0) continue;
         const label = String(col.label || '').toLowerCase();
         if (label.includes('carton')) continue;
+        if (label.includes('box')) {
+            cartons += val;
+            continue;
+        }
+        if (label.includes('tub') || label.includes('bottle') || label.includes('can')) {
+            cartons += val;
+            continue;
+        }
         if (label.includes('kg')) {
             cartons += isePackSize > 0 ? val / isePackSize : 0;
             continue;
@@ -120,13 +140,18 @@ async function loadManualCountsForStore(storeNumber, dateKey = melbourneDateKey(
             if (!hasCount) continue;
             const catalogItem = catalog.items.find((i) => normalizeItemCode(i.itemCode) === code);
             if (!catalogItem) continue;
-            manual.set(code, {
+            const entry = {
                 itemCode: code,
                 itemName: item.itemName,
                 vendorSlug: slug,
                 columns: { ...item.columns },
                 catalogItem,
-            });
+            };
+            manual.set(code, entry);
+            const mmxCode = mmxCodeForOrderCode(code);
+            if (mmxCode && mmxCode !== code) {
+                manual.set(mmxCode, { ...entry, itemCode: mmxCode });
+            }
         }
     }
 
@@ -136,9 +161,20 @@ async function loadManualCountsForStore(storeNumber, dateKey = melbourneDateKey(
 /**
  * Build-to order lines for a store.
  * orderQty = ceil(max(0, buildTo - onHandCartons - onOrderCartons))
- * buildTo = 7-day avg daily usage × 10 days (or × 13 for beef, tortillas, flatbread, nacho chips, tostadas, fries).
- * Manual counts replace report on-hand for configured vendor catalog item codes.
+ * On-hand comes from the Stock On Hand report (refreshed after stock count apply).
  */
+function resolveOnOrderCartons(onOrderReport, itemCode, iseUnit, isePack) {
+    let total = 0;
+    let sampleRow = null;
+    for (const key of lookupKeysForMmx(itemCode)) {
+        const row = onOrderReport.get(normalizeItemCode(key));
+        if (!row) continue;
+        total += onOrderToCartons(row, iseUnit, isePack);
+        sampleRow = sampleRow || row;
+    }
+    return { onOrderCartons: total, onOrderRow: sampleRow };
+}
+
 async function calculateBuildToOrders(storeNumber, options = {}) {
     const reportsRoot = options.reportsDir || REPORTS_DIR;
     const dateKey = options.dateKey || melbourneDateKey();
@@ -157,36 +193,26 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         : new Map();
 
     const countedCodes = allCountedItemCodes();
-    const manualCounts = await loadManualCountsForStore(storeNumber, dateKey);
 
     const lines = [];
 
     for (const [itemCode, ise] of usage.entries()) {
-        const onOrder = onOrderReport.get(itemCode);
         const onHandRow = onHandReport.get(itemCode);
         const isePack = ise.packSize || packSizeFromUnit(ise.unit);
 
-        let onHandCartons;
-        let onHandSource;
+        let onHandCartons = onHandToCartons(onHandRow, ise.unit, isePack);
+        const onHandSource = onHandRow ? 'report' : 'missing';
 
-        if (manualCounts.has(itemCode)) {
-            const manual = manualCounts.get(itemCode);
-            onHandCartons = manualCountToCartons(manual, manual.catalogItem, isePack);
-            onHandSource = 'manual-count';
-        } else {
-            onHandCartons = onHandToCartons(onHandRow, ise.unit, isePack);
-            onHandSource = 'report';
-        }
-
-        const onOrderCartons = onOrder ? onOrder.quantity : 0;
-        const buildToDays = buildToDaysForItem(itemCode);
-        const buildTo = buildToTarget(ise.avgDaily, itemCode);
+        const { onOrderCartons, onOrderRow } = resolveOnOrderCartons(onOrderReport, itemCode, ise.unit, isePack);
+        const description = ise.description || onHandRow?.description || onOrderRow?.description || '';
+        const buildToDays = buildToDaysForItem(itemCode, description);
+        const buildTo = buildToTarget(ise.avgDaily, itemCode, description);
         const rawOrder = buildTo - onHandCartons - onOrderCartons;
         const orderQty = ceilOrderQty(rawOrder);
 
         lines.push({
             itemCode,
-            description: ise.description || onHandRow?.description || onOrder?.description || '',
+            description: ise.description || onHandRow?.description || onOrderRow?.description || '',
             unit: ise.unit,
             avgDaily: round4(ise.avgDaily),
             buildToDays,
@@ -195,7 +221,7 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
             onHandSource,
             onOrderCartons: round4(onOrderCartons),
             orderQty,
-            manualColumns: manualCounts.get(itemCode)?.columns || null,
+            manualColumns: null,
         });
     }
 
@@ -209,9 +235,14 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         dateKey,
         files,
         countedItemCodes: [...countedCodes],
-        manualCountItems: manualCounts.size,
+        manualCountItems: 0,
         lines,
         orderLines: lines.filter((l) => l.orderQty > 0),
+        reportFiles: {
+            inventorySpecialEvent: files.inventorySpecialEvent,
+            stockOnHand: files.stockOnHand,
+            stockOnOrder: files.stockOnOrder || null,
+        },
     };
 }
 
@@ -237,5 +268,7 @@ module.exports = {
     BUILD_TO_13_DAY_ITEM_CODES,
     DEFAULT_BUILD_TO_DAYS,
     EXTENDED_BUILD_TO_DAYS,
+    SALAD_BUILD_TO_DAYS,
+    isSaladItem,
     REPORTS_DIR,
 };

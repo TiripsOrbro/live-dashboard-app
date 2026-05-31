@@ -74,15 +74,26 @@ function showUserGreeting(me) {
     greetingEl.hidden = false;
 }
 
+function storePathFromProfile(me) {
+    const fromApi = String(me?.defaultPath || '').trim();
+    if (fromApi && fromApi !== '/') return fromApi;
+    const name = String(me?.username || '').trim();
+    const cbMatch = name.match(/^CB(\d{3,6})$/i);
+    if (cbMatch) return `/${cbMatch[1]}`;
+    if (/^\d{3,6}$/.test(name)) return `/${name}`;
+    return '';
+}
+
 async function loadStores() {
     try {
         const meRes = await fetch(`${window.location.origin}/api/me`, { credentials: 'include' });
         if (meRes.ok) {
             const me = await meRes.json();
             showUserGreeting(me);
-            if (me.success && me.skipStorePicker && me.defaultPath) {
+            const dest = storePathFromProfile(me);
+            if (me.success && dest) {
                 markLandscapePreference();
-                window.location.replace(me.defaultPath);
+                window.location.replace(dest);
                 return;
             }
         }

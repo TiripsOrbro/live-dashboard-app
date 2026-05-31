@@ -12,6 +12,15 @@ const DEFAULT_URL = 'https://tacobellau.macromatix.net/mms_stores_scheduledorder
 
 const POST_DATE_SETTLE_MS = Number(process.env.MMX_POST_DATE_SETTLE_MS || 1200);
 const SCHEDULED_TABLE_WAIT_MS = Number(process.env.MMX_SCHEDULED_TABLE_WAIT_MS || 12000);
+const STORE_SELECT_SETTLE_MS = Number(process.env.MMX_STORE_SELECT_SETTLE_MS || 2500);
+
+async function waitForAspNetSettle(page, settleMs = STORE_SELECT_SETTLE_MS) {
+    await Promise.race([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 12000 }).catch(() => {}),
+        page.waitForTimeout(settleMs),
+    ]);
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 15000 }).catch(() => {});
+}
 
 function pageHasScheduledOrderRows() {
     const t = (document.body?.innerText || '').toLowerCase();
@@ -34,18 +43,20 @@ async function waitForScheduledOrdersTable(page, timeoutMs = SCHEDULED_TABLE_WAI
 
 async function isListDateAlready(page, display) {
     const want = String(display || '').trim().toLowerCase();
-    return page.evaluate((target) => {
-        const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
-        for (const input of document.querySelectorAll('input[type="text"], input:not([type])')) {
-            const ctx = ((input.closest('tr, td, div, table') || input.parentElement)?.innerText || '').toLowerCase();
-            if (!ctx.includes('date') || ctx.includes('delivery') || ctx.includes('end date')) continue;
-            const v = norm(input.value);
-            if (v.includes(target) || v.replace(/-/g, ' ').includes(target.replace(/-/g, ' '))) {
-                return true;
+    return withPageContextRetry(page, 'scheduled orders list date check', async () =>
+        page.evaluate((target) => {
+            const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            for (const input of document.querySelectorAll('input[type="text"], input:not([type])')) {
+                const ctx = ((input.closest('tr, td, div, table') || input.parentElement)?.innerText || '').toLowerCase();
+                if (!ctx.includes('date') || ctx.includes('delivery') || ctx.includes('end date')) continue;
+                const v = norm(input.value);
+                if (v.includes(target) || v.replace(/-/g, ' ').includes(target.replace(/-/g, ' '))) {
+                    return true;
+                }
             }
-        }
-        return false;
-    }, want);
+            return false;
+        }, want)
+    );
 }
 
 async function waitAfterListDateChange(page) {
@@ -60,15 +71,17 @@ async function waitAfterListDateChange(page) {
 async function setScheduledOrdersListDate(page, dateSpec) {
     const display = resolveReportDate(dateSpec || 'daysFromNow:1', { dateOnly: true });
 
-    if (await isListDateAlready(page, display)) {
-        log.info(`List date already ${display} — skipping date change`);
-        await waitForScheduledOrdersTable(page, 6000);
-        return;
-    }
+    await withPageContextRetry(page, 'scheduled orders list date', async () => {
+        if (await isListDateAlready(page, display)) {
+            log.info(`List date already ${display} — skipping date change`);
+            await waitForScheduledOrdersTable(page, 6000);
+            return;
+        }
 
-    log.info(`Setting scheduled orders date → ${display}`);
-    await setReportListDate(page, display);
-    await waitAfterListDateChange(page);
+        log.info(`Setting scheduled orders date → ${display}`);
+        await setReportListDate(page, display);
+        await waitAfterListDateChange(page);
+    });
 }
 
 function getScheduledOrdersDateSpec(vendorOrdersCfg) {
@@ -101,6 +114,7 @@ async function openScheduledOrders(page, url, navTimeoutMs, vendorOrdersCfg, sto
             waitMs: 500,
         });
     }
+    await waitForAspNetSettle(page);
     await applyScheduledOrdersListDate(page, vendorOrdersCfg);
     await waitForScheduledOrdersReady(page);
 }
@@ -267,6 +281,7 @@ async function returnToScheduledOrders(page, vendorOrdersCfg, navTimeoutMs, stor
             waitMs: 300,
         });
     }
+    await waitForAspNetSettle(page);
     await applyScheduledOrdersListDate(page, vendorOrdersCfg);
     await waitForScheduledOrdersReady(page);
 }

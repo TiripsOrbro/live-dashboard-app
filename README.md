@@ -236,11 +236,11 @@ Format (pipe-delimited):
 
 ```
 # vendor: Americold
-# location-order: Freezer | Fridge | Dry | Carryover | In Use
+# location-order: Freezer | Fridge | Carryover | In Use
 # locations: Freezer
 
 Beef | Boxes | Bags | KGs | Freezer
-10005242 | Sparkling Water 500ml | Packs | N/a | Bottles | Dry
+10005242 | Sparkling Water 500ml | Packs | N/a | Bottles | Soft Drinks
 8418 | Sour Cream 2kg | Tubs | N/a | KGs | Fridge
 7769 | Dare Iced Coffee | N/a | N/a | Bottles | Fridge | In Use
 ```
@@ -250,7 +250,12 @@ Beef | Boxes | Bags | KGs | Freezer
 - `# location-order:` controls tab order in the stock-count UI (only locations used by items appear).
 - `# locations:` is the default when an item line omits trailing locations.
 
-When a vendor appears under **Orders to place**, clicking it opens `/{store}/stock-count/{slug}` (e.g. `/3811/stock-count/americold`) instead of dismissing. Counts are saved per store/vendor/day in `data/stock-count-state.json`. Submit marks the vendor complete for the day; Macromatix entry automation is stubbed until the flow is defined.
+When a vendor appears under **Orders to place**, clicking it opens `/{store}/stock-count/{slug}` (e.g. `/3811/stock-count/americold`) instead of dismissing. Counts are saved per store/vendor/day in `data/stock-count-state.json`. **Send to MMX** fills Macromatix Key Item Count using `config/mmx-stock-count.json`:
+
+- **Tabs:** FREEZER, CARRY OVER, FRIDGE, ON FLOOR - IN USE - THAW, DRY, SOFT DRINKS, COUNT AS 0 (dashboard locations map via `locationTabMap`).
+- **Columns:** vendor unit columns map positionally to MMX Closing Box, Closing Inner, and Closing Unit (`N/a` skips a column).
+
+Vendor dotfile locations must match dashboard names (`Freezer`, `Fridge`, `Carryover`, `In Use`, `Dry`, `Soft Drinks`, etc.).
 
 ### 4. Start under PM2
 

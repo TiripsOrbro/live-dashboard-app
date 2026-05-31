@@ -3,10 +3,9 @@
 ----------------------------------------------------------- */
 const app = document.getElementById('app');
 
-/** Store id from the URL path (e.g. /3811, /teststore, or /3811/nologin). Empty on `/` → server uses the default store. */
-const NOLOGIN_MODE = /\/(teststore|\d{3,6})\/nologin\/?$/i.test(window.location.pathname);
+/** Store id from the URL path (e.g. /3811 or /teststore). Empty on `/` → server uses the default store. */
 const STORE_NUMBER =
-    (window.location.pathname.match(/\/(teststore|\d{3,6})(?:\/nologin)?\/?$/i) || [])[1]?.toLowerCase() || '';
+    (window.location.pathname.match(/\/(teststore|\d{3,6})\/?$/i) || [])[1]?.toLowerCase() || '';
 const STORE_QUERY = STORE_NUMBER ? `?store=${encodeURIComponent(STORE_NUMBER)}` : '';
 
 function withStore(url) {
@@ -144,7 +143,6 @@ function vendorHasStockCount(label) {
 function stockCountPathForVendor(label) {
     const entry = stockCountVendors.find((v) => v.label === label);
     if (!entry || !STORE_NUMBER) return null;
-    if (NOLOGIN_MODE) return `/${STORE_NUMBER}/stock-count/${entry.slug}/nologin`;
     return `/${STORE_NUMBER}/stock-count/${entry.slug}`;
 }
 
@@ -1399,21 +1397,19 @@ function buildLoadingPortraitMealRows() {
                 <div class="portrait-summary-item-label">Dinner</div>
                 <div class="grid-cell grid-cell--placeholder portrait-summary-item-values"></div>
             </div>
-            <div class="portrait-summary-item portrait-summary-item--day">
-                <div class="portrait-summary-item-label">Day total</div>
+            <div class="portrait-summary-item">
+                <div class="portrait-summary-item-label">Day Total</div>
                 <div class="grid-cell grid-cell--placeholder portrait-summary-item-values"></div>
             </div>
-            <div class="portrait-summary-caption">Actual / Forecast</div>
         </div>
     `;
 }
 
 function buildLoadingPortraitGridContent() {
     return `
+        ${buildLoadingPortraitMealRows()}
         ${buildPortraitHeaderRow()}
         ${buildLoadingPortraitHourRows()}
-        ${buildLoadingPortraitMealRows()}
-        ${buildGridFooterRow()}
     `;
 }
 
@@ -1666,6 +1662,94 @@ function isPortraitMobileView() {
     return window.matchMedia('(max-width: 900px) and (orientation: portrait)').matches;
 }
 
+/** Portrait phone tab: dashboard | audits | orders */
+let portraitTab = 'dashboard';
+
+function buildPortraitTabsHtml() {
+    const tabs = [
+        { id: 'dashboard', label: 'Dashboard' },
+        { id: 'audits', label: 'Audits' },
+        { id: 'orders', label: 'Orders' },
+    ];
+    return `
+        <nav class="dashboard-portrait-tabs" role="tablist" aria-label="Dashboard sections">
+            ${tabs
+                .map((tab) => {
+                    const active = portraitTab === tab.id;
+                    return `<button type="button" class="dashboard-portrait-tab${active ? ' dashboard-portrait-tab--active' : ''}"
+                        role="tab" id="portrait-tab-${tab.id}" data-portrait-tab="${tab.id}"
+                        aria-selected="${active ? 'true' : 'false'}" aria-controls="portrait-panel-${tab.id}">
+                        ${tab.label}
+                    </button>`;
+                })
+                .join('')}
+        </nav>
+    `;
+}
+
+function applyPortraitTabVisibility() {
+    const portrait = isPortraitMobileView();
+    const grid = document.querySelector('.dashboard-grid');
+    const auditsPanel = document.getElementById('portrait-panel-audits');
+    const ordersPanel = document.getElementById('portrait-panel-orders');
+    const header = document.querySelector('.dashboard-header');
+    const chrome = document.querySelector('.dashboard-portrait-chrome');
+
+    if (!portrait) {
+        document.body.removeAttribute('data-portrait-tab');
+        chrome?.setAttribute('hidden', '');
+        header?.removeAttribute('hidden');
+        grid?.removeAttribute('hidden');
+        auditsPanel?.setAttribute('hidden', '');
+        ordersPanel?.setAttribute('hidden', '');
+        return;
+    }
+
+    document.body.setAttribute('data-portrait-tab', portraitTab);
+    chrome?.removeAttribute('hidden');
+
+    document.querySelectorAll('.dashboard-portrait-tab').forEach((btn) => {
+        const active = btn.getAttribute('data-portrait-tab') === portraitTab;
+        btn.classList.toggle('dashboard-portrait-tab--active', active);
+        btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+
+    if (grid) grid.hidden = portraitTab !== 'dashboard';
+    if (auditsPanel) auditsPanel.hidden = portraitTab !== 'audits';
+    if (ordersPanel) ordersPanel.hidden = portraitTab !== 'orders';
+    if (header) header.hidden = portraitTab !== 'dashboard';
+}
+
+function bindPortraitTabsOnce() {
+    if (bindPortraitTabsOnce._bound) return;
+    bindPortraitTabsOnce._bound = true;
+    app.addEventListener('click', (event) => {
+        const btn = event.target.closest('[data-portrait-tab]');
+        if (!btn || !isPortraitMobileView()) return;
+        const next = btn.getAttribute('data-portrait-tab');
+        if (!next || next === portraitTab) return;
+        portraitTab = next;
+        applyPortraitTabVisibility();
+    });
+}
+
+function updatePortraitAuditsEmptyState(visibleCount) {
+    const emptyEl = document.getElementById('portrait-audits-empty');
+    const listWrap = document.querySelector('#portrait-panel-audits .portrait-tab-aside');
+    if (!emptyEl || !listWrap) return;
+    const empty = visibleCount === 0;
+    emptyEl.hidden = !empty;
+    listWrap.hidden = empty;
+}
+
+function updatePortraitOrdersEmptyState(hasContent) {
+    const emptyEl = document.getElementById('portrait-orders-empty');
+    const listWrap = document.querySelector('#portrait-panel-orders .portrait-tab-aside');
+    if (!emptyEl || !listWrap) return;
+    emptyEl.hidden = hasContent;
+    listWrap.hidden = !hasContent;
+}
+
 function portraitCellClass(html, extra = '') {
     const add = extra ? ` portrait-data-cell ${extra}` : ' portrait-data-cell';
     return html.replace(/class="grid-cell([^"]*)"/, `class="grid-cell${add}$1"`);
@@ -1771,8 +1855,7 @@ function buildPortraitMealRows(forecasts, actuals) {
         <div class="portrait-summary-box" role="region" aria-label="Lunch, dinner and day totals">
             ${buildPortraitSummaryItem('Lunch', lunchActual, lunchForecast, lunchPres)}
             ${buildPortraitSummaryItem('Dinner', dinnerActual, dinnerForecast, dinnerPres)}
-            ${buildPortraitSummaryItem('Day total', dayActual, dayForecast, dayPres, 'portrait-summary-item--day')}
-            <div class="portrait-summary-caption">Actual / Forecast</div>
+            ${buildPortraitSummaryItem('Day Total', dayActual, dayForecast, dayPres)}
         </div>
     `;
 }
@@ -1781,10 +1864,9 @@ function buildPortraitGridContent() {
     const forecasts = gridForecastValues();
     const actuals = gridActualValues();
     return `
+        ${buildPortraitMealRows(forecasts, actuals)}
         ${buildPortraitHeaderRow()}
         ${buildPortraitHourRows()}
-        ${buildPortraitMealRows(forecasts, actuals)}
-        ${buildGridFooterRow()}
     `;
 }
 
@@ -1803,7 +1885,14 @@ function syncDashboardLayoutMode() {
 function onDashboardLayoutChange() {
     applyDashboardScale();
     updateRotateHint();
+    const wasPortrait = lastPortraitLayout === true;
     const portrait = syncDashboardLayoutMode();
+    if (portrait && !wasPortrait) {
+        portraitTab = 'dashboard';
+    }
+    if (!portrait) {
+        applyPortraitTabVisibility();
+    }
     if (portrait === lastPortraitLayout) return;
     lastPortraitLayout = portrait;
     const grid = document.querySelector('.dashboard-grid');
@@ -1813,6 +1902,7 @@ function onDashboardLayoutChange() {
     } else {
         showGridSkeleton();
     }
+    applyPortraitTabVisibility();
 }
 
 /* -----------------------------------------------------------
@@ -1827,36 +1917,30 @@ function escapeHtml(text) {
 }
 
 function updateAuditsPanel() {
-    const el = document.getElementById('audits-list-panel');
-    if (!el) return;
-
     const visible = getVisibleAudits();
-    if (!visible.length) {
-        el.innerHTML = '';
-        return;
-    }
+    const html = visible.length
+        ? visible
+              .map(
+                  (name) =>
+                      `<div class="audit-item"><button type="button" class="audit-chip" data-audit="${encodeURIComponent(
+                          name
+                      )}" aria-label="Mark ${escapeHtml(name)} as done">${escapeHtml(name)}</button></div>`
+              )
+              .join('')
+        : '';
 
-    el.innerHTML = visible
-        .map(
-            (name) =>
-                `<div class="audit-item"><button type="button" class="audit-chip" data-audit="${encodeURIComponent(
-                    name
-                )}" aria-label="Mark ${escapeHtml(name)} as done">${escapeHtml(name)}</button></div>`
-        )
-        .join('');
+    for (const id of ['audits-list-panel', 'portrait-audits-list-panel']) {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+    }
+    updatePortraitAuditsEmptyState(visible.length);
 }
 
 function updatePendingVendorsPanel() {
-    const el = document.getElementById('pending-vendors-panel');
-    if (!el) return;
-
     const visible = getVisiblePendingVendors();
     const monday = isMelbourneMonday();
     const lastMondayMonth = isMelbourneLastMondayOfMonth();
-    if (!visible.length && !monday && !lastMondayMonth) {
-        el.innerHTML = '';
-        return;
-    }
+    const hasOrdersContent = visible.length > 0 || monday || lastMondayMonth;
 
     const mondayHtml = monday ? mondayCashOrderReminderHtml() : '';
     const lastMondayHtml = lastMondayMonth ? lastMondayMonthlyOrdersReminderHtml() : '';
@@ -1874,7 +1958,13 @@ function updatePendingVendorsPanel() {
               .join('')
         : '';
 
-    el.innerHTML = mondayHtml + lastMondayHtml + chipsHtml;
+    const html = hasOrdersContent ? mondayHtml + lastMondayHtml + chipsHtml : '';
+
+    for (const id of ['pending-vendors-panel', 'portrait-pending-vendors-panel']) {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+    }
+    updatePortraitOrdersEmptyState(hasOrdersContent);
 }
 
 function handleFooterChipDismissClick(e) {
@@ -1895,11 +1985,11 @@ function handleFooterChipDismissClick(e) {
             if (removed) return;
             removed = true;
             item?.remove();
+            updatePendingVendorsPanel();
             const panel = document.getElementById('pending-vendors-panel');
-            const aside = document.querySelector('.pending-vendors-aside');
-            if (panel && panel.children.length === 0 && aside) {
-                aside.remove();
-                document.querySelector('.dashboard-grid-footer-trail')?.remove();
+            const aside = panel?.closest('.pending-vendors-aside');
+            if (panel && panel.children.length === 0 && aside && !aside.classList.contains('portrait-tab-aside')) {
+                aside.closest('.dashboard-grid-footer-trail')?.remove();
             }
         };
         const onAnimEnd = (ev) => {
@@ -1928,11 +2018,11 @@ function handleFooterChipDismissClick(e) {
             if (removed) return;
             removed = true;
             item?.remove();
+            updateAuditsPanel();
             const panel = document.getElementById('audits-list-panel');
-            const aside = document.querySelector('.audits-aside');
-            if (panel && panel.children.length === 0 && aside) {
-                aside.remove();
-                document.querySelector('.dashboard-grid-footer-lead')?.remove();
+            const aside = panel?.closest('.audits-aside');
+            if (panel && panel.children.length === 0 && aside && !aside.classList.contains('portrait-tab-aside')) {
+                aside.closest('.dashboard-grid-footer-lead')?.remove();
             }
         };
         const onAnimEnd = (ev) => {
@@ -2003,6 +2093,10 @@ function buildPendingVendorsAsideHtml() {
 }
 
 function buildGridFooterRow() {
+    if (isPortraitMobileView()) {
+        return '';
+    }
+
     const leadInner = buildAuditsAsideHtml();
     const lead = leadInner ? `<div class="dashboard-grid-footer-lead">${leadInner}</div>` : '';
     const ordersAside = buildPendingVendorsAsideHtml();
@@ -2031,6 +2125,7 @@ function showGridSkeleton() {
     grid.innerHTML = isPortraitMobileView() ? buildLoadingPortraitGridContent() : buildLoadingGridContent();
     updateAuditsPanel();
     updatePendingVendorsPanel();
+    applyPortraitTabVisibility();
 }
 
 function updateGrid() {
@@ -2049,6 +2144,7 @@ function updateGrid() {
         grid.innerHTML = isPortraitMobileView() ? buildLoadingPortraitGridContent() : buildLoadingGridContent();
         updateAuditsPanel();
         updatePendingVendorsPanel();
+        applyPortraitTabVisibility();
         return;
     }
 
@@ -2069,6 +2165,7 @@ function updateGrid() {
     `;
     updateAuditsPanel();
     updatePendingVendorsPanel();
+    applyPortraitTabVisibility();
 }
 
 // DEBUG: order-date test panel (disabled for production)
@@ -2119,14 +2216,19 @@ function renderDashboard() {
                 <div class="rotate-hint-icon" aria-hidden="true">↻</div>
                 <h2>Rotate to landscape</h2>
                 <p>The sales grid is built for a wide view. Turn your phone sideways for the best layout.</p>
-                ${NOLOGIN_MODE ? '' : '<a class="rotate-hint-back" href="/">← All stores</a>'}
+                <a class="rotate-hint-back" href="/">← All stores</a>
             </div>
         </div>
         <div class="dashboard">
+            <div class="dashboard-portrait-chrome" hidden>
+                ${buildPortraitTabsHtml()}
+            </div>
             <div class="dashboard-header">
                 <div class="dashboard-title">
-                    <h1>SALES DASHBOARD</h1>
-                    <p class="subtitle">Real-time sales data updated automatically.</p>
+                    <div class="dashboard-title-desktop">
+                        <h1>SALES DASHBOARD</h1>
+                        <p class="subtitle">Real-time sales data updated automatically.</p>
+                    </div>
                     <p id="store-label" class="store-label">${currentStoreLabel ? `Store ${currentStoreLabel}` : ''}</p>
                 </div>
                 <div class="top-info">
@@ -2144,16 +2246,34 @@ function renderDashboard() {
             <div id="sales-status" class="sales-status" role="status" aria-live="polite" hidden></div>
             <div id="audit-schedule-status" class="audit-schedule-status" role="alert" aria-live="assertive" hidden></div>
 
-            <div class="dashboard-grid"></div>
+            <div class="dashboard-grid" id="portrait-panel-dashboard"></div>
+
+            <div id="portrait-panel-audits" class="portrait-tab-panel" role="tabpanel" aria-labelledby="portrait-tab-audits" hidden>
+                <div class="audits-aside portrait-tab-aside" role="region" aria-label="List of audits">
+                    <div class="audits-heading">List of Audits</div>
+                    <div id="portrait-audits-list-panel" class="audits-list" aria-live="polite"></div>
+                </div>
+                <p id="portrait-audits-empty" class="portrait-tab-empty" hidden>No audits scheduled right now.</p>
+            </div>
+
+            <div id="portrait-panel-orders" class="portrait-tab-panel" role="tabpanel" aria-labelledby="portrait-tab-orders" hidden>
+                <div class="pending-vendors-aside portrait-tab-aside" role="region" aria-label="Orders to place from Macromatix">
+                    <div class="pending-vendors-heading">Orders to place</div>
+                    <div id="portrait-pending-vendors-panel" class="pending-vendors-list" aria-live="polite"></div>
+                </div>
+                <p id="portrait-orders-empty" class="portrait-tab-empty" hidden>No orders to place right now.</p>
+            </div>
 
             <div id="popup-container"></div>
         </div>
     `;
     bindFooterChipDismissOnce();
+    bindPortraitTabsOnce();
     // bindOrderDateTestPanelOnce();
     applyDashboardScale();
     updateRotateHint();
     showGridSkeleton();
+    applyPortraitTabVisibility();
 }
 
 /* -----------------------------------------------------------

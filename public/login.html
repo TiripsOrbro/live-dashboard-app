@@ -8,6 +8,7 @@
     <title>Sign in — Sales Dashboard</title>
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icon-mark.svg">
+    <link rel="stylesheet" href="/styles/brand-mark.css">
     <link rel="stylesheet" href="/styles/login.css">
 </head>
 <body class="login-body">
@@ -48,6 +49,32 @@
             </div>
         </section>
     </div>
+
+    <section id="welcome-stage" class="welcome-stage" hidden aria-hidden="true" aria-live="polite">
+        <div class="welcome-brand" aria-hidden="true">
+            <div class="welcome-logo" id="welcome-brand-mark" aria-hidden="true"></div>
+        </div>
+        <div class="welcome-copy">
+            <p class="welcome-line">
+                <span id="welcome-message" class="welcome-message">Welcome</span>
+            </p>
+        </div>
+    </section>
+    <script src="/scripts/brand-mark.js"></script>
+    <script>
+        (function () {
+            function paint() {
+                var host = document.getElementById('login-brand-mark');
+                if (!host || !window.TbaBrandMark || !window.TbaBrandMark.svg) return;
+                host.innerHTML = window.TbaBrandMark.svg('login-mark');
+            }
+            if (window.TbaBrandMark) {
+                paint();
+            } else {
+                document.querySelector('script[src="/scripts/brand-mark.js"]')?.addEventListener('load', paint);
+            }
+        })();
+    </script>
     <script src="/scripts/login.js"></script>
 </body>
 </html>

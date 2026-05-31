@@ -1,0 +1,13 @@
+# Macromatix item code cross-reference — copy to vendors/.item-codes
+# Format: Item Name | MMX Code | Order Form Code
+#
+# MMX Code        — ISE / inventory report / stock-on-hand code
+# Order Form Code — scheduled order form & stock-on-order code (repeat MMX when identical)
+
+Sour Cream 2kg | 12945 | 8418
+LETTUCE SHREDDED | 13016 | SLETT
+TOMATO DICED | 15112 | DTOM4
+ONION BROWN DICED | 15659 | DO4
+Dare Iced Coffee | 38239 | 7769
+SALAD CORIANDER CHOPPED | 38670 | CHOPC
+MEAT BEEF COOKED | 39520 | 39520

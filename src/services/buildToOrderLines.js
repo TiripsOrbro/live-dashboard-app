@@ -3,7 +3,7 @@ const path = require('path');
 const { calculateBuildToOrders } = require('./buildToCalculator');
 const { getVendorCatalog } = require('./vendorCatalog');
 const { normalizeItemCode } = require('./reportReader');
-const log = require('./mmxReports/util-logging');
+const { buildBuildToEntriesForVendor } = require('./orderItemNameMatch');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'vendor-orders.json');
@@ -18,7 +18,13 @@ function loadVendorOrdersConfig() {
 }
 
 function itemMatchesVendorConfig(catalogItem, vendorCfg) {
-    if (vendorCfg.catalogSlug && vendorCfg.catalogSlug !== catalogItem.catalogSlug) return false;
+    if (
+        vendorCfg.catalogSlug &&
+        catalogItem.catalogSlug &&
+        vendorCfg.catalogSlug !== catalogItem.catalogSlug
+    ) {
+        return false;
+    }
     if (vendorCfg.orderClasses?.length) {
         return vendorCfg.orderClasses.includes(catalogItem.mmxOrderClass);
     }
@@ -49,32 +55,41 @@ function buildCatalogItemIndex() {
     return index;
 }
 
+function roundOrderQtyForVendor(qty, vendorCfg, itemCode = '') {
+    const byItem = vendorCfg?.orderRoundToByItemCode || {};
+    const mmx = normalizeItemCode(itemCode);
+    const step = Number(mmx && byItem[mmx] != null ? byItem[mmx] : vendorCfg?.orderRoundTo);
+    if (!Number.isFinite(step) || step <= 1 || qty <= 0) return qty;
+    return Math.ceil(qty / step) * step;
+}
+
 /**
- * Build scheduled-order lines from build-to calculator output (no Excel).
+ * Build-to entries per vendor — ISE lines matched to vendor catalog by item name.
  */
 async function buildOrderLinesByVendorId(storeNumber, options = {}) {
     const vendorOrdersCfg = options.vendorOrdersCfg || loadVendorOrdersConfig();
     const buildTo = await calculateBuildToOrders(storeNumber, options);
-    const catalogIndex = buildCatalogItemIndex();
     const byVendorId = {};
 
     for (const vendorCfg of vendorOrdersCfg.vendors || []) {
-        const lines = [];
-        for (const line of buildTo.orderLines) {
-            const code = normalizeItemCode(line.itemCode);
-            const catalogItem = catalogIndex.get(code);
-            if (!catalogItem) continue;
-            if (vendorCfg.catalogSlug && vendorCfg.catalogSlug !== catalogItem.catalogSlug) continue;
-            if (!itemMatchesVendorConfig(catalogItem, vendorCfg)) continue;
-            lines.push({
-                itemCode: code,
-                quantity: line.orderQty,
-                itemName: line.description || catalogItem.name,
-            });
-        }
-        if (lines.length) {
-            byVendorId[vendorCfg.id] = { vendor: vendorCfg, lines };
-        }
+        const catalog = getVendorCatalog(vendorCfg.catalogSlug);
+        const buildToEntries = buildBuildToEntriesForVendor(
+            vendorCfg,
+            buildTo.lines,
+            catalog?.items || [],
+            itemMatchesVendorConfig
+        ).map((entry) => ({
+            ...entry,
+            orderQty: roundOrderQtyForVendor(entry.orderQty, vendorCfg, entry.iseItemCode),
+        }));
+        const lines = buildToEntries
+            .filter((entry) => entry.orderQty > 0)
+            .map((entry) => ({
+                itemCode: entry.iseItemCode,
+                quantity: entry.orderQty,
+                itemName: entry.catalogName || entry.description,
+            }));
+        byVendorId[vendorCfg.id] = { vendor: vendorCfg, buildToEntries, lines };
     }
 
     return { buildTo, byVendorId, vendorOrdersCfg };
@@ -84,4 +99,6 @@ module.exports = {
     loadVendorOrdersConfig,
     buildOrderLinesByVendorId,
     buildCatalogItemIndex,
+    itemMatchesVendorConfig,
+    roundOrderQtyForVendor,
 };

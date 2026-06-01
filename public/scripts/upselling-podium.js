@@ -1,8 +1,11 @@
 /**
  * Landscape upselling podium for enabled stores (e.g. teststore / 3811 per config).
- * Reveals every 5 minutes (and on load): fade + slide up, then fade + slide down.
+ * When PODIUM_ALWAYS_VISIBLE is false: reveals every 5 minutes, hides after ~45s.
  */
 (function upsellingPodiumModule(global) {
+    /** Keep leaderboard on screen (no auto-hide). Set false to restore rotate in/out. */
+    const PODIUM_ALWAYS_VISIBLE = true;
+
     const POLL_MS = 60000;
     const CYCLE_MS = 5 * 60 * 1000;
     const ANIM_MS = 550;
@@ -79,6 +82,12 @@
         if (!root || !shouldAnimatePodium()) return;
         clearRevealTimers();
         root.removeAttribute('hidden');
+
+        if (PODIUM_ALWAYS_VISIBLE) {
+            root.classList.add('upsell-podium--revealed');
+            return;
+        }
+
         root.classList.remove('upsell-podium--revealed');
         root.offsetHeight;
         requestAnimationFrame(() => {
@@ -96,6 +105,8 @@
 
         const root = ensurePodiumEl();
         showPodiumAnimated(root);
+
+        if (PODIUM_ALWAYS_VISIBLE) return;
 
         cycleTimer = setInterval(() => {
             if (!shouldAnimatePodium()) return;

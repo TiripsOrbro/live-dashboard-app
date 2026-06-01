@@ -1,11 +1,10 @@
-# Vendor stock-count catalog — copy to `vendors/.Americold`
-#
 # vendor: Americold
 # location-order: Freezer | Fridge | Dry | Carryover | In Use
 #
-# Append | In Use when the item is also on the MMX IN USE - THAW tab.
+# Format: [buildToDays | manual] | itemCode | name | unit | unit | unit [| location…]
+# Append | In Use when the item is also counted on the IN USE - THAW tab.
 
-# --- Freezer ---
+# --- Freezer (13 items) ---
 10 | 38009 | TB CHIP NACHO 4.5KG | Boxes | Bags | Each | Freezer | In Use
 13 | 40109 | FR FR SUPERCRISP 6X2KG | Boxes | Bags | Each | Freezer | In Use
 10 | 37597 | TB CHURROS MINI 72EA | Boxes | Bags | Each | Freezer | In Use
@@ -20,7 +19,7 @@
 10 | 38240 | TB BEANS BLACK COOKED 12X1KG | Boxes | Bags | Each | Freezer | In Use
 10 | 14701 | GUACAMOLE 6x1.5KG | Boxes | Bags | Each | Freezer | Fridge | In Use
 
-# --- Fridge ---
+# --- Fridge (Americold — MMX FRIDGE tab) ---
 10 | 39009 | TB CHIP NACHO 4.5KG | Boxes | Bags | Each | Fridge | In Use
 10 | 100457 | SAUCE FIRE 10X1KG | Boxes | Bags | Each | Fridge | In Use
 10 | 37870 | TB SAUCE CHILLI MILD 10X1KG | Boxes | Bags | Each | Fridge | In Use
@@ -37,7 +36,7 @@
 10 | 40003 | TB JALAPENO 6X2.3KG | Boxes | Bags | Each | Fridge | In Use
 10 | 37013 | TB SAUCE PICO DE GALLO 12X500GM | Boxes | Bags | Each | Fridge
 
-# --- Dry (MMX DRY tab) — food: 10-day build-to; packaging: manual ---
+# --- Dry (MMX DRY tab) ---
 10 | 17005 | SAUCE TOMATO SQUEEZE 100x14GM | Boxes | Bags | Each | Dry
 10 | 30155 | TB SAUCE CHOCOLATE DA VINCI 2X2LTR | Boxes | Bags | Each | Dry
 10 | 10116N | SAUCE CARAMEL MONIN 1.8L | Boxes | Bags | Each | Dry
@@ -47,30 +46,30 @@
 10 | 37915 | TD RICE LONG GRAIN WHITE 10KG | Boxes | Bags | Each | Dry
 10 | 30081 | TR SEASONING MEXICAN RECI 10X1 | Boxes | Bags | Each | Dry
 10 | 607826 | OIL FRYING LIQUID 15KG | Boxes | Bags | Each | Dry
-manual | 33090 | TD CUP POSTMIX REGULAR 1000EA NEW | Boxes | N/a | Each | Dry
-manual | 33091 | TR CUP POSTMIX LARGE 1000EA NEW | Boxes | N/a | Each | Dry
-manual | TB13735 | LIDS CUP POST MIX 400/500ML 2000EA | Boxes | N/a | Each | Dry
-manual | 33094 | TD LID POSTMIX 1000EA | Boxes | N/a | Each | Dry
-manual | 601518 | STRAW PAPER CFC 4000EA | Boxes | N/a | Each | Dry
-manual | 505798 | TRAYS DRINKS 4 CUP 100EA | Boxes | N/a | Each | Dry
-manual | 601078 | CUP SEMI FOR 1000PK | Boxes | N/a | Each | Dry
-manual | 507017 | LID FCS DOME 500 ML | Boxes | N/a | Each | Dry
-manual | 37987 | TR BAG TAKEAWAY BROWN SMALL 1000EA | Boxes | N/a | Each | Dry
-manual | 37989 | TB BAG TAKEAWAY BROWN MEDIUM 1000EA | Boxes | N/a | Each | Dry
-manual | 37991 | TD BAG TAKEAWAY BROWN LARGE 250EA | Boxes | N/a | Each | Dry
-manual | 30044 | TB BAG CHIP REGULAR 3000EA | Boxes | N/a | Each | Dry
-manual | 30044A | TD BAG CHIPS LARGE / NACHO CHIPS REGULAR | Boxes | N/a | Each | Dry
-manual | 30045 | TR BAG NACHO CHIP LARGE 2000EA | Boxes | N/a | Each | Dry
-manual | 30042 | TB BAG CRUNCHWRAP 2000EA | Boxes | N/a | Each | Dry
-manual | 40014 | TD BOX CANTINA 200EA | Boxes | N/a | Each | Dry
-manual | 30052 | TB BIG BELL BOX 200EA | Boxes | N/a | Each | Dry
-manual | 30744 | TD DIPPING CUP 60ML 1000EA | Boxes | N/a | Each | Dry
-manual | 30740 | TR LID CLEAR SEMI DIPPING CUP 1000EA | Boxes | N/a | Each | Dry
-manual | 37921 | TD WRAP SMALL WHITE PRINTED 3000EA | Boxes | N/a | Each | Dry
-manual | 37901 | TR WRAP LARGE WHITE PRINTED 2000EA | Boxes | N/a | Each | Dry
-manual | 33059 | TB WRAP WASTE WHITE UNPRINTED 3X1000EA | Boxes | N/a | Each | Dry
-manual | 33050 | NAPKINS BROWN RECYCLE | Boxes | N/a | Each | Dry
-manual | 30041 | TR WOODEN FORK 1000EA | Boxes | N/a | Each | Dry
+# manual | 33090 | TD CUP POSTMIX REGULAR 1000EA NEW | Boxes | N/a | Each | Dry
+# manual | 33091 | TR CUP POSTMIX LARGE 1000EA NEW | Boxes | N/a | Each | Dry
+# manual | TB13735 | LIDS CUP POST MIX 400/500ML 2000EA | Boxes | N/a | Each | Dry
+# manual | 33094 | TD LID POSTMIX 1000EA | Boxes | N/a | Each | Dry
+# manual | 601518 | STRAW PAPER CFC 4000EA | Boxes | N/a | Each | Dry
+# manual | 505798 | TRAYS DRINKS 4 CUP 100EA | Boxes | N/a | Each | Dry
+# manual | 601078 | CUP SEMI FOR 1000PK | Boxes | N/a | Each | Dry
+# manual | 507017 | LID FCS DOME 500 ML | Boxes | N/a | Each | Dry
+# manual | 37987 | TR BAG TAKEAWAY BROWN SMALL 1000EA | Boxes | N/a | Each | Dry
+# manual | 37989 | TB BAG TAKEAWAY BROWN MEDIUM 1000EA | Boxes | N/a | Each | Dry
+# manual | 37991 | TD BAG TAKEAWAY BROWN LARGE 250EA | Boxes | N/a | Each | Dry
+# manual | 30044 | TB BAG CHIP REGULAR 3000EA | Boxes | N/a | Each | Dry
+# manual | 30044A | TD BAG CHIPS LARGE / NACHO CHIPS REGULAR | Boxes | N/a | Each | Dry
+# manual | 30045 | TR BAG NACHO CHIP LARGE 2000EA | Boxes | N/a | Each | Dry
+# manual | 30042 | TB BAG CRUNCHWRAP 2000EA | Boxes | N/a | Each | Dry
+# manual | 40014 | TD BOX CANTINA 200EA | Boxes | N/a | Each | Dry
+# manual | 30052 | TB BIG BELL BOX 200EA | Boxes | N/a | Each | Dry
+# manual | 30744 | TD DIPPING CUP 60ML 1000EA | Boxes | N/a | Each | Dry
+# manual | 30740 | TR LID CLEAR SEMI DIPPING CUP 1000EA | Boxes | N/a | Each | Dry
+# manual | 37921 | TD WRAP SMALL WHITE PRINTED 3000EA | Boxes | N/a | Each | Dry
+# manual | 37901 | TR WRAP LARGE WHITE PRINTED 2000EA | Boxes | N/a | Each | Dry
+# manual | 33059 | TB WRAP WASTE WHITE UNPRINTED 3X1000EA | Boxes | N/a | Each | Dry
+# manual | 33050 | NAPKINS BROWN RECYCLE | Boxes | N/a | Each | Dry
+# manual | 30041 | TR WOODEN FORK 1000EA | Boxes | N/a | Each | Dry
 
 # --- Carryover (order=N par; skip Key Item Count; optional | 10 = inner per carton) ---
 order=2 | 100481 | GLOVE NITRILE MEDIUM 10X100 | Cartons | Packs | N/a | Carryover | 10
@@ -78,9 +77,10 @@ order=2 | 100482 | GLOVE NITRILE LARGE10X100 | Cartons | Packs | N/a | Carryover
 order=2 | 100483 | GLOVE NITRILE XLARGE 10X100 | Cartons | Packs | N/a | Carryover | 10
 order=1 | 38076 | TOWEL PAPER HAND TORK WHITE 6 ROLLS | Cartons | Rolls | N/a | Carryover | 6
 order=1 | 38078 | TOILET PAPER SMARTONE 12 ROLLS | Cartons | Rolls | N/a | Carryover | 12
-order=1 | 38464 | FILTER SHEET EVOLUTION LOADED 100EA | Cartons | N/a | N/a | Carryover
+order=0.1 | 38464 | FILTER SHEET EVOLUTION LOADED 100EA | Cartons | N/a | N/a | Carryover
 order=2 | 38542 | BIN LINER 240L H/DUTY 8X25 EA | Cartons | N/a | N/a | Carryover
 order=1 | 504245 | SCOURERS SMALL GREEN MAXPAC 30 | Cartons | Packs | N/a | Carryover | 6
 order=1 | 504372 | WIPING CLOTH BLUE 350EA | Cartons | N/a | N/a | Carryover
 order=1 | 505796 | WIPING CLOTH YELLOW | Cartons | N/a | N/a | Carryover
+order=0.2 | 505253 | TB BAG MULTIPURPOSE 5000EA | Cartons | N/a | N/a | Dry | Carryover
 order=0.2 | 505253 | TB BAG MULTIPURPOSE 5000EA | Cartons | N/a | N/a | Dry | Carryover

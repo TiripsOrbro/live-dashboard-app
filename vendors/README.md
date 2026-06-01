@@ -1,6 +1,6 @@
-# Vendor catalog files (live)
+# Vendor catalog files
 
-These dotfiles are **local** (not in git). If you clone on a new machine, copy from `vendors/examples/` or use the files already in this folder.
+Live dotfiles in this folder are **tracked in git** (store 3811 catalogs). After clone/pull they are ready to use; `vendors/examples/` remains the template source.
 
 | File | Vendor |
 |------|--------|

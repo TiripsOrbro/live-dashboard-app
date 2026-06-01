@@ -20,10 +20,15 @@ Use `location-order` and a trailing **location** on each line to group stock-cou
 | Leading column | Meaning |
 |----------------|---------|
 | `10`, `7`, `13`, etc. (1–31) | Build-to days: target = ISE average daily usage × days |
-| `manual` or `m` | **Manual order** — not auto-filled into MMX vendor orders |
+| `10+2`, etc. | Days plus extra cartons on top (e.g. lettuce buffer: `10+2`) |
+| `=3`, `=6`, etc. | **Fixed build-to** cartons (e.g. Schweppes BIBs); order qty still auto-calculated |
+| `order=1`, `order=3`, etc. | Fixed build-to from **dashboard count**; fills **Americold Vic** scheduled order, **not** Key Item Count |
+| `manual` or `m` | Stock-count only (packaging etc.) — no Key Item Count, no auto vendor order |
 | *(omitted)* | Use built-in rules (7-day salads, 13-day list, default 10-day) |
 
 Unit columns use `N/a` for an unused slot (position is kept for the stock-count UI).
+
+Optional trailing number after locations = **inner units per carton** (e.g. `| Carryover | 10` → 10 packs per carton). Stock count can enter cartons and packs/rolls; order qty uses the combined carton equivalent (e.g. 1 carton + 5 packs with `/10` → 1.5).
 
 ### Examples
 
@@ -31,7 +36,8 @@ Unit columns use `N/a` for an unused slot (position is kept for the stock-count 
 10 | 3939 | 7UP BIB 15L | Boxes | N/a | N/a
 13 | 39520 | Cooked Beef | Cartons | N/a | Bags | Freezer
 manual | 3227 | 7UP 600ml PET | Packs | N/a | Bottles
-7 | Lettuce | Crates | Bags | N/a
+10+2 | SLETT | Lettuce | Crates | Bags | N/a
+10 | DTOM4 | Tomato | Crates | KGs | N/a
 ```
 
 Name-only lines (no item code) are supported for vendors like Cut Fresh.

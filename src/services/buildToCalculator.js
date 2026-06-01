@@ -54,6 +54,7 @@ function catalogRuleForItem(itemCode, catalogRules) {
 function buildToDaysForItem(itemCode, description, catalogRules) {
     const rule = catalogRuleForItem(itemCode, catalogRules);
     if (rule?.buildToManual) return null;
+    if (rule?.buildToFixed != null && Number.isFinite(rule.buildToFixed)) return null;
     if (rule?.buildToDays != null && Number.isFinite(rule.buildToDays)) {
         return rule.buildToDays;
     }
@@ -64,9 +65,14 @@ function buildToDaysForItem(itemCode, description, catalogRules) {
 }
 
 function buildToTarget(avgDaily, itemCode, description, catalogRules) {
+    const rule = catalogRuleForItem(itemCode, catalogRules);
+    if (rule?.buildToFixed != null && Number.isFinite(rule.buildToFixed)) {
+        return rule.buildToFixed;
+    }
     const days = buildToDaysForItem(itemCode, description, catalogRules);
     if (days == null) return 0;
-    return num(avgDaily) * days;
+    const add = rule?.buildToAdd != null && Number.isFinite(rule.buildToAdd) ? rule.buildToAdd : 0;
+    return num(avgDaily) * days + add;
 }
 
 function parseWeightFromLabel(label) {
@@ -97,18 +103,24 @@ function allCountedItemCodes() {
     return set;
 }
 
-/** Convert aggregated stock-count row to cartons using ISE pack size. */
+/** Convert aggregated stock-count row to carton-equivalent (full + fractional cartons). */
 function manualCountToCartons(aggregatedItem, catalogItem, isePackSize) {
     const cols = aggregatedItem.columns || {};
-    let cartons = num(cols.cartons);
+    let cartons = 0;
+    const innerPerCarton = Number(catalogItem?.innerPerCarton);
+    const hasInnerRatio = Number.isFinite(innerPerCarton) && innerPerCarton > 0;
 
     for (const col of catalogItem.columns || []) {
         const val = num(cols[col.key]);
-        if (val <= 0) continue;
+        if (!Number.isFinite(val) || val < 0) continue;
         const label = String(col.label || '').toLowerCase();
-        if (label.includes('carton')) continue;
-        if (label.includes('box')) {
+
+        if (label.includes('carton') || label.includes('box')) {
             cartons += val;
+            continue;
+        }
+        if (hasInnerRatio && (label.includes('pack') || label.includes('roll'))) {
+            cartons += val / innerPerCarton;
             continue;
         }
         if (label.includes('tub') || label.includes('bottle') || label.includes('can')) {
@@ -125,7 +137,8 @@ function manualCountToCartons(aggregatedItem, catalogItem, isePackSize) {
             continue;
         }
         if (label.includes('bag') || label.includes('each') || label.includes('tender')) {
-            cartons += isePackSize > 0 ? val / isePackSize : 0;
+            if (hasInnerRatio) cartons += val / innerPerCarton;
+            else if (isePackSize > 0) cartons += val / isePackSize;
         }
     }
 
@@ -248,7 +261,12 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         const buildTo = buildToTarget(ise.avgDaily, itemCode, description, catalogRules);
         const rawOrder = buildTo - onHandCartons - onOrderCartons;
         const orderQty = ceilOrderQty(rawOrder);
-        const buildToSource = catalogRule?.buildToDays != null ? 'catalog-days' : 'default';
+        const buildToSource =
+            catalogRule?.buildToFixed != null
+                ? 'catalog-fixed'
+                : catalogRule?.buildToDays != null
+                  ? 'catalog-days'
+                  : 'default';
 
         lines.push({
             itemCode,
@@ -305,6 +323,7 @@ module.exports = {
     calculateBuildToOrders,
     filterAmericoldOrderLines,
     loadManualCountsForStore,
+    manualCountToCartons,
     buildCatalogBuildToIndex,
     catalogRuleForItem,
     buildToDaysForItem,

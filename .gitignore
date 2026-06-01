@@ -3,8 +3,6 @@ node_modules/
 .env.*
 .Users
 .storelist
-vendors/*
-!vendors/examples/
 tmp/
 Reports/
 config/reports-pipeline.json

@@ -27,12 +27,20 @@
       "orderClasses": ["FRZ"]
     },
     {
+      "id": "americold-vic",
+      "label": "Americold Vic",
+      "vendorMatch": "americold",
+      "catalogSlug": "americold",
+      "orderFromCount": true
+    },
+    {
       "id": "bega",
       "label": "BEGA",
       "vendorMatch": "bega",
       "catalogSlug": "bega",
       "orderRoundToByItemCode": {
-        "38239": 6
+        "38239": 6,
+        "7769": 6
       }
     },
     {

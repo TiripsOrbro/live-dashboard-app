@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const { calculateBuildToOrders } = require('./buildToCalculator');
+const { calculateBuildToOrders, loadManualCountsForStore, manualCountToCartons } = require('./buildToCalculator');
+const { melbourneDateKey } = require('./stockCountState');
 const { getVendorCatalog } = require('./vendorCatalog');
 const { normalizeItemCode } = require('./reportReader');
 const { buildBuildToEntriesForVendor } = require('./orderItemNameMatch');
@@ -55,10 +56,72 @@ function buildCatalogItemIndex() {
     return index;
 }
 
-function roundOrderQtyForVendor(qty, vendorCfg, itemCode = '') {
+function ceilOrderQty(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.ceil(n);
+}
+
+/**
+ * Order qty from dashboard stock-count draft + fixed build-to (order=N catalog lines).
+ */
+async function buildOrderManualEntriesFromCounts(storeNumber, vendorCfg, catalog, dateKey) {
+    if (!vendorCfg?.orderFromCount || !catalog) return [];
+    const counts = await loadManualCountsForStore(storeNumber, dateKey || melbourneDateKey());
+    const entries = [];
+
+    for (const item of catalog.items || []) {
+        if (!item.buildToOrderManual) continue;
+        const code = normalizeItemCode(item.itemCode);
+        if (!code) continue;
+
+        const countEntry = counts.get(code);
+        const onHandCartons = countEntry
+            ? manualCountToCartons({ columns: countEntry.columns }, item, 1)
+            : 0;
+        const buildTo =
+            item.buildToFixed != null && Number.isFinite(item.buildToFixed) ? item.buildToFixed : 0;
+        const orderQty = ceilOrderQty(buildTo - onHandCartons);
+        if (orderQty <= 0 && !countEntry) continue;
+
+        entries.push({
+            catalogName: item.name,
+            catalogItemCode: item.itemCode,
+            description: item.name,
+            orderQty,
+            iseItemCode: code,
+            matchScore: 100,
+            buildToSource: 'count-manual',
+        });
+    }
+
+    return entries;
+}
+
+function mergeBuildToEntries(iseEntries, countEntries) {
+    const byCode = new Map();
+    for (const entry of iseEntries || []) {
+        const key = normalizeItemCode(entry.catalogItemCode || entry.iseItemCode);
+        if (key) byCode.set(key, entry);
+    }
+    for (const entry of countEntries || []) {
+        const key = normalizeItemCode(entry.catalogItemCode || entry.iseItemCode);
+        if (key) byCode.set(key, entry);
+    }
+    return [...byCode.values()];
+}
+
+function roundOrderQtyForVendor(qty, vendorCfg, ...itemCodes) {
     const byItem = vendorCfg?.orderRoundToByItemCode || {};
-    const mmx = normalizeItemCode(itemCode);
-    const step = Number(mmx && byItem[mmx] != null ? byItem[mmx] : vendorCfg?.orderRoundTo);
+    let step = vendorCfg?.orderRoundTo;
+    for (const code of itemCodes) {
+        const key = normalizeItemCode(code);
+        if (key && byItem[key] != null) {
+            step = byItem[key];
+            break;
+        }
+    }
+    step = Number(step);
     if (!Number.isFinite(step) || step <= 1 || qty <= 0) return qty;
     return Math.ceil(qty / step) * step;
 }
@@ -69,18 +132,31 @@ function roundOrderQtyForVendor(qty, vendorCfg, itemCode = '') {
 async function buildOrderLinesByVendorId(storeNumber, options = {}) {
     const vendorOrdersCfg = options.vendorOrdersCfg || loadVendorOrdersConfig();
     const buildTo = await calculateBuildToOrders(storeNumber, options);
+    const dateKey = options.dateKey || melbourneDateKey();
     const byVendorId = {};
 
     for (const vendorCfg of vendorOrdersCfg.vendors || []) {
         const catalog = getVendorCatalog(vendorCfg.catalogSlug);
-        const buildToEntries = buildBuildToEntriesForVendor(
+        const iseEntries = buildBuildToEntriesForVendor(
             vendorCfg,
             buildTo.lines,
             catalog?.items || [],
             itemMatchesVendorConfig
-        ).map((entry) => ({
+        );
+        const countEntries = await buildOrderManualEntriesFromCounts(
+            storeNumber,
+            vendorCfg,
+            catalog,
+            dateKey
+        );
+        const buildToEntries = mergeBuildToEntries(iseEntries, countEntries).map((entry) => ({
             ...entry,
-            orderQty: roundOrderQtyForVendor(entry.orderQty, vendorCfg, entry.iseItemCode),
+            orderQty: roundOrderQtyForVendor(
+                entry.orderQty,
+                vendorCfg,
+                entry.iseItemCode,
+                entry.catalogItemCode
+            ),
         }));
         const lines = buildToEntries
             .filter((entry) => entry.orderQty > 0)
@@ -98,6 +174,7 @@ async function buildOrderLinesByVendorId(storeNumber, options = {}) {
 module.exports = {
     loadVendorOrdersConfig,
     buildOrderLinesByVendorId,
+    buildOrderManualEntriesFromCounts,
     buildCatalogItemIndex,
     itemMatchesVendorConfig,
     roundOrderQtyForVendor,

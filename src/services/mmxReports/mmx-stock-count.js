@@ -542,12 +542,13 @@ function mergeVendorEntriesByLocation(vendorEntries) {
             if (!locData || typeof locData !== 'object') continue;
 
             const itemsAtLocation = catalog.items
-                .filter((item) => item.locations.includes(locationName))
+                .filter((item) => item.locations.includes(locationName) && !item.skipKeyItemCount)
                 .map((item) => ({
                     key: item.key,
                     itemCode: item.itemCode,
                     name: item.name,
                     unitSlots: item.unitSlots,
+                    skipKeyItemCount: Boolean(item.skipKeyItemCount),
                     counts: locData[item.key] || {},
                     vendorLabel: catalog.label,
                     vendorSlug: entry.slug,

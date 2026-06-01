@@ -1,7 +1,8 @@
-# Vendor stock-count catalog — copy to `vendors/.CutFresh`
-#
 # vendor: Cut Fresh
 # location-order: Fridge | Dry | Carryover | In Use
+#
+# Format: [buildToDays | buildToDays+N | manual] | itemCode | name | unit | unit | unit [| location…]
+# Lettuce: 10-day target plus 2 extra cartons (10+2)
 
 10+2 | SLETT | LETTUCE SHREDDED 4X2KG | Crates | Bags | N/a | Fridge | In Use
 10 | DTOM4 | TOMATO DICED 4X1KG | Crates | KGs | N/a | Fridge | In Use

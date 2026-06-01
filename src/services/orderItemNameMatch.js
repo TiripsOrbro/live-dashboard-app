@@ -118,7 +118,7 @@ function buildBuildToEntriesForVendor(vendorCfg, buildToLines, catalogItems, ite
 
     for (const item of catalogItems || []) {
         if (vendorCfg && itemMatchesVendorConfig && !itemMatchesVendorConfig(item, vendorCfg)) continue;
-        if (item.buildToManual) continue;
+        if (item.buildToManual || item.buildToOrderManual) continue;
 
         const catalogCode = normalizeItemCode(item.itemCode);
         let bestLine = null;
@@ -154,6 +154,7 @@ function buildBuildToEntriesForVendor(vendorCfg, buildToLines, catalogItems, ite
         usedIse.add(String(bestLine.itemCode || '').trim().toUpperCase());
         entries.push({
             catalogName: item.name,
+            catalogItemCode: item.itemCode,
             description: bestLine.description || '',
             orderQty: bestLine.orderQty,
             iseItemCode: bestLine.itemCode,

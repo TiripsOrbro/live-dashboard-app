@@ -241,13 +241,9 @@ function saveRankedEmployees(_rankedRows, byDay = [], syncStore = '') {
 
     const MIN_FULL_REPLACE = 3;
     let mergedByDay;
-    if (
-        incoming.length > 0 &&
-        incoming.length < MIN_FULL_REPLACE &&
-        (existingByDay || []).length >= MIN_FULL_REPLACE
-    ) {
+    if (incoming.length > 0 && incoming.length < MIN_FULL_REPLACE) {
         const byKey = new Map();
-        for (const row of existingByDay) {
+        for (const row of existingByDay || []) {
             byKey.set(dayNameKey(row), row);
         }
         for (const row of incoming) {
@@ -255,7 +251,7 @@ function saveRankedEmployees(_rankedRows, byDay = [], syncStore = '') {
         }
         mergedByDay = [...byKey.values()];
         console.warn(
-            `[Upselling] Only ${incoming.length} scored row(s) from sync — merged into .Employees (${mergedByDay.length} day rows kept)`
+            `[Upselling] Only ${incoming.length} scored row(s) from sync — merged into .Employees (${mergedByDay.length} day rows, was ${existingByDay.length})`
         );
     } else {
         mergedByDay = incoming.length ? incoming : [];

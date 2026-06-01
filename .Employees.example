@@ -1,0 +1,9 @@
+# day | name | points
+# Per-day scores from MMX sync (overwritten each sync).
+# Leaderboard totals = sum of per-day points + optional bonus below.
+2026-05-25 | John Smith | 12
+2026-05-26 | Jane Doe | 8
+
+# name | bonusPoints
+# Manual bonus (MIC edits — not from MMX).
+Jane Doe | 5

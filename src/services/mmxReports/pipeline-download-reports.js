@@ -196,4 +196,11 @@ async function downloadReports(page, settings) {
     return paths;
 }
 
-module.exports = { downloadReports, openReportsHub, reportsConfigured, configureDownloadPath };
+module.exports = {
+    downloadReports,
+    openReportsHub,
+    reportsConfigured,
+    configureDownloadPath,
+    clickExportExcelDataOnly,
+    waitForReportDownload,
+};

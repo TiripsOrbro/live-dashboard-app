@@ -42,6 +42,9 @@ const {
     melbourneDateKey,
 } = require('./services/stockCountState');
 const { getStoreScrapePhase, anyStoreInActiveScrapeWindow } = require('./services/scrapeSchedule');
+const { isUpsellingStore } = require('./services/upselling/upsellingConfig');
+const { buildLeaderboardPayload } = require('./services/upselling/upsellingScores');
+const { startUpsellingScheduler } = require('./services/upselling/upsellingScheduler');
 const {
     getLastKnownPendingVendors,
     onStoreOrdersComplete,
@@ -1341,6 +1344,20 @@ app.get('/api/sales', async (req, res) => {
     }
 });
 
+// Upselling leaderboard — landscape podium reads this (enabled stores in config/upselling.json).
+app.get('/api/upselling', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !isUpsellingStore(store)) {
+            return res.json({ enabled: false });
+        }
+        res.json(buildLeaderboardPayload(store));
+    } catch (error) {
+        console.error('API: Error loading upselling:', error);
+        res.status(500).json({ enabled: false, error: error.message });
+    }
+});
+
 // List of stores (number, name, trading hours) for the store picker and per-store grid.
 // Served straight from `.storelist` so it returns instantly without waiting on a scrape.
 app.get('/api/stores', async (req, res) => {
@@ -1377,6 +1394,7 @@ app.get('/api/stores', async (req, res) => {
 
 // Background refresh: keep the multi-store cache warm so browser requests never wait through a full scrape.
 let refreshTimer = null;
+let upsellingSchedulerTimer = null;
 function startBackgroundRefresh() {
     if (SALES_REFRESH_SECONDS <= 0) {
         console.log('[Dashboard] Background refresh disabled (SALES_REFRESH_SECONDS <= 0)');
@@ -1413,6 +1431,7 @@ function startBackgroundRefresh() {
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on http://0.0.0.0:${PORT}`);
     startBackgroundRefresh();
+    upsellingSchedulerTimer = startUpsellingScheduler();
 });
 
 // Graceful shutdown so PM2 restarts / systemctl stop release the port cleanly.
@@ -1422,6 +1441,7 @@ function shutdown(signal) {
     shuttingDown = true;
     console.log(`[Dashboard] ${signal} received — closing server…`);
     if (refreshTimer) clearInterval(refreshTimer);
+    if (upsellingSchedulerTimer) clearInterval(upsellingSchedulerTimer);
     const force = setTimeout(() => {
         console.warn('[Dashboard] Forced exit after shutdown timeout');
         process.exit(0);

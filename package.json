@@ -15,7 +15,11 @@
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:restart": "pm2 restart dashboard",
     "pm2:logs": "pm2 logs dashboard",
-    "pm2:scheduler:logs": "pm2 logs report-download-scheduler"
+    "pm2:scheduler:logs": "pm2 logs report-download-scheduler",
+    "upsell-sync": "node scripts/upsell-sync.js",
+    "upsell-discover": "node scripts/discover-bi-report.js",
+    "upsell-probe-export": "node scripts/probe-powerbi-export.js",
+    "upsell-score-sample": "node scripts/upsell-score-sample.js"
   },
   "engines": {
     "node": ">=18"

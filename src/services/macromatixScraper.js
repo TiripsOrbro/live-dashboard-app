@@ -419,12 +419,14 @@ function hasBundledChromium() {
 }
 
 /** Visible window: set SCRAPER_HEADLESS to 0, false, no, or off. Optional SCRAPER_SLOW_MO_MS (ms), SCRAPER_DEVTOOLS=1 */
-function getPuppeteerLaunchOptions() {
+function getPuppeteerLaunchOptions(overrides = {}) {
     const raw = process.env.SCRAPER_HEADLESS;
-    const headless =
+    let headless =
         raw === undefined || raw === ''
             ? true
             : !/^(0|false|no|off)$/i.test(String(raw).trim());
+    if (overrides.headless === false) headless = false;
+    if (overrides.headless === true) headless = true;
     const opts = {
         headless,
         args: [
@@ -451,9 +453,12 @@ function getPuppeteerLaunchOptions() {
                 'Puppeteer\'s bundled Chromium download is skipped via .npmrc, so a system browser is required.'
         );
     }
-    const slowMo = Number(process.env.SCRAPER_SLOW_MO_MS);
-    if (Number.isFinite(slowMo) && slowMo > 0) {
-        opts.slowMo = slowMo;
+    const skipSlowMo = overrides.skipSlowMo === true;
+    if (!skipSlowMo) {
+        const slowMo = Number(process.env.SCRAPER_SLOW_MO_MS);
+        if (Number.isFinite(slowMo) && slowMo > 0) {
+            opts.slowMo = slowMo;
+        }
     }
     if (/^(1|true|yes|on)$/i.test(String(process.env.SCRAPER_DEVTOOLS ?? '').trim())) {
         opts.devtools = true;
@@ -1299,17 +1304,47 @@ async function applyResourceBlocking(page) {
     }
 }
 
+/** Paste credentials instantly (never page.type with per-key delay). */
+async function fillInputValue(page, selector, value) {
+    const text = String(value ?? '');
+    await page.waitForSelector(selector, { visible: true, timeout: 15000 });
+    await page.evaluate(
+        (sel, val) => {
+            const el = document.querySelector(sel);
+            if (!el) throw new Error(`Field not found: ${sel}`);
+            el.focus();
+            el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        },
+        selector,
+        text
+    );
+    const filled = await page.$eval(selector, (el) => el.value).catch(() => '');
+    if (filled !== text) {
+        await page.focus(selector);
+        await page.click(selector, { clickCount: 3 });
+        await page.keyboard.press('Backspace');
+        await page.type(selector, text, { delay: 0 });
+    }
+}
+
+const LOGIN_GOTO_OPTS = { waitUntil: 'domcontentloaded', timeout: 45000 };
+
 /** Log in on a fresh page (each isolated context needs its own session). */
 async function loginPage(page, username, password) {
     console.log('[Macromatix] Navigating to login...');
-    await page.goto(BASE_URL, GOTO_OPTS);
+    await page.goto(BASE_URL, LOGIN_GOTO_OPTS);
+    await page.waitForSelector('#Login_UserName', { visible: true, timeout: 15000 });
     console.log('[Macromatix] Logging in...');
-    await page.type('#Login_UserName', username);
-    await page.type('#Login_Password', password);
+    await fillInputValue(page, '#Login_UserName', username);
+    await fillInputValue(page, '#Login_Password', password);
     const loginButton = await page.$('input[type="submit"]');
     if (!loginButton) throw new Error('Login button not found');
-    await loginButton.click();
-    await page.waitForNavigation({ waitUntil: 'load', timeout: 45000 });
+    await Promise.all([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }),
+        loginButton.click(),
+    ]);
     console.log('[Macromatix] Logged in');
 }
 
@@ -1385,9 +1420,9 @@ async function scrapeMacromatix(options = {}) {
 
     let browser;
     try {
-        const launchOpts = getPuppeteerLaunchOptions();
+        const launchOpts = getPuppeteerLaunchOptions(options.launchOptions || {});
         if (!launchOpts.headless) {
-            console.log('[Macromatix] Visible browser (SCRAPER_HEADLESS=false/0); optional SCRAPER_SLOW_MO_MS, SCRAPER_DEVTOOLS=1');
+            console.log('[Macromatix] Visible browser (SCRAPER_HEADLESS=false/0); use SCRAPER_SLOW_MO_MS only when debugging');
         }
         browser = await puppeteer.launch(launchOpts);
         if (typeof options.onBrowser === 'function') {
@@ -1580,7 +1615,11 @@ async function openMacromatixBrowser(options = {}) {
         throw new Error('Macromatix credentials are not configured (SCRAPER_USERNAME / SCRAPER_PASSWORD or encrypted creds).');
     }
 
-    const browser = await puppeteer.launch(getPuppeteerLaunchOptions());
+    const launchOpts = getPuppeteerLaunchOptions({
+        ...(options.browserOptions || {}),
+        skipSlowMo: options.browserOptions?.skipSlowMo !== false,
+    });
+    const browser = await puppeteer.launch(launchOpts);
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 720 });
     await applyResourceBlocking(page);

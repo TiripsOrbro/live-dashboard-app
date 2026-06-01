@@ -414,6 +414,10 @@ function applySalesPayload(data) {
         currentStoreLabel = data.storeName || data.storeNumber;
         updateStoreHeader();
     }
+    const upsellStore = data.storeNumber || STORE_NUMBER;
+    if (upsellStore && typeof window.upsellingPodium?.init === 'function') {
+        window.upsellingPodium.init(upsellStore);
+    }
 }
 
 /** Reflect the current store in the header title and the browser tab. */
@@ -1896,6 +1900,9 @@ function syncDashboardLayoutMode() {
 }
 
 function onDashboardLayoutChange() {
+    if (typeof window.upsellingPodium?.onLayoutChange === 'function') {
+        window.upsellingPodium.onLayoutChange();
+    }
     applyDashboardScale();
     updateRotateHint();
     const wasPortrait = lastPortraitLayout === true;
@@ -2287,6 +2294,9 @@ function renderDashboard() {
     updateRotateHint();
     showGridSkeleton();
     applyPortraitTabVisibility();
+    if (STORE_NUMBER && typeof window.upsellingPodium?.init === 'function') {
+        window.upsellingPodium.init(STORE_NUMBER);
+    }
 }
 
 /* -----------------------------------------------------------

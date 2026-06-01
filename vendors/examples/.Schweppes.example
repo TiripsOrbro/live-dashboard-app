@@ -3,9 +3,16 @@
 # vendor: Schweppes
 # locations: Soft Drinks
 #
-# Format: itemCode | name | unit columns…
+# Format: [buildToDays | manual] | itemCode | name | unit | unit | unit [| location…]
+#   buildToDays = 1–31 (ISE avg daily × days = build-to target)
+#   manual or m = skip auto order qty in MMX (enter order manually)
+#   (omit leading column to use default 7 / 10 / 13 rules from buildToCalculator)
+#
+# Examples:
+#   10 | 3939 | 7UP BIB 15L | Boxes | N/a | N/a
+#   manual | 3227 | 7UP 600ml PET | Packs | N/a | Bottles
 
-3939 | 7UP BIB 15L | Boxes | N/a | N/a
-3227 | 7UP 600ml PET | Packs | N/a | Bottles
-10007576 | 7UP Can 375ml | Boxes | N/a | Cans
-3912 | Pepsi BIB 15L | Boxes | N/a | N/a
+10 | 3939 | 7UP BIB 15L | Boxes | N/a | N/a
+10 | 3227 | 7UP 600ml PET | Packs | N/a | Bottles
+manual | 10007576 | 7UP Can 375ml | Boxes | N/a | Cans
+10 | 3912 | Pepsi BIB 15L | Boxes | N/a | N/a

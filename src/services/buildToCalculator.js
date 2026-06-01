@@ -9,7 +9,12 @@ const {
     packSizeFromUnit,
     normalizeItemCode,
 } = require('./reportReader');
-const { listConfiguredVendors, getVendorCatalog, aggregateCounts } = require('./vendorCatalog');
+const {
+    listConfiguredVendors,
+    getVendorCatalog,
+    aggregateCounts,
+    buildCatalogBuildToIndex,
+} = require('./vendorCatalog');
 const { getSummary, melbourneDateKey } = require('./stockCountState');
 const { lookupKeysForMmx, mmxCodeForOrderCode } = require('./itemCodes');
 
@@ -41,15 +46,27 @@ function isSaladItem(description) {
     return SALAD_NAME_RE.test(String(description || ''));
 }
 
-function buildToDaysForItem(itemCode, description) {
+function catalogRuleForItem(itemCode, catalogRules) {
+    if (!catalogRules) return null;
+    return catalogRules.get(normalizeItemCode(itemCode)) || null;
+}
+
+function buildToDaysForItem(itemCode, description, catalogRules) {
+    const rule = catalogRuleForItem(itemCode, catalogRules);
+    if (rule?.buildToManual) return null;
+    if (rule?.buildToDays != null && Number.isFinite(rule.buildToDays)) {
+        return rule.buildToDays;
+    }
     if (isSaladItem(description)) return SALAD_BUILD_TO_DAYS;
     return BUILD_TO_13_DAY_ITEM_CODES.has(normalizeItemCode(itemCode))
         ? EXTENDED_BUILD_TO_DAYS
         : DEFAULT_BUILD_TO_DAYS;
 }
 
-function buildToTarget(avgDaily, itemCode, description) {
-    return num(avgDaily) * buildToDaysForItem(itemCode, description);
+function buildToTarget(avgDaily, itemCode, description, catalogRules) {
+    const days = buildToDaysForItem(itemCode, description, catalogRules);
+    if (days == null) return 0;
+    return num(avgDaily) * days;
 }
 
 function parseWeightFromLabel(label) {
@@ -193,6 +210,7 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         : new Map();
 
     const countedCodes = allCountedItemCodes();
+    const catalogRules = buildCatalogBuildToIndex();
 
     const lines = [];
 
@@ -200,27 +218,51 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         const onHandRow = onHandReport.get(itemCode);
         const isePack = ise.packSize || packSizeFromUnit(ise.unit);
 
-        let onHandCartons = onHandToCartons(onHandRow, ise.unit, isePack);
+        const onHandCartons = onHandToCartons(onHandRow, ise.unit, isePack);
         const onHandSource = onHandRow ? 'report' : 'missing';
 
         const { onOrderCartons, onOrderRow } = resolveOnOrderCartons(onOrderReport, itemCode, ise.unit, isePack);
         const description = ise.description || onHandRow?.description || onOrderRow?.description || '';
-        const buildToDays = buildToDaysForItem(itemCode, description);
-        const buildTo = buildToTarget(ise.avgDaily, itemCode, description);
+        const catalogRule = catalogRuleForItem(itemCode, catalogRules);
+
+        if (catalogRule?.buildToManual) {
+            lines.push({
+                itemCode,
+                description,
+                unit: ise.unit,
+                avgDaily: round4(ise.avgDaily),
+                buildToDays: null,
+                buildToManual: true,
+                buildTo: null,
+                onHandCartons: round4(onHandCartons),
+                onHandSource,
+                onOrderCartons: round4(onOrderCartons),
+                orderQty: 0,
+                buildToSource: 'catalog-manual',
+                manualColumns: null,
+            });
+            continue;
+        }
+
+        const buildToDays = buildToDaysForItem(itemCode, description, catalogRules);
+        const buildTo = buildToTarget(ise.avgDaily, itemCode, description, catalogRules);
         const rawOrder = buildTo - onHandCartons - onOrderCartons;
         const orderQty = ceilOrderQty(rawOrder);
+        const buildToSource = catalogRule?.buildToDays != null ? 'catalog-days' : 'default';
 
         lines.push({
             itemCode,
-            description: ise.description || onHandRow?.description || onOrderRow?.description || '',
+            description,
             unit: ise.unit,
             avgDaily: round4(ise.avgDaily),
             buildToDays,
+            buildToManual: false,
             buildTo: round4(buildTo),
             onHandCartons: round4(onHandCartons),
             onHandSource,
             onOrderCartons: round4(onOrderCartons),
             orderQty,
+            buildToSource,
             manualColumns: null,
         });
     }
@@ -263,6 +305,8 @@ module.exports = {
     calculateBuildToOrders,
     filterAmericoldOrderLines,
     loadManualCountsForStore,
+    buildCatalogBuildToIndex,
+    catalogRuleForItem,
     buildToDaysForItem,
     buildToTarget,
     BUILD_TO_13_DAY_ITEM_CODES,

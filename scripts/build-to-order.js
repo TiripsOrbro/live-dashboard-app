@@ -28,18 +28,35 @@ function printHuman(result, title) {
     console.log(`Manual count overrides: ${result.manualCountItems} item(s) with drafts today`);
     console.log(`Order lines with qty > 0: ${result.orderLines.length}\n`);
 
-    const cols = ['itemCode', 'description', 'days', 'buildTo', 'onHand', 'onOrder', 'orderQty', 'source'];
+    const manualCount = result.lines.filter((l) => l.buildToManual).length;
+    if (manualCount) {
+        console.log(`Catalog manual (excluded from auto order): ${manualCount} item(s)`);
+    }
+
+    const cols = [
+        'itemCode',
+        'description',
+        'days',
+        'buildTo',
+        'onHand',
+        'onOrder',
+        'orderQty',
+        'buildToSource',
+        'onHandSource',
+    ];
     console.log(cols.join('\t'));
-    for (const line of result.orderLines) {
+    const showLines = result.orderLines.length ? result.orderLines : result.lines.slice(0, 30);
+    for (const line of showLines) {
         console.log(
             [
                 line.itemCode,
-                line.description.slice(0, 36),
-                line.buildToDays,
-                line.buildTo,
+                String(line.description || '').slice(0, 36),
+                line.buildToDays ?? 'manual',
+                line.buildTo ?? '',
                 line.onHandCartons,
                 line.onOrderCartons,
                 line.orderQty,
+                line.buildToSource || '',
                 line.onHandSource,
             ].join('\t')
         );

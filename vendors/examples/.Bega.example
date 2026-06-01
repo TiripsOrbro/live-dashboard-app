@@ -3,8 +3,8 @@
 # vendor: Bega
 # locations: Fridge | In Use
 #
-# Format: itemCode | name | col1 | col2 | col3
+# Format: [buildToDays | manual] | itemCode | name | unit | unit | unit
 
-8418 | Sour Cream Light 2kg | Tubs | N/a | KGs
-8419 | Sour Cream Light 5kg | Tubs | N/a | KGs
-7769 | Dare Iced Coffee Double | N/a | N/a | Bottles
+10 | 8418 | Sour Cream Light 2kg | Tubs | N/a | KGs
+10 | 8419 | Sour Cream Light 5kg | Tubs | N/a | KGs
+manual | 7769 | Dare Iced Coffee Double | N/a | N/a | Bottles

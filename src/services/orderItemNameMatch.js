@@ -1,5 +1,7 @@
 /** Match MMX order-form item names to ISE / catalog names (codes often differ). */
 
+const { normalizeItemCode } = require('./reportReader');
+
 const MIN_NAME_MATCH_SCORE = 25;
 
 function normalizeItemName(name) {
@@ -116,18 +118,37 @@ function buildBuildToEntriesForVendor(vendorCfg, buildToLines, catalogItems, ite
 
     for (const item of catalogItems || []) {
         if (vendorCfg && itemMatchesVendorConfig && !itemMatchesVendorConfig(item, vendorCfg)) continue;
+        if (item.buildToManual) continue;
 
+        const catalogCode = normalizeItemCode(item.itemCode);
         let bestLine = null;
         let bestScore = 0;
-        for (const line of buildToLines || []) {
-            const iseKey = String(line.itemCode || '').trim().toUpperCase();
-            if (usedIse.has(iseKey)) continue;
-            const score = buildToLineMatchScore(item.name, line);
-            if (score > bestScore) {
-                bestScore = score;
+
+        if (catalogCode) {
+            for (const line of buildToLines || []) {
+                const iseKey = String(line.itemCode || '').trim().toUpperCase();
+                if (usedIse.has(iseKey)) continue;
+                if (normalizeItemCode(line.itemCode) !== catalogCode) continue;
+                if (line.buildToManual) continue;
                 bestLine = line;
+                bestScore = 100;
+                break;
             }
         }
+
+        if (!bestLine) {
+            for (const line of buildToLines || []) {
+                const iseKey = String(line.itemCode || '').trim().toUpperCase();
+                if (usedIse.has(iseKey)) continue;
+                if (line.buildToManual) continue;
+                const score = buildToLineMatchScore(item.name, line);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestLine = line;
+                }
+            }
+        }
+
         if (!bestLine || bestScore < MIN_NAME_MATCH_SCORE) continue;
 
         usedIse.add(String(bestLine.itemCode || '').trim().toUpperCase());

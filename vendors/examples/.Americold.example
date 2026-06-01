@@ -3,8 +3,10 @@
 # vendor: Americold
 # location-order: Freezer | Fridge | Dry | Carryover | In Use
 #
-# Format: itemCode | name | col1 | col2 | col3 | Location1 | …
+# Format: [buildToDays | manual] | itemCode | name | unit | unit | unit [| location…]
+#   13 = 13-day build-to (overrides default for this item code)
+#   manual = do not auto-fill order quantity
 
-40303 | Crispy Chicken | Cartons | N/a | Each | Freezer
-39520 | Cooked Beef | Cartons | N/a | Bags | Freezer
-38246A | Black Beans | Cartons | N/a | Bags | Freezer
+10 | 40303 | Crispy Chicken | Cartons | N/a | Each | Freezer
+13 | 39520 | Cooked Beef | Cartons | N/a | Bags | Freezer
+10 | 38246A | Black Beans | Cartons | N/a | Bags | Freezer

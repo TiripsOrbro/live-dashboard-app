@@ -2,7 +2,10 @@
 #
 # vendor: Cut Fresh
 # locations: Fridge | Dry | Carryover | In Use
+#
+# Format: [buildToDays | manual] | name | unit | unit | unit
+#   (no item code — name-only lines; 7-day build-to is typical for produce)
 
-Lettuce | Crates | Bags | N/a
-Tomatoes | Crates | KGs | N/a
-Onions | Bags | KGs | N/a
+7 | Lettuce | Crates | Bags | N/a
+7 | Tomatoes | Crates | KGs | N/a
+7 | Onions | Bags | KGs | N/a

@@ -104,6 +104,26 @@ function looksLikeItemCode(value) {
     return false;
 }
 
+/** Leading column: build-to days (1–31) or `manual` / `m` (no auto order qty). */
+function parseBuildToPrefix(parts) {
+    if (!parts.length) return null;
+    const first = String(parts[0] || '').trim();
+    if (!first) return null;
+
+    if (/^manual$/i.test(first) || /^m$/i.test(first)) {
+        return { buildToManual: true, buildToDays: null, rest: parts.slice(1) };
+    }
+
+    if (/^\d{1,2}$/.test(first)) {
+        const days = Number(first);
+        if (days >= 1 && days <= 31) {
+            return { buildToManual: false, buildToDays: days, rest: parts.slice(1) };
+        }
+    }
+
+    return null;
+}
+
 function parseItemIdentity(parts) {
     if (parts.length < 1 + UNIT_SLOTS) return null;
 
@@ -183,21 +203,31 @@ function parseCatalogText(text, def) {
         const parts = rawLine.split('|').map((p) => p.trim());
         if (!parts.length || !parts[0]) continue;
 
-        const identity = parseItemIdentity(parts);
+        let buildToDays = null;
+        let buildToManual = false;
+        let lineParts = parts;
+        const buildToPrefix = parseBuildToPrefix(parts);
+        if (buildToPrefix) {
+            buildToManual = buildToPrefix.buildToManual;
+            buildToDays = buildToPrefix.buildToDays;
+            lineParts = buildToPrefix.rest;
+        }
+
+        const identity = parseItemIdentity(lineParts);
         if (!identity) continue;
 
         const { itemCode, name, unitStart } = identity;
-        const rawUnitParts = parts.slice(unitStart, unitStart + UNIT_SLOTS);
+        const rawUnitParts = lineParts.slice(unitStart, unitStart + UNIT_SLOTS);
         while (rawUnitParts.length < UNIT_SLOTS) rawUnitParts.push('N/a');
         const unitSlots = rawUnitParts.slice(0, UNIT_SLOTS).map((label) => {
-            const trimmed = String(label || '').trim();
-            if (!trimmed || isNaUnit(trimmed)) {
+            const trimmedLabel = String(label || '').trim();
+            if (!trimmedLabel || isNaUnit(trimmedLabel)) {
                 return { key: null, label: 'N/a', na: true };
             }
-            return { key: slugifyKey(trimmed), label: trimmed, na: false };
+            return { key: slugifyKey(trimmedLabel), label: trimmedLabel, na: false };
         });
         const columns = unitSlots.filter((slot) => !slot.na).map((slot) => ({ key: slot.key, label: slot.label }));
-        const locationParts = parts
+        const locationParts = lineParts
             .slice(unitStart + UNIT_SLOTS)
             .map((p) => p.trim())
             .filter((p) => p && !isNaUnit(p));
@@ -217,6 +247,8 @@ function parseCatalogText(text, def) {
             unitSlots,
             locations: itemLocations,
             mmxOrderClass: sectionToMmxOrderClass(currentSection),
+            buildToDays: buildToManual ? null : buildToDays,
+            buildToManual: Boolean(buildToManual),
         });
     }
 
@@ -293,6 +325,28 @@ function getVendorCatalog(slug) {
     };
 }
 
+/**
+ * Build-to rules from vendor catalog files, keyed by normalized item code.
+ * @returns {Map<string, { buildToDays: number|null, buildToManual: boolean, vendorSlug: string }>}
+ */
+function buildCatalogBuildToIndex() {
+    const byCode = new Map();
+    for (const def of VENDOR_DEFINITIONS) {
+        const catalog = readCatalogForDefinition(def);
+        if (!catalog) continue;
+        for (const item of catalog.items) {
+            const code = String(item.itemCode || '').trim().toUpperCase();
+            if (!code) continue;
+            byCode.set(code, {
+                buildToDays: item.buildToManual ? null : item.buildToDays,
+                buildToManual: Boolean(item.buildToManual),
+                vendorSlug: def.slug,
+            });
+        }
+    }
+    return byCode;
+}
+
 function aggregateCounts(catalog, locationCounts) {
     const totals = {};
     for (const item of catalog.items) {
@@ -335,5 +389,7 @@ module.exports = {
     getVendorDefinition,
     aggregateCounts,
     normalizeUnitSlots,
+    buildCatalogBuildToIndex,
+    parseBuildToPrefix,
     UNIT_SLOTS,
 };

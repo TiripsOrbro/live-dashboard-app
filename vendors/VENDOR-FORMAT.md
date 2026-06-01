@@ -6,9 +6,10 @@ Copy an example from `vendors/examples/` to `vendors/.VendorName` (dotfile, no e
 
 ```text
 # vendor: Schweppes
-# locations: Soft Drinks
-# location-order: Freezer | Fridge | Dry
+# location-order: BIBs | Freezes | Bottles | Cans | Other
 ```
+
+Use `location-order` and a trailing **location** on each line to group stock-count tabs (e.g. Schweppes categories). Americold uses `Freezer | Fridge`.
 
 ## Item lines
 

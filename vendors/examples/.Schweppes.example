@@ -1,18 +1,47 @@
-# Vendor stock-count catalog — copy to `vendors/.Schweppes` and edit item lists.
+# Vendor stock-count catalog — copy to `vendors/.Schweppes`
 #
 # vendor: Schweppes
-# locations: Soft Drinks
+# location-order: BIBs | Freezes | Bottles | Cans | Other
 #
-# Format: [buildToDays | manual] | itemCode | name | unit | unit | unit [| location…]
-#   buildToDays = 1–31 (ISE avg daily × days = build-to target)
-#   manual or m = skip auto order qty in MMX (enter order manually)
-#   (omit leading column to use default 7 / 10 / 13 rules from buildToCalculator)
-#
-# Examples:
-#   10 | 3939 | 7UP BIB 15L | Boxes | N/a | N/a
-#   manual | 3227 | 7UP 600ml PET | Packs | N/a | Bottles
+# BIBs and Freezes: manual build-to. Bottles/Cans/Other: 10-day unless manual.
 
-10 | 3939 | 7UP BIB 15L | Boxes | N/a | N/a
-10 | 3227 | 7UP 600ml PET | Packs | N/a | Bottles
-manual | 10007576 | 7UP Can 375ml | Boxes | N/a | Cans
-10 | 3912 | Pepsi BIB 15L | Boxes | N/a | N/a
+# --- BIBs ---
+manual | 3939 | 7UP BIB | Boxes | N/a | N/a | BIBs
+manual | Mountain Dew BIB | Boxes | N/a | N/a | BIBs
+manual | Pepsi Max BIB | Boxes | N/a | N/a | BIBs
+manual | 3912 | Pepsi BIB | Boxes | N/a | N/a | BIBs
+manual | Solo BIB | Boxes | N/a | N/a | BIBs
+manual | Sunkist BIB | Boxes | N/a | N/a | BIBs
+
+# --- Freezes ---
+manual | Frozen Mountain Dew | Boxes | N/a | N/a | Freezes
+manual | Frozen Pepsi | Boxes | N/a | N/a | Freezes
+manual | Frozen Raspberry | Boxes | N/a | N/a | Freezes
+
+# --- Bottles ---
+10 | 3227 | 7UP Bottle | Packs | N/a | Bottles | Bottles
+10 | Mountain Dew Bottle | Packs | N/a | Bottles | Bottles
+10 | Pepsi Bottle | Packs | N/a | Bottles | Bottles
+10 | Pepsi Max Bottle | Packs | N/a | Bottles | Bottles
+10 | Solo Bottle | Packs | N/a | Bottles | Bottles
+10 | Sunkist Bottle | Packs | N/a | Bottles | Bottles
+
+# --- Cans ---
+10 | 10007576 | 7UP Can | Boxes | N/a | Cans | Cans
+10 | Mountain Dew Can | Boxes | N/a | Cans | Cans
+10 | Pepsi Can | Boxes | N/a | Cans | Cans
+10 | Pepsi Max Can | Boxes | N/a | Cans | Cans
+10 | Solo Can | Boxes | N/a | Cans | Cans
+10 | Sunkist Can | Boxes | N/a | Cans | Cans
+
+# --- Other ---
+10 | Sparkling Water | Packs | N/a | Bottles | Other
+10 | Red Bull | Packs | N/a | Cans | Other
+10 | Red Bull Sugar Free | Packs | N/a | Cans | Other
+10 | Red Bull Tropical | Packs | N/a | Cans | Other
+10 | Pop Top Apple | Packs | N/a | Bottles | Other
+10 | Pop Top Orange | Packs | N/a | Bottles | Other
+10 | Spring Valley Apple | Packs | N/a | Bottles | Other
+10 | Lemon Iced Tea | Packs | N/a | Bottles | Other
+10 | Peach Iced Tea | Packs | N/a | Bottles | Other
+10 | Water | Packs | N/a | Bottles | Other

@@ -5,7 +5,10 @@
  *   npm run upsell-sync -- 3811
  *   npm run upsell-sync -- 3811 --headed
  *   npm run upsell-sync -- 3811 --headed --slow   (adds SCRAPER_SLOW_MO_MS stepping)
- *   npm run upsell-sync -- 3811 --file path/to/export.xlsx
+ *   npm run upsell-sync -- 3811 --file path/to/export.xls
+ *
+ * Prefer MMX Excel download (exportMode "download" in config/upselling.json) over HTML scrape —
+ * the OLAP pivot aligns store columns correctly in the spreadsheet.
  */
 const path = require('path');
 const fs = require('fs');
@@ -35,13 +38,14 @@ async function main() {
         process.exit(1);
     }
     if (!isUpsellingStore(storeNumber)) {
-        console.error(`Store ${storeNumber} is not in upselling enabledStores.`);
+        console.error(`Store ${storeNumber} is not enabled in config/upselling-stores.json.`);
         process.exit(1);
     }
 
     const fileIdx = args.indexOf('--file');
     const filePath = fileIdx >= 0 ? args[fileIdx + 1] : null;
     const headed = args.includes('--headed');
+    const forceScrape = args.includes('--scrape');
 
     if (filePath) {
         const abs = path.resolve(filePath);
@@ -59,6 +63,7 @@ async function main() {
         const slowDebug = args.includes('--slow');
         await runUpsellMmxSync(storeNumber, {
             browserOptions: { headless, skipSlowMo: !slowDebug },
+            exportMode: forceScrape ? 'scrape' : undefined,
         });
     }
 

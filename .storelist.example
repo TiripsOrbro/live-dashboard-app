@@ -3,9 +3,14 @@
 # source of truth: it controls WHICH stores are scraped/served AND their trading hours.
 # Add a line to add a store; remove a line to drop it.
 #
-# Format (pipe-delimited):  store# | name | openHour | closeHour
+# Format (pipe-delimited):
+#   store# | name | openHour | closeHour | area | timeZone
+#   store# | name | area | timeZone                     (for per-day schedules)
+#   store# | name                                        (defaults: Area 22 + dashboard TZ)
 #   - openHour  = first trading hour shown (24h clock)
 #   - closeHour = closing hour (24h clock); the last column shown is closeHour - 1
+#   - area      = used to group stores in the picker and area dashboards (e.g. Area 22)
+#   - timeZone  = IANA name (e.g. Australia/Melbourne, Australia/Perth)
 #   - midnight close may be written as 24 or 0; hours past midnight as 25, 26 (1AM = 25)
 # Lines starting with # and blank lines are ignored.
 #
@@ -16,15 +21,15 @@
 #   or the 10-22 default. Hours are resolved for "today" in Australia/Melbourne.
 #
 # Examples — same hours every day:
-3806 | Dandenong South | 10 | 23
-3808 | Berwick South | 10 | 23
-3811 | Chirnside Park | 10 | 22
-3902 | Ellenbrook North | 10 | 22
-3903 | Canning Vale | 10 | 23
-3904 | Butler | 10 | 22
+3806 | Dandenong South | 10 | 23 | Area 22 | Australia/Melbourne
+3808 | Berwick South   | 10 | 23 | Area 22 | Australia/Melbourne
+3811 | Chirnside Park  | 10 | 22 | Area 22 | Australia/Melbourne
+3902 | Ellenbrook North | 10 | 22 | Area 22 | Australia/Perth
+3903 | Canning Vale     | 10 | 23 | Area 22 | Australia/Perth
+3904 | Butler           | 10 | 22 | Area 22 | Australia/Perth
 #
 # Example — per-day hours (open 10 daily, late on Fri/Sat):
-3901 | Midland
+3901 | Midland | Area 22 | Australia/Perth
     Monday    | 10 | 23
     Tuesday   | 10 | 23
     Wednesday | 10 | 23

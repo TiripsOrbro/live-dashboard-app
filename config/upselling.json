@@ -1,5 +1,7 @@
 {
-  "enabledStores": ["3811", "teststore"],
+  "_comment_enabledStores": "Deprecated — use config/upselling-stores.json per store enabled flag",
+  "_comment_syncStoreNumber": "Single-store MMX report (Chirnside Park). All sync/scoring uses this store only.",
+  "syncStoreNumber": "3811",
   "peakWindows": [
     { "start": 12, "end": 15 },
     { "start": 17, "end": 20 }
@@ -12,7 +14,7 @@
   "biEntryUrl": "https://tacobellau.macromatix.net/MMS_System_ReportPortal.aspx?MenuCustomItemID=227",
   "biRequirePortalWarmup": true,
   "biMenuLinkText": "Business Intelligence",
-  "exportMode": "scrape",
+  "exportMode": "download",
   "skipDatePicker": true,
   "treeReadyTimeoutMs": 60000,
   "reportReadyTimeoutMs": 90000,

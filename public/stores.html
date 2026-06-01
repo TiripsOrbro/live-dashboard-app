@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="/styles/dashboard.css">
     <link rel="stylesheet" href="/styles/brand-mark.css">
     <link rel="stylesheet" href="/styles/login.css">
+    <link rel="stylesheet" href="/styles/page-transition.css">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icon.svg">
@@ -81,10 +82,255 @@
 
         .store-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: clamp(12px, 2vw, 24px);
+            grid-template-columns: 1fr;
+            gap: clamp(16px, 2.2vw, 28px);
             width: 100%;
             max-width: 1200px;
+        }
+
+        .group-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: clamp(10px, 1.5vw, 16px);
+            width: 100%;
+            align-items: start;
+        }
+
+        .group-grid.area-focus-active {
+            align-items: start;
+            justify-items: stretch;
+        }
+
+        :root {
+            --area-expand-duration: 1.05s;
+            --area-stores-delay: 0.48s;
+            --area-stores-fade-duration: 0.42s;
+            --clip-left: 0px;
+            --clip-right: 0px;
+            --clip-bottom: calc(100% - 190px);
+        }
+
+        .area-tile-card {
+            margin: 0;
+            display: block;
+        }
+
+        .area-tile-summary {
+            list-style: none;
+            cursor: pointer;
+            display: block;
+        }
+
+        .area-tile-summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .area-tile {
+            width: 100%;
+            box-sizing: border-box;
+            user-select: none;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.55rem;
+            min-height: 190px;
+        }
+
+        .group-grid > .store-tile {
+            min-height: 190px;
+        }
+
+        .area-tile-topline {
+            position: absolute;
+            top: 10px;
+            left: 12px;
+            display: flex;
+            justify-content: flex-start;
+            width: auto;
+            min-height: 0;
+        }
+
+        .area-return-btn {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.55s ease;
+            border: none;
+            background: none;
+            color: var(--white);
+            border-radius: 0;
+            padding: 0;
+            font: inherit;
+            font-size: var(--font-size-5);
+            font-weight: var(--font-weight-semibold);
+            cursor: pointer;
+            text-decoration: underline;
+            text-underline-offset: 0.18em;
+        }
+
+        .area-tile-card.is-expanding-wide .area-return-btn,
+        .area-tile-card.is-expanding-down .area-return-btn,
+        .area-tile-card.is-revealed[open] .area-return-btn {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .area-tile-card.is-closing .area-return-btn {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.28s ease;
+        }
+
+        .group-item {
+            transition: opacity 0.5s ease;
+        }
+
+        .group-grid.area-focus-active .group-item.is-dimmed {
+            display: none;
+        }
+
+        .group-grid.area-focus-active .group-item.is-selected {
+            grid-column: 1 / -1;
+            z-index: 2;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .area-tile-card[open] {
+            border: 2px solid var(--tb-purple-light);
+            border-radius: 14px;
+            background: color-mix(in srgb, var(--tb-purple-light) 18%, var(--charcoal));
+            overflow: hidden;
+        }
+
+        /* Start at the original tile footprint, then expand out + down together. */
+        .area-tile-card[open].is-opening:not(.is-expanding-wide) {
+            clip-path: inset(0 var(--clip-right) var(--clip-bottom) var(--clip-left) round 14px);
+        }
+
+        .area-tile-card[open].is-opening.is-expanding-wide,
+        .area-tile-card[open].is-revealed {
+            clip-path: inset(0 0 0 0 round 14px);
+        }
+
+        .area-tile-card[open].is-opening.is-expanding-wide {
+            transition: clip-path var(--area-expand-duration) cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        /* Reverse expand: same clip transition, run from full → tile footprint. */
+        .area-tile-card[open].is-closing {
+            transition: clip-path var(--area-expand-duration) cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .area-tile-card[open].is-closing.is-collapsing-wide {
+            clip-path: inset(0 0 0 0 round 14px);
+        }
+
+        .area-tile-card[open].is-closing:not(.is-collapsing-wide) {
+            clip-path: inset(0 var(--clip-right) var(--clip-bottom) var(--clip-left) round 14px);
+        }
+
+        .area-tile-card.is-closing[open] .area-tile-panel {
+            padding: clamp(12px, 2vw, 18px);
+            max-height: 1600px;
+            opacity: 1;
+        }
+
+        .area-tile-card[open] .area-tile {
+            border-color: transparent;
+            background: transparent;
+            border-radius: 0;
+            min-height: 140px;
+        }
+
+        .area-tile-panel {
+            margin: 0;
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            padding: 0 clamp(12px, 2vw, 18px);
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+        }
+
+        .area-tile-card.is-expanding-wide[open] .area-tile-panel,
+        .area-tile-card.is-expanding-down[open] .area-tile-panel,
+        .area-tile-card.is-revealed[open] .area-tile-panel {
+            padding: clamp(12px, 2vw, 18px);
+            max-height: 1600px;
+            opacity: 1;
+        }
+
+        .area-tile-title {
+            font-size: var(--font-size-1);
+            font-weight: var(--font-weight-heavy);
+            line-height: 1.2;
+            color: color-mix(in srgb, var(--white) 90%, var(--charcoal));
+        }
+
+        .area-tile-store-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: clamp(10px, 1.5vw, 16px);
+        }
+
+        .area-tile-store-grid .store-tile {
+            opacity: 0;
+            transform: scale(0.965);
+            transition:
+                opacity var(--area-stores-fade-duration) ease,
+                transform var(--area-stores-fade-duration) cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .area-tile-card.is-stores-revealed .area-tile-store-grid .store-tile {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .area-tile-store-grid .store-tile {
+                opacity: 1;
+                transform: none;
+                transition: none;
+            }
+        }
+
+        .area-tile-panel .store-tile {
+            background: color-mix(in srgb, var(--white) 96%, var(--grey));
+            color: var(--charcoal);
+            border-color: color-mix(in srgb, var(--charcoal) 12%, var(--white));
+        }
+
+        .area-tile-panel .store-tile:hover,
+        .area-tile-panel .store-tile:focus-visible {
+            background: var(--white);
+            border-color: var(--tb-purple-light);
+            color: var(--charcoal);
+        }
+
+        .area-tile-panel .store-tile-number {
+            color: var(--charcoal);
+        }
+
+        .area-tile-panel .store-tile-name {
+            color: color-mix(in srgb, var(--charcoal) 88%, var(--grey));
+        }
+
+        .area-tile-panel .store-tile-hours {
+            color: color-mix(in srgb, var(--charcoal) 55%, var(--grey));
+        }
+
+        .area-tile-panel .store-tile--area-dashboard {
+            background: color-mix(in srgb, var(--tb-purple-light) 22%, var(--white));
+            border-color: var(--tb-purple-light);
+            color: var(--charcoal);
+        }
+
+        .area-tile-panel .store-tile--area-dashboard .store-tile-name,
+        .area-tile-panel .store-tile--area-dashboard .store-tile-number {
+            color: var(--charcoal);
         }
 
         .store-tile {
@@ -123,6 +369,13 @@
             color: color-mix(in srgb, var(--white) 82%, var(--charcoal));
         }
 
+        .area-tile .area-tile-title {
+            font-size: var(--font-size-1);
+            font-weight: var(--font-weight-heavy);
+            line-height: 1.1;
+            color: color-mix(in srgb, var(--white) 94%, var(--charcoal));
+        }
+
         .store-tile-hours {
             font-size: var(--font-size-5);
             font-weight: var(--font-weight-normal);
@@ -132,6 +385,18 @@
         .store-tile--test {
             border-style: dashed;
             background: color-mix(in srgb, var(--tb-purple-light) 12%, var(--charcoal));
+        }
+
+        .store-tile--area-dashboard {
+            background: color-mix(in srgb, var(--tb-purple-light) 28%, var(--charcoal));
+            border-color: var(--tb-purple-light);
+        }
+
+        .store-tile--empty-area {
+            border-style: dashed;
+            opacity: 0.85;
+            cursor: default;
+            pointer-events: none;
         }
 
         .stores-message {
@@ -148,9 +413,14 @@
             }
 
             .store-grid {
-                grid-template-columns: 1fr;
                 gap: 10px;
                 max-width: 520px;
+            }
+
+            .group-grid,
+            .area-tile-store-grid {
+                grid-template-columns: 1fr;
+                gap: 8px;
             }
 
             .store-tile {
@@ -161,6 +431,7 @@
                 padding: 14px 16px;
                 min-height: 0;
                 border-radius: 10px;
+                min-height: 0;
             }
 
             .store-tile-number {
@@ -186,6 +457,7 @@
 
 <body>
     <script src="/scripts/brand-mark.js"></script>
+    <script src="/scripts/page-transition.js"></script>
     <script src="/scripts/welcome-overlay.js"></script>
     <a href="/logout" class="stores-sign-out-btn">Sign out</a>
     <header class="stores-header">
@@ -197,5 +469,8 @@
     <main id="store-grid" class="store-grid" aria-label="Store list"></main>
 
     <script src="/scripts/stores.js"></script>
+    <script>
+        DashboardPageTransition.installStoreLinkFade(document);
+    </script>
 </body>
 </html>

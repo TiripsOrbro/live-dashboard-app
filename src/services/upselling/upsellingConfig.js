@@ -1,8 +1,14 @@
 const fs = require('fs');
 const path = require('path');
-const { normalizeStoreKey, isTestStore } = require('../testStore');
+const {
+    PROJECT_ROOT: STORE_PROJECT_ROOT,
+    normalizeUpsellingStoreKey,
+    resolveEnabledStores,
+    isUpsellingEnabledForStore,
+    resetStoreUpsellingConfigCache,
+} = require('./storeUpsellingConfig');
 
-const PROJECT_ROOT = path.join(__dirname, '..', '..', '..');
+const PROJECT_ROOT = STORE_PROJECT_ROOT;
 const CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'upselling.json');
 const TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
 
@@ -10,6 +16,7 @@ let cache = null;
 
 const DEFAULT_CONFIG = {
     enabledStores: ['teststore'],
+    syncStoreNumber: '',
     peakWindows: [
         { start: 12, end: 15 },
         { start: 17, end: 20 },
@@ -50,32 +57,14 @@ function loadUpsellingConfig() {
 
 function resetUpsellingConfigCache() {
     cache = null;
-}
-
-function resolveEnabledStores(cfg) {
-    const fromEnv = String(process.env.UPSELLING_ENABLED_STORES || '').trim();
-    if (fromEnv) {
-        return fromEnv
-            .split(/[,;]/)
-            .map((s) => s.trim().toLowerCase())
-            .filter(Boolean);
-    }
-    return (cfg.enabledStores || []).map((s) => String(s).trim().toLowerCase());
-}
-
-function normalizeUpsellingStoreKey(storeNumber) {
-    const raw = String(storeNumber || '').trim();
-    if (isTestStore(raw)) return 'teststore';
-    const key = normalizeStoreKey(raw);
-    return key ? key.toLowerCase() : raw.toLowerCase();
+    resetStoreUpsellingConfigCache();
 }
 
 function isUpsellingStore(storeNumber) {
-    const cfg = loadUpsellingConfig();
-    const want = normalizeUpsellingStoreKey(storeNumber);
-    if (!want) return false;
-    return resolveEnabledStores(cfg).includes(want);
+    return isUpsellingEnabledForStore(storeNumber);
 }
+
+const { isTestStore } = require('../testStore');
 
 /** Test store uses local .Employees only — no Macromatix BI sync. */
 function isUpsellingMmxSyncStore(storeNumber) {
@@ -94,6 +83,15 @@ function resolveUpsellReportDateSpec(mode) {
     return m;
 }
 
+function resolveEnabledStoresForScheduler() {
+    return resolveEnabledStores(loadUpsellingConfig());
+}
+
+/** When set, upsell BI export is for this store only (no regional multi-store file). */
+function resolveUpsellSyncStore(cfg = loadUpsellingConfig()) {
+    return String(cfg.syncStoreNumber || '').trim();
+}
+
 module.exports = {
     PROJECT_ROOT,
     CONFIG_PATH,
@@ -102,7 +100,9 @@ module.exports = {
     resetUpsellingConfigCache,
     isUpsellingStore,
     isUpsellingMmxSyncStore,
-    resolveEnabledStores,
+    resolveEnabledStores: resolveEnabledStoresForScheduler,
+    normalizeUpsellingStoreKey,
     upsellingDataDir,
     resolveUpsellReportDateSpec,
+    resolveUpsellSyncStore,
 };

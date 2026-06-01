@@ -1,10 +1,14 @@
 # Item label | points
-# Labels must match MMX "Upsell by Cashier" column headers after Expand in BI.
-#
-# Category groups (not scored):
-#   BOX_MEALS
-#   DESSERTS
-#
+# Pulled from BI report 317 (Upsell by Cashier), scraped 2026-06-01 after report update.
+Boss Burrito Box | 0
+Cheesy G Taco Box | 0
+Chipotle Crunch Burrito Box | 0
+Lava Crispy Chicken Burrito Box | 0
+Lava Crunch Burrito Box | 0
+Zesty Crispy Chicken Burrito Box | 0
+Chocodilla | 0
+Churros | 0
+Cinnamon Twists | 0
 Lava Crispy Chicken Taco Crispy Chicken | 0
 Zesty Taco Crispy Chicken | 0
 $1 Sauce Add On | 0

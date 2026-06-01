@@ -79,7 +79,7 @@ async function runUpsellMmxSync(storeNumber, options = {}) {
         await navigateToBiReport(page, cfg);
 
         const reportDate = resolveSyncReportDate(cfg);
-        const exportMode = String(cfg.exportMode || 'scrape').toLowerCase();
+        const exportMode = String(options.exportMode || cfg.exportMode || 'scrape').toLowerCase();
         const onOlap = isOlapReportPage(page.url()) || /^(scrape|olap)$/.test(exportMode);
 
         if (!onOlap && !cfg.skipDatePicker && reportDate !== 'competition') {
@@ -91,8 +91,11 @@ async function runUpsellMmxSync(storeNumber, options = {}) {
         let exportFile = null;
 
         if (onOlap && exportMode === 'scrape') {
+            log.warn(
+                '[Upselling] HTML scrape can mis-map stores on wide OLAP grids — prefer exportMode "download" in config/upselling.json'
+            );
             log.info('[Upselling] Reading numbers from BI table (no file download)');
-            const parsed = await scrapeOlapUpsellReport(page, cfg);
+            const parsed = await scrapeOlapUpsellReport(page, cfg, store);
             const result = processParsedReport(parsed, store, { source: 'mdx-scrape' });
             ranked = result.ranked;
             if (result.byDay?.length) {
@@ -103,20 +106,36 @@ async function runUpsellMmxSync(storeNumber, options = {}) {
             }
         } else if (onOlap && exportMode === 'download') {
             log.info('[Upselling] Downloading BI table as Excel');
-            await exportOlapReportToExcel(page, cfg);
-            const downloaded = await waitForReportDownload(
-                downloadDir,
-                cfg.downloadWaitMs || 120000,
-                '.xls'
-            );
-            exportFile = path.basename(downloaded);
-            const dest = path.join(
-                dataDir,
-                `${timestampSlug()}-upsell-by-cashier${path.extname(downloaded) || '.xls'}`
-            );
-            if (downloaded !== dest) fs.renameSync(downloaded, dest);
-            fs.copyFileSync(dest, path.join(dataDir, 'last-export' + path.extname(dest)));
-            ({ ranked } = processReportFile(dest, store));
+            let usedScrapeFallback = false;
+            try {
+                await exportOlapReportToExcel(page, cfg);
+                const downloaded = await waitForReportDownload(
+                    downloadDir,
+                    cfg.downloadWaitMs || 120000,
+                    '.xls'
+                );
+                exportFile = path.basename(downloaded);
+                const dest = path.join(
+                    dataDir,
+                    `${timestampSlug()}-upsell-by-cashier${path.extname(downloaded) || '.xls'}`
+                );
+                if (downloaded !== dest) fs.renameSync(downloaded, dest);
+                const lastExportPath = path.join(dataDir, 'last-export' + path.extname(dest));
+                fs.copyFileSync(dest, lastExportPath);
+                log.info(`[Upselling] Saved export: ${lastExportPath}`);
+                ({ ranked } = processReportFile(dest, store, { source: 'olap-download' }));
+            } catch (downloadErr) {
+                log.warn(`[Upselling] Excel download failed: ${downloadErr.message}`);
+                log.info('[Upselling] Falling back to HTML table scrape');
+                usedScrapeFallback = true;
+                const parsed = await scrapeOlapUpsellReport(page, cfg, store);
+                const result = processParsedReport(parsed, store, { source: 'mdx-scrape-fallback' });
+                ranked = result.ranked;
+            }
+            if (usedScrapeFallback && options.browserOptions?.headless === false) {
+                log.info('[Upselling] Browser left open 30s — verify the report on screen');
+                await page.waitForTimeout(30000);
+            }
         } else if (exportMode === 'powerbi') {
             await exportPowerBiToExcel(page, cfg);
             const downloaded = await waitForReportDownload(

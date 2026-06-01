@@ -1,0 +1,37 @@
+{
+  "_comment": "Per-store upselling. Set enabled true/false for each store. Optional points override global .points for that store only (omit points or use {} to inherit all defaults).",
+  "stores": {
+    "3806": {
+      "enabled": false,
+      "points": {}
+    },
+    "3808": {
+      "enabled": false,
+      "points": {}
+    },
+    "3811": {
+      "enabled": true,
+      "points": {}
+    },
+    "3901": {
+      "enabled": false,
+      "points": {}
+    },
+    "3902": {
+      "enabled": false,
+      "points": {}
+    },
+    "3903": {
+      "enabled": false,
+      "points": {}
+    },
+    "3904": {
+      "enabled": false,
+      "points": {}
+    },
+    "teststore": {
+      "enabled": true,
+      "points": {}
+    }
+  }
+}

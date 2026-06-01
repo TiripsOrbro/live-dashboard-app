@@ -53,7 +53,19 @@ const SALES_REFRESH_MINUTES = 2;
 
 /** Store name/number from the latest sales payload, shown in the header. */
 let currentStoreLabel = STORE_NUMBER || '';
-const DASHBOARD_TIME_ZONE = 'Australia/Melbourne';
+let DASHBOARD_TIME_ZONE = 'Australia/Melbourne';
+
+function setDashboardTimeZone(value) {
+    const zone = String(value || '').trim();
+    if (!zone) return;
+    try {
+        // Throws for invalid IANA names; keep existing zone if invalid.
+        new Intl.DateTimeFormat('en-AU', { timeZone: zone }).format(new Date());
+        DASHBOARD_TIME_ZONE = zone;
+    } catch {
+        /* ignore invalid time zone */
+    }
+}
 
 /** DEBUG: when set to `YYYY-MM-DD`, order rules + audit schedule use that Melbourne date; “Apply” runs test scheduled-orders scrape (see server `canRunScheduledOrdersDateTest`). */
 let orderDateTestYmd = null;
@@ -2345,6 +2357,7 @@ async function initTradingHours() {
             : stores.find((s) => String(s.storeNumber) === String(data.defaultStore)) || stores[0];
         if (target && Number.isFinite(target.openHour) && Number.isFinite(target.closeHour)) {
             setTradingHours(target.openHour, target.closeHour);
+            setDashboardTimeZone(target.timeZone);
             if (target.storeName || target.storeNumber) {
                 currentStoreLabel = target.storeName || target.storeNumber;
             }

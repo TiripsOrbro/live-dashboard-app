@@ -1,6 +1,7 @@
 # day | name | points
 # Per-day scores from MMX sync (overwritten each sync).
-# Leaderboard totals = sum of per-day points + optional bonus below.
+# Leaderboard shows each person's best single-day score (+ optional bonus below).
+# Store: 3811
 2026-05-25 | John Smith | 12
 2026-05-26 | Jane Doe | 8
 

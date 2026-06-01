@@ -9,12 +9,20 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="TBADash">
     <title>Sales Dashboard</title>
+    <script>
+        try {
+            if (sessionStorage.getItem('dashboard-nav-transition') === 'from-stores') {
+                document.documentElement.className += ' page-nav-enter-pending';
+            }
+        } catch (e) { /* ignore */ }
+    </script>
 
     <!-- Styles -->
     <link rel="stylesheet" href="/styles/brand-mark.css">
     <link rel="stylesheet" href="/styles/dashboard.css">
     <link rel="stylesheet" href="/styles/upselling.css">
     <link rel="stylesheet" href="/styles/login.css">
+    <link rel="stylesheet" href="/styles/page-transition.css">
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icon.svg">
@@ -22,6 +30,8 @@
 
 <body>
     <script src="/scripts/brand-mark.js"></script>
+    <script src="/scripts/page-transition.js"></script>
+    <script>DashboardPageTransition.initEnterFade();</script>
     <script src="/scripts/welcome-overlay.js"></script>
     <!-- Main App Container -->
     <div id="app">Loading dashboard...</div>

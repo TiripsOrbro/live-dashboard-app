@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { PROJECT_ROOT } = require('./upsellingConfig');
+const { PROJECT_ROOT, resolveUpsellSyncStore } = require('./upsellingConfig');
 
 const EMPLOYEES_PATH = path.join(PROJECT_ROOT, '.Employees');
 const EMPLOYEES_EXAMPLE_PATH = path.join(PROJECT_ROOT, '.Employees.example');
@@ -14,6 +14,25 @@ function normalizeCashierName(name) {
 
 function isDayField(value) {
     return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
+}
+
+function isStoreField(value) {
+    return /^\d{3,6}$/.test(String(value || '').trim());
+}
+
+function resolveSyncStore() {
+    return resolveUpsellSyncStore();
+}
+
+/** Rows for one store's leaderboard (single-store file has no store column). */
+function filterByDayForStoreLeaderboard(byDay, wantStore) {
+    const store = String(wantStore || resolveSyncStore() || '').trim();
+    const rows = byDay || [];
+    if (!store) return rows;
+    return rows.filter((r) => {
+        const rowStore = String(r.store || store).trim();
+        return rowStore === store;
+    });
 }
 
 function aggregateRowsFromByDay(byDay, bonusByKey = new Map(), bonusNames = new Map()) {
@@ -67,6 +86,7 @@ function aggregateRowsFromByDay(byDay, bonusByKey = new Map(), bonusNames = new 
 }
 
 function parseEmployeesText(text) {
+    const syncStore = resolveSyncStore();
     const byDay = [];
     const bonusByKey = new Map();
     const bonusNames = new Map();
@@ -77,14 +97,30 @@ function parseEmployeesText(text) {
         const parts = line.split('|').map((p) => p.trim());
         if (parts.length < 2) continue;
 
-        if (isDayField(parts[0]) && parts.length >= 3) {
-            const day = parts[0];
-            const name = parts[1];
-            const points = Number(parts[2] ?? 0);
-            if (!name) continue;
+        let store = syncStore;
+        let day = '';
+        let rowName = '';
+        let pointsRaw = '';
+
+        if (isStoreField(parts[0]) && isDayField(parts[1]) && parts.length >= 4) {
+            store = parts[0];
+            day = parts[1];
+            rowName = parts[2];
+            pointsRaw = parts[3];
+        } else if (isDayField(parts[0]) && parts.length >= 3) {
+            day = parts[0];
+            rowName = parts[1];
+            pointsRaw = parts[2];
+        }
+
+        if (day) {
+            const points = Number(pointsRaw ?? 0);
+            if (!rowName) continue;
+            if (syncStore && store && store !== syncStore) continue;
             byDay.push({
+                store: syncStore || store,
                 day,
-                name,
+                name: rowName,
                 points: Number.isFinite(points) ? points : 0,
             });
             continue;
@@ -125,11 +161,15 @@ function parseEmployeesText(text) {
 }
 
 function formatEmployeesText(byDay = [], bonusByKey = new Map(), bonusNames = new Map()) {
+    const syncStore = resolveSyncStore();
     const lines = [
         '# day | name | points',
         '# Per-day scores from MMX sync (overwritten each sync).',
         '# Leaderboard shows each person\'s best single-day score (+ optional bonus below).',
     ];
+    if (syncStore) {
+        lines.push(`# Store: ${syncStore}`);
+    }
     for (const d of byDay) {
         lines.push(`${d.day} | ${d.name} | ${d.points}`);
     }
@@ -172,20 +212,24 @@ function saveEmployees(byDay = [], bonusByKey = new Map(), bonusNames = new Map(
     fs.writeFileSync(EMPLOYEES_PATH, formatEmployeesText(byDay, bonusByKey, bonusNames), 'utf8');
 }
 
-function saveRankedEmployees(_rankedRows, byDay = []) {
+function saveRankedEmployees(_rankedRows, byDay = [], syncStore = '') {
     const { bonusByKey, bonusNames } = loadEmployees();
+    const syncStoreNorm = String(syncStore || resolveSyncStore() || '').trim();
 
-    const dayRows = (byDay || []).map((d) => ({
+    const incoming = (byDay || []).map((d) => ({
+        store: syncStoreNorm,
         day: String(d.day || '').trim(),
         name: String(d.name || '').trim(),
         points: Number.isFinite(d.points) ? d.points : 0,
     }));
 
-    if (dayRows.length || bonusByKey.size || fs.existsSync(EMPLOYEES_PATH)) {
-        saveEmployees(dayRows, bonusByKey, bonusNames);
+    const mergedByDay = incoming.length ? incoming : [];
+
+    if (mergedByDay.length || bonusByKey.size || fs.existsSync(EMPLOYEES_PATH)) {
+        saveEmployees(mergedByDay, bonusByKey, bonusNames);
     }
 
-    return aggregateRowsFromByDay(dayRows, bonusByKey, bonusNames);
+    return aggregateRowsFromByDay(mergedByDay, bonusByKey, bonusNames);
 }
 
 module.exports = {
@@ -193,6 +237,7 @@ module.exports = {
     EMPLOYEES_EXAMPLE_PATH,
     normalizeCashierName,
     isDayField,
+    filterByDayForStoreLeaderboard,
     aggregateRowsFromByDay,
     parseEmployeesText,
     formatEmployeesText,

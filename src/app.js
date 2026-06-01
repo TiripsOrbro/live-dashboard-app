@@ -5,6 +5,8 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 /* Production wins over base .env (dotenv does not override by default, so empty SCRAPER_* in .env would block .env.production). */
 require('dotenv').config({ path: path.join(__dirname, '../.env.production'), override: true });
+/* Force background scraping to stay headless for sales + upselling. */
+process.env.SCRAPER_HEADLESS = 'true';
 
 (function logMacromatixEnvStatus() {
     const enc = String(process.env.SCRAPER_CREDENTIALS_ENCRYPTED || '').trim();
@@ -842,6 +844,174 @@ function storeSliceFromPayload(payload, requestedStore) {
     };
 }
 
+function normalizeAreaKey(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+}
+
+function areaCodeFromValue(value) {
+    const s = String(value || '').trim();
+    const m = s.match(/(?:^|\b)area\D*(\d+)\b/i) || s.match(/^a(\d+)$/i) || s.match(/^(\d+)$/);
+    if (!m) return '';
+    return `A${String(Number(m[1]))}`;
+}
+
+function areaMatchTokens(value) {
+    const set = new Set();
+    const key = normalizeAreaKey(value);
+    if (key) set.add(key);
+    const lower = String(value || '').trim().toLowerCase();
+    if (lower) set.add(lower);
+    const code = areaCodeFromValue(value);
+    if (code) {
+        set.add(code.toLowerCase());
+        set.add(normalizeAreaKey(code));
+    }
+    return set;
+}
+
+function areaNameFromStore(store) {
+    const area = String(store?.area || '').trim();
+    return area || 'Area 22';
+}
+
+function buildAreaGroups(stores) {
+    const groups = new Map();
+    for (const store of stores || []) {
+        const area = areaNameFromStore(store);
+        if (!groups.has(area)) groups.set(area, []);
+        groups.get(area).push(store);
+    }
+    return [...groups.entries()]
+        .map(([name, areaStores]) => ({
+            name,
+            key: normalizeAreaKey(name),
+            stores: areaStores.sort((a, b) =>
+                String(a.storeNumber).localeCompare(String(b.storeNumber), undefined, { numeric: true })
+            ),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const RAW_BASE_HOUR = 5;
+
+function getTzYmd(now, timeZone) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timeZone || 'Australia/Melbourne',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).formatToParts(now);
+    const get = (t) => Number(parts.find((p) => p.type === t)?.value || 0);
+    return { year: get('year'), month: get('month'), day: get('day') };
+}
+
+function getOffsetMinutesAt(timeZone, instant) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: timeZone || 'Australia/Melbourne',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZoneName: 'shortOffset',
+        hour12: false,
+    }).formatToParts(instant);
+    const token = String(parts.find((p) => p.type === 'timeZoneName')?.value || 'GMT+0');
+    const m = token.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/i);
+    if (!m) return 0;
+    const sign = m[1] === '-' ? -1 : 1;
+    const hh = Number(m[2] || 0);
+    const mm = Number(m[3] || 0);
+    return sign * (hh * 60 + mm);
+}
+
+function utcMsForStoreLocalHour(now, timeZone, localHour) {
+    const { year, month, day } = getTzYmd(now, timeZone);
+    const dayShift = Math.floor(localHour / 24);
+    const hour = ((localHour % 24) + 24) % 24;
+    const utcBase = Date.UTC(year, month - 1, day + dayShift, hour, 0, 0);
+    const offsetMin = getOffsetMinutesAt(timeZone, new Date(utcBase));
+    return utcBase - offsetMin * 60 * 1000;
+}
+
+function stateCodeFromTimeZone(timeZone) {
+    const tz = String(timeZone || '').trim();
+    const map = {
+        'Australia/Melbourne': 'VIC',
+        'Australia/Sydney': 'NSW',
+        'Australia/Brisbane': 'QLD',
+        'Australia/Perth': 'WA',
+        'Australia/Adelaide': 'SA',
+        'Australia/Darwin': 'NT',
+        'Australia/Hobart': 'TAS',
+        'Australia/Canberra': 'ACT',
+    };
+    return map[tz] || tz.replace(/^Australia\//, '').toUpperCase() || 'LOCAL';
+}
+
+function combineAreaHourlyByLocalRange(stores, startHour, endHourExclusive) {
+    const rows = [];
+    const start = Math.trunc(startHour);
+    const end = Math.trunc(endHourExclusive);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return rows;
+
+    for (let localHour = start; localHour < end; localHour += 1) {
+        let forecast = 0;
+        let actual = 0;
+        for (const store of stores || []) {
+            const openHour = Number.isFinite(store.openHour) ? Math.trunc(store.openHour) : DEFAULT_OPEN_HOUR;
+            const closeHour = Number.isFinite(store.closeHour) ? Math.trunc(store.closeHour) : DEFAULT_CLOSE_HOUR;
+            if (localHour < openHour || localHour >= closeHour) continue;
+            const idx = localHour - RAW_BASE_HOUR;
+            const f = Number(Array.isArray(store.forecast) ? store.forecast[idx] : 0) || 0;
+            const a = Number(Array.isArray(store.actual) ? store.actual[idx] : 0) || 0;
+            forecast += f;
+            actual += a;
+        }
+        rows.push({ localHour, forecast, actual });
+    }
+    return rows;
+}
+
+function combineAreaHourly(stores) {
+    const now = new Date();
+    const byUtcHour = new Map();
+    for (const store of stores || []) {
+        const tz = store.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
+        const actual = Array.isArray(store.actual) ? store.actual : [];
+        const forecast = Array.isArray(store.forecast) ? store.forecast : [];
+        const hours = Math.max(actual.length, forecast.length);
+        for (let i = 0; i < hours; i++) {
+            const localHour = RAW_BASE_HOUR + i;
+            const utcMs = utcMsForStoreLocalHour(now, tz, localHour);
+            const bucketMs = Math.floor(utcMs / 3600000) * 3600000;
+            const key = String(bucketMs);
+            const entry = byUtcHour.get(key) || {
+                utcHourMs: bucketMs,
+                forecast: 0,
+                actual: 0,
+                stores: [],
+            };
+            const f = Number(forecast[i]) || 0;
+            const a = Number(actual[i]) || 0;
+            entry.forecast += f;
+            entry.actual += a;
+            entry.stores.push({
+                storeNumber: store.storeNumber,
+                storeName: store.storeName,
+                area: areaNameFromStore(store),
+                timeZone: tz,
+                localHour,
+                forecast: f,
+                actual: a,
+            });
+            byUtcHour.set(key, entry);
+        }
+    }
+    return [...byUtcHour.values()].sort((a, b) => a.utcHourMs - b.utcHourMs);
+}
+
 function filterSalesSliceForUser(slice, user) {
     if (!slice || isAdminUser(user)) return slice;
     const allowed = new Set((user.stores === '*' ? [] : user.stores).map(String));
@@ -925,6 +1095,10 @@ app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
     const storeNumber = (req.path.match(/^\/(\d{3,6})\/?$/) || [])[1];
     if (!assertStoreAccess(req, res, storeNumber)) return;
     res.sendFile(path.join(__dirname, '../public', 'index.html'));
+});
+
+app.get(/^\/(area\/[a-z0-9-]+|a\d+)\/?$/i, (req, res) => {
+    res.sendFile(path.join(__dirname, '../public', 'area.html'));
 });
 
 function sendStockCountPage(req, res, storeNumber) {
@@ -1365,6 +1539,9 @@ app.get('/api/stores', async (req, res) => {
         let stores = getStoreList().map((s) => ({
             storeNumber: s.storeNumber,
             storeName: s.storeName,
+            area: areaNameFromStore(s),
+            areaKey: normalizeAreaKey(areaNameFromStore(s)),
+            timeZone: s.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne',
             openHour: s.openHour,
             closeHour: s.closeHour,
         }));
@@ -1374,6 +1551,9 @@ app.get('/api/stores', async (req, res) => {
             stores = (Array.isArray(salesCache.stores) ? salesCache.stores : []).map((s) => ({
                 storeNumber: s.storeNumber,
                 storeName: s.storeName,
+                area: areaNameFromStore(s),
+                areaKey: normalizeAreaKey(areaNameFromStore(s)),
+                timeZone: s.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne',
                 openHour: Number.isFinite(s.openHour) ? s.openHour : DEFAULT_OPEN_HOUR,
                 closeHour: Number.isFinite(s.closeHour) ? s.closeHour : DEFAULT_CLOSE_HOUR,
             }));
@@ -1382,12 +1562,158 @@ app.get('/api/stores', async (req, res) => {
         const user = req.dashboardUser || getRequestUser(req);
         stores = filterStoresForUser(user, stores);
         if (isAdminUser(user)) {
-            stores = [testStoreListEntry(), ...stores];
+            const test = { ...testStoreListEntry(), area: 'Test Store', areaKey: 'test-store', timeZone: 'Australia/Melbourne' };
+            stores = [test, ...stores];
         }
 
-        res.json({ success: true, stores, defaultStore: DASHBOARD_DEFAULT_STORE || (stores[0]?.storeNumber ?? '') });
+        const areas = buildAreaGroups(stores);
+        res.json({
+            success: true,
+            stores,
+            areas,
+            defaultStore: DASHBOARD_DEFAULT_STORE || (stores[0]?.storeNumber ?? ''),
+        });
     } catch (error) {
         console.error('API: Error listing stores:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/area-dashboard', async (req, res) => {
+    try {
+        const areaParam = String(req.query.area || '').trim();
+        if (!areaParam) {
+            return res.status(400).json({ success: false, error: 'Missing area query parameter.' });
+        }
+        const storesCfg = getStoreList().map((s) => ({
+            ...s,
+            area: areaNameFromStore(s),
+            areaKey: normalizeAreaKey(areaNameFromStore(s)),
+            timeZone: s.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne',
+        }));
+        const areaStoresCfg = storesCfg.filter(
+            (s) => {
+                const wanted = areaMatchTokens(areaParam);
+                const storeTokens = areaMatchTokens(s.areaKey);
+                areaMatchTokens(s.area).forEach((t) => storeTokens.add(t));
+                for (const token of wanted) {
+                    if (storeTokens.has(token)) return true;
+                }
+                return false;
+            }
+        );
+        if (!areaStoresCfg.length) {
+            return res.status(404).json({ success: false, error: `Unknown area: ${areaParam}` });
+        }
+        const user = req.dashboardUser || getRequestUser(req);
+        const allowedStores = filterStoresForUser(
+            user,
+            areaStoresCfg.map((s) => ({ storeNumber: s.storeNumber, storeName: s.storeName }))
+        ).map((s) => String(s.storeNumber));
+        const filteredCfg = areaStoresCfg.filter((s) => allowedStores.includes(String(s.storeNumber)));
+        if (!filteredCfg.length) return sendForbidden(req, res);
+
+        let payload;
+        try {
+            payload = await getSalesDataCached();
+        } catch (error) {
+            console.warn('[Area Dashboard] Falling back to cached/empty sales payload:', error.message);
+            payload = salesCache || buildCacheShellFromStoreList();
+        }
+        const liveByNum = new Map((payload.stores || []).map((s) => [String(s.storeNumber), s]));
+        const stores = filteredCfg.map((cfg) => {
+            const live = liveByNum.get(String(cfg.storeNumber)) || {};
+            return {
+                storeNumber: cfg.storeNumber,
+                storeName: cfg.storeName,
+                area: cfg.area,
+                timeZone: cfg.timeZone,
+                openHour: cfg.openHour,
+                closeHour: cfg.closeHour,
+                actual: Array.isArray(live.actual) ? live.actual : [],
+                forecast: Array.isArray(live.forecast) ? live.forecast : [],
+                pendingVendors: Array.isArray(live.pendingVendors) ? live.pendingVendors : [],
+            };
+        });
+        const groupedByTimeZone = new Map();
+        for (const store of stores) {
+            const tz = store.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
+            const group = groupedByTimeZone.get(tz) || [];
+            group.push(store);
+            groupedByTimeZone.set(tz, group);
+        }
+        const dashboards = [...groupedByTimeZone.entries()]
+            .map(([timeZone, tzStores]) => {
+                const earliestOpen = tzStores.reduce(
+                    (min, s) => Math.min(min, Number.isFinite(s.openHour) ? s.openHour : DEFAULT_OPEN_HOUR),
+                    Number.POSITIVE_INFINITY
+                );
+                const latestClose = tzStores.reduce(
+                    (max, s) => Math.max(max, Number.isFinite(s.closeHour) ? s.closeHour : DEFAULT_CLOSE_HOUR),
+                    Number.NEGATIVE_INFINITY
+                );
+                const openHour = Number.isFinite(earliestOpen) ? Math.trunc(earliestOpen) : DEFAULT_OPEN_HOUR;
+                const closeHour = Number.isFinite(latestClose) ? Math.trunc(latestClose) : DEFAULT_CLOSE_HOUR;
+                return {
+                    timeZone,
+                    state: stateCodeFromTimeZone(timeZone),
+                    openHour,
+                    closeHour,
+                    stores: tzStores.map((s) => ({
+                        storeNumber: s.storeNumber,
+                        storeName: s.storeName,
+                    })),
+                    combinedHourly: combineAreaHourlyByLocalRange(tzStores, openHour, closeHour),
+                };
+            })
+            .sort((a, b) => a.state.localeCompare(b.state));
+        const combinedHourly = combineAreaHourly(stores);
+        const auditsSchedule = getAuditSchedule();
+        const requiredAudits = Array.isArray(auditsSchedule?.auditListItems) ? auditsSchedule.auditListItems : [];
+        const storesWithOrdersOutstanding = stores
+            .filter((s) => s.pendingVendors.length)
+            .map((s) => ({
+                storeNumber: s.storeNumber,
+                storeName: s.storeName,
+                timeZone: s.timeZone,
+                pendingCount: s.pendingVendors.length,
+                pendingVendors: s.pendingVendors,
+            }));
+        const storesWithAuditsOutstanding = [];
+        for (const s of stores) {
+            const state = await getAuditState(s.storeNumber);
+            const dismissed = new Set((state.dismissed || []).map((x) => String(x).trim()));
+            const outstanding = requiredAudits.filter((label) => !dismissed.has(String(label).trim()));
+            if (outstanding.length) {
+                storesWithAuditsOutstanding.push({
+                    storeNumber: s.storeNumber,
+                    storeName: s.storeName,
+                    timeZone: s.timeZone,
+                    outstandingCount: outstanding.length,
+                    outstandingAudits: outstanding,
+                });
+            }
+        }
+
+        res.json({
+            success: true,
+            area: areaStoresCfg[0].area,
+            areaKey: areaStoresCfg[0].areaKey,
+            timestamp: payload.timestamp,
+            stores: stores.map((s) => ({
+                storeNumber: s.storeNumber,
+                storeName: s.storeName,
+                timeZone: s.timeZone,
+                openHour: s.openHour,
+                closeHour: s.closeHour,
+            })),
+            dashboards,
+            combinedHourly,
+            storesWithOrdersOutstanding,
+            storesWithAuditsOutstanding,
+        });
+    } catch (error) {
+        console.error('API: Error loading area dashboard:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });

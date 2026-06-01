@@ -124,6 +124,41 @@ body {
     overflow: hidden;
 }
 
+/* Desktop dashboards: allow vertical scrolling with auto-hide scrollbar. */
+@media (min-width: 901px) {
+    .dashboard {
+        overflow-y: auto;
+        overflow-x: hidden;
+        scrollbar-width: none; /* Firefox: hidden until hover/focus */
+        scrollbar-color: color-mix(in srgb, var(--charcoal) 35%, transparent) transparent;
+    }
+
+    .dashboard:hover,
+    .dashboard:focus-within {
+        scrollbar-width: thin;
+    }
+
+    .dashboard::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+    }
+
+    .dashboard:hover::-webkit-scrollbar,
+    .dashboard:focus-within::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+
+    .dashboard::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .dashboard::-webkit-scrollbar-thumb {
+        background: color-mix(in srgb, var(--charcoal) 35%, transparent);
+        border-radius: 999px;
+    }
+}
+
 .dashboard h1 {
     margin: 0;
     font-size: var(--font-size-1);

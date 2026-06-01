@@ -1,9 +1,15 @@
 const fs = require('fs');
 const path = require('path');
 const { loadPointsMap, pointsForColumn, normalizeLabel } = require('./pointsFile');
-const { normalizeCashierName, saveRankedEmployees, loadEmployees } = require('./employeesFile');
+const {
+    normalizeCashierName,
+    saveRankedEmployees,
+    loadEmployees,
+    aggregateRowsFromByDay,
+    filterByDayForStoreLeaderboard,
+} = require('./employeesFile');
 const { parseUpsellReport } = require('./upsellReportParser');
-const { upsellingDataDir } = require('./upsellingConfig');
+const { upsellingDataDir, resolveUpsellSyncStore } = require('./upsellingConfig');
 
 function scoreCashierRow(qtyByColumn, byLabel) {
     let mmxPoints = 0;
@@ -23,13 +29,19 @@ function scoreCashierRow(qtyByColumn, byLabel) {
     return mmxPoints;
 }
 
-function scoreParsedReport(parsed) {
-    const { byLabel } = loadPointsMap();
+function scoreParsedReport(parsed, syncStoreNumber = '') {
+    const wantStore = String(syncStoreNumber || resolveUpsellSyncStore() || '').trim();
+    const { byLabel } = loadPointsMap(wantStore || undefined);
     const mmxByCashier = new Map();
     const displayNames = new Map();
     const byDay = [];
 
     for (const row of parsed.cashiers || []) {
+        const rowStore = String(row.store || '').trim();
+        if (wantStore && rowStore && rowStore !== wantStore) continue;
+        const store = wantStore || rowStore;
+        if (!store) continue;
+
         const key = normalizeCashierName(row.name);
         let pts;
         if (row.totalPoints != null && parsed.scoringMode !== 'items') {
@@ -37,13 +49,17 @@ function scoreParsedReport(parsed) {
         } else {
             pts = scoreCashierRow(row.qtyByColumn, byLabel);
         }
-        mmxByCashier.set(key, (mmxByCashier.get(key) || 0) + pts);
-        if (!displayNames.has(key)) displayNames.set(key, row.name);
+        if (!pts) continue;
+
         byDay.push({
+            store,
             name: row.name,
             day: row.day || '',
             points: pts,
         });
+
+        mmxByCashier.set(key, (mmxByCashier.get(key) || 0) + pts);
+        if (!displayNames.has(key)) displayNames.set(key, row.name);
     }
 
     const merged = [];
@@ -84,25 +100,46 @@ function writeParseDiagnostics(storeNumber, parsed, extra = {}) {
 }
 
 function processParsedReport(parsed, storeNumber, extra = {}) {
-    const { source: pointsSource } = loadPointsMap();
-    const { ranked, byDay } = scoreParsedReport(parsed);
+    const { source: pointsSource } = loadPointsMap(storeNumber);
+    const { ranked, byDay } = scoreParsedReport(parsed, storeNumber);
     const gridSample = (parsed.gridSample || []).slice(0, 20);
     writeParseDiagnostics(storeNumber, parsed, { pointsSource, gridSample, ...extra });
-    const { rows: savedRows } = saveRankedEmployees(ranked, byDay);
+    const { rows: savedRows } = saveRankedEmployees(ranked, byDay, storeNumber);
     return { parsed, ranked: savedRows.length ? savedRows : ranked, byDay };
 }
 
-function processReportFile(filePath, storeNumber) {
-    const { byLabel, source: pointsSource } = loadPointsMap();
-    const parsed = parseUpsellReport(filePath, byLabel);
+function processReportFile(filePath, storeNumber, options = {}) {
+    const syncStore = String(storeNumber || resolveUpsellSyncStore() || '').trim();
+    const { byLabel, source: pointsSource } = loadPointsMap(syncStore);
+    const filterStoreNumber =
+        options.filterStoreNumber !== undefined
+            ? String(options.filterStoreNumber || '').trim()
+            : syncStore;
+    const parsed = parseUpsellReport(filePath, byLabel, {
+        filterStoreNumber,
+    });
     return processParsedReport(parsed, storeNumber, {
         file: path.basename(filePath),
         pointsSource,
+        source: options.source || 'file',
     });
 }
 
 function buildLeaderboardPayload(storeNumber) {
-    const { rows, byDay } = loadEmployees();
+    const { byDay, bonusByKey, bonusNames } = loadEmployees();
+    const wantStore = String(storeNumber || '').trim();
+    const filteredByDay = filterByDayForStoreLeaderboard(byDay, wantStore);
+    const keysInStore = new Set(
+        filteredByDay.map((r) => normalizeCashierName(r.name)).filter(Boolean)
+    );
+    const storeBonusByKey = new Map();
+    const storeBonusNames = new Map();
+    for (const [key, bonus] of bonusByKey.entries()) {
+        if (!keysInStore.has(key)) continue;
+        storeBonusByKey.set(key, bonus);
+        storeBonusNames.set(key, bonusNames.get(key) || key);
+    }
+    const { rows } = aggregateRowsFromByDay(filteredByDay, storeBonusByKey, storeBonusNames);
     const ranked = rows
         .map((r, i) => ({
             rank: i + 1,
@@ -136,7 +173,7 @@ function buildLeaderboardPayload(storeNumber) {
         top5,
         top3,
         ranks: ranked,
-        byDay,
+        byDay: filteredByDay,
         lastSyncAt,
         reportDate,
     };

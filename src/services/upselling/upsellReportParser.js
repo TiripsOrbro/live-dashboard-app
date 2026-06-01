@@ -29,7 +29,14 @@ function findHeaderRow(grid) {
             const cell = String(row[c] || '').trim().toLowerCase();
             if (cell !== 'cashier name') continue;
             const hasFiscal = row.some((x) => /^fiscal\s+ypwd/i.test(String(x || '').trim()));
-            const score = (hasFiscal ? 1000 : 0) + row.length + r;
+            const hasDateNoise = row.some((x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || '').trim()));
+            const hasHugeCell = row.some((x) => String(x || '').length > 250);
+            const score =
+                (hasFiscal ? 2000 : 0) +
+                (hasDateNoise ? -3000 : 0) +
+                (hasHugeCell ? -3000 : 0) +
+                Math.max(0, 800 - row.length) +
+                r;
             if (!best || score > best.score) {
                 best = { rowIndex: r, cashierCol: c, headerRow: row, score };
             }
@@ -151,82 +158,320 @@ function qtyCellsAfterName(row, nameCol) {
     return values;
 }
 
-/** OLAP often renders the full pivot as one very wide <tr>. */
-function parseHorizontalCashierStream(row, leafCols, productLabels) {
-    const cashiers = [];
-    const itemCount = leafCols.length;
-    if (!itemCount) return cashiers;
+/**
+ * OLAP often renders the full pivot as one very wide <tr> with one numeric cell per
+ * item×store column (same order as activeCols).
+ */
+function isMegaOlapRow(row) {
+    return (row || []).some((cell) => String(cell || '').length > 500);
+}
 
-    let currentDay = '';
-    const seen = new Set();
-    let i = 0;
-    while (i < row.length) {
-        const s = String(row[i] ?? '').trim();
-        if (!s) {
-            i++;
-            continue;
-        }
-        if (isDateLabel(s)) {
-            currentDay = s;
-            i++;
-            continue;
-        }
-        if (/^sum$/i.test(s)) break;
-        if (!looksLikeCashierName(s, productLabels)) {
-            i++;
-            continue;
-        }
-        if (!currentDay) {
-            i++;
-            continue;
-        }
-        const name = s;
-        const dedupeKey = `${currentDay}|${normalizeLabel(name)}`;
-        if (seen.has(dedupeKey)) {
-            i++;
-            while (i < row.length) {
-                const cell = String(row[i] ?? '').trim();
-                if (!cell) {
-                    i++;
-                    continue;
-                }
-                if (isDateLabel(cell) || looksLikeCashierName(cell, productLabels)) break;
-                if (/^-?\d+(\.\d+)?$/.test(cell)) {
-                    i++;
-                    continue;
-                }
-                i++;
+function extractMegaOlapText(grid) {
+    for (const row of grid || []) {
+        if (!row) continue;
+        for (const cell of row) {
+            const s = String(cell || '');
+            if (
+                s.length > 800 &&
+                /cashier name/i.test(s) &&
+                /\d{4}-\d{2}-\d{2}/.test(s) &&
+                /sales item quantity/i.test(s)
+            ) {
+                return s;
             }
-            continue;
         }
-        seen.add(dedupeKey);
-        i++;
-        const qtyValues = [];
-        while (qtyValues.length < itemCount && i < row.length) {
-            const cell = String(row[i] ?? '').trim();
-            if (!cell) {
-                i++;
-                continue;
+    }
+    return '';
+}
+
+function stripMegaOlapRows(grid) {
+    return (grid || []).filter((row) => row && row.length && !isMegaOlapRow(row));
+}
+
+function isStoreHeaderCandidateRow(row, cashierCol) {
+    if (!row || isMegaOlapRow(row)) return false;
+    if (row.some((cell) => isDateLabel(cell))) return false;
+    if (row.some((cell) => looksLikeCashierName(String(cell || '').trim()))) return false;
+    return countStoreCells(row, cashierCol) >= 2;
+}
+
+function firstStoreColumn(storeRow, cashierCol) {
+    for (let c = cashierCol + 1; c < (storeRow || []).length; c++) {
+        if (extractStoreNumber(storeRow[c])) return c;
+    }
+    return -1;
+}
+
+/**
+ * Some OLAP exports place qty N columns left of the first store header.
+ * Only enable when no cashier uses in-column qty (mixed layouts break store mapping).
+ */
+function detectQtyColumnShift(grid, headerRowIndex, cashierCol, storeRowIndex) {
+    const storeRow = grid[storeRowIndex] || [];
+    const firstStoreCol = firstStoreColumn(storeRow, cashierCol);
+    if (firstStoreCol < 0) return 0;
+
+    let sawDirectInBlock = false;
+    const shiftVotes = new Map();
+    let checked = 0;
+
+    for (let r = headerRowIndex + 1; r < grid.length; r++) {
+        const row = grid[r];
+        if (!row || isMegaOlapRow(row)) continue;
+        const name = String(row[cashierCol] ?? '').trim();
+        if (!name || !looksLikeCashierName(name)) continue;
+
+        if (num(row[firstStoreCol])) sawDirectInBlock = true;
+
+        for (let c = cashierCol + 1; c < firstStoreCol; c++) {
+            if (num(row[c])) {
+                const shift = firstStoreCol - c;
+                shiftVotes.set(shift, (shiftVotes.get(shift) || 0) + 1);
+                break;
             }
-            if (isDateLabel(cell) || looksLikeCashierName(cell, productLabels)) break;
-            if (/^-?\d+(\.\d+)?$/.test(cell)) {
-                qtyValues.push(num(cell));
-                i++;
-                continue;
+        }
+        checked++;
+        if (checked >= 20) break;
+    }
+
+    if (sawDirectInBlock) return 0;
+
+    let bestShift = 0;
+    let bestVotes = 0;
+    for (const [shift, votes] of shiftVotes.entries()) {
+        if (votes > bestVotes) {
+            bestVotes = votes;
+            bestShift = shift;
+        }
+    }
+    return bestVotes >= 3 ? bestShift : 0;
+}
+
+function isFirstStoreInBlock(col, storeRow, cashierCol) {
+    if (!extractStoreNumber(storeRow[col])) return false;
+    for (let c = col - 1; c > cashierCol; c--) {
+        if (extractStoreNumber(storeRow[c])) return false;
+    }
+    return true;
+}
+
+function readQtyAtColumn(row, colIndex, shift, _firstStoreCol = -1, storeRow = null, cashierCol = 0) {
+    if (!row || colIndex < 0) return 0;
+
+    const direct = num(row[colIndex]);
+    if (direct) return direct;
+
+    if (shift > 0 && storeRow && isFirstStoreInBlock(colIndex, storeRow, cashierCol)) {
+        const qtyCol = colIndex - shift;
+        if (qtyCol > cashierCol) return num(row[qtyCol]);
+    }
+
+    return 0;
+}
+
+function pushQtyByStore(qtyByStore, col, value) {
+    if (!value || !col?.storeNumber) return;
+    if (!qtyByStore.has(col.storeNumber)) qtyByStore.set(col.storeNumber, {});
+    const storeQty = qtyByStore.get(col.storeNumber);
+    storeQty[col.item] = (storeQty[col.item] || 0) + value;
+}
+
+function flushQtyByStore(name, day, qtyByStore, cashiers) {
+    for (const [storeNumber, storeQtyByColumn] of qtyByStore.entries()) {
+        if (!storeNumber) continue;
+        cashiers.push({ name, day, store: storeNumber, qtyByColumn: storeQtyByColumn });
+    }
+}
+
+function parseMegaOlapCashiers(megaText, activeCols, productLabels) {
+    const cashiers = [];
+    if (!megaText || !activeCols.length) return cashiers;
+
+    const parts = megaText.split(/(?=\d{4}-\d{2}-\d{2})/);
+    for (const part of parts) {
+        const head = part.match(/^(\d{4}-\d{2}-\d{2})([\s\S]*)$/);
+        if (!head) continue;
+        const day = head[1];
+        let rest = head[2];
+        while (rest.length) {
+            const nameMatch = rest.match(
+                /^([A-Z][A-Za-z0-9\s'.-]+?)(\d[\s\S]*)$/
+            );
+            if (!nameMatch) break;
+            const name = String(nameMatch[1] || '').trim();
+            rest = String(nameMatch[2] || '');
+            if (!looksLikeCashierName(name, productLabels)) {
+                rest = name + rest;
+                break;
             }
-            i++;
+
+            const digits = [];
+            let i = 0;
+            while (i < rest.length && /\d/.test(rest[i])) {
+                digits.push(Number(rest[i]));
+                i += 1;
+            }
+            rest = rest.slice(i);
+
+            const qtyByStore = new Map();
+            for (let d = 0; d < digits.length && d < activeCols.length; d++) {
+                pushQtyByStore(qtyByStore, activeCols[d], digits[d]);
+            }
+            flushQtyByStore(name, day, qtyByStore, cashiers);
         }
-        const qtyByColumn = {};
-        for (let j = 0; j < leafCols.length; j++) {
-            qtyByColumn[leafCols[j].raw] = qtyValues[j] ?? 0;
-        }
-        cashiers.push({ name, day: currentDay, qtyByColumn });
     }
     return cashiers;
 }
 
-function isWideDataRow(row) {
-    return (row || []).length > 60;
+function parseRowQtyByStore(row, activeCols, shift, cashierCol = 0, firstStoreCol = -1, storeRow = null) {
+    const qtyByStore = new Map();
+    for (const col of activeCols) {
+        const value = readQtyAtColumn(
+            row,
+            col.index,
+            shift,
+            firstStoreCol,
+            storeRow,
+            cashierCol
+        );
+        pushQtyByStore(qtyByStore, col, value);
+    }
+    return qtyByStore;
+}
+
+function mergeCashierRecords(primary, secondary) {
+    const byKey = new Map();
+    for (const row of [...primary, ...secondary]) {
+        const key = `${row.day}|${normalizeLabel(row.name)}|${row.store}`;
+        const prev = byKey.get(key);
+        if (!prev) {
+            byKey.set(key, {
+                name: row.name,
+                day: row.day,
+                store: row.store,
+                qtyByColumn: { ...(row.qtyByColumn || {}) },
+            });
+            continue;
+        }
+        for (const [item, qty] of Object.entries(row.qtyByColumn || {})) {
+            prev.qtyByColumn[item] = (prev.qtyByColumn[item] || 0) + (Number(qty) || 0);
+        }
+    }
+    return [...byKey.values()];
+}
+
+function extractStoreNumber(label) {
+    const m = String(label || '').trim().match(/^(\d{3,6})\b/);
+    return m ? m[1] : '';
+}
+
+function countStoreCells(row, cashierCol) {
+    let n = 0;
+    for (let c = 0; c < (row || []).length; c++) {
+        if (c === cashierCol) continue;
+        if (extractStoreNumber(row[c])) n++;
+    }
+    return n;
+}
+
+/** Store names (3806 Dandenong South, …) sit near the Cashier Name header row. */
+function findStoreHeaderRow(grid, headerRowIndex, cashierCol) {
+    let best = null;
+    const start = Math.max(0, headerRowIndex - 3);
+    const end = Math.min(grid.length, headerRowIndex + 8);
+    for (let r = start; r < end; r++) {
+        if (r === headerRowIndex) continue;
+        const row = grid[r] || [];
+        if (!isStoreHeaderCandidateRow(row, cashierCol)) continue;
+        const storeCount = countStoreCells(row, cashierCol);
+        if (!best || storeCount > best.storeCount) {
+            best = { rowIndex: r, storeCount, row };
+        }
+    }
+    if (best && best.storeCount >= 2) return best;
+    return null;
+}
+
+function isCategoryGroupHeader(cell) {
+    const s = String(cell || '').trim();
+    if (!s || /\s/.test(s)) return false;
+    return CATEGORY_COLUMN_RE.test(s.replace(/\s+/g, '_').toUpperCase());
+}
+
+function isItemHeaderCell(cell) {
+    const s = String(cell || '').trim();
+    if (!s) return false;
+    if (isHeaderMetaColumn(s)) return false;
+    if (extractStoreNumber(s)) return false;
+    if (isCategoryGroupHeader(s)) return false;
+    return true;
+}
+
+/** Product labels (Boss Burrito Box, …) are header rows above the store row; forward-fill colspan. */
+function buildColumnItemLabels(grid, storeRowIndex, cashierCol) {
+    const maxCol = Math.max(0, ...grid.slice(0, storeRowIndex).map((r) => (r || []).length));
+    const items = new Array(maxCol).fill('');
+
+    for (let r = 0; r < storeRowIndex; r++) {
+        const row = grid[r] || [];
+        if (isMegaOlapRow(row)) continue;
+        let rowCarry = '';
+        for (let c = 0; c < maxCol; c++) {
+            if (c === cashierCol) continue;
+            const cell = String(row[c] ?? '').trim();
+            if (isItemHeaderCell(cell)) rowCarry = cell;
+            if (rowCarry) items[c] = rowCarry;
+        }
+    }
+    return items;
+}
+
+function buildItemStoreColsFromGrid(grid, headerRowIndex, cashierCol) {
+    const storeHeader = findStoreHeaderRow(grid, headerRowIndex, cashierCol);
+    if (!storeHeader) {
+        const headerRow = grid[headerRowIndex] || [];
+        const storeRow = grid[headerRowIndex + 1] || [];
+        return buildItemStoreCols(headerRow, storeRow, cashierCol);
+    }
+
+    const storeRow = storeHeader.row;
+    const itemLabels = buildColumnItemLabels(grid, storeHeader.rowIndex, cashierCol);
+    const cols = [];
+    for (let c = 0; c < storeRow.length; c++) {
+        if (c === cashierCol) continue;
+        const storeNumber = extractStoreNumber(storeRow[c]);
+        const item = itemLabels[c] || '';
+        if (!storeNumber || !item) continue;
+        if (isHeaderMetaColumn(item)) continue;
+        cols.push({
+            index: c,
+            item,
+            norm: normalizeLabel(item),
+            storeNumber,
+        });
+    }
+    return cols;
+}
+
+function buildItemStoreCols(headerRow, storeRow, cashierCol) {
+    const cols = [];
+    let currentItem = '';
+    for (let c = 0; c < headerRow.length; c++) {
+        if (c === cashierCol) continue;
+        const itemCell = String(headerRow[c] || '').trim();
+        const storeCell = String((storeRow && storeRow[c]) || '').trim();
+        if (itemCell) currentItem = itemCell;
+        const storeNumber = extractStoreNumber(storeCell);
+        if (!currentItem || !storeNumber) continue;
+        if (isHeaderMetaColumn(currentItem)) continue;
+        cols.push({
+            index: c,
+            item: currentItem,
+            norm: normalizeLabel(currentItem),
+            storeNumber,
+        });
+    }
+    return cols;
 }
 
 function isHeaderMetaColumn(raw) {
@@ -250,8 +495,11 @@ function selectLeafColumns(columns, pointsByLabel) {
     return columns.filter((col) => !col.isCategory && col.index > 0);
 }
 
-function parseUpsellGrid(grid, pointsByLabel) {
-    const { rowIndex, cashierCol, headerRow } = findHeaderRow(grid);
+function parseUpsellGrid(grid, pointsByLabel, options = {}) {
+    const filterStore = String(options.filterStoreNumber || '').trim();
+    const megaText = extractMegaOlapText(grid);
+    const cleanGrid = stripMegaOlapRows(grid);
+    const { rowIndex, cashierCol, headerRow } = findHeaderRow(cleanGrid);
     const fiscalCol = findFiscalDayColumn(headerRow, cashierCol);
     const totalCol = findTotalColumn(headerRow, cashierCol);
     const dateCols = totalCol < 0 ? findDateColumns(headerRow, cashierCol) : [];
@@ -270,8 +518,8 @@ function parseUpsellGrid(grid, pointsByLabel) {
     if (totalCol >= 0) {
         scoringMode = 'total';
         columnsUsed = [String(headerRow[totalCol] ?? 'Total').trim()];
-        for (let r = rowIndex + 1; r < grid.length; r++) {
-            const row = grid[r];
+        for (let r = rowIndex + 1; r < cleanGrid.length; r++) {
+            const row = cleanGrid[r];
             if (!row || !row.length) continue;
             const name = String(row[cashierCol] ?? '').trim();
             if (!name || looksLikeDateOrGroupLabel(name)) continue;
@@ -281,8 +529,8 @@ function parseUpsellGrid(grid, pointsByLabel) {
     } else if (useDateColumnMode) {
         scoringMode = 'competitionDates';
         columnsUsed = dateCols.map((c) => String(headerRow[c] ?? '').trim());
-        for (let r = rowIndex + 1; r < grid.length; r++) {
-            const row = grid[r];
+        for (let r = rowIndex + 1; r < cleanGrid.length; r++) {
+            const row = cleanGrid[r];
             if (!row || !row.length) continue;
             const name = String(row[cashierCol] ?? '').trim();
             if (!name || looksLikeDateOrGroupLabel(name)) continue;
@@ -298,43 +546,76 @@ function parseUpsellGrid(grid, pointsByLabel) {
             cashiers.push({ name, totalPoints, qtyByColumn });
         }
     } else {
-        const allCols = buildColumnMeta(headerRow).filter(
-            (col) =>
-                col.index !== cashierCol &&
-                !isHeaderMetaColumn(col.raw) &&
-                !isDateColumnHeader(col.raw) &&
-                !/^-?\d+(\.\d+)?$/.test(col.raw)
+        const storeHeader = findStoreHeaderRow(cleanGrid, rowIndex, cashierCol);
+        const itemStoreCols = buildItemStoreColsFromGrid(cleanGrid, rowIndex, cashierCol).filter(
+            (col) => !isDateColumnHeader(col.item)
         );
-        const leafCols = selectLeafColumns(allCols, pointsByLabel);
-        columnsUsed = leafCols.map((c) => c.raw);
-        const productLabels = new Set(leafCols.map((c) => normalizeLabel(c.raw)));
-        const wideRows = grid.filter((row) => isWideDataRow(row));
-        if (wideRows.length) {
-            const bestWide = wideRows.reduce((a, b) => ((a || []).length >= (b || []).length ? a : b));
-            cashiers.push(...parseHorizontalCashierStream(bestWide, leafCols, productLabels));
-        } else {
-            let currentDay = '';
-            for (let r = rowIndex + 1; r < grid.length; r++) {
-                const row = grid[r];
-                if (!row || !row.length) continue;
-
-                const { day, name, nameCol } = extractRowCashier(row, currentDay, productLabels);
-                if (day && !name) {
-                    currentDay = day;
-                    continue;
-                }
-                if (!name) continue;
-                currentDay = day || currentDay;
-
-                const qtyValues = qtyCellsAfterName(row, nameCol);
-                const qtyByColumn = {};
-                for (let i = 0; i < leafCols.length; i++) {
-                    const col = leafCols[i];
-                    qtyByColumn[col.raw] = qtyValues[i] ?? 0;
-                }
-                cashiers.push({ name, day: currentDay, qtyByColumn });
+        const mappedCols = itemStoreCols.filter((col) => pointsByLabel.has(col.norm));
+        let activeCols = mappedCols.length ? mappedCols : itemStoreCols;
+        if (filterStore) {
+            activeCols = activeCols.filter((col) => col.storeNumber === filterStore);
+            if (!activeCols.length) {
+                console.warn(
+                    `[Upselling] No item columns for store ${filterStore} in BI grid — check report layout`
+                );
             }
         }
+        const uniqueItems = [];
+        const seenItems = new Set();
+        for (const col of activeCols) {
+            if (seenItems.has(col.item)) continue;
+            seenItems.add(col.item);
+            uniqueItems.push(col.item);
+        }
+        columnsUsed = uniqueItems;
+        const productLabels = new Set(uniqueItems.map((x) => normalizeLabel(x)));
+        const qtyShift =
+            storeHeader != null
+                ? detectQtyColumnShift(cleanGrid, rowIndex, cashierCol, storeHeader.rowIndex)
+                : 0;
+        const firstStoreCol =
+            storeHeader != null
+                ? firstStoreColumn(storeHeader.row, cashierCol)
+                : -1;
+
+        const gridCashiers = [];
+        let currentDay = '';
+        for (let r = rowIndex + 1; r < cleanGrid.length; r++) {
+            const row = cleanGrid[r];
+            if (!row || !row.length || isMegaOlapRow(row)) continue;
+
+            const { day, name } = extractRowCashier(row, currentDay, productLabels);
+            if (day && !name) {
+                currentDay = day;
+                continue;
+            }
+            if (!name) continue;
+            currentDay = day || currentDay;
+
+            const qtyByStore = parseRowQtyByStore(
+                row,
+                activeCols,
+                qtyShift,
+                cashierCol,
+                firstStoreCol,
+                storeHeader?.row
+            );
+            flushQtyByStore(name, currentDay, qtyByStore, gridCashiers);
+        }
+
+        let mergedCashiers = gridCashiers;
+        if (!mergedCashiers.length && megaText) {
+            const megaCols = itemStoreCols.filter((col) => pointsByLabel.has(col.norm));
+            mergedCashiers = parseMegaOlapCashiers(
+                megaText,
+                megaCols.length ? megaCols : itemStoreCols,
+                productLabels
+            );
+        }
+        if (filterStore) {
+            mergedCashiers = mergedCashiers.filter((row) => row.store === filterStore);
+        }
+        cashiers.push(...mergedCashiers);
     }
 
     return {
@@ -347,9 +628,9 @@ function parseUpsellGrid(grid, pointsByLabel) {
     };
 }
 
-function parseUpsellReport(filePath, pointsByLabel) {
+function parseUpsellReport(filePath, pointsByLabel, options = {}) {
     const { grid, sheetName } = loadGrid(filePath);
-    const parsed = parseUpsellGrid(grid, pointsByLabel);
+    const parsed = parseUpsellGrid(grid, pointsByLabel, options);
     parsed.sheetName = sheetName;
     return parsed;
 }
@@ -360,4 +641,6 @@ module.exports = {
     parseUpsellGrid,
     parseUpsellReport,
     looksLikeDateOrGroupLabel,
+    buildItemStoreColsFromGrid,
+    findStoreHeaderRow,
 };

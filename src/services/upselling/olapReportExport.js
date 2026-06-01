@@ -55,46 +55,60 @@ async function clickOlapExcelExport(page, cfg = {}) {
     const clicked = await page.evaluate((excelWant) => {
         const candidates = [];
 
-        const add = (el, score) => {
+        const add = (el, score, labelHint) => {
             if (!el) return;
-            candidates.push({ el, score });
+            candidates.push({ el, score, labelHint });
         };
 
-        for (const el of document.querySelectorAll(
-            'a, button, input[type="image"], input[type="button"], img, span[onclick]'
-        )) {
+        const scoreElement = (el) => {
             const title = (el.getAttribute('title') || el.getAttribute('alt') || '').trim().toLowerCase();
             const text = (el.textContent || el.value || '').trim().toLowerCase();
             const href = (el.getAttribute('href') || '').toLowerCase();
             const src = (el.getAttribute('src') || '').toLowerCase();
-            const label = `${title} ${text} ${href} ${src}`;
+            const onclick = (el.getAttribute('onclick') || '').toLowerCase();
+            const id = (el.getAttribute('id') || '').toLowerCase();
+            const name = (el.getAttribute('name') || '').toLowerCase();
+            const label = `${title} ${text} ${href} ${src} ${onclick} ${id} ${name}`;
 
-            if (!label.includes(excelWant) && !/\.xls|excel|spreadsheet/i.test(label)) continue;
-            if (/pdf|word|xml|csv only/i.test(label) && !label.includes(excelWant)) continue;
+            if (/pdf|word|xml|csv only/i.test(label) && !/excel|\.xls/i.test(label)) return null;
+            if (
+                !label.includes(excelWant) &&
+                !/\.xls|excel|spreadsheet|exporttoexcel|export.*excel/i.test(label)
+            ) {
+                return null;
+            }
 
             let score = 0;
+            if (/export.*excel|excel.*export|exporttoexcel/i.test(label)) score += 20;
             if (title.includes(excelWant) || text.includes(excelWant)) score += 10;
             if (/excel/i.test(title) || /excel/i.test(alt)) score += 8;
-            if (/\.xls/i.test(href) || /excel/i.test(href)) score += 6;
+            if (/\.xls/i.test(href) || /excel/i.test(href) || /excel/i.test(onclick)) score += 6;
             if (el.tagName === 'INPUT' && el.type === 'image') score += 4;
-            add(el, score);
+            if (/toolbar|export/i.test(id) || /toolbar|export/i.test(name)) score += 3;
+            return { score, label: title || text || id || 'excel' };
+        };
+
+        const selectors =
+            'a, button, input[type="image"], input[type="button"], img, span[onclick], area[onclick]';
+        for (const el of document.querySelectorAll(selectors)) {
+            const hit = scoreElement(el);
+            if (hit) add(el, hit.score, hit.label);
+            if (el.tagName === 'IMG' && el.parentElement) {
+                const parentHit = scoreElement(el.parentElement);
+                if (parentHit) add(el.parentElement, parentHit.score + 1, parentHit.label);
+            }
         }
 
         candidates.sort((a, b) => b.score - a.score);
         if (!candidates.length) return null;
 
         candidates[0].el.click();
-        return (
-            candidates[0].el.getAttribute('title') ||
-            candidates[0].el.getAttribute('alt') ||
-            candidates[0].el.textContent ||
-            'excel'
-        );
+        return candidates[0].labelHint || 'excel';
     }, wantText);
 
     if (!clicked) {
         throw new Error(
-            'OLAP Excel export button not found on MdxView toolbar. Set exportLinkText in config/upselling.json or exportMode "olap".'
+            'OLAP Excel export button not found on MdxView toolbar. Set exportLinkText in config/upselling.json or use --scrape for headed debugging.'
         );
     }
 

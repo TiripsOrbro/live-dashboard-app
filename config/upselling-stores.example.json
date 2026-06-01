@@ -1,0 +1,22 @@
+{
+  "_comment": "Copy to upselling-stores.json. enabled: show leaderboard + run MMX sync. points: per-item overrides (merged on top of .points).",
+  "stores": {
+    "3811": {
+      "enabled": true,
+      "points": {}
+    },
+    "3806": {
+      "enabled": false,
+      "points": {
+        "Boss Burrito Box": 3,
+        "Cinnamon Twists": 1.5
+      }
+    },
+    "teststore": {
+      "enabled": true,
+      "points": {
+        "Boss Burrito Box": 5
+      }
+    }
+  }
+}

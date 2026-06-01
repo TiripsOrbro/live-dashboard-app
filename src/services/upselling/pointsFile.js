@@ -1,6 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-const { PROJECT_ROOT } = require('./upsellingConfig');
+const PROJECT_ROOT = path.join(__dirname, '..', '..', '..');
+const {
+    getStoreUpsellingConfig,
+    listStoreConfigs,
+    normalizeUpsellingStoreKey,
+} = require('./storeUpsellingConfig');
 
 const POINTS_PATH = path.join(PROJECT_ROOT, '.points');
 const POINTS_EXAMPLE_PATH = path.join(PROJECT_ROOT, '.points.example');
@@ -27,12 +32,69 @@ function parsePointsText(text) {
     return byLabel;
 }
 
-function loadPointsMap() {
+function readGlobalPointsMap() {
     const file = fs.existsSync(POINTS_PATH) ? POINTS_PATH : POINTS_EXAMPLE_PATH;
     if (!fs.existsSync(file)) {
         return { byLabel: new Map(), source: null };
     }
-    return { byLabel: parsePointsText(fs.readFileSync(file, 'utf8')), source: path.basename(file) };
+    return {
+        byLabel: parsePointsText(fs.readFileSync(file, 'utf8')),
+        source: path.basename(file),
+    };
+}
+
+function mergeStoreOverrides(byLabel, overrides) {
+    if (!overrides?.size) return;
+    for (const [key, entry] of overrides.entries()) {
+        byLabel.set(key, { ...entry });
+    }
+}
+
+/**
+ * Points for one store: global .points merged with config/upselling-stores.json overrides.
+ */
+function loadPointsMap(storeNumber = '') {
+    const global = readGlobalPointsMap();
+    const key = normalizeUpsellingStoreKey(storeNumber);
+    if (!key) {
+        return global;
+    }
+
+    const storeCfg = getStoreUpsellingConfig(key);
+    if (!storeCfg.points.size) {
+        return global;
+    }
+
+    const byLabel = new Map(global.byLabel);
+    mergeStoreOverrides(byLabel, storeCfg.points);
+    return {
+        byLabel,
+        source: `${global.source || '.points'} + upselling-stores (${key})`,
+    };
+}
+
+/**
+ * Union of global points and every enabled store's overrides (for BI column detection).
+ */
+function loadPointsMapForParsing() {
+    const global = readGlobalPointsMap();
+    const byLabel = new Map(global.byLabel);
+    const storeKeys = [];
+
+    for (const entry of listStoreConfigs()) {
+        if (!entry.enabled) continue;
+        if (entry.points.size) {
+            storeKeys.push(entry.storeKey);
+            mergeStoreOverrides(byLabel, entry.points);
+        }
+    }
+
+    const source =
+        storeKeys.length > 0
+            ? `${global.source || '.points'} + stores (${storeKeys.join(', ')})`
+            : global.source;
+
+    return { byLabel, source };
 }
 
 function pointsForColumn(byLabel, columnName) {
@@ -47,5 +109,6 @@ module.exports = {
     normalizeLabel,
     parsePointsText,
     loadPointsMap,
+    loadPointsMapForParsing,
     pointsForColumn,
 };

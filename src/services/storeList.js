@@ -25,6 +25,11 @@ const DAY_ALIASES = {
     sat: 6,
 };
 
+const DEFAULT_AREA = 'Area 22';
+const TEST_AREA = 'Test Store';
+const PERTH_STORE_NAMES = ['midland', 'ellenbrook', 'canning vale', 'butler'];
+const PERTH_STORE_NUMBERS = new Set(['3901', '3902', '3903', '3904']);
+
 /** Map a weekday word (Monday / Mon / Tues / ...) to a 0=Sunday..6=Saturday index, or -1. */
 function dayNameToIndex(name) {
     const n = String(name || '').trim().toLowerCase();
@@ -50,13 +55,36 @@ function normalizeHours(open, close) {
     return { openHour: Math.trunc(openHour), closeHour: Math.trunc(closeHour) };
 }
 
+function normalizeArea(value) {
+    const s = String(value || '').trim();
+    return s || DEFAULT_AREA;
+}
+
+function inferStoreTimeZone(storeNumber, storeName, explicit) {
+    const fromFile = String(explicit || '').trim();
+    if (fromFile) return fromFile;
+    const name = String(storeName || '').trim().toLowerCase();
+    if (PERTH_STORE_NUMBERS.has(String(storeNumber || '').trim())) return 'Australia/Perth';
+    if (PERTH_STORE_NAMES.some((n) => name.includes(n))) return 'Australia/Perth';
+    return TIME_ZONE;
+}
+
+function isNumericToken(value) {
+    return /^-?\d+(?:\.\d+)?$/.test(String(value || '').trim());
+}
+
 /**
  * Parse the store list text into raw store objects:
- *   { storeNumber, storeName, uniform?: {openHour, closeHour}, hoursByDay?: {0..6: {openHour, closeHour}} }
+ *   {
+ *     storeNumber, storeName, area, timeZone,
+ *     uniform?: {openHour, closeHour},
+ *     hoursByDay?: {0..6: {openHour, closeHour}}
+ *   }
  *
  * Two line shapes are supported:
- *   `3811 | Chirnside Park | 10 | 22`     → same hours every day (uniform)
- *   `3901 | Midland`                       → header; per-day lines follow, e.g.
+ *   `3811 | Chirnside Park | 10 | 22 | Area 22 | Australia/Melbourne`  → uniform + metadata
+ *   `3901 | Midland | Area 22 | Australia/Perth`                         → metadata + per-day lines
+ *   `3901 | Midland`                                                      → defaults + per-day lines
  *       `Friday | 10 | 24`                 → override just that weekday (indented or not)
  */
 function parseStoreList(text) {
@@ -87,9 +115,21 @@ function parseStoreList(text) {
             continue;
         }
 
-        current = { storeNumber, storeName: parts[1] || storeNumber };
-        if (parts[2] !== undefined && parts[2] !== '' && parts[3] !== undefined && parts[3] !== '') {
-            current.uniform = normalizeHours(parts[2], parts[3]);
+        const storeName = parts[1] || storeNumber;
+        const p2 = parts[2];
+        const p3 = parts[3];
+        const hasUniformHours = isNumericToken(p2) && isNumericToken(p3);
+        const area = hasUniformHours ? parts[4] : parts[2];
+        const zone = hasUniformHours ? parts[5] : parts[3];
+
+        current = {
+            storeNumber,
+            storeName,
+            area: normalizeArea(area),
+            timeZone: inferStoreTimeZone(storeNumber, storeName, zone),
+        };
+        if (hasUniformHours) {
+            current.uniform = normalizeHours(p2, p3);
         }
         byNumber.set(storeNumber, current);
         stores.push(current);
@@ -99,15 +139,15 @@ function parseStoreList(text) {
 }
 
 /** Weekday index (0=Sun..6=Sat) for `date` in the dashboard time zone. */
-function timeZoneWeekdayIndex(date) {
-    const wd = new Intl.DateTimeFormat('en-US', { timeZone: TIME_ZONE, weekday: 'short' }).format(date);
+function timeZoneWeekdayIndex(date, timeZone = TIME_ZONE) {
+    const wd = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short' }).format(date);
     return dayNameToIndex(wd);
 }
 
 /** Resolve a parsed store's hours for a given date: per-day override → uniform → defaults. */
 function resolveHours(store, date) {
     if (store.hoursByDay) {
-        const today = store.hoursByDay[timeZoneWeekdayIndex(date)];
+        const today = store.hoursByDay[timeZoneWeekdayIndex(date, store.timeZone || TIME_ZONE)];
         if (today) return { openHour: today.openHour, closeHour: today.closeHour };
     }
     if (store.uniform) return { openHour: store.uniform.openHour, closeHour: store.uniform.closeHour };
@@ -142,7 +182,14 @@ function getStoreList() {
     const now = new Date();
     return parseStoreList(text).map((store) => {
         const { openHour, closeHour } = resolveHours(store, now);
-        const out = { storeNumber: store.storeNumber, storeName: store.storeName, openHour, closeHour };
+        const out = {
+            storeNumber: store.storeNumber,
+            storeName: store.storeName,
+            area: normalizeArea(store.area),
+            timeZone: store.timeZone || inferStoreTimeZone(store.storeNumber, store.storeName),
+            openHour,
+            closeHour,
+        };
         if (store.hoursByDay) out.hoursByDay = store.hoursByDay;
         return out;
     });

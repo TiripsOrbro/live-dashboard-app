@@ -392,6 +392,12 @@ function resolveChromiumExecutablePath() {
         console.warn(`[Macromatix] SCRAPER_EXECUTABLE_PATH not found (${fromEnv}), scanning common paths`);
     }
     const candidates = [
+        // Windows local/dev defaults.
+        'C:/Program Files/Google/Chrome/Application/chrome.exe',
+        'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+        'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
+        'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+        // Linux / Raspberry Pi defaults.
         '/usr/bin/chromium',
         '/usr/bin/chromium-browser',
         '/snap/bin/chromium',
@@ -449,7 +455,8 @@ function getPuppeteerLaunchOptions(overrides = {}) {
     } else if (!hasBundledChromium()) {
         throw new Error(
             'No Chromium found. On a Raspberry Pi run "sudo apt install -y chromium" (or chromium-browser), ' +
-                'then set SCRAPER_EXECUTABLE_PATH in .env.production (e.g. /usr/bin/chromium). ' +
+                'then set SCRAPER_EXECUTABLE_PATH in .env/.env.production (e.g. /usr/bin/chromium). ' +
+                'On Windows, set it to Edge/Chrome path (e.g. C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe). ' +
                 'Puppeteer\'s bundled Chromium download is skipped via .npmrc, so a system browser is required.'
         );
     }

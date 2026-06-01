@@ -103,6 +103,7 @@
 
         :root {
             --area-expand-duration: 1.05s;
+            --area-title-shift-duration: 0.38s;
             --area-stores-delay: 0.48s;
             --area-stores-fade-duration: 0.42s;
             --clip-left: 0px;
@@ -374,6 +375,39 @@
             font-weight: var(--font-weight-heavy);
             line-height: 1.1;
             color: color-mix(in srgb, var(--white) 94%, var(--charcoal));
+            max-width: 100%;
+            transition: transform var(--area-title-shift-duration) cubic-bezier(0.4, 0, 1, 1);
+        }
+
+        /* Keep the area label over the original tile column while the card clip shrinks. */
+        .area-tile-card[open].is-opening:not(.is-expanding-wide) .area-tile-title {
+            transform: translateX(calc((var(--clip-left, 0px) - var(--clip-right, 0px)) / 2));
+            transition-duration: 0s;
+        }
+
+        .area-tile-card[open].is-opening.is-expanding-wide .area-tile-title,
+        .area-tile-card[open].is-revealed .area-tile-title {
+            transform: translateX(0);
+            transition-duration: var(--area-expand-duration);
+            transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .area-tile-card[open].is-closing.is-collapsing-wide .area-tile-title {
+            transform: translateX(0);
+            transition-duration: 0s;
+        }
+
+        .area-tile-card[open].is-closing:not(.is-collapsing-wide) .area-tile-title {
+            transform: translateX(calc((var(--clip-left, 0px) - var(--clip-right, 0px)) / 2));
+            transition-duration: var(--area-title-shift-duration);
+            transition-timing-function: cubic-bezier(0.4, 0, 1, 1);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .area-tile .area-tile-title {
+                transition: none;
+                transform: none;
+            }
         }
 
         .store-tile-hours {

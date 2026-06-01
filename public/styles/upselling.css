@@ -61,6 +61,15 @@
     margin-top: clamp(4px, 0.6vh, 8px);
 }
 
+.upsell-podium__disclaimer {
+    font-size: clamp(0.55rem, 0.95vw, 0.7rem);
+    font-weight: 500;
+    color: #9a8aa8;
+    text-align: center;
+    margin: clamp(2px, 0.4vh, 6px) 0 0;
+    font-style: italic;
+}
+
 .upsell-podium__cols {
     display: flex;
     align-items: flex-end;

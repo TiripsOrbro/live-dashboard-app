@@ -39,6 +39,7 @@
                 <div class="upsell-podium__label">Upsell leaderboard</div>
                 <div class="upsell-podium__cols"></div>
                 <div class="upsell-podium__updated"></div>
+                <p class="upsell-podium__disclaimer">Updates every hour on the hour</p>
             </div>
         `;
         document.body.appendChild(el);

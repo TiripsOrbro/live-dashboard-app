@@ -46,7 +46,10 @@ const {
 const { getStoreScrapePhase, anyStoreInActiveScrapeWindow } = require('./services/scrapeSchedule');
 const { isUpsellingStore } = require('./services/upselling/upsellingConfig');
 const { buildLeaderboardPayload } = require('./services/upselling/upsellingScores');
-const { startUpsellingScheduler } = require('./services/upselling/upsellingScheduler');
+const {
+    startUpsellingScheduler,
+    cancelSchedulerHandle,
+} = require('./services/upselling/upsellingScheduler');
 const {
     getLastKnownPendingVendors,
     onStoreOrdersComplete,
@@ -1767,7 +1770,7 @@ function shutdown(signal) {
     shuttingDown = true;
     console.log(`[Dashboard] ${signal} received — closing server…`);
     if (refreshTimer) clearInterval(refreshTimer);
-    if (upsellingSchedulerTimer) clearInterval(upsellingSchedulerTimer);
+    cancelSchedulerHandle(upsellingSchedulerTimer);
     const force = setTimeout(() => {
         console.warn('[Dashboard] Forced exit after shutdown timeout');
         process.exit(0);

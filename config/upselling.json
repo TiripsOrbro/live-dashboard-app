@@ -2,6 +2,8 @@
   "_comment_enabledStores": "Deprecated — use config/upselling-stores.json per store enabled flag",
   "_comment_syncStoreNumber": "Single-store MMX report (Chirnside Park). All sync/scoring uses this store only.",
   "syncStoreNumber": "3811",
+  "updateSchedule": "hourly",
+  "_comment_peakWindows": "Only used when updateSchedule is peak (not hourly)",
   "peakWindows": [
     { "start": 12, "end": 15 },
     { "start": 17, "end": 20 }

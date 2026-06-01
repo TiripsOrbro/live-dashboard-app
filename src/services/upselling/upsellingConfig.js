@@ -17,6 +17,7 @@ let cache = null;
 const DEFAULT_CONFIG = {
     enabledStores: ['teststore'],
     syncStoreNumber: '',
+    updateSchedule: 'hourly',
     peakWindows: [
         { start: 12, end: 15 },
         { start: 17, end: 20 },

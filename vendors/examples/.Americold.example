@@ -4,9 +4,29 @@
 # location-order: Freezer | Fridge | Dry | Carryover | In Use
 #
 # Format: [buildToDays | manual] | itemCode | name | unit | unit | unit [| location…]
-#   13 = 13-day build-to (overrides default for this item code)
-#   manual = do not auto-fill order quantity
 
+# --- Freezer ---
 10 | 40303 | Crispy Chicken | Cartons | N/a | Each | Freezer
-13 | 39520 | Cooked Beef | Cartons | N/a | Bags | Freezer
 10 | 38246A | Black Beans | Cartons | N/a | Bags | Freezer
+10 | 39009 | Nacho Chips (Inc Thawed) | Cartons | N/a | Bags | Freezer
+10 | Churros | Cartons | N/a | Bags | Freezer
+10 | 38620 | Flatbread (Inc Thawed) | Cartons | N/a | Bags | Freezer
+10 | 40109 | Fries Supercrisp | Cartons | N/a | Bags | Freezer
+10 | Guacamole | Cartons | N/a | Bags | Freezer
+10 | 39520 | Beef (Inc Thawed) | Cartons | N/a | Bags | Freezer
+10 | Chicken | Cartons | N/a | Bags | Freezer
+10 | 37891 | Tostadas (Inc Thawed) | Cartons | N/a | Bags | Freezer
+10 | 37923 | 10.25 in Tortillas (Inc Thawed) | Cartons | N/a | Bags | Freezer
+10 | 37925 | 12 in Tortillas (Inc Thawed) | Cartons | N/a | Bags | Freezer
+10 | 37927 | 6.5 in Tortillas (Inc Thawed) | Cartons | N/a | Bags | Freezer
+
+# --- Fridge ---
+10 | Cheese Blend | Tubs | N/a | KGs | Fridge
+10 | Angel Cheese | Tubs | N/a | KGs | Fridge
+10 | Lava Sauce | Tubs | N/a | N/a | Fridge
+10 | Fry Oil | N/a | N/a | Each | Fridge
+10 | Chipotle Mayo | Tubs | N/a | N/a | Fridge
+10 | Creamy Jalapeno | Tubs | N/a | N/a | Fridge
+10 | Nacho Cheese Sauce | Tubs | N/a | N/a | Fridge
+10 | Pico de Gallo | Tubs | N/a | KGs | Fridge
+10 | Zesty Ranch | Tubs | N/a | N/a | Fridge

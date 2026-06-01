@@ -1,6 +1,14 @@
 const fs = require('fs');
 const path = require('path');
-const { PROJECT_ROOT, resolveUpsellSyncStore } = require('./upsellingConfig');
+const { PROJECT_ROOT, resolveUpsellSyncStore, TIME_ZONE } = require('./upsellingConfig');
+
+function melbourneTodayIso() {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(new Date());
+}
+
+function dayNameKey(entry) {
+    return `${String(entry.day || '').trim()}|${normalizeCashierName(entry.name)}`;
+}
 
 const EMPLOYEES_PATH = path.join(PROJECT_ROOT, '.Employees');
 const EMPLOYEES_EXAMPLE_PATH = path.join(PROJECT_ROOT, '.Employees.example');
@@ -171,7 +179,9 @@ function formatEmployeesText(byDay = [], bonusByKey = new Map(), bonusNames = ne
         lines.push(`# Store: ${syncStore}`);
     }
     for (const d of byDay) {
-        lines.push(`${d.day} | ${d.name} | ${d.points}`);
+        const day = String(d.day || '').trim();
+        if (!isDayField(day)) continue;
+        lines.push(`${day} | ${d.name} | ${d.points}`);
     }
 
     const bonusEntries = [];
@@ -213,17 +223,43 @@ function saveEmployees(byDay = [], bonusByKey = new Map(), bonusNames = new Map(
 }
 
 function saveRankedEmployees(_rankedRows, byDay = [], syncStore = '') {
-    const { bonusByKey, bonusNames } = loadEmployees();
+    const { bonusByKey, bonusNames, byDay: existingByDay } = loadEmployees();
     const syncStoreNorm = String(syncStore || resolveSyncStore() || '').trim();
+    const defaultDay = melbourneTodayIso();
 
-    const incoming = (byDay || []).map((d) => ({
-        store: syncStoreNorm,
-        day: String(d.day || '').trim(),
-        name: String(d.name || '').trim(),
-        points: Number.isFinite(d.points) ? d.points : 0,
-    }));
+    const incoming = (byDay || [])
+        .map((d) => {
+            const day = String(d.day || '').trim() || defaultDay;
+            return {
+                store: syncStoreNorm,
+                day: isDayField(day) ? day : defaultDay,
+                name: String(d.name || '').trim(),
+                points: Number.isFinite(d.points) ? d.points : 0,
+            };
+        })
+        .filter((d) => d.name && d.points > 0);
 
-    const mergedByDay = incoming.length ? incoming : [];
+    const MIN_FULL_REPLACE = 3;
+    let mergedByDay;
+    if (
+        incoming.length > 0 &&
+        incoming.length < MIN_FULL_REPLACE &&
+        (existingByDay || []).length >= MIN_FULL_REPLACE
+    ) {
+        const byKey = new Map();
+        for (const row of existingByDay) {
+            byKey.set(dayNameKey(row), row);
+        }
+        for (const row of incoming) {
+            byKey.set(dayNameKey(row), row);
+        }
+        mergedByDay = [...byKey.values()];
+        console.warn(
+            `[Upselling] Only ${incoming.length} scored row(s) from sync — merged into .Employees (${mergedByDay.length} day rows kept)`
+        );
+    } else {
+        mergedByDay = incoming.length ? incoming : [];
+    }
 
     if (mergedByDay.length || bonusByKey.size || fs.existsSync(EMPLOYEES_PATH)) {
         saveEmployees(mergedByDay, bonusByKey, bonusNames);

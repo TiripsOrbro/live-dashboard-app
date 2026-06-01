@@ -46,14 +46,6 @@ async function expandOlapCategories(page) {
     }
 }
 
-function isElementVisible(el) {
-    if (!el) return false;
-    const r = el.getBoundingClientRect();
-    if (r.width <= 0 || r.height <= 0) return false;
-    const s = window.getComputedStyle(el);
-    return s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0';
-}
-
 /**
  * MdxView toolbar: #tdShowExport opens a menu (ShowExport) — pick Excel (not Excel Pivot).
  */
@@ -116,6 +108,14 @@ async function clickOlapExcelExport(page, cfg = {}) {
 
     const picked = await page.evaluate(
         (labelWant) => {
+            function isElementVisible(el) {
+                if (!el) return false;
+                const r = el.getBoundingClientRect();
+                if (r.width <= 0 || r.height <= 0) return false;
+                const s = window.getComputedStyle(el);
+                return s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0';
+            }
+
             const candidates = [];
             const nodes = document.querySelectorAll(
                 'a, button, li, span, div[role="menuitem"], .dropdown-menu *'

@@ -9,7 +9,11 @@ const {
     filterByDayForStoreLeaderboard,
 } = require('./employeesFile');
 const { parseUpsellReport } = require('./upsellReportParser');
-const { upsellingDataDir, resolveUpsellSyncStore } = require('./upsellingConfig');
+const { upsellingDataDir, resolveUpsellSyncStore, TIME_ZONE } = require('./upsellingConfig');
+
+function melbourneTodayIso() {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(new Date());
+}
 
 function scoreCashierRow(qtyByColumn, byLabel) {
     let mmxPoints = 0;
@@ -51,10 +55,11 @@ function scoreParsedReport(parsed, syncStoreNumber = '') {
         }
         if (!pts) continue;
 
+        const day = String(row.day || '').trim() || melbourneTodayIso();
         byDay.push({
             store,
             name: row.name,
-            day: row.day || '',
+            day,
             points: pts,
         });
 

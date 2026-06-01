@@ -16,5 +16,4 @@ data/stock-count-state.json
 scripts/probe-stock-count.png
 *.log
 .points
-.Employees
 data/upselling/

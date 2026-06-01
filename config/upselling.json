@@ -21,6 +21,7 @@
   "powerBiExportMenuLabels": ["Export", "Download", "More options", "Share"],
   "powerBiExcelLabels": ["Microsoft Excel (.xlsx)", "Excel", "Summarized data", ".xlsx"],
   "exportLinkText": "excel",
+  "olapExportMenuLabel": "Excel",
   "downloadWaitMs": 180000,
   "navTimeoutMs": 60000
 }

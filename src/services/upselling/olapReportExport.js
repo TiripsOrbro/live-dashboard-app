@@ -46,73 +46,112 @@ async function expandOlapCategories(page) {
     }
 }
 
+function isElementVisible(el) {
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) return false;
+    const s = window.getComputedStyle(el);
+    return s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0';
+}
+
 /**
- * Click the Report Portal OLAP toolbar Excel export (icon row above the grid).
+ * MdxView toolbar: #tdShowExport opens a menu (ShowExport) — pick Excel (not Excel Pivot).
  */
 async function clickOlapExcelExport(page, cfg = {}) {
-    const wantText = String(cfg.exportLinkText || 'excel').toLowerCase();
+    const menuLabel = String(cfg.olapExportMenuLabel || 'Excel').trim();
+    const want = menuLabel.toLowerCase();
 
-    const clicked = await page.evaluate((excelWant) => {
-        const candidates = [];
+    const exportSelectors = [
+        '#tdShowExport',
+        'button[onclick*="ShowExport"]',
+        'button[data-original-title="Export"]',
+        'button[title="Export"]',
+    ];
 
-        const add = (el, score, labelHint) => {
-            if (!el) return;
-            candidates.push({ el, score, labelHint });
-        };
-
-        const scoreElement = (el) => {
-            const title = (el.getAttribute('title') || el.getAttribute('alt') || '').trim().toLowerCase();
-            const text = (el.textContent || el.value || '').trim().toLowerCase();
-            const href = (el.getAttribute('href') || '').toLowerCase();
-            const src = (el.getAttribute('src') || '').toLowerCase();
-            const onclick = (el.getAttribute('onclick') || '').toLowerCase();
-            const id = (el.getAttribute('id') || '').toLowerCase();
-            const name = (el.getAttribute('name') || '').toLowerCase();
-            const label = `${title} ${text} ${href} ${src} ${onclick} ${id} ${name}`;
-
-            if (/pdf|word|xml|csv only/i.test(label) && !/excel|\.xls/i.test(label)) return null;
-            if (
-                !label.includes(excelWant) &&
-                !/\.xls|excel|spreadsheet|exporttoexcel|export.*excel/i.test(label)
-            ) {
-                return null;
-            }
-
-            let score = 0;
-            if (/export.*excel|excel.*export|exporttoexcel/i.test(label)) score += 20;
-            if (title.includes(excelWant) || text.includes(excelWant)) score += 10;
-            if (/excel/i.test(title) || /excel/i.test(alt)) score += 8;
-            if (/\.xls/i.test(href) || /excel/i.test(href) || /excel/i.test(onclick)) score += 6;
-            if (el.tagName === 'INPUT' && el.type === 'image') score += 4;
-            if (/toolbar|export/i.test(id) || /toolbar|export/i.test(name)) score += 3;
-            return { score, label: title || text || id || 'excel' };
-        };
-
-        const selectors =
-            'a, button, input[type="image"], input[type="button"], img, span[onclick], area[onclick]';
-        for (const el of document.querySelectorAll(selectors)) {
-            const hit = scoreElement(el);
-            if (hit) add(el, hit.score, hit.label);
-            if (el.tagName === 'IMG' && el.parentElement) {
-                const parentHit = scoreElement(el.parentElement);
-                if (parentHit) add(el.parentElement, parentHit.score + 1, parentHit.label);
-            }
+    let opened = false;
+    for (const sel of exportSelectors) {
+        try {
+            await page.waitForSelector(sel, { timeout: 8000, visible: true });
+            await page.click(sel);
+            opened = true;
+            break;
+        } catch (_) {
+            /* try next selector */
         }
+    }
 
-        candidates.sort((a, b) => b.score - a.score);
-        if (!candidates.length) return null;
+    if (!opened) {
+        opened = await page.evaluate(() => {
+            const btn =
+                document.querySelector('#tdShowExport') ||
+                document.querySelector('button[onclick*="ShowExport"]');
+            if (!btn) return false;
+            btn.click();
+            return true;
+        });
+    }
 
-        candidates[0].el.click();
-        return candidates[0].labelHint || 'excel';
-    }, wantText);
+    if (!opened) {
+        const viaFn = await page.evaluate(() => {
+            try {
+                if (typeof ShowExport === 'function') {
+                    ShowExport({ preventDefault: () => {}, stopPropagation: () => {} });
+                    return true;
+                }
+            } catch (_) {
+                /* ignore */
+            }
+            return false;
+        });
+        opened = viaFn;
+    }
 
-    if (!clicked) {
+    if (!opened) {
         throw new Error(
-            'OLAP Excel export button not found on MdxView toolbar. Set exportLinkText in config/upselling.json or use --scrape for headed debugging.'
+            'Export toolbar button (#tdShowExport / ShowExport) not found on MdxView.'
         );
     }
 
-    return clicked;
+    await page.waitForTimeout(700);
+
+    const picked = await page.evaluate(
+        (labelWant) => {
+            const candidates = [];
+            const nodes = document.querySelectorAll(
+                'a, button, li, span, div[role="menuitem"], .dropdown-menu *'
+            );
+
+            for (const el of nodes) {
+                if (!isElementVisible(el)) continue;
+                const text = (el.textContent || '').trim();
+                if (!text) continue;
+                const t = text.toLowerCase();
+                if (t.includes('pivot')) continue;
+                if (t === labelWant) {
+                    candidates.push({ el, score: 100, text });
+                } else if (t === 'excel' && labelWant === 'excel') {
+                    candidates.push({ el, score: 90, text });
+                } else if (t.startsWith('excel') && t.length <= 12) {
+                    candidates.push({ el, score: 50, text });
+                }
+            }
+
+            candidates.sort((a, b) => b.score - a.score);
+            if (!candidates.length) return null;
+
+            candidates[0].el.click();
+            return candidates[0].text;
+        },
+        want
+    );
+
+    if (!picked) {
+        throw new Error(
+            `Export menu opened but "${menuLabel}" option not found (check olapExportMenuLabel in config/upselling.json).`
+        );
+    }
+
+    return picked;
 }
 
 async function exportOlapReportToExcel(page, cfg = {}) {
@@ -127,8 +166,9 @@ async function exportOlapReportToExcel(page, cfg = {}) {
     await expandOlapCategories(page);
     await page.waitForTimeout(800);
 
+    log.info('[Upselling] Opening Export menu → Excel…');
     const label = await clickOlapExcelExport(page, cfg);
-    log.info(`[Upselling] OLAP export clicked: ${label}`);
+    log.info(`[Upselling] OLAP export menu choice: ${label}`);
     await page.waitForTimeout(2000);
     return { exportClicked: label, mode: 'olap' };
 }
@@ -137,5 +177,6 @@ module.exports = {
     isOlapReportPage,
     waitForOlapReportReady,
     expandOlapCategories,
+    clickOlapExcelExport,
     exportOlapReportToExcel,
 };

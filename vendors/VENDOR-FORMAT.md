@@ -23,6 +23,7 @@ Use `location-order` and a trailing **location** on each line to group stock-cou
 | `10+2`, etc. | Days plus extra cartons on top (e.g. lettuce buffer: `10+2`) |
 | `=3`, `=6`, etc. | **Fixed build-to** cartons (e.g. Schweppes BIBs); order qty still auto-calculated |
 | `order=1`, `order=3`, etc. | Fixed build-to from **dashboard count**; fills **Americold Vic** scheduled order, **not** Key Item Count |
+| `oh:13`, `oh:10`, etc. | **On-hand only** — not on travel-path tabs or Key Item Count; build-to uses **ISE + stock-on-hand** (e.g. Schweppes bottles/cans) |
 | `manual` or `m` | Stock-count only (packaging etc.) — no Key Item Count, no auto vendor order |
 | *(omitted)* | Use built-in rules (7-day salads, 13-day list, default 10-day) |
 

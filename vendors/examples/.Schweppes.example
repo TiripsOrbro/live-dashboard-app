@@ -19,30 +19,30 @@
 =1 | 4095 | DRINK FCB FREEZE PEPSI 10L | Boxes | N/a | N/a | Freezes
 =1 | 4091 | DRINK FCB FREEZE RASPBERRY 10L | Boxes | N/a | N/a | Freezes
 
-# --- Bottles ---
-13 | 3227 | DRINK 7UP 600ML PET 24EA | Packs | N/a | N/a | Bottles
-13 | 10004815 | DRINK MOUNTAIN DEW 600ML PET 24EA | Packs | N/a | N/a | Bottles
-13 | 3221 | DRINK PEPSI 600ML PET 24EA | Packs | N/a | N/a | Bottles
-13 | 3226 | DRINK PEPSI MAX 600ML PET 24EA | Packs | N/a | N/a | Bottles
-13 | 2918 | DRINK SOLO LEMON 600ML PET 24EA | Packs | N/a | N/a | Bottles
-13 | 2938 | DRINK SUNKIST ORANGE 600ML | Packs | N/a | N/a | Bottles
+# --- Bottles (oh:N = SCM on-hand build-to, not on travel paths) ---
+oh:oh:13 | 3227 | DRINK 7UP 600ML PET 24EA | Packs | N/a | N/a | Bottles
+oh:oh:13 | 10004815 | DRINK MOUNTAIN DEW 600ML PET 24EA | Packs | N/a | N/a | Bottles
+oh:oh:13 | 3221 | DRINK PEPSI 600ML PET 24EA | Packs | N/a | N/a | Bottles
+oh:13 | 3226 | DRINK PEPSI MAX 600ML PET 24EA | Packs | N/a | N/a | Bottles
+oh:13 | 2918 | DRINK SOLO LEMON 600ML PET 24EA | Packs | N/a | N/a | Bottles
+oh:13 | 2938 | DRINK SUNKIST ORANGE 600ML | Packs | N/a | N/a | Bottles
 
 # --- Cans ---
-13 | 10007576 | DRINK 7UP CAN 30EA | Boxes | N/a | N/a | Cans
-13 | 10007191 | DRINK MOUNTAIN DEW CAN 30EA | Boxes | N/a | N/a | Cans
-13 | 10004724 | DRINK PEPSI CAN 30EA | Boxes | N/a | N/a | Cans
-13 | 10004423 | DRINK PEPSI MAX CAN 30EA | Boxes | N/a | N/a | Cans
-13 | 10004425 | DRINK CAN SOLO 375ML 30EA | Boxes | N/a | N/a | Cans
-13 | 10006573 | DRINK SUNKIST ORANGE CAN 30EA | Boxes | N/a | N/a | Cans
+oh:13 | 10007576 | DRINK 7UP CAN 30EA | Boxes | N/a | N/a | Cans
+oh:13 | 10007191 | DRINK MOUNTAIN DEW CAN 30EA | Boxes | N/a | N/a | Cans
+oh:13 | 10004724 | DRINK PEPSI CAN 30EA | Boxes | N/a | N/a | Cans
+oh:13 | 10004423 | DRINK PEPSI MAX CAN 30EA | Boxes | N/a | N/a | Cans
+oh:13 | 10004425 | DRINK CAN SOLO 375ML 30EA | Boxes | N/a | N/a | Cans
+oh:13 | 10006573 | DRINK SUNKIST ORANGE CAN 30EA | Boxes | N/a | N/a | Cans
 
 # --- Other ---
-13 | 10005242 | DRINK WATER SPARKLING 24X500ML | Packs | N/a | N/a | Other
-13 | 10006909 | DRINK RED BULL ED 24X250ML | Packs | N/a | N/a | Other
-13 | 10006936 | DRINK RED BULL S/FREE 24X250ML | Packs | N/a | N/a | Other
-13 | 10006942 | DRINK RED BULL TROPICAL 12X250ML | Packs | N/a | N/a | Other
-13 | 10007182 | DRINK JUICE POP TOP APPLE 24X250ML | Packs | N/a | N/a | Other
-13 | 10007184 | DRINK JUICE POP TOP ORANGE 24X250ML | Packs | N/a | N/a | Other
-13 | 3592 | DRINK JUICE APPLE SPRING VALLEY 18X350ML | Packs | N/a | N/a | Other
-13 | 10006824 | DRINK LIPTON ICE TEA LEMON 24X500ML | Packs | N/a | N/a | Other
-13 | 10006826 | DRINK LIPTON ICE TEA PEACH 24X500ML | Packs | N/a | N/a | Other
-13 | 10006282 | DRINK WATER 600ML PET 24EA | Packs | N/a | N/a | Other
+oh:13 | 10005242 | DRINK WATER SPARKLING 24X500ML | Packs | N/a | N/a | Other
+oh:13 | 10006909 | DRINK RED BULL ED 24X250ML | Packs | N/a | N/a | Other
+oh:13 | 10006936 | DRINK RED BULL S/FREE 24X250ML | Packs | N/a | N/a | Other
+oh:13 | 10006942 | DRINK RED BULL TROPICAL 12X250ML | Packs | N/a | N/a | Other
+oh:13 | 10007182 | DRINK JUICE POP TOP APPLE 24X250ML | Packs | N/a | N/a | Other
+oh:13 | 10007184 | DRINK JUICE POP TOP ORANGE 24X250ML | Packs | N/a | N/a | Other
+oh:13 | 3592 | DRINK JUICE APPLE SPRING VALLEY 18X350ML | Packs | N/a | N/a | Other
+oh:13 | 10006824 | DRINK LIPTON ICE TEA LEMON 24X500ML | Packs | N/a | N/a | Other
+oh:13 | 10006826 | DRINK LIPTON ICE TEA PEACH 24X500ML | Packs | N/a | N/a | Other
+oh:13 | 10006282 | DRINK WATER 600ML PET 24EA | Packs | N/a | N/a | Other

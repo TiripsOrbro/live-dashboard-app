@@ -106,11 +106,28 @@ function looksLikeItemCode(value) {
     return false;
 }
 
-/** Leading column: `order=N`, `=N`, days, or `manual` (see VENDOR-FORMAT.md). */
+/** Leading column: `order=N`, `=N`, `oh:N`, days, or `manual` (see VENDOR-FORMAT.md). */
 function parseBuildToPrefix(parts) {
     if (!parts.length) return null;
     const first = String(parts[0] || '').trim();
     if (!first) return null;
+
+    const ohMatch = first.match(/^oh:(\d{1,2})$/i);
+    if (ohMatch) {
+        const days = Number(ohMatch[1]);
+        if (days >= 1 && days <= 31) {
+            return {
+                buildToManual: false,
+                buildToOrderManual: false,
+                skipKeyItemCount: true,
+                skipStockCount: true,
+                buildToDays: days,
+                buildToAdd: 0,
+                buildToFixed: null,
+                rest: parts.slice(1),
+            };
+        }
+    }
 
     const orderMatch = first.match(/^order=(\d+(?:\.\d+)?)$/i);
     if (orderMatch) {
@@ -120,6 +137,7 @@ function parseBuildToPrefix(parts) {
                 buildToManual: false,
                 buildToOrderManual: true,
                 skipKeyItemCount: true,
+                skipStockCount: false,
                 buildToDays: null,
                 buildToAdd: 0,
                 buildToFixed,
@@ -136,6 +154,7 @@ function parseBuildToPrefix(parts) {
                 buildToManual: false,
                 buildToOrderManual: false,
                 skipKeyItemCount: false,
+                skipStockCount: false,
                 buildToDays: null,
                 buildToAdd: 0,
                 buildToFixed,
@@ -149,6 +168,7 @@ function parseBuildToPrefix(parts) {
             buildToManual: true,
             buildToOrderManual: false,
             skipKeyItemCount: true,
+            skipStockCount: false,
             buildToDays: null,
             buildToAdd: 0,
             buildToFixed: null,
@@ -165,6 +185,7 @@ function parseBuildToPrefix(parts) {
                 buildToManual: false,
                 buildToOrderManual: false,
                 skipKeyItemCount: false,
+                skipStockCount: false,
                 buildToDays: days,
                 buildToAdd: add,
                 buildToFixed: null,
@@ -180,6 +201,7 @@ function parseBuildToPrefix(parts) {
                 buildToManual: false,
                 buildToOrderManual: false,
                 skipKeyItemCount: false,
+                skipStockCount: false,
                 buildToDays: days,
                 buildToAdd: 0,
                 buildToFixed: null,
@@ -274,6 +296,7 @@ function parseCatalogText(text, def) {
         let buildToManual = false;
         let buildToOrderManual = false;
         let skipKeyItemCount = false;
+        let skipStockCount = false;
         let buildToAdd = 0;
         let buildToFixed = null;
         let lineParts = parts;
@@ -282,6 +305,7 @@ function parseCatalogText(text, def) {
             buildToManual = buildToPrefix.buildToManual;
             buildToOrderManual = Boolean(buildToPrefix.buildToOrderManual);
             skipKeyItemCount = Boolean(buildToPrefix.skipKeyItemCount);
+            skipStockCount = Boolean(buildToPrefix.skipStockCount);
             buildToDays = buildToPrefix.buildToDays;
             buildToAdd = buildToPrefix.buildToAdd || 0;
             buildToFixed = buildToPrefix.buildToFixed ?? null;
@@ -335,6 +359,7 @@ function parseCatalogText(text, def) {
             buildToManual: Boolean(buildToManual),
             buildToOrderManual: Boolean(buildToOrderManual),
             skipKeyItemCount: Boolean(skipKeyItemCount),
+            skipStockCount: Boolean(skipStockCount),
             buildToAdd: buildToManual ? 0 : buildToAdd,
             buildToFixed: buildToManual ? null : buildToFixed,
         });
@@ -399,17 +424,31 @@ function listConfiguredVendors() {
     }).filter((v) => v.configured);
 }
 
-function getVendorCatalog(slug) {
+function getVendorCatalog(slug, options = {}) {
     const def = getVendorDefinition(slug);
     if (!def) return null;
     const catalog = readCatalogForDefinition(def);
     if (!catalog || !catalog.items.length) return null;
-    return {
-        ...catalog,
-        items: catalog.items.map((item) => ({
+
+    const normalizeItems = (items) =>
+        items.map((item) => ({
             ...item,
             unitSlots: normalizeUnitSlots(item),
-        })),
+        }));
+
+    if (options.forStockCount) {
+        const countable = catalog.items.filter((item) => !item.skipStockCount);
+        if (!countable.length) return null;
+        return {
+            ...catalog,
+            items: normalizeItems(countable),
+            locations: buildCatalogLocations(countable, catalog.locationOrder, []),
+        };
+    }
+
+    return {
+        ...catalog,
+        items: normalizeItems(catalog.items),
     };
 }
 

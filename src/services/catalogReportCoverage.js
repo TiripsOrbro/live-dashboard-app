@@ -62,6 +62,15 @@ function verifyCatalogReportCoverage(storeNumber, catalog, reportsRoot) {
             continue;
         }
 
+        if (item.skipStockCount) {
+            skipped.push({
+                itemCode: code,
+                name: item.name,
+                reason: 'on-hand only (oh:N — no travel-path count; build-to uses SCM reports)',
+            });
+            continue;
+        }
+
         if (item.buildToFixed != null || item.buildToOrderManual) {
             skipped.push({
                 itemCode: code,

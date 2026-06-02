@@ -459,11 +459,37 @@ function findBestCatalogMatchForVariance(variance, catalogsBySlug) {
     return best ? { item: best, slug: bestSlug } : null;
 }
 
+function recountLocationOrder() {
+    const ordered = [];
+    const seen = new Set();
+    const push = (loc) => {
+        const name = String(loc || '').trim();
+        if (!name || seen.has(name)) return;
+        seen.add(name);
+        ordered.push(name);
+    };
+
+    const addCatalog = (cat) => {
+        if (!cat) return;
+        for (const loc of cat.locationOrder || []) push(loc);
+        for (const loc of cat.locations || []) push(loc);
+    };
+
+    addCatalog(catalog);
+    for (const slug of mmxVendorSlugs.length ? mmxVendorSlugs : [VENDOR_SLUG]) {
+        addCatalog(vendorCatalogsCache.get(slug));
+    }
+    const active = getActiveCatalog();
+    addCatalog(active);
+    for (const item of active?.items || []) {
+        for (const loc of item.locations || []) push(loc);
+    }
+
+    return ordered.length ? ordered : ['Default'];
+}
+
 function defaultRecountLocations() {
-    if (catalog?.locations?.length) return [...catalog.locations];
-    const cat = getActiveCatalog();
-    if (cat?.locations?.length) return [...cat.locations];
-    return ['Default'];
+    return recountLocationOrder();
 }
 
 function fallbackLocationForUnmatched() {
@@ -534,8 +560,8 @@ function readRecountFormValuesForLocation(locationName) {
     return grouped;
 }
 
-function mergeRecountLocations(items) {
-    return defaultRecountLocations();
+function mergeRecountLocations(_items) {
+    return recountLocationOrder();
 }
 
 async function loadVendorCatalogAndDraft(slug) {
@@ -1062,54 +1088,30 @@ function buildProcessingOverlay() {
     `;
 }
 
-function buildUnitSlotReadOnlyHtml(item, counts = {}) {
-    const slots = resolveUnitSlots(item);
-    return slots
-        .slice(0, 3)
-        .map((slot) => {
-            const label = slot.label || 'N/a';
-            if (slot.na) {
-                return `<div class="stock-count-unit-slot stock-count-unit-slot--na" data-label="${escapeHtml(label)}">
-                    <span class="stock-count-unit-label">${escapeHtml(label)}</span>
-                    <div class="stock-count-input stock-count-input--na" aria-hidden="true"></div>
-                </div>`;
-            }
-            const value = counts[slot.key];
-            const display =
-                value != null && Number.isFinite(Number(value))
-                    ? formatQty(value)
-                    : '—';
-            const emptyClass = display === '—' ? ' stock-count-value-box--empty' : '';
-            return `<div class="stock-count-unit-slot" data-label="${escapeHtml(label)}">
-                <span class="stock-count-unit-label">${escapeHtml(label)}</span>
-                <div class="stock-count-value-box${emptyClass}">${escapeHtml(display)}</div>
-            </div>`;
-        })
-        .join('');
+function buildVarianceReadOnlyCellHtml(slot, counts) {
+    const label = slot.label || 'N/a';
+    if (slot.na) {
+        return `<td class="stock-count-grid-cell stock-count-grid-cell--na" aria-hidden="true"></td>`;
+    }
+    const value = counts[slot.key];
+    const display =
+        value != null && Number.isFinite(Number(value)) ? formatQty(value) : '—';
+    const emptyClass = display === '—' ? ' stock-count-value-box--empty' : '';
+    return `<td class="stock-count-grid-cell stock-count-grid-cell--variance-value">
+        <div class="stock-count-unit-slot">
+            <span class="stock-count-unit-label">${escapeHtml(label)}</span>
+            <div class="stock-count-value-box stock-count-value-box--variance${emptyClass}">${escapeHtml(display)}</div>
+        </div>
+    </td>`;
 }
 
-function buildVarianceStatsHtml(row, item) {
-    const unitLabel = inferStockVarianceUnitLabel(row, item);
-    const varianceMoney = formatMoney(row.varianceValue);
-    const varianceClass =
-        Number(row.varianceValue) < 0 ? ' stock-count-value-box--variance-negative' : '';
-    return `
-        <div class="stock-count-variance-stats">
-            <div class="stock-count-variance-stat stock-count-variance-stat--spacer" aria-hidden="true"></div>
-            <div class="stock-count-variance-stat">
-                <span class="stock-count-unit-label">Stock counted</span>
-                <div class="stock-count-value-box stock-count-value-box--variance">${escapeHtml(formatQtyWithUnit(row.stockCounted, unitLabel))}</div>
-            </div>
-            <div class="stock-count-variance-stat">
-                <span class="stock-count-unit-label">Stock expected</span>
-                <div class="stock-count-value-box stock-count-value-box--variance">${escapeHtml(formatQtyWithUnit(row.stockExpected, unitLabel))}</div>
-            </div>
-            <div class="stock-count-variance-stat">
-                <span class="stock-count-unit-label">Variance value</span>
-                <div class="stock-count-value-box stock-count-value-box--variance stock-count-value-box--variance-money${varianceClass}">${escapeHtml(varianceMoney)}</div>
-            </div>
+function buildVarianceStatCellHtml(label, display, extraClass = '') {
+    return `<td class="stock-count-grid-cell stock-count-grid-cell--variance-value">
+        <div class="stock-count-unit-slot">
+            <span class="stock-count-unit-label">${escapeHtml(label)}</span>
+            <div class="stock-count-value-box stock-count-value-box--variance${extraClass}">${escapeHtml(display)}</div>
         </div>
-    `;
+    </td>`;
 }
 
 function buildVarianceEntryRowHtml(row) {
@@ -1124,24 +1126,35 @@ function buildVarianceEntryRowHtml(row) {
             .map((slot) => ({ key: slot.key, label: slot.label })),
     };
     const counts = mapVarianceClosingToCounts(item, row);
-    return `<tr class="stock-count-entry-row stock-count-variance-row">
-        <td class="stock-count-entry-cell stock-count-entry-cell--variance" colspan="2">
-            <div class="stock-count-entry-line stock-count-entry-line--variance">
-                <div class="stock-count-name-slot">
-                    <span class="stock-count-unit-label stock-count-unit-label--spacer" aria-hidden="true">&nbsp;</span>
-                    <div class="stock-count-item-box stock-count-item-box--variance">${escapeHtml(item.name)}</div>
-                </div>
-                <div class="stock-count-input-group">${buildUnitSlotReadOnlyHtml(item, counts)}</div>
-            </div>
-            ${buildVarianceStatsHtml(row, item)}
-        </td>
+    const slots = resolveUnitSlots(item).slice(0, 3);
+    const closingCells = slots.map((slot) => buildVarianceReadOnlyCellHtml(slot, counts)).join('');
+    const unitLabel = inferStockVarianceUnitLabel(row, item);
+    const varianceMoney = formatMoney(row.varianceValue);
+    const varianceClass =
+        Number(row.varianceValue) < 0 ? ' stock-count-value-box--variance-negative' : '';
+    const codePrefix = item.itemCode
+        ? `<span class="stock-count-grid-code">${escapeHtml(item.itemCode)}</span> `
+        : '';
+    const statCells = [
+        buildVarianceStatCellHtml('Counted', formatQtyWithUnit(row.stockCounted, unitLabel)),
+        buildVarianceStatCellHtml('Expected', formatQtyWithUnit(row.stockExpected, unitLabel)),
+        buildVarianceStatCellHtml(
+            'Variance',
+            varianceMoney,
+            ` stock-count-value-box--variance-money${varianceClass}`
+        ),
+    ].join('');
+    return `<tr class="stock-count-grid-row stock-count-variance-row">
+        <th scope="row" class="stock-count-grid-name">${codePrefix}${escapeHtml(item.name)}</th>
+        ${closingCells}
+        ${statCells}
     </tr>`;
 }
 
 function buildVarianceView() {
     const rows = mmxVariances.map(buildVarianceEntryRowHtml).join('');
     const tableHtml = rows
-        ? `<table class="stock-count-table stock-count-table--entry stock-count-table--variances"><tbody>${rows}</tbody></table>`
+        ? `<div class="stock-count-variance-scroll"><table class="stock-count-table stock-count-table--entry stock-count-table--connected stock-count-table--variances"><tbody>${rows}</tbody></table></div>`
         : '<p class="stock-count-empty-location">No red variances found — review looks clear.</p>';
 
     const actionsHtml = rows
@@ -1185,30 +1198,36 @@ function resolveUnitSlots(item) {
     return slots.slice(0, 3);
 }
 
-function buildUnitSlotHtml(item, ariaName) {
-    const slots = resolveUnitSlots(item);
-    return slots
-        .slice(0, 3)
-        .map((slot) => {
-            const label = slot.label || 'N/a';
-            if (slot.na) {
-                return `<div class="stock-count-unit-slot stock-count-unit-slot--na" data-label="${escapeHtml(label)}">
-                    <span class="stock-count-unit-label">${escapeHtml(label)}</span>
-                    <div class="stock-count-input stock-count-input--na" aria-hidden="true"></div>
-                </div>`;
-            }
-            return `<div class="stock-count-unit-slot" data-label="${escapeHtml(label)}">
-                <span class="stock-count-unit-label">${escapeHtml(label)}</span>
-                <input type="number" min="0" step="any" class="stock-count-input" data-item="${escapeHtml(item.key)}" data-col="${escapeHtml(slot.key)}" inputmode="decimal" aria-label="${escapeHtml(ariaName)} ${escapeHtml(label)}">
-            </div>`;
-        })
-        .join('');
+function buildUnitSlotCellHtml(item, slot, ariaName) {
+    const label = slot.label || 'N/a';
+    if (slot.na) {
+        return `<td class="stock-count-grid-cell stock-count-grid-cell--na" aria-hidden="true"></td>`;
+    }
+    return `<td class="stock-count-grid-cell">
+        <label class="stock-count-unit-slot">
+            <span class="stock-count-unit-label">${escapeHtml(label)}</span>
+            <input type="number" min="0" step="any" class="stock-count-input" data-item="${escapeHtml(item.key)}" data-col="${escapeHtml(slot.key)}" inputmode="decimal" aria-label="${escapeHtml(ariaName)} ${escapeHtml(label)}">
+        </label>
+    </td>`;
+}
+
+function buildEntryRowHtml(item) {
+    const ariaName = item.itemCode ? `${item.itemCode} ${item.name}` : item.name;
+    const slots = resolveUnitSlots(item).slice(0, 3);
+    const slotCells = slots.map((slot) => buildUnitSlotCellHtml(item, slot, ariaName)).join('');
+    const codePrefix = item.itemCode
+        ? `<span class="stock-count-grid-code">${escapeHtml(item.itemCode)}</span> `
+        : '';
+    return `<tr class="stock-count-grid-row">
+        <th scope="row" class="stock-count-grid-name">${codePrefix}${escapeHtml(item.name)}</th>
+        ${slotCells}
+    </tr>`;
 }
 
 function buildStatusNote() {
     if (viewMode === 'recount') {
         const tabName = getActiveCatalog()?.locations?.[currentLocationIndex] || '';
-        return `<div class="stock-count-review-note">Update counts for ${escapeHtml(tabName || 'this location')}, then save and send to Macromatix again.</div>`;
+        return `<div class="stock-count-review-note">All location tabs are shown — update red variance lines (empty tabs need no changes), then save and send to Macromatix again.</div>`;
     }
     if (isMmxSent()) {
         return '<div class="stock-count-review-note">Sent to Macromatix — edit counts below and send again if needed.</div>';
@@ -1226,22 +1245,7 @@ function buildView() {
     const cat = getActiveCatalog();
     const locationName = cat.locations[currentLocationIndex];
     const itemsAtLocation = getItemsForLocation(locationName);
-    const rows = itemsAtLocation
-        .map((item) => {
-            const ariaName = item.itemCode ? `${item.itemCode} ${item.name}` : item.name;
-            return `<tr class="stock-count-entry-row">
-                <td class="stock-count-entry-cell" colspan="2">
-                    <div class="stock-count-entry-line">
-                        <div class="stock-count-name-slot">
-                            <span class="stock-count-unit-label stock-count-unit-label--spacer" aria-hidden="true">&nbsp;</span>
-                            <div class="stock-count-item-box">${escapeHtml(item.name)}</div>
-                        </div>
-                        <div class="stock-count-input-group">${buildUnitSlotHtml(item, ariaName)}</div>
-                    </div>
-                </td>
-            </tr>`;
-        })
-        .join('');
+    const rows = itemsAtLocation.map((item) => buildEntryRowHtml(item)).join('');
 
     const emptyNote =
         itemsAtLocation.length === 0
@@ -1269,7 +1273,7 @@ function buildView() {
         <div class="stock-count-locations" role="tablist" aria-label="Storage locations">${locButtons}</div>
         <div class="stock-count-panel" role="tabpanel">
             <h2>${escapeHtml(panelTitle)}</h2>
-            <table class="stock-count-table stock-count-table--entry">
+            <table class="stock-count-table stock-count-table--entry stock-count-table--connected">
                 <tbody>${rows}</tbody>
             </table>
             ${emptyNote}

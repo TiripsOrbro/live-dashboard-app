@@ -91,6 +91,7 @@ function countedItemCodesByVendor() {
         if (!catalog) continue;
         const codes = new Set();
         for (const item of catalog.items) {
+            if (item.skipStockCount) continue;
             const code = normalizeItemCode(item.itemCode);
             if (!code) continue;
             for (const key of [code, ...lookupKeysForMmx(mmxCodeForOrderCode(code) || code)]) {

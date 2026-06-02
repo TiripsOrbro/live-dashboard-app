@@ -53,7 +53,7 @@ async function shouldRunOrderPipeline(storeNumber, dateKey) {
 async function buildVendorEntries(storeNumber, toSend, dateKey) {
     const vendorEntries = [];
     for (const entry of toSend) {
-        const catalog = getVendorCatalog(entry.slug);
+        const catalog = getVendorCatalog(entry.slug, { forStockCount: true });
         if (!catalog) throw new Error(`Vendor catalog not found: ${entry.slug}`);
 
         const draft = await getDraft(storeNumber, entry.slug, dateKey);

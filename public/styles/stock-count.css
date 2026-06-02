@@ -197,6 +197,16 @@ body.stock-count-page {
     margin-bottom: 1px;
 }
 
+.stock-count-grid-vendor {
+    display: block;
+    font-size: 0.55rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, var(--tb-purple-light, #9c27b0) 70%, var(--charcoal));
+    margin-bottom: 2px;
+}
+
 .stock-count-grid-cell {
     width: calc(62% / 3);
     padding: 0;

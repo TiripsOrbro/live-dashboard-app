@@ -1,5 +1,6 @@
 const { getStoreConfig } = require('./storeList');
 const { getVendorCatalog } = require('./vendorCatalog');
+const { isCombinedStockCountSlug, vendorSlugsFromPendingLabels } = require('./combinedStockCountCatalog');
 const {
     getDraft,
     submitStockCount,
@@ -82,9 +83,23 @@ async function resolveToSend(storeNumber, vendorSlug, options = {}) {
         throw new Error('Submit at least one vendor count before sending to Macromatix.');
     }
 
-    const triggerDraft = await getDraft(storeNumber, vendorSlug, dateKey);
-    if (triggerDraft?.locations && Object.keys(triggerDraft.locations).length && !triggerDraft.submittedAt) {
-        await submitStockCount(storeNumber, vendorSlug, dateKey);
+    if (isCombinedStockCountSlug(vendorSlug)) {
+        const slugs = vendorSlugsFromPendingLabels(options.pendingVendorLabels);
+        for (const slug of slugs) {
+            const vendorDraft = await getDraft(storeNumber, slug, dateKey);
+            if (
+                vendorDraft?.locations &&
+                Object.keys(vendorDraft.locations).length &&
+                !vendorDraft.submittedAt
+            ) {
+                await submitStockCount(storeNumber, slug, dateKey);
+            }
+        }
+    } else {
+        const triggerDraft = await getDraft(storeNumber, vendorSlug, dateKey);
+        if (triggerDraft?.locations && Object.keys(triggerDraft.locations).length && !triggerDraft.submittedAt) {
+            await submitStockCount(storeNumber, vendorSlug, dateKey);
+        }
     }
 
     const toSend = queueStatus.queue.filter((entry) => entry.submittedAt);

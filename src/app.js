@@ -33,6 +33,11 @@ const {
 } = require('./services/testStore');
 const { listConfiguredVendors, getVendorCatalog } = require('./services/vendorCatalog');
 const {
+    buildCombinedStockCountCatalog,
+    isCombinedStockCountSlug,
+    vendorSlugsFromPendingLabels,
+} = require('./services/combinedStockCountCatalog');
+const {
     getDraft,
     saveDraftLocation,
     getSummary,
@@ -1164,6 +1169,23 @@ app.get('/api/stock-count/vendors', (req, res) => {
 
 app.get('/api/stock-count/catalog', (req, res) => {
     const vendorSlug = stockCountVendorFromQuery(req);
+    if (isCombinedStockCountSlug(vendorSlug)) {
+        const store = stockCountStoreFromQuery(req);
+        if (!store) {
+            res.status(400).json({ success: false, error: 'Store is required.' });
+            return;
+        }
+        const catalog = buildCombinedStockCountCatalog(pendingVendorLabelsForStockCount(req, store));
+        if (!catalog.items.length) {
+            res.status(404).json({
+                success: false,
+                error: 'No vendors need a stock count today.',
+            });
+            return;
+        }
+        res.json({ success: true, catalog, vendorSlugs: catalog.vendorSlugs });
+        return;
+    }
     const catalog = getVendorCatalog(vendorSlug, { forStockCount: true });
     if (!catalog) {
         res.status(404).json({ success: false, error: 'Vendor catalog not found.' });
@@ -1177,6 +1199,13 @@ app.get('/api/stock-count/draft', async (req, res) => {
         const store = stockCountStoreFromQuery(req);
         const vendorSlug = stockCountVendorFromQuery(req);
         if (!store || !assertStoreAccess(req, res, store)) return;
+        if (isCombinedStockCountSlug(vendorSlug)) {
+            res.status(400).json({
+                success: false,
+                error: 'Combined count uses per-vendor drafts — load vendor=combined catalog only.',
+            });
+            return;
+        }
         const draft = await getDraft(store, vendorSlug);
         if (!draft) {
             res.status(404).json({ success: false, error: 'Vendor catalog not found.' });
@@ -1413,6 +1442,32 @@ app.post('/api/stock-count/submit', async (req, res) => {
         const store = stockCountStoreFromQuery(req);
         const vendorSlug = stockCountVendorFromQuery(req);
         if (!store || !assertStoreAccess(req, res, store)) return;
+        if (isCombinedStockCountSlug(vendorSlug)) {
+            const slugs = vendorSlugsFromPendingLabels(pendingVendorLabelsForStockCount(req, store));
+            const submitted = [];
+            for (const slug of slugs) {
+                try {
+                    const summary = await submitStockCount(store, slug);
+                    if (summary) submitted.push(summary);
+                } catch (error) {
+                    if (!/Enter at least one count|No stock count draft/i.test(error.message)) {
+                        throw error;
+                    }
+                }
+            }
+            if (!submitted.length) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Enter at least one count before saving.',
+                });
+                return;
+            }
+            console.log(
+                `[StockCount] Combined submit store ${store} — ${submitted.map((s) => s.vendorLabel).join(', ')}`
+            );
+            res.json({ success: true, submitted, vendorSlugs: slugs, macromatixPending: true });
+            return;
+        }
         const summary = await submitStockCount(store, vendorSlug);
         if (!summary) {
             res.status(404).json({ success: false, error: 'Vendor catalog not found.' });

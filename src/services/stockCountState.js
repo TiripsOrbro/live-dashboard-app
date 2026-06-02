@@ -5,6 +5,7 @@ const {
     getVendorCatalog,
     vendorLabelToSlug,
 } = require('./vendorCatalog');
+const { isCombinedStockCountSlug } = require('./combinedStockCountCatalog');
 const { isTestStore, TEST_STORE_SLUG } = require('./testStore');
 
 const STATE_FILE =
@@ -165,16 +166,27 @@ async function getStockCountQueueStatus(storeNumber, options = {}) {
         seen.add(slug);
     }
 
-    if (currentVendorSlug && !seen.has(currentVendorSlug)) {
-        const catalog = getVendorCatalog(currentVendorSlug, { forStockCount: true });
-        if (catalog) {
-            queue.push({
-                slug: currentVendorSlug,
-                label: catalog.label,
-                submittedAt: null,
-                mmxSentAt: null,
-            });
-        }
+    const ensureSlugs =
+        isCombinedStockCountSlug(currentVendorSlug) && Array.isArray(options.pendingVendorLabels)
+            ? options.pendingVendorLabels
+                  .map((label) => vendorLabelToSlug(label))
+                  .filter(Boolean)
+            : currentVendorSlug
+              ? [currentVendorSlug]
+              : [];
+
+    for (const slug of ensureSlugs) {
+        if (!slug || seen.has(slug) || isCombinedStockCountSlug(slug)) continue;
+        const catalog = getVendorCatalog(slug, { forStockCount: true });
+        if (!catalog) continue;
+        const day = store[slug]?.[dateKey];
+        queue.push({
+            slug,
+            label: catalog.label,
+            submittedAt: day?.submittedAt || null,
+            mmxSentAt: day?.mmxSentAt || null,
+        });
+        seen.add(slug);
     }
 
     const submitted = queue.filter((entry) => entry.submittedAt);

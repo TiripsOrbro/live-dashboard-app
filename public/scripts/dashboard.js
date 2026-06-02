@@ -171,6 +171,15 @@ function stockCountPathForVendor(label) {
     return `/${STORE_NUMBER}/stock-count/${entry.slug}`;
 }
 
+/** One stock-count flow for all pending vendors (CombinedOrders branch). */
+function combinedStockCountPath() {
+    if (!STORE_NUMBER) return null;
+    const visible = getVisiblePendingVendors();
+    const hasCountable = visible.some((name) => vendorHasStockCount(name));
+    if (!hasCountable) return null;
+    return `/${STORE_NUMBER}/stock-count/combined`;
+}
+
 /* -----------------------------------------------------------
    Audits list — dismissal period + Square One pair from server schedule (see data/audit-recurrence.json)
 ----------------------------------------------------------- */
@@ -1976,9 +1985,19 @@ function updatePendingVendorsPanel() {
 
     const mondayHtml = monday ? mondayCashOrderReminderHtml() : '';
     const lastMondayHtml = lastMondayMonth ? lastMondayMonthlyOrdersReminderHtml() : '';
+    const combinedPath = combinedStockCountPath();
+    const combinedChipHtml = combinedPath
+        ? `<div class="pending-vendor-item pending-vendor-item--combined"><a class="pending-vendor-chip pending-vendor-chip--link pending-vendor-chip--combined" href="${escapeHtml(combinedPath)}" aria-label="Start combined stock count for all vendors today">Stock count</a></div>`
+        : '';
     const chipsHtml = visible.length
-        ? visible
+        ? combinedChipHtml +
+          visible
               .map((name) => {
+                  if (combinedPath) {
+                      return `<div class="pending-vendor-item"><button type="button" class="pending-vendor-chip" data-vendor="${encodeURIComponent(
+                          name
+                      )}" aria-label="Mark ${escapeHtml(name)} as done">${escapeHtml(name)}</button></div>`;
+                  }
                   const stockPath = stockCountPathForVendor(name);
                   if (stockPath) {
                       return `<div class="pending-vendor-item"><a class="pending-vendor-chip pending-vendor-chip--link" href="${escapeHtml(stockPath)}" aria-label="Start stock count for ${escapeHtml(name)}">${escapeHtml(name)}</a></div>`;
@@ -1988,7 +2007,7 @@ function updatePendingVendorsPanel() {
                   )}" aria-label="Mark ${escapeHtml(name)} as done">${escapeHtml(name)}</button></div>`;
               })
               .join('')
-        : '';
+        : combinedChipHtml;
 
     const html = hasOrdersContent ? mondayHtml + lastMondayHtml + chipsHtml : '';
 

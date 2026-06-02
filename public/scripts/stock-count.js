@@ -2,9 +2,12 @@ const app = document.getElementById('app');
 const pathMatch = window.location.pathname.match(/\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)/i);
 const STORE_NUMBER = pathMatch ? pathMatch[1].toLowerCase() : '';
 const VENDOR_SLUG = pathMatch ? pathMatch[2] : '';
+const IS_COMBINED = VENDOR_SLUG === 'combined';
 
 let catalog = null;
 let draft = null;
+let combinedVendorSlugs = [];
+let vendorDrafts = {};
 let queueStatus = null;
 let currentLocationIndex = 0;
 let viewMode = 'entry';
@@ -53,6 +56,26 @@ async function fetchJson(url, options = {}) {
 }
 
 function buildLocalQueueStatus() {
+    if (isCombinedMode()) {
+        const queue = combinedVendorSlugs.map((slug) => {
+            const vendorDraft = vendorDrafts[slug] || {};
+            const cat = vendorCatalogsCache.get(slug);
+            return {
+                slug,
+                label: cat?.label || slug,
+                submittedAt: vendorDraft.submittedAt || null,
+                mmxSentAt: vendorDraft.mmxSentAt || null,
+            };
+        });
+        const submitted = queue.filter((entry) => entry.submittedAt);
+        return {
+            success: true,
+            queue,
+            canSendToMmx: submitted.length > 0,
+            allMmxSent: submitted.length > 0 && submitted.every((entry) => entry.mmxSentAt),
+            readyToSend: submitted.filter((entry) => !entry.mmxSentAt).map((entry) => entry.label),
+        };
+    }
     const submitted = Boolean(draft?.submittedAt || draft?.mmxSentAt);
     return {
         success: true,
@@ -79,14 +102,60 @@ function escapeHtml(value) {
 }
 
 function isMmxSent() {
+    if (isCombinedMode()) {
+        const slugs = combinedVendorSlugs.length ? combinedVendorSlugs : Object.keys(vendorDrafts);
+        return slugs.length > 0 && slugs.every((slug) => Boolean(vendorDrafts[slug]?.mmxSentAt));
+    }
     return Boolean(draft?.mmxSentAt);
 }
 
 function isSubmitted() {
+    if (isCombinedMode()) {
+        const slugs = combinedVendorSlugs.length ? combinedVendorSlugs : Object.keys(vendorDrafts);
+        return (
+            slugs.some((slug) => Boolean(vendorDrafts[slug]?.submittedAt)) &&
+            !isMmxSent()
+        );
+    }
     return Boolean(draft?.submittedAt) && !isMmxSent();
 }
 
+function isCombinedMode() {
+    return IS_COMBINED;
+}
+
+function itemSourceSlug(item) {
+    return item?.sourceVendorSlug || VENDOR_SLUG;
+}
+
+function itemCatalogKey(item) {
+    return item?.catalogKey || item.key;
+}
+
+function draftForVendor(slug) {
+    if (isCombinedMode()) return vendorDrafts[slug] || null;
+    if (slug === VENDOR_SLUG) return draft;
+    return recountDrafts[slug] || varianceDrafts[slug] || null;
+}
+
 function vendorHasCountableData() {
+    if (isCombinedMode()) {
+        return combinedVendorSlugs.some((slug) => {
+            const vendorDraft = vendorDrafts[slug];
+            if (!vendorDraft?.locations) return false;
+            return Object.values(vendorDraft.locations).some(
+                (items) =>
+                    items &&
+                    typeof items === 'object' &&
+                    Object.values(items).some(
+                        (counts) =>
+                            counts &&
+                            typeof counts === 'object' &&
+                            Object.values(counts).some((n) => Number(n) > 0)
+                    )
+            );
+        });
+    }
     if (!catalog || !draft?.locations) return false;
     return Object.values(draft.locations).some(
         (items) =>
@@ -534,8 +603,10 @@ function countsHaveValues(counts) {
 }
 
 function getRecountItemCounts(item, locationName) {
-    const slug = item.sourceVendorSlug || VENDOR_SLUG;
-    const draftCounts = recountDrafts[slug]?.locations?.[locationName]?.[item.key];
+    const slug = itemSourceSlug(item);
+    const itemKey = itemCatalogKey(item);
+    const vendorDraft = draftForVendor(slug);
+    const draftCounts = vendorDraft?.locations?.[locationName]?.[itemKey];
     if (draftCounts && typeof draftCounts === 'object') return draftCounts;
     return {};
 }
@@ -641,7 +712,7 @@ async function buildRecountCatalog() {
 }
 
 function locationHasData(locationName) {
-    if (viewMode === 'recount') {
+    if (viewMode === 'recount' || isCombinedMode()) {
         return getItemsForLocation(locationName).some((item) => {
             const counts = getRecountItemCounts(item, locationName);
             return countsHaveValues(counts);
@@ -659,7 +730,36 @@ function locationHasData(locationName) {
     );
 }
 
+function readFormValuesGroupedByVendor(locationName) {
+    const grouped = {};
+    for (const item of getItemsForLocation(locationName)) {
+        const slug = itemSourceSlug(item);
+        const itemKey = itemCatalogKey(item);
+        const row = {};
+        for (const col of item.columns) {
+            const input = document.querySelector(
+                `input[data-item="${CSS.escape(item.key)}"][data-col="${CSS.escape(col.key)}"]`
+            );
+            if (!input) continue;
+            const raw = String(input.value || '').trim();
+            if (!raw) continue;
+            const n = Number(raw);
+            if (Number.isFinite(n) && n >= 0) row[col.key] = n;
+        }
+        if (!Object.keys(row).length) continue;
+        if (!grouped[slug]) grouped[slug] = {};
+        grouped[slug][itemKey] = row;
+    }
+    return grouped;
+}
+
 function readFormValues() {
+    if (isCombinedMode() || viewMode === 'recount') {
+        const cat = getActiveCatalog();
+        if (!cat) return {};
+        const grouped = readFormValuesGroupedByVendor(cat.locations[currentLocationIndex]);
+        return grouped[VENDOR_SLUG] || {};
+    }
     const values = {};
     const cat = getActiveCatalog();
     if (!cat) return values;
@@ -667,7 +767,9 @@ function readFormValues() {
     for (const item of getItemsForLocation(locationName)) {
         const row = {};
         for (const col of item.columns) {
-            const input = document.querySelector(`input[data-item="${item.key}"][data-col="${col.key}"]`);
+            const input = document.querySelector(
+                `input[data-item="${CSS.escape(item.key)}"][data-col="${CSS.escape(col.key)}"]`
+            );
             if (!input) continue;
             const raw = String(input.value || '').trim();
             if (!raw) continue;
@@ -682,11 +784,13 @@ function readFormValues() {
 function fillFormFromDraft(locationName) {
     const cat = getActiveCatalog();
     if (!cat) return;
-    if (viewMode === 'recount') {
+    if (viewMode === 'recount' || isCombinedMode()) {
         for (const item of getItemsForLocation(locationName)) {
             const counts = getRecountItemCounts(item, locationName);
             for (const col of item.columns) {
-                const input = document.querySelector(`input[data-item="${item.key}"][data-col="${col.key}"]`);
+                const input = document.querySelector(
+                    `input[data-item="${CSS.escape(item.key)}"][data-col="${CSS.escape(col.key)}"]`
+                );
                 if (!input) continue;
                 const v = counts[col.key];
                 input.value = v != null && Number(v) >= 0 ? String(v) : '';
@@ -714,8 +818,10 @@ async function saveCurrentLocation(showFeedback = true, options = {}) {
     const manageSavingFlag = !options.force;
     if (manageSavingFlag) saving = true;
     try {
-        if (viewMode === 'recount') {
-            const grouped = readRecountFormValuesForLocation(locationName);
+        if (viewMode === 'recount' || isCombinedMode()) {
+            const grouped = isCombinedMode()
+                ? readFormValuesGroupedByVendor(locationName)
+                : readRecountFormValuesForLocation(locationName);
             const slugs = Object.keys(grouped);
             if (!slugs.length) {
                 return true;
@@ -724,12 +830,17 @@ async function saveCurrentLocation(showFeedback = true, options = {}) {
                 const { res, data } = await fetchJson(apiQuery('/api/stock-count/draft', slug), {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ location: locationName, items: grouped[slug], merge: true }),
+                    body: JSON.stringify({
+                        location: locationName,
+                        items: grouped[slug],
+                        merge: isCombinedMode(),
+                    }),
                 });
                 if (!res.ok || !data.success) {
                     throw new Error(data.error || `Failed to save counts for ${slug}.`);
                 }
-                recountDrafts[slug] = data;
+                if (isCombinedMode()) vendorDrafts[slug] = data;
+                else recountDrafts[slug] = data;
                 if (slug === VENDOR_SLUG) draft = data;
             }
             if (showFeedback) setStatus(`Saved ${locationName}.`, 'success');
@@ -755,8 +866,52 @@ async function saveCurrentLocation(showFeedback = true, options = {}) {
     }
 }
 
+async function saveAllCombinedLocations() {
+    const cat = getActiveCatalog();
+    if (!cat || !isCombinedMode()) {
+        return saveCurrentLocation(false, { force: true });
+    }
+    const prevIndex = currentLocationIndex;
+    let ok = true;
+    if (!(await saveCurrentLocation(false, { force: true }))) ok = false;
+    for (let i = 0; i < cat.locations.length; i++) {
+        if (i === prevIndex) continue;
+        currentLocationIndex = i;
+        render();
+        if (!(await saveCurrentLocation(false, { force: true }))) ok = false;
+    }
+    currentLocationIndex = prevIndex;
+    render();
+    return ok;
+}
+
 async function saveVendor() {
     if (saving) return;
+    if (isCombinedMode()) {
+        const ok = await saveAllCombinedLocations();
+        if (!ok) return;
+        if (isMmxSent()) {
+            window.location.href = dashboardPath();
+            return;
+        }
+        saving = true;
+        setStatus('Saving counts…', '');
+        render();
+        try {
+            const { res, data } = await fetchJson(apiQuery('/api/stock-count/submit', 'combined'), {
+                method: 'POST',
+            });
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || 'Save failed.');
+            }
+            window.location.href = dashboardPath();
+        } catch (error) {
+            setStatus(error.message, 'error');
+            saving = false;
+            render();
+        }
+        return;
+    }
     if (viewMode === 'recount') {
         const ok = await saveAllRecountLocations();
         if (!ok) return;
@@ -852,6 +1007,31 @@ async function resubmitAllVendorsForMmx() {
 }
 
 async function saveAndSubmitVendor() {
+    if (isCombinedMode()) {
+        const ok = await saveAllCombinedLocations();
+        if (!ok && currentLocationHasFormData()) {
+            throw new Error('Could not save your counts — check the values and try again.');
+        }
+        if (!vendorHasCountableData() && !currentLocationHasFormData()) return false;
+        if (isSubmitted()) {
+            await loadQueueStatus();
+            return true;
+        }
+        const { res, data } = await fetchJson(apiQuery('/api/stock-count/submit', 'combined'), {
+            method: 'POST',
+        });
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Save failed.');
+        }
+        for (const row of data.submitted || []) {
+            const slug = row?.vendorSlug;
+            if (!slug) continue;
+            vendorDrafts[slug] = { ...vendorDrafts[slug], ...row };
+        }
+        await loadQueueStatus();
+        return true;
+    }
+
     const ok = await saveCurrentLocation(false, { force: true });
     if (!ok && currentLocationHasFormData()) {
         throw new Error('Could not save your counts — check the values and try again.');
@@ -1214,8 +1394,12 @@ function buildEntryRowHtml(item) {
     const ariaName = item.itemCode ? `${item.itemCode} ${item.name}` : item.name;
     const slots = resolveUnitSlots(item).slice(0, 3);
     const slotCells = slots.map((slot) => buildUnitSlotCellHtml(item, slot, ariaName)).join('');
+    const vendorHint =
+        isCombinedMode() && item.vendorLabel && combinedVendorSlugs.length > 1
+            ? `<span class="stock-count-grid-vendor">${escapeHtml(item.vendorLabel)}</span>`
+            : '';
     return `<tr class="stock-count-grid-row">
-        <th scope="row" class="stock-count-grid-name">${escapeHtml(item.name)}</th>
+        <th scope="row" class="stock-count-grid-name">${vendorHint}${escapeHtml(item.name)}</th>
         ${slotCells}
     </tr>`;
 }
@@ -1233,6 +1417,9 @@ function buildStatusNote() {
     }
     if (canShowSendToMmx() && queueStatus?.readyToSend?.length) {
         return `<div class="stock-count-review-note">Ready to send: ${escapeHtml(queueStatus.readyToSend.join(', '))}</div>`;
+    }
+    if (isCombinedMode()) {
+        return '<div class="stock-count-review-note">All vendors for today are on each location tab — walk the store once, save, then send to Macromatix.</div>';
     }
     return '<div class="stock-count-review-note">Use the location tabs to enter counts, then save. You only need to save vendors you are counting today.</div>';
 }
@@ -1378,6 +1565,38 @@ async function init() {
     }
 
     try {
+        if (isCombinedMode()) {
+            const { res: catRes, data: catData } = await fetchJson(
+                apiQuery('/api/stock-count/catalog', 'combined')
+            );
+            if (!catRes.ok || !catData.success) {
+                throw new Error(catData.error || 'No vendors need a stock count today.');
+            }
+            catalog = catData.catalog;
+            combinedVendorSlugs = catData.vendorSlugs || catalog.vendorSlugs || [];
+            vendorDrafts = {};
+            vendorCatalogsCache.clear();
+            await Promise.all(
+                combinedVendorSlugs.map(async (slug) => {
+                    const [catR, draftR] = await Promise.all([
+                        fetchJson(apiQuery('/api/stock-count/catalog', slug)),
+                        fetchJson(apiQuery('/api/stock-count/draft', slug)),
+                    ]);
+                    if (catR.res.ok && catR.data.success) {
+                        vendorCatalogsCache.set(slug, catR.data.catalog);
+                    }
+                    if (draftR.res.ok && draftR.data.success) {
+                        vendorDrafts[slug] = draftR.data;
+                    }
+                })
+            );
+            draft = combinedVendorSlugs.length ? vendorDrafts[combinedVendorSlugs[0]] : null;
+            await loadQueueStatus();
+            document.title = `Stock Count — ${catalog.label}`;
+            render();
+            return;
+        }
+
         const [catResult, draftResult] = await Promise.all([
             fetchJson(apiQuery('/api/stock-count/catalog')),
             fetchJson(apiQuery('/api/stock-count/draft')),

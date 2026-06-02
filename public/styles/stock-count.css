@@ -143,6 +143,8 @@ body.stock-count-page {
 
 /* Connected entry grid — one table, shared borders, compact rows */
 .stock-count-table--connected {
+    --sc-slot-height: 2.5rem;
+    --sc-input-height: 2.5rem;
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
@@ -166,6 +168,10 @@ body.stock-count-page {
     border: 1px solid color-mix(in srgb, var(--charcoal) 22%, var(--blank-border, #c8c0bc));
     padding: 0;
     vertical-align: middle;
+}
+
+.stock-count-table--connected .stock-count-grid-cell {
+    vertical-align: bottom;
 }
 
 .stock-count-grid-name {
@@ -197,64 +203,77 @@ body.stock-count-page {
     height: 1px;
 }
 
-.stock-count-grid-cell--na {
+.stock-count-grid-cell--na,
+.stock-count-table--connected .stock-count-grid-cell--na {
     background: color-mix(in srgb, var(--charcoal) 6%, var(--blank));
     border-color: color-mix(in srgb, var(--charcoal) 10%, var(--blank-border));
 }
 
+.stock-count-table--connected .stock-count-grid-cell--na {
+    height: var(--sc-slot-height);
+    min-height: var(--sc-slot-height);
+    vertical-align: bottom;
+}
+
 .stock-count-table--connected .stock-count-unit-slot {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: flex-end;
-    min-height: 2.35rem;
-    height: 100%;
+    position: relative;
+    display: block;
+    overflow: hidden;
     box-sizing: border-box;
+    width: 100%;
+    height: var(--sc-slot-height);
+    min-height: var(--sc-slot-height);
+    max-height: var(--sc-slot-height);
     margin: 0;
     cursor: text;
 }
 
-.stock-count-table--connected .stock-count-unit-label {
-    flex-shrink: 0;
-    font-size: 0.58rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    line-height: 1.1;
-    text-align: center;
-    padding: 3px 2px 2px;
-    opacity: 0.8;
-    transition:
-        opacity 0.1s ease,
-        max-height 0.12s ease,
-        padding 0.12s ease,
-        margin 0.12s ease;
-    max-height: 1.2rem;
-    overflow: hidden;
-}
-
-.stock-count-table--connected .stock-count-unit-slot:focus-within .stock-count-unit-label {
-    opacity: 0;
-    max-height: 0;
-    padding-top: 0;
-    padding-bottom: 0;
-    margin: 0;
-    visibility: hidden;
-}
-
 .stock-count-table--connected .stock-count-input {
+    position: absolute;
+    inset: 0;
     width: 100%;
-    flex: 1 1 auto;
-    min-height: 2rem;
-    height: 2rem;
+    height: 100%;
+    min-height: 100%;
+    max-height: 100%;
     margin: 0;
-    padding: 2px 4px;
+    padding: 0 4px;
     border: none;
     border-radius: 0;
     background: var(--blank, #fff);
     font-size: 1rem;
     font-weight: 600;
-    line-height: 1.1;
+    line-height: var(--sc-slot-height);
+    text-align: center;
+    box-sizing: border-box;
+}
+
+.stock-count-table--connected .stock-count-input::placeholder,
+.stock-count-table--connected .stock-count-input::-webkit-input-placeholder {
+    font-size: 0.58rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: var(--sc-slot-height);
+    text-align: center;
+    color: color-mix(in srgb, var(--charcoal) 50%, var(--blank));
+    opacity: 1;
+}
+
+.stock-count-table--connected .stock-count-input::-moz-placeholder {
+    font-size: 0.58rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-align: center;
+    color: color-mix(in srgb, var(--charcoal) 50%, var(--blank));
+    opacity: 1;
+}
+
+.stock-count-table--connected .stock-count-input:focus::placeholder,
+.stock-count-table--connected .stock-count-input:focus::-webkit-input-placeholder,
+.stock-count-table--connected .stock-count-input:focus::-moz-placeholder {
+    opacity: 0;
+    color: transparent;
 }
 
 .stock-count-table--connected .stock-count-input:focus {
@@ -264,10 +283,16 @@ body.stock-count-page {
 }
 
 .stock-count-table--connected .stock-count-input--na {
-    min-height: 2rem;
-    height: 100%;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: var(--sc-input-height);
+    min-height: var(--sc-input-height);
+    max-height: var(--sc-input-height);
     border: none;
     background: color-mix(in srgb, var(--charcoal) 6%, var(--blank));
+    box-sizing: border-box;
 }
 
 .stock-count-table--entry td[data-label]:not(.stock-count-item-cell)::before,
@@ -326,17 +351,24 @@ body.stock-count-page {
 }
 
 .stock-count-table--variances .stock-count-grid-cell--variance-value .stock-count-unit-slot {
-    min-height: 2.35rem;
+    height: var(--sc-slot-height);
+    min-height: var(--sc-slot-height);
+    max-height: var(--sc-slot-height);
 }
 
 .stock-count-table--variances .stock-count-grid-cell--variance-value .stock-count-unit-label {
     font-size: 0.52rem;
-    padding: 2px 2px 1px;
+    padding: 2px 2px 0;
 }
 
 .stock-count-table--variances .stock-count-grid-cell--variance-value .stock-count-value-box--variance {
-    min-height: 2rem;
-    height: 2rem;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: var(--sc-input-height);
+    min-height: var(--sc-input-height);
+    max-height: var(--sc-input-height);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -786,25 +818,32 @@ body.stock-count-page {
         line-height: 1.25;
     }
 
+    .stock-count-table--connected:not(.stock-count-table--variances) {
+        --sc-slot-height: 2.65rem;
+        --sc-input-height: 2.65rem;
+    }
+
+    .stock-count-table--connected:not(.stock-count-table--variances) .stock-count-input {
+        font-size: 1rem;
+        line-height: var(--sc-slot-height);
+    }
+
+    .stock-count-table--connected:not(.stock-count-table--variances) .stock-count-input::placeholder {
+        font-size: 0.56rem;
+        line-height: var(--sc-slot-height);
+    }
+
     .stock-count-table--connected:not(.stock-count-table--variances) .stock-count-grid-cell {
         width: 100%;
-        height: auto;
+        height: var(--sc-slot-height);
+        min-height: var(--sc-slot-height);
         border: none;
         border-right: 1px solid color-mix(in srgb, var(--charcoal) 12%, var(--blank-border));
+        vertical-align: bottom;
     }
 
     .stock-count-table--connected:not(.stock-count-table--variances) .stock-count-grid-cell:last-child {
         border-right: none;
-    }
-
-    .stock-count-table--connected:not(.stock-count-table--variances) .stock-count-input {
-        min-height: 2.35rem;
-        height: 2.35rem;
-        font-size: 1rem;
-    }
-
-    .stock-count-table--connected:not(.stock-count-table--variances) .stock-count-unit-slot {
-        min-height: 2.5rem;
     }
 
     .stock-count-table--variances.stock-count-table--connected {
@@ -834,10 +873,9 @@ body.stock-count-page {
         padding: 3px 6px;
     }
 
-    .stock-count-table--variances .stock-count-grid-cell--variance-value .stock-count-value-box--variance {
-        min-height: 2.1rem;
-        height: 2.1rem;
-        font-size: clamp(0.7rem, 2.6vw, 0.88rem);
+    .stock-count-table--variances.stock-count-table--connected {
+        --sc-slot-height: 2.7rem;
+        --sc-input-height: 2.2rem;
     }
 
     .stock-count-item-box {
@@ -856,13 +894,20 @@ body.stock-count-page {
         font-size: clamp(1.15rem, 5vw, 1.4rem);
     }
 
-    .stock-count-input,
-    .stock-count-input--na {
+    .stock-count-table:not(.stock-count-table--connected) .stock-count-input,
+    .stock-count-table:not(.stock-count-table--connected) .stock-count-input--na {
         min-height: var(--stock-count-field-height, 3.1rem);
     }
 
-    .stock-count-value-box {
+    .stock-count-table:not(.stock-count-table--connected) .stock-count-value-box {
         min-height: var(--stock-count-field-height, 3.1rem);
+    }
+
+    .stock-count-table--connected .stock-count-input,
+    .stock-count-table--connected .stock-count-input--na {
+        height: var(--sc-input-height);
+        min-height: var(--sc-input-height);
+        max-height: var(--sc-input-height);
     }
 
     .stock-count-actions:has(.stock-count-btn--mmx) {
@@ -905,8 +950,9 @@ body.stock-count-page {
     }
 
     body.stock-count-page .stock-count-table--connected .stock-count-input {
-        min-height: 2.15rem;
-        height: 2.15rem;
+        height: var(--sc-input-height);
+        min-height: var(--sc-input-height);
+        max-height: var(--sc-input-height);
         font-size: 1.05rem;
     }
 }

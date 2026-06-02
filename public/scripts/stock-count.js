@@ -1205,8 +1205,7 @@ function buildUnitSlotCellHtml(item, slot, ariaName) {
     }
     return `<td class="stock-count-grid-cell">
         <label class="stock-count-unit-slot">
-            <span class="stock-count-unit-label">${escapeHtml(label)}</span>
-            <input type="number" min="0" step="any" class="stock-count-input" data-item="${escapeHtml(item.key)}" data-col="${escapeHtml(slot.key)}" inputmode="decimal" aria-label="${escapeHtml(ariaName)} ${escapeHtml(label)}">
+            <input type="text" class="stock-count-input" data-item="${escapeHtml(item.key)}" data-col="${escapeHtml(slot.key)}" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="${escapeHtml(label)}" aria-label="${escapeHtml(ariaName)} ${escapeHtml(label)}">
         </label>
     </td>`;
 }
@@ -1215,11 +1214,8 @@ function buildEntryRowHtml(item) {
     const ariaName = item.itemCode ? `${item.itemCode} ${item.name}` : item.name;
     const slots = resolveUnitSlots(item).slice(0, 3);
     const slotCells = slots.map((slot) => buildUnitSlotCellHtml(item, slot, ariaName)).join('');
-    const codePrefix = item.itemCode
-        ? `<span class="stock-count-grid-code">${escapeHtml(item.itemCode)}</span> `
-        : '';
     return `<tr class="stock-count-grid-row">
-        <th scope="row" class="stock-count-grid-name">${codePrefix}${escapeHtml(item.name)}</th>
+        <th scope="row" class="stock-count-grid-name">${escapeHtml(item.name)}</th>
         ${slotCells}
     </tr>`;
 }

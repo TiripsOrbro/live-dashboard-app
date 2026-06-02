@@ -338,6 +338,8 @@ async function scrapeCountGrid(page) {
         for (const inp of document.querySelectorAll('input[id*="tbOH"]')) {
             const slotMatch = inp.id.match(/tbOH([123])$/i);
             if (!slotMatch) continue;
+            if (inp.disabled || inp.readOnly) continue;
+            if (String(inp.getAttribute('aria-disabled') || '').toLowerCase() === 'true') continue;
             const tr = inp.closest('tr');
             const ctx = (tr?.innerText || '').replace(/\s+/g, ' ').trim();
             const rowKey = tr?.rowIndex ?? inp.id;
@@ -347,18 +349,24 @@ async function scrapeCountGrid(page) {
                     itemCode: codes[0] || '',
                     codes,
                     ctx: ctx.slice(0, 120),
-                    slots: {},
+                    slotInputs: {},
                 });
             }
             const row = byRow.get(rowKey);
-            row.slots[Number(slotMatch[1])] = inp.id;
+            const slotIndex = Number(slotMatch[1]);
+            const hint =
+                String(inp.getAttribute('title') || '') ||
+                String(inp.getAttribute('aria-label') || '') ||
+                String(inp.getAttribute('data-original-title') || '') ||
+                String(inp.closest('td')?.getAttribute('title') || '');
+            row.slotInputs[slotIndex] = { id: inp.id, hint: String(hint || '').trim() };
             if (!row.codes.length) {
                 row.codes = extractCodesFromContext(ctx);
                 row.itemCode = row.codes[0] || '';
             }
         }
 
-        return [...byRow.values()].filter((r) => r.codes.length && Object.keys(r.slots).length);
+        return [...byRow.values()].filter((r) => r.codes.length && Object.keys(r.slotInputs).length);
     });
 }
 
@@ -454,6 +462,15 @@ const MMX_COUNT_SLOT_LABELS = {
  * Map each non–N/a dashboard unit column to the MMX slot index used when filling counts.
  * Same order as countsToSlotValues — slot 1/2/3 align with catalog columns left to right.
  */
+function normalizeUnitKind(label) {
+    const s = String(label || '').trim().toLowerCase();
+    if (!s || /^n\/?a$/.test(s)) return '';
+    if (/box|carton|crate/.test(s)) return 'box';
+    if (/inner|bag|pack|roll/.test(s)) return 'inner';
+    if (/kg|each|ea|unit|litre|liter|bottle|can|tub/.test(s)) return 'unit';
+    return '';
+}
+
 function catalogColumnMappings(catalogItem) {
     const mappings = [];
     let slotIndex = 1;
@@ -465,6 +482,7 @@ function catalogColumnMappings(catalogItem) {
         mappings.push({
             catalogLabel: slot.label,
             catalogKey: slot.key,
+            catalogKind: normalizeUnitKind(slot.label),
             mmxSlot: slotIndex,
             mmxLabel: MMX_COUNT_SLOT_LABELS[slotIndex] || `Slot ${slotIndex}`,
         });
@@ -474,18 +492,59 @@ function catalogColumnMappings(catalogItem) {
 }
 
 function mmxSlotsPresent(gridRow) {
-    if (!gridRow?.slots) return [];
-    return Object.keys(gridRow.slots)
+    if (!gridRow?.slotInputs) return [];
+    return Object.keys(gridRow.slotInputs)
         .map(Number)
         .filter((n) => Number.isFinite(n))
         .sort((a, b) => a - b);
+}
+
+function resolveCatalogToMmxAssignments(catalogItem, gridRow) {
+    const columns = catalogColumnMappings(catalogItem);
+    const presentSlots = mmxSlotsPresent(gridRow);
+    const assignments = [];
+    const missing = [];
+    const usedSlots = new Set();
+    const slotMeta = gridRow?.slotInputs || {};
+
+    for (const col of columns) {
+        if (presentSlots.includes(col.mmxSlot)) {
+            assignments.push({ ...col, mmxSlotResolved: col.mmxSlot });
+            usedSlots.add(col.mmxSlot);
+        } else {
+            missing.push(col);
+        }
+    }
+
+    if (missing.length) {
+        const stillMissing = [];
+        for (const col of missing) {
+            const targetKind = col.catalogKind;
+            const found = presentSlots.find((slot) => {
+                if (usedSlots.has(slot)) return false;
+                const hintKind = normalizeUnitKind(slotMeta?.[slot]?.hint || '');
+                if (!targetKind || !hintKind) return false;
+                return hintKind === targetKind;
+            });
+            if (found) {
+                assignments.push({ ...col, mmxSlotResolved: found });
+                usedSlots.add(found);
+            } else {
+                stillMissing.push(col);
+            }
+        }
+        return { columns, assignments, missing: stillMissing, mmxSlots: presentSlots };
+    }
+
+    return { columns, assignments, missing, mmxSlots: presentSlots };
 }
 
 /**
  * Verify catalog count columns can be entered on the matched MMX grid row.
  */
 function verifyItemGridColumns(catalogItem, gridRow) {
-    const columns = catalogColumnMappings(catalogItem);
+    const resolved = resolveCatalogToMmxAssignments(catalogItem, gridRow);
+    const columns = resolved.columns;
     if (!gridRow) {
         return {
             ok: false,
@@ -494,29 +553,27 @@ function verifyItemGridColumns(catalogItem, gridRow) {
             matched: [],
             missing: columns,
             mmxSlots: [],
+            assignments: [],
         };
     }
-    const mmxSlots = mmxSlotsPresent(gridRow);
-    const matched = [];
-    const missing = [];
-    for (const col of columns) {
-        if (gridRow.slots[col.mmxSlot]) matched.push(col);
-        else missing.push(col);
-    }
+    const matched = resolved.assignments;
+    const missing = resolved.missing;
     return {
-        ok: missing.length === 0,
+        ok: matched.length > 0,
         reason: missing.length ? 'missing-slots' : 'ok',
         columns,
         matched,
         missing,
-        mmxSlots,
+        mmxSlots: resolved.mmxSlots,
+        assignments: resolved.assignments,
     };
 }
 
 function formatColumnMappingSummary(columnCheck) {
     if (!columnCheck?.columns?.length) return 'no count columns';
     const parts = columnCheck.matched.map(
-        (c) => `${c.catalogLabel}→${c.mmxLabel.replace(/^Closing /, '')}`
+        (c) =>
+            `${c.catalogLabel}→${(MMX_COUNT_SLOT_LABELS[c.mmxSlotResolved] || c.mmxLabel || '').replace(/^Closing /, '')}`
     );
     const miss = columnCheck.missing.map((c) => `${c.catalogLabel} needs slot ${c.mmxSlot}`);
     if (!parts.length && miss.length) return miss.join('; ');
@@ -524,21 +581,15 @@ function formatColumnMappingSummary(columnCheck) {
     return parts.join(', ');
 }
 
-function countsToSlotValues(catalogItem, counts) {
+function countsToSlotValues(catalogItem, counts, gridRow) {
     // MMX columns: slot 1 = Closing Box (tbOH1), 2 = Closing Inner (tbOH2), 3 = Closing Unit (tbOH3).
-    const slots = catalogItem.unitSlots || [];
     const values = {};
-    let slotIndex = 1;
-    for (const slot of slots.slice(0, 3)) {
-        if (slot.na) {
-            slotIndex++;
-            continue;
-        }
-        const val = counts?.[slot.key];
+    const resolved = resolveCatalogToMmxAssignments(catalogItem, gridRow);
+    for (const map of resolved.assignments) {
+        const val = counts?.[map.catalogKey];
         if (val != null && Number(val) >= 0) {
-            values[slotIndex] = String(val);
+            values[map.mmxSlotResolved] = String(val);
         }
-        slotIndex++;
     }
     return values;
 }
@@ -745,9 +796,9 @@ async function fillLocationTab(page, cfg, catalog, locationName, itemsAtLocation
             continue;
         }
 
-        const slotValues = countsToSlotValues(item, counts);
+        const slotValues = countsToSlotValues(item, counts, row);
         for (const [slot, val] of Object.entries(slotValues)) {
-            const inputId = row.slots[Number(slot)];
+            const inputId = row.slotInputs?.[Number(slot)]?.id;
             if (!inputId || val === '') continue;
             await typeIntoInput(page, inputId, val);
         }
@@ -1117,6 +1168,7 @@ async function enterCombinedStockCount(page, opts) {
     const results = [];
     const fillGroups = groupLocationsByMmxTab(cfg, locationsToFill);
     for (const { mmxTab, locationNames } of fillGroups.values()) {
+        if (mmxTabKey(mmxTab) === 'COUNT AS 0') continue;
         const itemsAtLocation = [];
         for (const locationName of locationNames) {
             const chunk = byLocation.get(locationName) || [];

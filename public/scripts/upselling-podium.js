@@ -33,9 +33,13 @@
 
     function ensurePodiumEl() {
         let el = document.getElementById('upsell-podium');
-        if (el) return el;
+        if (el) {
+            if (PODIUM_ALWAYS_VISIBLE) el.classList.add('upsell-podium--persistent');
+            return el;
+        }
         el = document.createElement('div');
         el.id = 'upsell-podium';
+        if (PODIUM_ALWAYS_VISIBLE) el.classList.add('upsell-podium--persistent');
         el.setAttribute('hidden', '');
         el.innerHTML = `
             <div class="upsell-podium__inner" aria-live="polite">
@@ -56,13 +60,14 @@
         }
     }
 
-    function stopRevealCycle() {
+    function stopRevealCycle({ hide = true } = {}) {
         revealCycleActive = false;
         clearRevealTimers();
         if (cycleTimer) {
             clearInterval(cycleTimer);
             cycleTimer = null;
         }
+        if (!hide || PODIUM_ALWAYS_VISIBLE) return;
         const root = document.getElementById('upsell-podium');
         if (root) root.classList.remove('upsell-podium--revealed');
     }
@@ -141,12 +146,14 @@
         const root = ensurePodiumEl();
         const portrait = document.body.classList.contains('dashboard--portrait');
         if (!data?.enabled || portrait) {
-            stopRevealCycle();
-            root.classList.remove('upsell-podium--revealed');
+            stopRevealCycle({ hide: true });
+            root.classList.remove('upsell-podium--revealed', 'upsell-podium--persistent');
             root.setAttribute('hidden', '');
             return;
         }
         root.removeAttribute('hidden');
+        if (PODIUM_ALWAYS_VISIBLE) root.classList.add('upsell-podium--persistent');
+        root.classList.add('upsell-podium--revealed');
 
         const order = buildPodiumOrder(data);
 

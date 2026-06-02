@@ -197,7 +197,14 @@ async function getStockCountQueueStatus(storeNumber, options = {}) {
     };
 }
 
-async function saveDraftLocation(storeNumber, vendorSlug, locationName, itemCounts, dateKey = melbourneDateKey()) {
+async function saveDraftLocation(
+    storeNumber,
+    vendorSlug,
+    locationName,
+    itemCounts,
+    dateKey = melbourneDateKey(),
+    options = {}
+) {
     const catalog = getVendorCatalog(vendorSlug);
     if (!catalog) return null;
 
@@ -207,6 +214,7 @@ async function saveDraftLocation(storeNumber, vendorSlug, locationName, itemCoun
     }
 
     const normalized = normalizeLocationPayload(catalog, itemCounts, loc);
+    const merge = Boolean(options.merge);
     const all = await getStateAll();
     const sk = storeKey(storeNumber);
     const vk = vendorSlugKey(vendorSlug);
@@ -222,7 +230,16 @@ async function saveDraftLocation(storeNumber, vendorSlug, locationName, itemCoun
         day.submittedAt = null;
     }
 
-    day.locations[loc] = normalized;
+    if (merge) {
+        const existing =
+            day.locations[loc] && typeof day.locations[loc] === 'object' ? { ...day.locations[loc] } : {};
+        for (const [itemKey, counts] of Object.entries(normalized)) {
+            existing[itemKey] = counts;
+        }
+        day.locations[loc] = existing;
+    } else {
+        day.locations[loc] = normalized;
+    }
     day.updatedAt = new Date().toISOString();
     stateCache = all;
     await writeStateFile(all);

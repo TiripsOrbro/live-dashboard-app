@@ -692,15 +692,13 @@ async function saveCurrentLocation(showFeedback = true, options = {}) {
             const grouped = readRecountFormValuesForLocation(locationName);
             const slugs = Object.keys(grouped);
             if (!slugs.length) {
-                await clearRecountLocationDraft(locationName);
-                if (showFeedback) setStatus(`No counts for ${locationName} — cleared.`, '');
                 return true;
             }
             for (const slug of slugs) {
                 const { res, data } = await fetchJson(apiQuery('/api/stock-count/draft', slug), {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ location: locationName, items: grouped[slug] }),
+                    body: JSON.stringify({ location: locationName, items: grouped[slug], merge: true }),
                 });
                 if (!res.ok || !data.success) {
                     throw new Error(data.error || `Failed to save counts for ${slug}.`);

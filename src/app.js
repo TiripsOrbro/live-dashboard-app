@@ -1200,7 +1200,8 @@ app.put('/api/stock-count/draft', async (req, res) => {
             res.status(400).json({ success: false, error: 'Location is required.' });
             return;
         }
-        const draft = await saveDraftLocation(store, vendorSlug, location, items);
+        const merge = Boolean(req.body?.merge);
+        const draft = await saveDraftLocation(store, vendorSlug, location, items, undefined, { merge });
         res.json(draft);
     } catch (error) {
         console.error('API: Error saving stock count draft:', error);

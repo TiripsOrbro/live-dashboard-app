@@ -53,15 +53,16 @@ function printReportResults(reportResults) {
         );
         console.log(`  On hand: ${r.files.stockOnHand ? path.basename(r.files.stockOnHand) : '—'}`);
         console.log(`  On order: ${r.files.stockOnOrder ? path.basename(r.files.stockOnOrder) : '—'}`);
-        console.log(`  Checked: ${r.summary.checked}  Missing in report(s): ${r.summary.missing}`);
+        console.log(
+            `  ISE usage check: ${r.summary.checked} catalog lines  ${r.summary.missing} need alias/usage  ${r.summary.skippedManual} count-driven (reports optional)`
+        );
+        console.log(
+            '  (On-hand / on-order gaps are normal — ordering uses app counts vs build-to, then scheduled orders in MMX.)'
+        );
         for (const m of r.missing) {
-            const parts = [];
-            if (m.needsIse && (!m.ise || !m.ise.hit)) parts.push('ISE');
-            if (m.needsStock && (!m.onHand || !m.onHand.hit)) parts.push('on-hand');
-            if (m.needsStock && (!m.onOrder || !m.onOrder.hit)) parts.push('on-order');
             const hint = m.diagnosis?.length ? ` — ${m.diagnosis.join('; ')}` : '';
             console.log(
-                `    ✗ ${m.itemCode}  ${m.name}  [${parts.join(', ')}]  keys: ${m.lookupKeys.join(', ')}${hint}`
+                `    ✗ ${m.itemCode}  ${m.name}  [ISE]  keys: ${m.lookupKeys.join(', ')}${hint}`
             );
         }
     }
@@ -161,7 +162,7 @@ async function main() {
         const totalTabErrors = allResults.reduce((n, r) => n + r.summary.tabErrors, 0);
         const totalReportMissing = reportResults.reduce((n, r) => n + r.summary.missing, 0);
         console.log(
-            `\nDone. Not on KIC tab: ${totalMissing}, column mismatch: ${totalColumnMissing}, tab errors: ${totalTabErrors}, report gaps (info): ${totalReportMissing}`
+            `\nDone. Not on KIC tab: ${totalMissing}, column mismatch: ${totalColumnMissing}, tab errors: ${totalTabErrors}, ISE alias gaps (13-day build-to only): ${totalReportMissing}`
         );
         console.log(
             'MMX slots: 1=Box/carton, 2=Inner/bag, 3=Unit/kg/each — catalog columns map left-to-right to these fields.'

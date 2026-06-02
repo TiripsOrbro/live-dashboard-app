@@ -28,7 +28,8 @@
     will-change: opacity, transform;
 }
 
-#upsell-podium.upsell-podium--revealed .upsell-podium__inner {
+#upsell-podium.upsell-podium--revealed .upsell-podium__inner,
+#upsell-podium.upsell-podium--persistent:not([hidden]) .upsell-podium__inner {
     opacity: 1;
     transform: translateY(0);
 }

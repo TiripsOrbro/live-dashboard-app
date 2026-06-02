@@ -375,6 +375,55 @@ function buildGridLookup(grid) {
     return byCode;
 }
 
+const NAME_MATCH_STOP_WORDS = new Set(['tb', 'tr', 'td', 'dr']);
+
+/** Normalize description text for fuzzy Key Item Count row matching. */
+function normalizeMatchText(text) {
+    return String(text || '')
+        .toLowerCase()
+        .replace(/freeez/g, 'freeze')
+        .replace(/freezez/g, 'freeze')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function significantNameTokens(text) {
+    return normalizeMatchText(text)
+        .split(' ')
+        .filter((t) => t.length >= 2 && !NAME_MATCH_STOP_WORDS.has(t));
+}
+
+/**
+ * Match catalog line to MMX grid row when item codes differ (word order, typos, extra size text).
+ */
+function rowMatchesItemName(itemName, rowCtx) {
+    const name = normalizeMatchText(itemName);
+    const ctx = normalizeMatchText(rowCtx);
+    if (!name || !ctx) return false;
+    if (ctx.includes(name) || name.includes(ctx)) return true;
+
+    const nameTokens = significantNameTokens(itemName);
+    if (!nameTokens.length) return false;
+
+    const ctxTokens = significantNameTokens(rowCtx);
+    const ctxSet = new Set(ctxTokens);
+
+    let hits = 0;
+    for (const token of nameTokens) {
+        if (ctxSet.has(token)) {
+            hits++;
+            continue;
+        }
+        if (ctxTokens.some((c) => c.includes(token) || token.includes(c))) hits++;
+    }
+
+    const ratio = hits / nameTokens.length;
+    if (ratio >= 0.75) return true;
+    if (nameTokens.length >= 4 && hits >= nameTokens.length - 1) return true;
+    return nameTokens.length <= 3 && hits === nameTokens.length;
+}
+
 function findGridRow(byCode, grid, item) {
     const candidates = [
         normalizeItemCode(item.itemCode),
@@ -386,18 +435,10 @@ function findGridRow(byCode, grid, item) {
         if (row) return row;
     }
 
-    const nameNeedle = String(item.name || '')
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, ' ');
-    if (!nameNeedle) return null;
+    const name = String(item.name || '').trim();
+    if (!name) return null;
 
-    return (
-        grid.find((row) => {
-            const ctx = String(row.ctx || '').toLowerCase();
-            return ctx.includes(nameNeedle);
-        }) || null
-    );
+    return grid.find((row) => rowMatchesItemName(name, row.ctx)) || null;
 }
 
 /** Macromatix Key Item Count closing columns (tbOH1–tbOH3). */
@@ -1213,6 +1254,8 @@ module.exports = {
     scrapeCountGrid,
     buildGridLookup,
     findGridRow,
+    rowMatchesItemName,
+    normalizeMatchText,
     scrapeConfirmCountVariances,
     clickContinueFromFilledTab,
     applyKeyItemCount,

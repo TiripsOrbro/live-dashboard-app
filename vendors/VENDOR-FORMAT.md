@@ -38,6 +38,20 @@ Unit columns use `N/a` for an unused slot (position is kept for the stock-count 
 
 Run `npm run verify-mmx-count -- 3811 --vendor americold` to confirm each item has a row **and** each count column has a matching MMX input.
 
+### Stock count code vs ISE code (Schweppes drinks)
+
+Use the **stock count / Key Item Count** code from Macromatix as `itemCode` in `vendors/.Schweppes`. Put **ISE / order-form** codes in `vendors/.item-codes` as the third column so build-to reports still match.
+
+### Reports vs app counts
+
+Many items never appear on **stock-on-hand** or **stock-on-order** exports — that is normal. The flow is:
+
+1. Count in the dashboard app (Key Item Count tabs).
+2. Compare totals to **build-to** (`=N` fixed, `order=N` supplies, or `13`/`10`-day from ISE when usage exists).
+3. Order shortfall via **scheduled orders** in Macromatix (lines match after you enter them).
+
+`npm run verify-mmx-count` only flags **ISE** gaps for usage-based build-to lines; fixed/`order=` lines are skipped for report checks.
+
 Optional trailing number after locations = **inner units per carton** (e.g. `| Carryover | 10` → 10 packs per carton). Stock count can enter cartons and packs/rolls; order qty uses the combined carton equivalent (e.g. 1 carton + 5 packs with `/10` → 1.5).
 
 ### Examples

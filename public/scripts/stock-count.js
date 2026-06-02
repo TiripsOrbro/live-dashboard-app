@@ -1280,10 +1280,35 @@ function buildProcessingOverlay() {
     `;
 }
 
+const VARIANCE_TABLE_HEADERS = [
+    { key: 'name', label: 'Item' },
+    { key: 'box', label: 'Box' },
+    { key: 'inner', label: 'Inner' },
+    { key: 'unit', label: 'Unit' },
+    { key: 'counted', label: 'Counted' },
+    { key: 'expected', label: 'Expected' },
+    { key: 'variance', label: 'Variance' },
+];
+
+function buildVarianceHeaderRowHtml() {
+    return `<tr class="stock-count-grid-row stock-count-variance-header-row">
+        ${VARIANCE_TABLE_HEADERS.map((col) => {
+            const nameClass =
+                col.key === 'name' ? ' stock-count-variance-header--name' : '';
+            return `<th scope="col" class="stock-count-variance-header${nameClass}">${escapeHtml(col.label)}</th>`;
+        }).join('')}
+    </tr>`;
+}
+
 function buildVarianceReadOnlyCellHtml(slot, counts) {
     const label = slot.label || 'N/a';
     if (slot.na) {
-        return `<td class="stock-count-grid-cell stock-count-grid-cell--na" aria-hidden="true"></td>`;
+        return `<td class="stock-count-grid-cell stock-count-grid-cell--variance-value stock-count-grid-cell--na">
+        <div class="stock-count-unit-slot">
+            <span class="stock-count-unit-label">${escapeHtml(label)}</span>
+            <div class="stock-count-value-box stock-count-value-box--variance stock-count-value-box--na" aria-hidden="true"></div>
+        </div>
+    </td>`;
     }
     const value = counts[slot.key];
     const display =
@@ -1362,7 +1387,7 @@ function buildVarianceEntryRowHtml(row) {
 function buildVarianceView() {
     const rows = mmxVariances.map(buildVarianceEntryRowHtml).join('');
     const tableHtml = rows
-        ? `<div class="stock-count-variance-scroll"><table class="stock-count-table stock-count-table--entry stock-count-table--connected stock-count-table--variances"><tbody>${rows}</tbody></table></div>`
+        ? `<div class="stock-count-variance-scroll"><table class="stock-count-table stock-count-table--entry stock-count-table--connected stock-count-table--variances"><thead>${buildVarianceHeaderRowHtml()}</thead><tbody>${rows}</tbody></table></div>`
         : '<p class="stock-count-empty-location">No red variances found — review looks clear.</p>';
 
     const actionsHtml = rows

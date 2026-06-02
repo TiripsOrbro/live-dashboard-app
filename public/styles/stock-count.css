@@ -492,6 +492,35 @@ body.stock-count-page {
     width: 100%;
 }
 
+.stock-count-table--variances .stock-count-value-box--variance.stock-count-value-box--na {
+    background: color-mix(in srgb, var(--charcoal) 8%, var(--blank, #fff));
+    border-color: color-mix(in srgb, var(--charcoal) 12%, var(--blank-border, #c8c0bc));
+    cursor: default;
+}
+
+.stock-count-table--variances .stock-count-grid-cell--na .stock-count-unit-label {
+    opacity: 0.55;
+}
+
+.stock-count-variance-header-row th {
+    padding: 8px 6px;
+    font-size: 0.58rem;
+    font-weight: var(--font-weight-grid-label, 700);
+    line-height: 1.2;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    vertical-align: bottom;
+    background: var(--charcoal, #231e1f);
+    color: var(--blank, #f8fafc);
+    border: 1px solid color-mix(in srgb, var(--blank) 18%, var(--charcoal));
+}
+
+.stock-count-variance-header--name {
+    text-align: left;
+    padding-left: 8px;
+}
+
 .stock-count-entry-row td {
     vertical-align: middle;
 }
@@ -732,6 +761,7 @@ body.stock-count-page {
 .stock-count-table--entry tr,
 .stock-count-table--entry td,
 .stock-count-table--variances,
+.stock-count-table--variances thead,
 .stock-count-table--variances tbody,
 .stock-count-table--variances tr,
 .stock-count-table--variances td {
@@ -976,6 +1006,7 @@ body.stock-count-page {
         min-width: 34rem;
     }
 
+    .stock-count-table--variances.stock-count-table--connected thead,
     .stock-count-table--variances.stock-count-table--connected tbody {
         display: table-row-group;
         width: auto;

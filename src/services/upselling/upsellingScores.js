@@ -104,8 +104,21 @@ function writeParseDiagnostics(storeNumber, parsed, extra = {}) {
     );
 }
 
+function warnIfPointsMapAllZero(byLabel, source) {
+    let maxPts = 0;
+    for (const entry of byLabel.values()) {
+        maxPts = Math.max(maxPts, Number(entry?.points) || 0);
+    }
+    if (maxPts > 0) return;
+    console.warn(
+        `[Upselling] All item points are 0 in ${source || 'points map'}. ` +
+            'Create .points from .points.example with real values, or set points in config/upselling-stores.json.'
+    );
+}
+
 function processParsedReport(parsed, storeNumber, extra = {}) {
-    const { source: pointsSource } = loadPointsMap(storeNumber);
+    const { byLabel, source: pointsSource } = loadPointsMap(storeNumber);
+    warnIfPointsMapAllZero(byLabel, pointsSource);
     const { ranked, byDay } = scoreParsedReport(parsed, storeNumber);
     const gridSample = (parsed.gridSample || []).slice(0, 20);
     writeParseDiagnostics(storeNumber, parsed, { pointsSource, gridSample, ...extra });

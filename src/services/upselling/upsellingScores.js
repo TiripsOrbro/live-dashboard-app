@@ -15,20 +15,35 @@ function melbourneTodayIso() {
     return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(new Date());
 }
 
+// Guardrail: item quantities in Upsell by Cashier should be small counts, not long ID-like numbers.
+const MAX_REASONABLE_ITEM_QTY = Number(process.env.UPSELL_MAX_ITEM_QTY || 500);
+
 function scoreCashierRow(qtyByColumn, byLabel) {
     let mmxPoints = 0;
     const unmapped = [];
+    const skippedHuge = [];
     for (const [colName, qty] of Object.entries(qtyByColumn || {})) {
         if (!qty) continue;
+        const qtyNum = Number(qty);
+        if (!Number.isFinite(qtyNum)) continue;
+        if (Math.abs(qtyNum) > MAX_REASONABLE_ITEM_QTY) {
+            skippedHuge.push(`${colName}=${qtyNum}`);
+            continue;
+        }
         const pts = pointsForColumn(byLabel, colName);
         if (pts == null) {
             unmapped.push(colName);
             continue;
         }
-        mmxPoints += qty * pts;
+        mmxPoints += qtyNum * pts;
     }
     for (const col of unmapped) {
         console.warn(`[Upselling] Unmapped item column "${col}" — scoring as 0 points`);
+    }
+    if (skippedHuge.length) {
+        console.warn(
+            `[Upselling] Skipped ${skippedHuge.length} implausible qty value(s): ${skippedHuge.slice(0, 5).join(', ')}${skippedHuge.length > 5 ? ' ...' : ''}`
+        );
     }
     return mmxPoints;
 }

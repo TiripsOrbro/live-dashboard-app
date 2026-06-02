@@ -30,7 +30,7 @@ function buildCombinedStockCountCatalog(pendingLabels) {
         if (!cat) continue;
         vendorLabels.push(cat.label);
 
-        for (const loc of cat.locationOrder || cat.locations || []) {
+        for (const loc of cat.locations || []) {
             const name = String(loc || '').trim();
             if (!name || seenLocs.has(name)) continue;
             seenLocs.add(name);

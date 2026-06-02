@@ -183,6 +183,15 @@ body.stock-count-page {
     text-align: left;
     vertical-align: middle;
     background: color-mix(in srgb, var(--charcoal) 5%, var(--blank));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.stock-count-grid-name-text {
+    flex: 1 1 auto;
+    min-width: 0;
     hyphens: auto;
     word-break: break-word;
 }
@@ -198,13 +207,14 @@ body.stock-count-page {
 }
 
 .stock-count-grid-vendor {
-    display: block;
+    flex: 0 0 auto;
     font-size: 0.55rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: color-mix(in srgb, var(--tb-purple-light, #9c27b0) 70%, var(--charcoal));
-    margin-bottom: 2px;
+    text-align: right;
+    white-space: nowrap;
 }
 
 .stock-count-grid-cell {

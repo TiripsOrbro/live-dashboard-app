@@ -222,6 +222,20 @@ function getItemsForLocation(locationName) {
     return cat.items.filter((item) => item.locations.includes(locationName));
 }
 
+/** Location tabs that have at least one item (excludes empty Schweppes Bottles/Cans/Other). */
+function getVisibleLocationTabs(cat = getActiveCatalog()) {
+    if (!cat?.locations?.length) return [];
+    return cat.locations.filter((loc) =>
+        cat.items.some((item) => (item.locations || []).includes(loc))
+    );
+}
+
+function getCurrentLocationName(cat = getActiveCatalog()) {
+    const visible = getVisibleLocationTabs(cat);
+    if (visible.length) return visible[currentLocationIndex] || visible[0];
+    return cat?.locations?.[currentLocationIndex] || '';
+}
+
 function normalizeItemCode(code) {
     return String(code || '')
         .trim()
@@ -537,8 +551,7 @@ function recountLocationOrder() {
 
     const addCatalog = (cat) => {
         if (!cat) return;
-        for (const loc of cat.locationOrder || []) push(loc);
-        for (const loc of cat.locations || []) push(loc);
+        for (const loc of cat.locations || cat.locationOrder || []) push(loc);
     };
 
     addCatalog(catalog);
@@ -754,13 +767,13 @@ function readFormValues() {
     if (isCombinedMode() || viewMode === 'recount') {
         const cat = getActiveCatalog();
         if (!cat) return {};
-        const grouped = readFormValuesGroupedByVendor(cat.locations[currentLocationIndex]);
+        const grouped = readFormValuesGroupedByVendor(getCurrentLocationName(cat));
         return grouped[VENDOR_SLUG] || {};
     }
     const values = {};
     const cat = getActiveCatalog();
     if (!cat) return values;
-    const locationName = cat.locations[currentLocationIndex];
+    const locationName = getCurrentLocationName(cat);
     for (const item of getItemsForLocation(locationName)) {
         const row = {};
         for (const col of item.columns) {
@@ -811,7 +824,7 @@ async function saveCurrentLocation(showFeedback = true, options = {}) {
     const cat = getActiveCatalog();
     if (!cat) return false;
     if (saving && !options.force) return false;
-    const locationName = cat.locations[currentLocationIndex];
+    const locationName = getCurrentLocationName(cat);
     const manageSavingFlag = !options.force;
     if (manageSavingFlag) saving = true;
     try {
@@ -871,7 +884,8 @@ async function saveAllCombinedLocations() {
     const prevIndex = currentLocationIndex;
     let ok = true;
     if (!(await saveCurrentLocation(false, { force: true }))) ok = false;
-    for (let i = 0; i < cat.locations.length; i++) {
+    const tabs = getVisibleLocationTabs(cat);
+    for (let i = 0; i < tabs.length; i++) {
         if (i === prevIndex) continue;
         currentLocationIndex = i;
         render();
@@ -978,7 +992,8 @@ async function saveAllRecountLocations() {
     // Save the visible tab first — render() runs fillFormFromDraft and would wipe unsaved edits.
     if (!(await saveCurrentLocation(false, { force: true }))) ok = false;
 
-    for (let i = 0; i < cat.locations.length; i++) {
+    const tabs = getVisibleLocationTabs(cat);
+    for (let i = 0; i < tabs.length; i++) {
         if (i === prevIndex) continue;
         currentLocationIndex = i;
         render();
@@ -1417,7 +1432,7 @@ function buildEntryRowHtml(item) {
             ? `<span class="stock-count-grid-vendor">${escapeHtml(item.vendorLabel)}</span>`
             : '';
     return `<tr class="stock-count-grid-row">
-        <th scope="row" class="stock-count-grid-name">${vendorHint}${escapeHtml(label)}</th>
+        <th scope="row" class="stock-count-grid-name"><span class="stock-count-grid-name-text">${escapeHtml(label)}</span>${vendorHint}</th>
         ${slotCells}
     </tr>`;
 }
@@ -1444,7 +1459,9 @@ function buildStatusNote() {
 
 function buildView() {
     const cat = getActiveCatalog();
-    const locationName = cat.locations[currentLocationIndex];
+    const visibleLocations = getVisibleLocationTabs(cat);
+    if (currentLocationIndex >= visibleLocations.length) currentLocationIndex = 0;
+    const locationName = getCurrentLocationName(cat);
     const itemsAtLocation = getItemsForLocation(locationName);
     const rows = itemsAtLocation.map((item) => buildEntryRowHtml(item)).join('');
 
@@ -1453,7 +1470,7 @@ function buildView() {
             ? `<p class="stock-count-empty-location">${viewMode === 'recount' ? `No red variance items at ${escapeHtml(locationName)}.` : 'No items to count at this location.'}</p>`
             : '';
 
-    const locButtons = cat.locations
+    const locButtons = visibleLocations
         .map((loc, idx) => {
             const classes = ['stock-count-loc-btn'];
             if (idx === currentLocationIndex) classes.push('stock-count-loc-btn--active');
@@ -1517,7 +1534,7 @@ function render() {
     }
 
     if (viewMode === 'entry' || viewMode === 'recount') {
-        fillFormFromDraft(getActiveCatalog().locations[currentLocationIndex]);
+        fillFormFromDraft(getCurrentLocationName());
     }
 
     bindEvents();

@@ -170,8 +170,9 @@ function buildLeaderboardPayload(storeNumber) {
         .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
         .map((r, i) => ({ ...r, rank: i + 1 }));
 
-    const top5 = ranked.slice(0, 5);
-    const top3 = top5.slice(0, 3);
+    const top7 = ranked.slice(0, 7);
+    const top5 = top7.slice(0, 5);
+    const top3 = top7.slice(0, 3);
     let lastSyncAt = null;
     let reportDate = null;
     const syncPath = path.join(upsellingDataDir(storeNumber), 'last-sync.json');
@@ -188,6 +189,7 @@ function buildLeaderboardPayload(storeNumber) {
     return {
         enabled: true,
         storeNumber: String(storeNumber),
+        top7,
         top5,
         top3,
         ranks: ranked,

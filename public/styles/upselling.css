@@ -83,13 +83,13 @@
 .upsell-podium__col {
     flex: 1 1 0;
     min-width: 0;
-    max-width: 18%;
+    max-width: 13%;
     text-align: center;
 }
 
 .upsell-podium__col--place-1 {
     flex: 1.15 1 0;
-    max-width: 22%;
+    max-width: 16%;
 }
 
 .upsell-podium__bar-slot {
@@ -108,7 +108,11 @@
     min-height: 28px;
 }
 
-/* Bar heights: podium steps 5 → 4 → 2 → 1 → 3 */
+/* Bar heights: podium steps 7 → 5 → 3 → 1 → 2 → 4 → 6 */
+.upsell-podium__bar--place-7 {
+    height: clamp(62px, 10vh, 118px);
+}
+
 .upsell-podium__col--place-5 .upsell-podium__bar {
     height: clamp(72px, 12vh, 130px);
 }
@@ -123,6 +127,10 @@
 
 .upsell-podium__col--place-3 .upsell-podium__bar {
     height: clamp(96px, 16vh, 165px);
+}
+
+.upsell-podium__bar--place-6 {
+    height: clamp(80px, 13vh, 142px);
 }
 
 .upsell-podium__bar--first {

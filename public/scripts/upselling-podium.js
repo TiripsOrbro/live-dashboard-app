@@ -119,16 +119,50 @@
         cycleTimer.unref?.();
     }
 
-    /** Left-to-right podium: 4th, 2nd, 1st, 3rd, 5th. */
+    /** Left-to-right podium: 7th, 5th, 3rd, 1st, 2nd, 4th, 6th. */
     function buildPodiumOrder(data) {
-        const top5 = Array.isArray(data?.top5)
-            ? data.top5
-            : Array.isArray(data?.top3)
-              ? data.top3
-              : [];
-        const byRank = new Map(top5.map((row) => [row.rank, row]));
-        const layout = [4, 2, 1, 3, 5];
+        const top7 = Array.isArray(data?.top7)
+            ? data.top7
+            : Array.isArray(data?.top5)
+              ? data.top5
+              : Array.isArray(data?.ranks)
+                ? data.ranks.slice(0, 7)
+                : Array.isArray(data?.top3)
+                  ? data.top3
+                  : [];
+        const byRank = new Map(top7.map((row) => [row.rank, row]));
+        const layout = [7, 5, 3, 1, 2, 4, 6];
         return layout.map((rank) => byRank.get(rank)).filter(Boolean);
+    }
+
+    function barClassForRank(rank) {
+        if (rank === 1) return 'upsell-podium__bar upsell-podium__bar--first';
+        return `upsell-podium__bar upsell-podium__bar--place-${rank}`;
+    }
+
+    function renderName(row) {
+        if (row.rank === 1) {
+            return `<div class="upsell-podium__name-row">
+                        <span class="upsell-podium__name-anchor">
+                            <span class="upsell-podium__crown">${CROWN_SVG}</span>
+                            <span class="upsell-podium__name">${escapeHtml(row.name)}</span>
+                        </span>
+                    </div>`;
+        }
+        return `<div class="upsell-podium__name">${escapeHtml(row.name)}</div>`;
+    }
+
+    function renderPodiumColumn(row) {
+        return `
+                <div class="upsell-podium__col upsell-podium__col--place-${row.rank}">
+                    <div class="upsell-podium__bar-slot">
+                        <div class="${barClassForRank(row.rank)}" aria-hidden="true"></div>
+                    </div>
+                    <div class="upsell-podium__place">#${row.rank}</div>
+                    ${renderName(row)}
+                    <div class="upsell-podium__score">${escapeHtml(String(row.total))}</div>
+                </div>
+            `;
     }
 
     function formatUpdated(iso) {
@@ -158,33 +192,7 @@
 
         const cols = root.querySelector('.upsell-podium__cols');
         if (cols) {
-            cols.innerHTML = order
-                .map((row) => {
-                    const barClass =
-                        row.rank === 1
-                            ? 'upsell-podium__bar upsell-podium__bar--first'
-                            : 'upsell-podium__bar';
-                    const nameHtml =
-                        row.rank === 1
-                            ? `<div class="upsell-podium__name-row">
-                        <span class="upsell-podium__name-anchor">
-                            <span class="upsell-podium__crown">${CROWN_SVG}</span>
-                            <span class="upsell-podium__name">${escapeHtml(row.name)}</span>
-                        </span>
-                    </div>`
-                            : `<div class="upsell-podium__name">${escapeHtml(row.name)}</div>`;
-                    return `
-                <div class="upsell-podium__col upsell-podium__col--place-${row.rank}">
-                    <div class="upsell-podium__bar-slot">
-                        <div class="${barClass}" aria-hidden="true"></div>
-                    </div>
-                    <div class="upsell-podium__place">#${row.rank}</div>
-                    ${nameHtml}
-                    <div class="upsell-podium__score">${escapeHtml(String(row.total))}</div>
-                </div>
-            `;
-                })
-                .join('');
+            cols.innerHTML = order.map((row) => renderPodiumColumn(row)).join('');
         }
 
         const updated = root.querySelector('.upsell-podium__updated');

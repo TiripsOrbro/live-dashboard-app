@@ -6,7 +6,7 @@
     /** Keep leaderboard on screen (no auto-hide). Set false to restore rotate in/out. */
     const PODIUM_ALWAYS_VISIBLE = true;
 
-    const POLL_MS = 60000;
+    const POLL_MS = 60 * 60 * 1000;
     const CYCLE_MS = 5 * 60 * 1000;
     const ANIM_MS = 550;
     const SHOW_DURATION_MS = 45 * 1000;
@@ -46,7 +46,6 @@
                 <div class="upsell-podium__label">Upsell leaderboard</div>
                 <div class="upsell-podium__cols"></div>
                 <div class="upsell-podium__updated"></div>
-                <p class="upsell-podium__disclaimer">Updates every hour on the hour</p>
             </div>
         `;
         document.body.appendChild(el);
@@ -190,9 +189,7 @@
 
         const updated = root.querySelector('.upsell-podium__updated');
         if (updated) {
-            const parts = [formatUpdated(data.lastSyncAt)];
-            if (data.reportDate) parts.push(`Report ${data.reportDate}`);
-            updated.textContent = parts.filter(Boolean).join(' · ');
+            updated.textContent = formatUpdated(data.lastSyncAt);
         }
     }
 

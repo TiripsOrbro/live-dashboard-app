@@ -7,3 +7,5 @@ tmp/
 .Users.test
 scripts/probe-stock-count.png
 *.log
+data/buildto-grid*.json
+data/buildto-grid*.xlsx

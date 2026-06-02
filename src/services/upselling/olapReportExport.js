@@ -142,9 +142,10 @@ async function openOlapExportMenu(page) {
     return true;
 }
 
-async function clickExcelInContext(ctx, menuLabel) {
-    const want = String(menuLabel || 'Excel').trim().toLowerCase();
-    return ctx.evaluate((labelWant) => {
+async function clickMenuOptionInContext(ctx, menuLabel, format = 'excel') {
+    const want = String(menuLabel || (format === 'csv' ? 'CSV' : 'Excel')).trim().toLowerCase();
+    const fmt = String(format || 'excel').trim().toLowerCase();
+    return ctx.evaluate((labelWant, formatWant) => {
         function labelOf(el) {
             const parts = [
                 el.getAttribute('aria-label'),
@@ -187,10 +188,13 @@ async function clickExcelInContext(ctx, menuLabel) {
 
             let score = 0;
             if (t === labelWant) score = 100;
-            else if (labelWant === 'excel' && /^excel$/i.test(text)) score = 95;
-            else if (labelWant === 'excel' && t.startsWith('excel') && t.length <= 16) score = 70;
-            else if (onclick.includes('excel') && !onclick.includes('pivot')) score = 60;
-            else if (labelWant === 'excel' && /\bexcel\b/i.test(text) && t.length <= 24) score = 40;
+            else if (formatWant === 'csv' && /^csv$/i.test(text)) score = 95;
+            else if (formatWant === 'csv' && onclick.includes("selectexport('csv')")) score = 90;
+            else if (formatWant === 'csv' && onclick.includes('csv')) score = 70;
+            else if (formatWant === 'excel' && /^excel$/i.test(text)) score = 95;
+            else if (formatWant === 'excel' && t.startsWith('excel') && t.length <= 16) score = 70;
+            else if (formatWant === 'excel' && onclick.includes('excel') && !onclick.includes('pivot')) score = 60;
+            else if (formatWant === 'excel' && /\bexcel\b/i.test(text) && t.length <= 24) score = 40;
 
             if (score > 0) candidates.push({ el, score, text });
         }
@@ -204,16 +208,24 @@ async function clickExcelInContext(ctx, menuLabel) {
         } catch (_) {
             return null;
         }
-    }, want);
+    }, want, fmt);
 }
 
-async function tryXPathExcelClick(page) {
-    const xpaths = [
-        "//a[normalize-space(.)='Excel' and not(contains(translate(., 'PIVOT', 'pivot'), 'pivot'))]",
-        "//li[contains(translate(., 'EXCEL', 'excel'), 'excel') and not(contains(translate(., 'PIVOT', 'pivot'), 'pivot'))]//a",
-        "//*[self::a or self::span or self::td][normalize-space(.)='Excel']",
-        "//a[contains(translate(@onclick,'EXCEL','excel'),'excel') and not(contains(translate(@onclick,'PIVOT','pivot'),'pivot'))]",
-    ];
+async function tryXPathExportClick(page, format = 'excel') {
+    const isCsv = String(format || '').toLowerCase() === 'csv';
+    const xpaths = isCsv
+        ? [
+              "//div[contains(@class,'MenuItem') and normalize-space(.)='CSV']",
+              "//*[self::a or self::span or self::div or self::td][normalize-space(.)='CSV']",
+              "//div[contains(translate(@onclick,'CSV','csv'),\"selectexport('csv')\")]",
+              "//a[contains(translate(@onclick,'CSV','csv'),'csv')]",
+          ]
+        : [
+              "//a[normalize-space(.)='Excel' and not(contains(translate(., 'PIVOT', 'pivot'), 'pivot'))]",
+              "//li[contains(translate(., 'EXCEL', 'excel'), 'excel') and not(contains(translate(., 'PIVOT', 'pivot'), 'pivot'))]//a",
+              "//*[self::a or self::span or self::td][normalize-space(.)='Excel']",
+              "//a[contains(translate(@onclick,'EXCEL','excel'),'excel') and not(contains(translate(@onclick,'PIVOT','pivot'),'pivot'))]",
+          ];
     for (const xp of xpaths) {
         try {
             const handles = await page.$x(xp);
@@ -231,10 +243,13 @@ async function tryXPathExcelClick(page) {
 }
 
 /**
- * MdxView toolbar: #tdShowExport opens a menu (ShowExport) — pick Excel (not Excel Pivot).
+ * MdxView toolbar: #tdShowExport opens a menu (ShowExport) — pick CSV or Excel.
  */
-async function clickOlapExcelExport(page, cfg = {}) {
-    const menuLabel = String(cfg.olapExportMenuLabel || 'Excel').trim();
+async function clickOlapExportOption(page, cfg = {}) {
+    const format = String(cfg.olapExportFormat || 'excel').trim().toLowerCase();
+    const menuLabel = String(
+        cfg.olapExportMenuLabel || (format === 'csv' ? 'CSV' : 'Excel')
+    ).trim();
     const storeNumber = String(cfg.syncStoreNumber || '3811').trim();
 
     await openOlapExportMenu(page);
@@ -248,17 +263,17 @@ async function clickOlapExcelExport(page, cfg = {}) {
 
         const contexts = collectOlapContexts(page);
         for (const { name, ctx } of contexts) {
-            picked = await clickExcelInContext(ctx, menuLabel);
+            picked = await clickMenuOptionInContext(ctx, menuLabel, format);
             if (picked) {
                 log.info(`[Upselling] OLAP export menu (${name}): "${picked}"`);
                 return picked;
             }
         }
 
-        picked = await tryXPathExcelClick(page);
+        picked = await tryXPathExportClick(page, format);
         if (picked) {
-            log.info('[Upselling] OLAP export menu (xpath): Excel');
-            return 'Excel';
+            log.info(`[Upselling] OLAP export menu (xpath): ${format.toUpperCase()}`);
+            return format.toUpperCase();
         }
     }
 
@@ -285,7 +300,7 @@ async function clickOlapExcelExport(page, cfg = {}) {
     );
 }
 
-async function exportOlapReportToExcel(page, cfg = {}) {
+async function exportOlapReportToFile(page, cfg = {}) {
     const timeout = Number(cfg.reportReadyTimeoutMs) || 90000;
 
     log.info('[Upselling] OLAP report (MdxView) — waiting for grid…');
@@ -297,17 +312,18 @@ async function exportOlapReportToExcel(page, cfg = {}) {
     await expandOlapCategories(page);
     await page.waitForTimeout(800);
 
-    log.info('[Upselling] Opening Export menu → Excel…');
-    const label = await clickOlapExcelExport(page, cfg);
+    const format = String(cfg.olapExportFormat || 'excel').trim().toLowerCase();
+    log.info(`[Upselling] Opening Export menu → ${format.toUpperCase()}…`);
+    const label = await clickOlapExportOption(page, cfg);
     log.info(`[Upselling] OLAP export menu choice: ${label}`);
     await page.waitForTimeout(2000);
-    return { exportClicked: label, mode: 'olap' };
+    return { exportClicked: label, mode: 'olap', format };
 }
 
 module.exports = {
     isOlapReportPage,
     waitForOlapReportReady,
     expandOlapCategories,
-    clickOlapExcelExport,
-    exportOlapReportToExcel,
+    clickOlapExportOption,
+    exportOlapReportToFile,
 };

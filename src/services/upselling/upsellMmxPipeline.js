@@ -16,7 +16,7 @@ const {
 } = require('./upsellingConfig');
 const { processReportFile, processParsedReport } = require('./upsellingScores');
 const { exportPowerBiToExcel } = require('./powerBiExport');
-const { isOlapReportPage, exportOlapReportToExcel } = require('./olapReportExport');
+const { isOlapReportPage, exportOlapReportToFile } = require('./olapReportExport');
 const { scrapeOlapUpsellReport } = require('./olapReportScraper');
 const { navigateToBiReport: navigateBiTree } = require('./biReportTree');
 const log = require('../mmxReports/util-logging');
@@ -105,19 +105,21 @@ async function runUpsellMmxSync(storeNumber, options = {}) {
                 }
             }
         } else if (onOlap && exportMode === 'download') {
-            log.info('[Upselling] Downloading BI table as Excel');
+            const olapFormat = String(cfg.olapExportFormat || 'excel').trim().toLowerCase();
+            const downloadExt = olapFormat === 'csv' ? '.csv' : '.xls';
+            log.info(`[Upselling] Downloading BI table as ${olapFormat.toUpperCase()}`);
             let usedScrapeFallback = false;
             try {
-                await exportOlapReportToExcel(page, cfg);
+                await exportOlapReportToFile(page, cfg);
                 const downloaded = await waitForReportDownload(
                     downloadDir,
                     cfg.downloadWaitMs || 120000,
-                    '.xls'
+                    downloadExt
                 );
                 exportFile = path.basename(downloaded);
                 const dest = path.join(
                     dataDir,
-                    `${timestampSlug()}-upsell-by-cashier${path.extname(downloaded) || '.xls'}`
+                    `${timestampSlug()}-upsell-by-cashier${path.extname(downloaded) || downloadExt}`
                 );
                 if (downloaded !== dest) fs.renameSync(downloaded, dest);
                 const lastExportPath = path.join(dataDir, 'last-export' + path.extname(dest));
@@ -125,7 +127,7 @@ async function runUpsellMmxSync(storeNumber, options = {}) {
                 log.info(`[Upselling] Saved export: ${lastExportPath}`);
                 ({ ranked } = processReportFile(dest, store, { source: 'olap-download' }));
             } catch (downloadErr) {
-                log.warn(`[Upselling] Excel download failed: ${downloadErr.message}`);
+                log.warn(`[Upselling] ${olapFormat.toUpperCase()} download failed: ${downloadErr.message}`);
                 log.info('[Upselling] Falling back to HTML table scrape');
                 usedScrapeFallback = true;
                 const parsed = await scrapeOlapUpsellReport(page, cfg, store);

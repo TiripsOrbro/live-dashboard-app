@@ -16,14 +16,15 @@
   "biEntryUrl": "https://tacobellau.macromatix.net/MMS_System_ReportPortal.aspx?MenuCustomItemID=227",
   "biRequirePortalWarmup": true,
   "biMenuLinkText": "Business Intelligence",
-  "exportMode": "scrape",
+  "exportMode": "download",
   "skipDatePicker": true,
   "treeReadyTimeoutMs": 60000,
   "reportReadyTimeoutMs": 90000,
   "powerBiExportMenuLabels": ["Export", "Download", "More options", "Share"],
   "powerBiExcelLabels": ["Microsoft Excel (.xlsx)", "Excel", "Summarized data", ".xlsx"],
   "exportLinkText": "excel",
-  "olapExportMenuLabel": "Excel",
+  "olapExportMenuLabel": "CSV",
+  "olapExportFormat": "csv",
   "downloadWaitMs": 180000,
   "navTimeoutMs": 60000
 }

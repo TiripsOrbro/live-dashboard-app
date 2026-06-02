@@ -1427,12 +1427,15 @@ function buildEntryRowHtml(item) {
     const ariaName = item.itemCode ? `${item.itemCode} ${item.name}` : item.name;
     const slots = resolveUnitSlots(item).slice(0, 3);
     const slotCells = slots.map((slot) => buildUnitSlotCellHtml(item, slot, ariaName)).join('');
-    const vendorHint =
-        isCombinedMode() && item.vendorLabel && combinedVendorSlugs.length > 1
-            ? `<span class="stock-count-grid-vendor">${escapeHtml(item.vendorLabel)}</span>`
-            : '';
-    return `<tr class="stock-count-grid-row">
-        <th scope="row" class="stock-count-grid-name"><span class="stock-count-grid-name-text">${escapeHtml(label)}</span>${vendorHint}</th>
+    const showVendorLabel =
+        isCombinedMode() && item.vendorLabel && combinedVendorSlugs.length > 1;
+    const vendorHead = showVendorLabel
+        ? `<td class="stock-count-grid-vendor-head"><span class="stock-count-grid-vendor">${escapeHtml(item.vendorLabel)}</span></td>`
+        : '';
+    const rowClass = showVendorLabel ? 'stock-count-grid-row stock-count-grid-row--split-vendor' : 'stock-count-grid-row';
+    return `<tr class="${rowClass}">
+        <th scope="row" class="stock-count-grid-name"><span class="stock-count-grid-name-text">${escapeHtml(label)}</span></th>
+        ${vendorHead}
         ${slotCells}
     </tr>`;
 }

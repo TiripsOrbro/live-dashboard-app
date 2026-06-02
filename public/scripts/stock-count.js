@@ -1454,13 +1454,12 @@ function buildEntryRowHtml(item) {
     const slotCells = slots.map((slot) => buildUnitSlotCellHtml(item, slot, ariaName)).join('');
     const showVendorLabel =
         isCombinedMode() && item.vendorLabel && combinedVendorSlugs.length > 1;
-    const vendorHead = showVendorLabel
-        ? `<td class="stock-count-grid-vendor-head"><span class="stock-count-grid-vendor">${escapeHtml(item.vendorLabel)}</span></td>`
-        : '';
     const rowClass = showVendorLabel ? 'stock-count-grid-row stock-count-grid-row--split-vendor' : 'stock-count-grid-row';
+    const nameCell = showVendorLabel
+        ? `<th scope="row" class="stock-count-grid-name"><div class="stock-count-grid-name-bar"><span class="stock-count-grid-name-text">${escapeHtml(label)}</span><span class="stock-count-grid-vendor">${escapeHtml(item.vendorLabel)}</span></div></th>`
+        : `<th scope="row" class="stock-count-grid-name"><span class="stock-count-grid-name-text">${escapeHtml(label)}</span></th>`;
     return `<tr class="${rowClass}">
-        <th scope="row" class="stock-count-grid-name"><span class="stock-count-grid-name-text">${escapeHtml(label)}</span></th>
-        ${vendorHead}
+        ${nameCell}
         ${slotCells}
     </tr>`;
 }

@@ -53,6 +53,8 @@
     --transparent: transparent;
 
     --tb-purple-light: #7a3eb1;
+    --tb-teal: #0d9488;
+    --tb-teal-hover: #0f766e;
     --dark-purple-border: #4b3a63;
 
     /* Grid — default + status (fills + matching borders) */
@@ -450,6 +452,28 @@ body {
 .pending-vendor-chip--link:hover {
     text-decoration: none;
     background: color-mix(in srgb, var(--blank) 22%, var(--dark-purple-border));
+}
+
+/* Order reminders — not dismissible */
+.pending-vendor-chip--order {
+    cursor: default;
+    pointer-events: none;
+}
+
+/* Combined stock count — mobile portrait only, teal */
+.pending-vendor-item--combined {
+    display: none;
+}
+
+.pending-vendor-chip--combined,
+.pending-vendor-chip--combined:visited {
+    background: var(--tb-teal);
+    color: var(--blank);
+    font-weight: var(--font-weight-meal-heading);
+}
+
+.pending-vendor-chip--combined:hover {
+    background: var(--tb-teal-hover);
 }
 
 .pending-vendor-chip:focus-visible {
@@ -1349,6 +1373,10 @@ body.rotate-hint-active .dashboard {
     body.dashboard--portrait .portrait-tab-aside .audits-list,
     body.dashboard--portrait .portrait-tab-aside .pending-vendors-list {
         width: 100%;
+    }
+
+    body.dashboard--portrait .pending-vendor-item--combined {
+        display: block;
     }
 
     body.dashboard--portrait .portrait-tab-empty {

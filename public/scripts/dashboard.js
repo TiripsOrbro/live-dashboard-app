@@ -1994,17 +1994,13 @@ function updatePendingVendorsPanel() {
           visible
               .map((name) => {
                   if (combinedPath) {
-                      return `<div class="pending-vendor-item"><button type="button" class="pending-vendor-chip" data-vendor="${encodeURIComponent(
-                          name
-                      )}" aria-label="Mark ${escapeHtml(name)} as done">${escapeHtml(name)}</button></div>`;
+                      return `<div class="pending-vendor-item"><span class="pending-vendor-chip pending-vendor-chip--order">${escapeHtml(name)}</span></div>`;
                   }
                   const stockPath = stockCountPathForVendor(name);
                   if (stockPath) {
                       return `<div class="pending-vendor-item"><a class="pending-vendor-chip pending-vendor-chip--link" href="${escapeHtml(stockPath)}" aria-label="Start stock count for ${escapeHtml(name)}">${escapeHtml(name)}</a></div>`;
                   }
-                  return `<div class="pending-vendor-item"><button type="button" class="pending-vendor-chip" data-vendor="${encodeURIComponent(
-                      name
-                  )}" aria-label="Mark ${escapeHtml(name)} as done">${escapeHtml(name)}</button></div>`;
+                  return `<div class="pending-vendor-item"><span class="pending-vendor-chip pending-vendor-chip--order">${escapeHtml(name)}</span></div>`;
               })
               .join('')
         : combinedChipHtml;
@@ -2019,40 +2015,7 @@ function updatePendingVendorsPanel() {
 }
 
 function handleFooterChipDismissClick(e) {
-    const link = e.target.closest('a.pending-vendor-chip--link');
-    if (link) return;
-
-    const vBtn = e.target.closest('button.pending-vendor-chip');
-    if (vBtn && !vBtn.classList.contains('pending-vendor-chip--dismissing')) {
-        const enc = vBtn.getAttribute('data-vendor');
-        if (!enc) return;
-        const label = decodeURIComponent(enc);
-        dismissedPendingVendors.add(label);
-        const item = vBtn.closest('.pending-vendor-item');
-        vBtn.classList.add('pending-vendor-chip--dismissing');
-        if (item) item.classList.add('pending-vendor-item--dismissing');
-        let removed = false;
-        const finishRemove = () => {
-            if (removed) return;
-            removed = true;
-            item?.remove();
-            updatePendingVendorsPanel();
-            const panel = document.getElementById('pending-vendors-panel');
-            const aside = panel?.closest('.pending-vendors-aside');
-            if (panel && panel.children.length === 0 && aside && !aside.classList.contains('portrait-tab-aside')) {
-                aside.closest('.dashboard-grid-footer-trail')?.remove();
-            }
-        };
-        const onAnimEnd = (ev) => {
-            if (ev.target !== vBtn) return;
-            const names = String(ev.animationName || '');
-            if (!names.includes('pending-vendor-chip-exit')) return;
-            finishRemove();
-        };
-        vBtn.addEventListener('animationend', onAnimEnd, { once: true });
-        window.setTimeout(finishRemove, 1000);
-        return;
-    }
+    if (e.target.closest('a.pending-vendor-chip--link')) return;
 
     const aBtn = e.target.closest('button.audit-chip');
     if (aBtn && !aBtn.classList.contains('audit-chip--dismissing')) {

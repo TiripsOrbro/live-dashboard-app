@@ -21,7 +21,7 @@ const DEFAULT_OUTPUT_BASENAMES = {
 function loadPipelineConfig() {
     if (!fs.existsSync(PIPELINE_PATH)) {
         throw new Error(
-            'Missing config/reports-pipeline.json — copy config/reports-pipeline.json.example and adjust if needed.'
+            'Missing config/reports-pipeline.json — copy from config/reports-pipeline.json.example or pull from git.'
         );
     }
     return JSON.parse(fs.readFileSync(PIPELINE_PATH, 'utf8'));

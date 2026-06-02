@@ -42,9 +42,31 @@ manual | 3227 | 7UP 600ml PET | Packs | N/a | Bottles
 
 Name-only lines (no item code) are supported for vendors like Cut Fresh.
 
-## Item code cross-reference
+## Item code cross-reference (when one SKU has multiple codes)
 
-Optional `vendors/.item-codes` maps order-form codes to MMX/ISE codes — see `vendors/examples/.item-codes.example`.
+Macromatix often uses **different numbers** on the stock-count grid vs the Inventory Special Event CSV. You only need **one line per code** in `vendors/.item-codes`:
+
+```text
+Item Name | Canonical Code | Other Code
+```
+
+- **Canonical** = the `itemCode` in this vendor file (Key Item Count).
+- **Other** = any code that appears in ISE, stock-on-hand, stock-on-order, or old order forms.
+
+Example: KIC chicken is `39867A` but ISE still shows `39139`:
+
+```text
+MEAT CHICKEN COOKED | 39867A | 39139
+MEAT CHICKEN COOKED | 39867A | 38501A
+```
+
+Build-to and report matching try **every code in the group**; you do not need a second catalog line.
+
+Do **not** add lines where Other equals Canonical (e.g. `| 40303 | 40303`) — the parser ignores them.
+
+Same `itemCode` on multiple tabs (e.g. beef on Freezer and Fridge): use **one catalog line** with `| Freezer | Fridge | In Use`, not two lines with the same code.
+
+If an item is missing from build-to, check the latest ISE CSV for the code in column `ItemCode` and add that value as an alias.
 
 ## Verify build-to
 

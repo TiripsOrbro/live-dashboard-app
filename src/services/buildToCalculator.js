@@ -16,7 +16,7 @@ const {
     buildCatalogBuildToIndex,
 } = require('./vendorCatalog');
 const { getSummary, melbourneDateKey } = require('./stockCountState');
-const { lookupKeysForMmx, mmxCodeForOrderCode } = require('./itemCodes');
+const { lookupKeysForMmx, mmxCodeForOrderCode, canonicalItemCode, findInReportMap } = require('./itemCodes');
 
 const REPORTS_DIR = path.join(__dirname, '..', '..', 'Reports');
 
@@ -89,7 +89,14 @@ function countedItemCodesByVendor() {
     for (const vendor of listConfiguredVendors()) {
         const catalog = getVendorCatalog(vendor.slug);
         if (!catalog) continue;
-        const codes = new Set(catalog.items.map((i) => normalizeItemCode(i.itemCode)).filter(Boolean));
+        const codes = new Set();
+        for (const item of catalog.items) {
+            const code = normalizeItemCode(item.itemCode);
+            if (!code) continue;
+            for (const key of [code, ...lookupKeysForMmx(mmxCodeForOrderCode(code) || code)]) {
+                if (key) codes.add(key);
+            }
+        }
         out.set(vendor.slug, { vendor, catalog, codes });
     }
     return out;
@@ -227,14 +234,16 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
 
     const lines = [];
 
-    for (const [itemCode, ise] of usage.entries()) {
-        const onHandRow = onHandReport.get(itemCode);
+    for (const [reportItemCode, ise] of usage.entries()) {
+        const itemCode = canonicalItemCode(reportItemCode) || reportItemCode;
+        const onHandHit = findInReportMap(onHandReport, reportItemCode);
+        const onHandRow = onHandHit?.row || null;
         const isePack = ise.packSize || packSizeFromUnit(ise.unit);
 
         const onHandCartons = onHandToCartons(onHandRow, ise.unit, isePack);
         const onHandSource = onHandRow ? 'report' : 'missing';
 
-        const { onOrderCartons, onOrderRow } = resolveOnOrderCartons(onOrderReport, itemCode, ise.unit, isePack);
+        const { onOrderCartons, onOrderRow } = resolveOnOrderCartons(onOrderReport, reportItemCode, ise.unit, isePack);
         const description = ise.description || onHandRow?.description || onOrderRow?.description || '';
         const catalogRule = catalogRuleForItem(itemCode, catalogRules);
 

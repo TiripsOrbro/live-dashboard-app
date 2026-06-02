@@ -22,7 +22,7 @@ async function configureAndGenerateStoreReport(page, report, reportNav) {
     await setReportFormat(page, report.format || 'CSV');
     await page.waitForTimeout(1000);
 
-    const startDate = resolveReportDate(report.startDate || 'daysAgo:8', dateOpts(report));
+    const startDate = resolveReportDate(report.startDate || 'yesterday', dateOpts(report));
     await setStartDate(page, startDate);
 
     if (report.storeName) {

@@ -9,14 +9,14 @@
 10 | 38009 | TB CHIP NACHO 4.5KG | Boxes | Bags | Each | Freezer | In Use
 13 | 40109 | FR FR SUPERCRISP 6X2KG | Boxes | Bags | Each | Freezer | In Use
 10 | 37597 | TB CHURROS MINI 72EA | Boxes | Bags | Each | Freezer | In Use
-13 | 38500 | TB MEAT BEEF COOKED 8X1.05KG | Boxes | Bags | Each | Freezer | In Use
-10 | 38501A | TB MEAT CHICKEN COOKED 10X900G | Boxes | Bags | Each | Freezer | In Use
-10 | 40200 | TB CHICKEN CRISPY 5X1EA | Boxes | Bags | Each | Freezer | In Use
+13 | 39520 | TB MEAT BEEF COOKED | Boxes | Bags | Each | Freezer | Fridge | In Use
+10 | 39867A | TB MEAT CHICKEN COOKED 10X900G | Boxes | Bags | Each | Freezer | In Use
+10 | 40303 | TB CHICKEN CRISPY 5X1EA | Boxes | Bags | Each | Freezer | In Use
 13 | 37925 | TB TORTILLA FLOUR 12INCH 12x12EA | Boxes | Bags | Each | Freezer | In Use
 13 | 37923 | TB TORTILLA FLOUR 10.25INCH 12x12EA | Boxes | Bags | Each | Freezer | In Use
 13 | 37927 | TB TORTILLA FLOUR 6.5INCH 24x12EA | Boxes | Bags | Each | Freezer | In Use
 10 | 37928 | TB FLATBREAD 12x12EA | Boxes | Bags | Each | Freezer | In Use
-13 | 37931 | TB TORTILLA CORN 6 INCH 12x36EA | Boxes | Bags | Each | Freezer | In Use
+13 | 37891 | TB TORTILLA CORN 6 INCH | Boxes | Bags | Each | Freezer | Fridge | In Use
 10 | 38240 | TB BEANS BLACK COOKED 12X1KG | Boxes | Bags | Each | Freezer | In Use
 10 | 14701 | GUACAMOLE 6x1.5KG | Boxes | Bags | Each | Freezer | Fridge | In Use
 
@@ -30,22 +30,20 @@
 10 | 38701 | TB LAVA SAUCE 10X1KG | Boxes | Bags | Each | Fridge | In Use
 10 | 40255 | TB CHEESE 4 BLEND 6X2KG | Boxes | Bags | Each | Fridge | In Use
 10 | 37911 | TB CHEESE CHEDD ANGEL HAIR/SFINE SHRED 6x2KG | Boxes | Bags | Each | Fridge | In Use
-10 | 37609 | TB SAUCE NACHO CHEESE 6X1.5KG | Boxes | Bags | Each | Fridge | In Use
-13 | 39520 | TB MEAT BEEF COOKED 8X1.85KG | Boxes | Bags | Each | Fridge | In Use
-13 | 37591 | TB TORTILLA CORN 6 INCH 12X35EA | Boxes | Bags | Each | Fridge | In Use
+10 | 37909 | TB SAUCE NACHO CHEESE 6X1.5KG | Boxes | Bags | Each | Fridge | In Use
 10 | 38088 | DESSERT CHOCETTES 2X2.5KG | Boxes | Bags | Each | Fridge | In Use
 10 | 40003 | TB JALAPENO 6X2.3KG | Boxes | Bags | Each | Fridge | In Use
 10 | 37013 | TB SAUCE PICO DE GALLO 12X500GM | Boxes | Bags | Each | Fridge
 
 # --- Dry (MMX DRY tab) — food: 10-day build-to; packaging: manual ---
 10 | 17005 | SAUCE TOMATO SQUEEZE 100x14GM | Boxes | Bags | Each | Dry
-10 | 30155 | TB SAUCE CHOCOLATE DA VINCI 2X2LTR | Boxes | Bags | Each | Dry
-10 | 10116N | SAUCE CARAMEL MONIN 1.8L | Boxes | Bags | Each | Dry
+10 | 38163 | TB SAUCE CHOCOLATE DA VINCI 2X2LTR | Boxes | Bags | Each | Dry
+10 | 106191 | SAUCE CARAMEL MONIN 1.8L | Boxes | Bags | Each | Dry
 10 | 40037 | SUGAR CINNAMON 5X2.5KG | Boxes | Bags | Each | Dry
-10 | 40082A | TR CINNAMON TWISTS 2 X 5KG | Boxes | Bags | Each | Dry
+10 | 40062A | TR CINNAMON TWISTS 2 X 5KG | Boxes | Bags | Each | Dry
 10 | 37914 | RICE LONG GRAIN WHITE 10KG | Boxes | Bags | Each | Dry
 10 | 37915 | TD RICE LONG GRAIN WHITE 10KG | Boxes | Bags | Each | Dry
-10 | 30081 | TR SEASONING MEXICAN RECI 10X1 | Boxes | Bags | Each | Dry
+10 | 39054 | TR SEASONING MEXICAN RECI 10X1 | Boxes | Bags | Each | Dry
 10 | 607826 | OIL FRYING LIQUID 15KG | Boxes | Bags | Each | Dry
 manual | 33090 | TD CUP POSTMIX REGULAR 1000EA NEW | Boxes | N/a | Each | Dry
 manual | 33091 | TR CUP POSTMIX LARGE 1000EA NEW | Boxes | N/a | Each | Dry

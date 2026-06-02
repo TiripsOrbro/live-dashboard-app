@@ -22,7 +22,7 @@ function parseItemCodesText(text) {
         const name = parts[0];
         const mmxCode = normalizeItemCode(parts[1]);
         const orderCode = normalizeItemCode(parts[2] || parts[1]);
-        if (!mmxCode) continue;
+        if (!mmxCode || !orderCode || orderCode === mmxCode) continue;
 
         if (!byMmx.has(mmxCode)) {
             byMmx.set(mmxCode, { name, mmxCode, orderCodes: new Set() });
@@ -72,6 +72,30 @@ function mmxCodeForOrderCode(orderCode) {
     return null;
 }
 
+/** Canonical catalog / KIC code for any code in a cross-reference group. */
+function canonicalItemCode(itemCode) {
+    const key = normalizeItemCode(itemCode);
+    if (!key) return null;
+    return mmxCodeForOrderCode(key) || key;
+}
+
+/** All lookup keys for a catalog line or a raw report row code. */
+function allLookupKeys(itemCode) {
+    const raw = normalizeItemCode(itemCode);
+    if (!raw) return [];
+    const mmx = mmxCodeForOrderCode(raw) || raw;
+    return [...new Set([raw, ...lookupKeysForMmx(mmx)])];
+}
+
+function findInReportMap(reportMap, itemCode) {
+    if (!reportMap) return null;
+    for (const key of allLookupKeys(itemCode)) {
+        const row = reportMap.get(key);
+        if (row) return { key, row };
+    }
+    return null;
+}
+
 function clearItemCodesCache() {
     cache = null;
 }
@@ -80,6 +104,9 @@ module.exports = {
     loadItemCodes,
     lookupKeysForMmx,
     mmxCodeForOrderCode,
+    canonicalItemCode,
+    allLookupKeys,
+    findInReportMap,
     parseItemCodesText,
     clearItemCodesCache,
     ITEM_CODES_PATH,

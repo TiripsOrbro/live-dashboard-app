@@ -11,7 +11,7 @@
  *
  * Requires:
  *   - SCRAPER_USERNAME / SCRAPER_PASSWORD (or encrypted creds) in .env
- *   - config/reports-pipeline.json (copy from config/reports-pipeline.json.example)
+ *   - config/reports-pipeline.json
  *   - .storelist with store numbers
  *
  * Output: Reports/{storeNumber}/ e.g. Reports/3811/20260530-1430-stock-on-hand.xls

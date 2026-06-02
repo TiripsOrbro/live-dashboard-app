@@ -2,7 +2,7 @@
 # location-order: BIBs | Freezes | Bottles | Cans | Other
 #
 # BIBs / Freezes: fixed build-to cartons (=N). Bottles/Cans/Other: 10-day from ISE.
-# Format: [=N | buildToDays | manual] | itemCode | name | unit | unit | unit | category
+# Format: [=N | buildToDays] | itemCode | name | unit | unit | unit | category
 
 # --- BIBs (fixed build-to) ---
 =3 | 3939 | DRINK 7UP BIB 15L | Boxes | N/a | N/a | BIBs
@@ -18,29 +18,29 @@
 =1 | 38631 | DRINK FCB FREEZE TRAD RASPBERRY 10L | Boxes | N/a | N/a | Freezes
 
 # --- Bottles (10-day) ---
-10 | 3227 | DRINK 7UP 600ML PET | Packs | N/a | Bottles | Bottles
-10 | 16521 | DRINK MOUNTAIN DEW 600ML PET | Packs | N/a | Bottles | Bottles
-10 | 14648 | DRINK PEPSI 600ML | Packs | N/a | Bottles | Bottles
-10 | 12128 | DRINK PEPSI MAX 600ML | Packs | N/a | Bottles | Bottles
-10 | 16522 | DRINK SOLO LEMON 600ML PET | Packs | N/a | Bottles | Bottles
-10 | 16523 | DRINK SUNKIST ORANGE 600ML | Packs | N/a | Bottles | Bottles
+10 | 3227 | DRINK 7UP 600ML PET | Packs | N/a | N/a | Bottles
+10 | 16521 | DRINK MOUNTAIN DEW 600ML PET | Packs | N/a | N/a | Bottles
+10 | 14648 | DRINK PEPSI 600ML | Packs | N/a | N/a | Bottles
+10 | 12128 | DRINK PEPSI MAX 600ML | Packs | N/a | N/a | Bottles
+10 | 16522 | DRINK SOLO LEMON 600ML PET | Packs | N/a | N/a | Bottles
+10 | 16523 | DRINK SUNKIST ORANGE 600ML | Packs | N/a | N/a | Bottles
 
 # --- Cans (10-day) ---
-10 | 10007576 | DRINK 7UP CAN | Boxes | N/a | Cans | Cans
-10 | 14603 | DRINK MOUNTAIN DEW CAN | Boxes | N/a | Cans | Cans
-10 | 12150 | DRINK PEPSI CAN | Boxes | N/a | Cans | Cans
-10 | 14601 | DRINK PEPSI MAX CAN | Boxes | N/a | Cans | Cans
-10 | 15735 | DRINK SOLO CAN | Boxes | N/a | Cans | Cans
-10 | 15733 | DRINK SUNKIST ORANGE CAN | Boxes | N/a | Cans | Cans
+10 | 10007576 | DRINK 7UP CAN | Boxes | N/a | N/a | Cans
+10 | 14603 | DRINK MOUNTAIN DEW CAN | Boxes | N/a | N/a | Cans
+10 | 12150 | DRINK PEPSI CAN | Boxes | N/a | N/a | Cans
+10 | 14601 | DRINK PEPSI MAX CAN | Boxes | N/a | N/a | Cans
+10 | 15735 | DRINK SOLO CAN | Boxes | N/a | N/a | Cans
+10 | 15733 | DRINK SUNKIST ORANGE CAN | Boxes | N/a | N/a | Cans
 
 # --- Other (10-day) ---
-10 | 100402 | DRINK WATER SPARKLING 600ML | Packs | N/a | Bottles | Other
-10 | 100403 | DRINK RED BULL ED 250ML | Packs | N/a | Cans | Other
-10 | 100404 | DRINK RED BULL S/FREE 250ML | Packs | N/a | Cans | Other
-10 | 100405 | DRINK RED BULL TROPICAL 250ML | Packs | N/a | Cans | Other
-10 | 100400 | DRINK JUICE POP TOP APPLE 250ML | Packs | N/a | Bottles | Other
-10 | 100401 | DRINK JUICE POP TOP ORANGE 250ML | Packs | N/a | Bottles | Other
-10 | 100399 | DRINK JUICE APPLE SPRING VALLEY | Packs | N/a | Bottles | Other
-10 | 38704 | DRINK LIPTON ICE TEA LEMON 600ML | Packs | N/a | Bottles | Other
-10 | 38705 | DRINK LIPTON ICE TEA PEACH | Packs | N/a | Bottles | Other
-10 | 13839 | DRINK WATER 600ML PET | Packs | N/a | Bottles | Other
+10 | 100402 | DRINK WATER SPARKLING 600ML | Packs | N/a | N/a | Other
+10 | 100403 | DRINK RED BULL ED 250ML | Packs | N/a | N/a | Other
+10 | 100404 | DRINK RED BULL S/FREE 250ML | Packs | N/a | N/a | Other
+10 | 100405 | DRINK RED BULL TROPICAL 250ML | Packs | N/a | N/a | Other
+10 | 100400 | DRINK JUICE POP TOP APPLE 250ML | Packs | N/a | N/a | Other
+10 | 100401 | DRINK JUICE POP TOP ORANGE 250ML | Packs | N/a | N/a | Other
+10 | 100399 | DRINK JUICE APPLE SPRING VALLEY | Packs | N/a | N/a | Other
+10 | 38704 | DRINK LIPTON ICE TEA LEMON 600ML | Packs | N/a | N/a | Other
+10 | 38705 | DRINK LIPTON ICE TEA PEACH | Packs | N/a | N/a | Other
+10 | 13839 | DRINK WATER 600ML PET | Packs | N/a | N/a | Other

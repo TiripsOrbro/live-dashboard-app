@@ -1,4 +1,77 @@
-# Plain English labels for stock count (edit freely — committed to git)
-# Format: catalog name or item code | label shown on phone
-#
-# Oil Frying Liquid | Oil
+# Plain English labels for stock count (edit any line — file is in git)
+# Format: exact catalog name | label shown on the count screen
+# Backend still uses the real name + code for Macromatix.
+
+# --- Americold — Freezer ---
+TB CHIP NACHO 4.5KG | Nacho chips
+FRIES SUPERCRISP 6X2KG | Chips
+TB CHURROS MINI 72EA | Churros
+TB MEAT BEEF COOKED | Beef
+TB MEAT CHICKEN COOKED 10X900G | Chicken
+TB CHICKEN CRISPY 5X1EA | Crispy chicken
+TB TORTILLA FLOUR 12INCH 12x12EA | Tortilla 12"
+TB TORTILLA FLOUR 10.25INCH 12x12EA | Tortilla 10.25"
+TB TORTILLA FLOUR 6.5INCH 24x12EA | Tortilla 6.5"
+TB FLATBREAD 12x12EA | Flatbread
+TB TORTILLA CORN 6 INCH | Tostada
+TB BEANS BLACK COOKED 12X1KG | Black beans
+GUACAMOLE 6x1.5KG | Guacamole
+
+# --- Americold — Fridge ---
+SAUCE FIRE 10X1KG | Fire sauce
+TB SAUCE CHILLI MILD 10X1KG | Mild sauce
+TB SAUCE ZESTY RANCH 15X1KG | Zesty ranch
+TB SAUCE CHIPOTLE MAYO 15X1KG | Chipotle mayo
+TB SAUCE CREAMY JALAPENO 10X1KG | Creamy jalapeño sauce
+TB LAVA SAUCE 10X1KG | Lava sauce
+TB CHEESE 4 BLEND 6X2KG | Cheese blend
+TB CHEESE CHEDD ANGEL HAIR/SFINE SHRED 6x2KG | Angel hair
+TB SAUCE NACHO CHEESE 6X1.5KG | Nacho cheese
+DESSERT CHOCETTES 2X2.5KG | Chocettes dessert
+TB JALAPENO 6X2.3KG | Jalapeños
+TB SAUCE PICO DE GALLO 12X500GM | Pico de gallo
+
+# --- Americold — Dry ---
+TB SAUCE CHOCOLATE DA VINCI 2X2LTR | Chocolate sauce
+SAUCE CARAMEL MONIN 1.8L | Caramel sauce
+SUGAR CINNAMON 5X2.5KG | Cinnamon sugar
+TB CINNAMON TWISTS 2 X 5KG | Cinnamon twists
+TB RICE LONG GRAIN WHITE 10KG | Rice
+TB SEASONING MEXICAN RECI 10X1 | Mexican seasoning
+OIL FRYING LIQUID 15KG | Oil
+
+# --- Americold — Supplies (order tabs, still counted) ---
+GLOVE NITRILE MEDIUM 10X100 | Medium gloves
+GLOVE NITRILE LARGE10X100 | Large gloves
+GLOVE NITRILE XLARGE 10X100 | X-Large gloves
+TOWEL PAPER HAND TORK WHITE 6 ROLLS | Paper towel
+TOILET PAPER SMARTONE 12 ROLLS | Toilet paper
+FILTER SHEET EVOLUTION LOADED 100EA | Filter paper
+BIN LINER 240L H/DUTY 8X25 EA | Bin liners
+SCOURERS SMALL GREEN MAXPAC 30 | Scourers
+WIPING CLOTH BLUE 350EA | Blue cloths
+WIPING CLOTH YELLOW | Yellow cloths
+TB BAG MULTIPURPOSE 5000EA | Multipurpose bags
+
+# --- Bega ---
+CREAM SOUR LIGHT 5KG BEGA | Sour cream
+DRINK DARE ICED COFFEE DOUBLE | Iced coffee
+
+# --- Cut Fresh ---
+LETTUCE SHREDDED 4X2KG | Lettuce
+TOMATO DICED 4X1KG | Tomato
+ONION BROWN DICED 4X1KG | Onion
+TB SALAD CORIANDER CHOPPED 1X500GM | Coriander
+
+# --- Schweppes — BIBs ---
+DRINK 7UP BIB 15L | 7Up BIB
+DRINK MOUNTAIN DEW BIB 15L | Mountain Dew BIB
+DRINK PEPSI MAX BIB 10L | Pepsi Max BIB
+DRINK PEPSI BIB 15L | Pepsi BIB
+DRINK SOLO LEMON BIB 15L | Solo lemon BIB
+DRINK SUNKIST ORANGE BIB 15L | Sunkist BIB
+
+# --- Schweppes — Freezes ---
+DRINK FCB FREEZE MOUNTAIN DEW 10L | Mountain Dew freeze
+DRINK FCB FREEZE PEPSI 10L | Pepsi freeze
+DRINK FCB FREEZE RASPBERRY 10L | Raspberry freeze

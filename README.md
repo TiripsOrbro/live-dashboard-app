@@ -268,7 +268,7 @@ Beef | Boxes | Bags | KGs | Freezer
 
 When a vendor appears under **Orders to place**, clicking it opens `/{store}/stock-count/{slug}` (e.g. `/3811/stock-count/americold`) instead of dismissing. Counts are saved per store/vendor/day in `data/stock-count-state.json`. **Send to MMX** fills Macromatix Key Item Count using `config/mmx-stock-count.json`:
 
-- **Tabs:** FREEZER, CARRY OVER, FRIDGE, ON FLOOR - IN USE - THAW, DRY, SOFT DRINKS, COUNT AS 0 (dashboard locations map via `locationTabMap`).
+- **Tabs:** FREEZER, CARRY OVER, FRIDGE, ON FLOOR - IN USE - THAW, DRY, SOFT DRINKS, COUNT AS 0 (dashboard locations map via `locationTabMap`). Schweppes dashboard tabs (BIBs, Freezes, Bottles, Cans, Other) all push to **SOFT DRINKS** in one MMX save.
 - **Columns:** vendor unit columns map positionally to MMX Closing Box, Closing Inner, and Closing Unit (`N/a` skips a column).
 
 Vendor dotfile locations must match dashboard names (`Freezer`, `Fridge`, `Carryover`, `In Use`, `Dry`, `Soft Drinks`, etc.).

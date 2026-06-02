@@ -10,6 +10,11 @@
     "In Use": "ON FLOOR - IN USE - THAW",
     "Dry": "DRY",
     "Soft Drinks": "SOFT DRINKS",
+    "BIBs": "SOFT DRINKS",
+    "Freezes": "SOFT DRINKS",
+    "Bottles": "SOFT DRINKS",
+    "Cans": "SOFT DRINKS",
+    "Other": "SOFT DRINKS",
     "Count As 0": "COUNT AS 0"
   },
   "createCountButtonId": "ctl00_ph_ButtonOK_input",

@@ -31,6 +31,11 @@ const DEFAULT_CONFIG = {
         'In Use': 'ON FLOOR - IN USE - THAW',
         Dry: 'DRY',
         'Soft Drinks': 'SOFT DRINKS',
+        BIBs: 'SOFT DRINKS',
+        Freezes: 'SOFT DRINKS',
+        Bottles: 'SOFT DRINKS',
+        Cans: 'SOFT DRINKS',
+        Other: 'SOFT DRINKS',
         'Count As 0': 'COUNT AS 0',
     },
     createCountButtonId: 'ctl00_ph_ButtonOK_input',
@@ -46,12 +51,40 @@ const DEFAULT_CONFIG = {
 function loadMmxStockCountConfig() {
     const file = fs.existsSync(CONFIG_PATH) ? CONFIG_PATH : EXAMPLE_PATH;
     if (!fs.existsSync(file)) return { ...DEFAULT_CONFIG };
-    return { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(file, 'utf8')) };
+    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return {
+        ...DEFAULT_CONFIG,
+        ...parsed,
+        locationTabMap: {
+            ...DEFAULT_CONFIG.locationTabMap,
+            ...(parsed.locationTabMap || {}),
+        },
+    };
 }
 
 function mmxTabForLocation(cfg, locationName) {
     const map = cfg.locationTabMap || {};
     return map[locationName] || String(locationName || '').toUpperCase();
+}
+
+function mmxTabKey(tab) {
+    return String(tab || '')
+        .trim()
+        .toUpperCase();
+}
+
+/** Group dashboard location names that share one Macromatix count tab (e.g. Schweppes BIBs…Other → SOFT DRINKS). */
+function groupLocationsByMmxTab(cfg, locationNames) {
+    const groups = new Map();
+    for (const locationName of locationNames || []) {
+        const mmxTab = mmxTabForLocation(cfg, locationName);
+        const key = mmxTabKey(mmxTab);
+        if (!groups.has(key)) {
+            groups.set(key, { mmxTab, locationNames: [] });
+        }
+        groups.get(key).locationNames.push(locationName);
+    }
+    return groups;
 }
 
 function normalizeItemCode(code) {
@@ -537,15 +570,19 @@ async function verifyKeyItemCountCatalog(page, catalog, cfg, options = {}) {
     }
     results.summary.skipped = results.skippedKeyItemCount.length;
 
-    for (const locationName of catalog.locations || []) {
+    const tabGroups = groupLocationsByMmxTab(cfg, catalog.locations || []);
+    for (const { mmxTab, locationNames } of tabGroups.values()) {
         const items = (catalog.items || []).filter(
-            (item) => item.locations.includes(locationName) && !item.skipKeyItemCount
+            (item) =>
+                !item.skipKeyItemCount &&
+                item.locations.some((loc) => locationNames.includes(loc))
         );
         if (!items.length) continue;
 
-        const mmxTab = mmxTabForLocation(cfg, locationName);
+        const locationName = locationNames.join(' + ');
         const locResult = {
             locationName,
+            dashboardLocations: locationNames,
             mmxTab,
             gridRows: 0,
             found: [],
@@ -985,16 +1022,25 @@ async function enterCombinedStockCount(page, opts) {
 
     const filledItems = [];
     const results = [];
-    for (const locationName of locationsToFill) {
-        const itemsAtLocation = byLocation.get(locationName) || [];
+    const fillGroups = groupLocationsByMmxTab(cfg, locationsToFill);
+    for (const { mmxTab, locationNames } of fillGroups.values()) {
+        const itemsAtLocation = [];
+        for (const locationName of locationNames) {
+            const chunk = byLocation.get(locationName) || [];
+            for (const item of chunk) {
+                filledItems.push({ ...item, locationName });
+            }
+            itemsAtLocation.push(...chunk);
+        }
         if (!itemsAtLocation.length) continue;
 
-        for (const item of itemsAtLocation) {
-            filledItems.push({ ...item, locationName });
-        }
-
-        log.info(`Filling ${locationName} (${itemsAtLocation.length} item(s))`);
-        const result = await fillLocationTab(page, cfg, null, locationName, itemsAtLocation);
+        const label =
+            locationNames.length > 1 ? `${locationNames.join(' + ')} → ${mmxTab}` : locationNames[0];
+        log.info(`Filling ${label} (${itemsAtLocation.length} item(s))`);
+        const result = await fillLocationTab(page, cfg, null, locationNames[0], itemsAtLocation);
+        result.locationName = label;
+        result.dashboardLocations = locationNames;
+        result.mmxTab = mmxTab;
         results.push(result);
     }
 

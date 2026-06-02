@@ -597,11 +597,57 @@ async function tryStoreRadCombo(page, needle) {
     return clicked;
 }
 
+async function waitForStoreReportDropdownReady(page, storeName, storeNumber, timeoutMs = 90000) {
+    const started = Date.now();
+    const needles = storeNeedles(storeName || storeNumber);
+    const numericNeedles = needles.filter((n) => /^\d+$/.test(n));
+
+    while (Date.now() - started < timeoutMs) {
+        const ready = await page.evaluate(({ numeric, textual }) => {
+            const optionNodes = document.querySelectorAll(
+                '.rcbList li, .rcbItem, .RadComboBoxDropDown li, [id*="DropDownListStore"] .rcbItem, [role="listbox"] [role="option"]'
+            );
+            const samples = [];
+            for (const node of optionNodes) {
+                const t = (node.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                if (t) samples.push(t);
+            }
+
+            const input =
+                document.querySelector('input[id*="DropDownListStore_Input"]') ||
+                document.querySelector('input[id*="DropDownListStore"]') ||
+                document.querySelector('input[name*="DropDownListStore"]');
+            const inputValue = (input?.value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            if (inputValue) samples.push(inputValue);
+
+            const hasNeedle = (want) => {
+                if (!want) return false;
+                if (/^\d+$/.test(want)) {
+                    const escaped = want.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const re = new RegExp(`(^|\\D)${escaped}(\\D|$)`);
+                    return samples.some((s) => re.test(s));
+                }
+                return samples.some((s) => s.includes(want) || want.includes(s));
+            };
+
+            return numeric.some(hasNeedle) || textual.some(hasNeedle);
+        }, { numeric: numericNeedles, textual: needles });
+
+        if (ready) return;
+        await page.waitForTimeout(1000);
+    }
+
+    log.warn(
+        `Store dropdown did not fully populate within ${Math.round(timeoutMs / 1000)}s; attempting selection anyway`
+    );
+}
+
 /** Store Reports → Inventory Special Event uses DropDownListStore (RadCombo). */
 async function selectStoreForStoreReport(page, storeName, opts = {}) {
     if (opts.waitMs) await page.waitForTimeout(opts.waitMs);
 
     const storeNumber = String(opts.storeNumber || storeName.match(/\b(\d{4})\b/)?.[1] || '').trim();
+    await waitForStoreReportDropdownReady(page, storeName, storeNumber, opts.dropdownReadyTimeoutMs || 90000);
 
     const fromDropdown = await tryStoreReportDropdown(page, storeNumber, storeName);
     if (fromDropdown) {

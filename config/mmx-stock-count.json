@@ -1,0 +1,20 @@
+{
+  "url": "https://tacobellau.macromatix.net/MMS_Stores_StockCount.aspx?MenuCustomItemID=156",
+  "countTypeValue": "0",
+  "countTypeText": "Key Item Count",
+  "locationTabMap": {
+    "Freezer": "FREEZER",
+    "Carryover": "CARRY OVER",
+    "Carry Over": "CARRY OVER",
+    "Fridge": "FRIDGE",
+    "In Use": "ON FLOOR - IN USE - THAW",
+    "Dry": "DRY",
+    "Soft Drinks": "SOFT DRINKS",
+    "Count As 0": "COUNT AS 0"
+  },
+  "createCountButtonId": "ctl00_ph_ButtonOK_input",
+  "countTypeSelectId": "ctl00_ph_DropDownListCount",
+  "saveButtonIds": ["ctl00_ph_ButtonUpdate2_input", "ctl00_ph_ButtonUpdate_input"],
+  "continueButtonIds": ["ctl00_ph_ButtonContinue_input", "ctl00_ph_ButtonContinue2_input"],
+  "applyButtonId": "ctl00_ph_ButtonApply"
+}

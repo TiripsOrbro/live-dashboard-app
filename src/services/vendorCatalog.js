@@ -177,6 +177,19 @@ function parseBuildToPrefix(parts) {
         };
     }
 
+    if (/^ignore$/i.test(first) || /^skip$/i.test(first)) {
+        return {
+            buildToManual: true,
+            buildToOrderManual: false,
+            skipKeyItemCount: true,
+            skipStockCount: true,
+            buildToDays: null,
+            buildToAdd: 0,
+            buildToFixed: null,
+            rest: parts.slice(1),
+        };
+    }
+
     const daysPlus = first.match(/^(\d{1,2})\+([\d.]+)$/);
     if (daysPlus) {
         const days = Number(daysPlus[1]);
@@ -267,6 +280,19 @@ function sectionToMmxOrderClass(sectionName) {
     return 'FRZ';
 }
 
+function inferSectionFromComment(line) {
+    const raw = String(line || '').replace(/^#\s*/, '').trim();
+    if (!raw) return '';
+    const cleaned = raw
+        .replace(/^[-–—\s]+/, '')
+        .replace(/[-–—\s]+$/, '')
+        .toLowerCase();
+    if (cleaned.includes('dry')) return 'Dry';
+    if (cleaned.includes('fridge')) return 'Fridge';
+    if (cleaned.includes('freezer')) return 'Freezer';
+    return '';
+}
+
 function parseCatalogText(text, def) {
     const vendorDefaultLocations = [];
     const locationOrder = [];
@@ -285,8 +311,13 @@ function parseCatalogText(text, def) {
             if (order?.length) locationOrder.push(...order);
             const vendor = parseVendorFromComment(trimmed);
             if (vendor) vendorName = vendor;
-            const sectionMatch = trimmed.match(/^#\s*(.+?)\s*[-—]/);
-            if (sectionMatch) currentSection = sectionMatch[1].trim();
+            const inferredSection = inferSectionFromComment(trimmed);
+            if (inferredSection) {
+                currentSection = inferredSection;
+            } else {
+                const sectionMatch = trimmed.match(/^#\s*(.+?)\s*[-—]/);
+                if (sectionMatch) currentSection = sectionMatch[1].trim();
+            }
             continue;
         }
 

@@ -7,6 +7,19 @@ const ITEM_CODES_EXAMPLE = path.join(__dirname, '..', '..', 'vendors', 'examples
 
 let cache = null;
 
+function isAltACode(code) {
+    return /A$/.test(String(code || '').toUpperCase());
+}
+
+function preferAltCodesFirst(codes) {
+    return [...codes].sort((a, b) => {
+        const aAlt = isAltACode(a);
+        const bAlt = isAltACode(b);
+        if (aAlt !== bAlt) return aAlt ? -1 : 1;
+        return 0;
+    });
+}
+
 function parseItemCodesText(text) {
     const byMmx = new Map();
     const orderToMmx = new Map();
@@ -60,7 +73,9 @@ function lookupKeysForMmx(mmxItemCode) {
     const entry = byMmx.get(mmx);
     if (!entry) return [mmx];
 
-    return [mmx, ...[...entry.orderCodes].filter((c) => c !== mmx)];
+    // Prefer alias/order-form codes first, then fall back to base MMX code.
+    const aliases = [...entry.orderCodes].filter((c) => c !== mmx);
+    return preferAltCodesFirst([...aliases, mmx]);
 }
 
 function mmxCodeForOrderCode(orderCode) {
@@ -84,7 +99,9 @@ function allLookupKeys(itemCode) {
     const raw = normalizeItemCode(itemCode);
     if (!raw) return [];
     const mmx = mmxCodeForOrderCode(raw) || raw;
-    return [...new Set([raw, ...lookupKeysForMmx(mmx)])];
+    const ordered = [...lookupKeysForMmx(mmx)];
+    if (!ordered.includes(raw)) ordered.push(raw);
+    return preferAltCodesFirst([...new Set(ordered)]);
 }
 
 function findInReportMap(reportMap, itemCode) {

@@ -98,15 +98,24 @@ async function buildOrderManualEntriesFromCounts(storeNumber, vendorCfg, catalog
     return entries;
 }
 
-function mergeBuildToEntries(iseEntries, countEntries) {
+function mergeBuildToEntries(...entrySets) {
     const byCode = new Map();
-    for (const entry of iseEntries || []) {
-        const key = normalizeItemCode(entry.catalogItemCode || entry.iseItemCode);
-        if (key) byCode.set(key, entry);
-    }
-    for (const entry of countEntries || []) {
-        const key = normalizeItemCode(entry.catalogItemCode || entry.iseItemCode);
-        if (key) byCode.set(key, entry);
+    for (const set of entrySets) {
+        for (const entry of set || []) {
+            const key = normalizeItemCode(entry.catalogItemCode || entry.iseItemCode);
+            if (!key) continue;
+            const existing = byCode.get(key);
+            // Never let low-confidence report fallbacks override manual/fixed entries.
+            if (
+                existing &&
+                (existing.buildToSource === 'catalog-manual' ||
+                    existing.buildToManual ||
+                    existing.buildToSource === 'count-manual')
+            ) {
+                continue;
+            }
+            byCode.set(key, entry);
+        }
     }
     return [...byCode.values()];
 }
@@ -126,6 +135,16 @@ function roundOrderQtyForVendor(qty, vendorCfg, ...itemCodes) {
     return Math.ceil(qty / step) * step;
 }
 
+function vendorCatalogCodeSet(catalog, vendorCfg) {
+    const set = new Set();
+    for (const item of catalog?.items || []) {
+        if (!itemMatchesVendorConfig(item, vendorCfg)) continue;
+        const code = normalizeItemCode(item.itemCode);
+        if (code) set.add(code);
+    }
+    return set;
+}
+
 /**
  * Build-to entries per vendor — ISE lines matched to vendor catalog by item name.
  */
@@ -137,6 +156,7 @@ async function buildOrderLinesByVendorId(storeNumber, options = {}) {
 
     for (const vendorCfg of vendorOrdersCfg.vendors || []) {
         const catalog = getVendorCatalog(vendorCfg.catalogSlug);
+        const vendorCodes = vendorCatalogCodeSet(catalog, vendorCfg);
         const iseEntries = buildBuildToEntriesForVendor(
             vendorCfg,
             buildTo.lines,
@@ -149,7 +169,21 @@ async function buildOrderLinesByVendorId(storeNumber, options = {}) {
             catalog,
             dateKey
         );
-        const buildToEntries = mergeBuildToEntries(iseEntries, countEntries).map((entry) => ({
+        const allReportEntries = (buildTo.lines || [])
+            .filter((line) => vendorCodes.has(normalizeItemCode(line.itemCode)))
+            .filter((line) => Number(line.orderQty) > 0)
+            .filter((line) => !/\bfinished product\b/i.test(String(line.description || '')))
+            .map((line) => ({
+                catalogName: line.description,
+                catalogItemCode: line.itemCode,
+                description: line.description,
+                orderQty: line.orderQty,
+                iseItemCode: line.itemCode,
+                matchScore: 15,
+                buildToSource: line.buildToSource || 'report',
+            }));
+
+        const buildToEntries = mergeBuildToEntries(iseEntries, countEntries, allReportEntries).map((entry) => ({
             ...entry,
             orderQty: roundOrderQtyForVendor(
                 entry.orderQty,

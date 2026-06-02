@@ -1,6 +1,7 @@
 /** Match MMX order-form item names to ISE / catalog names (codes often differ). */
 
 const { normalizeItemCode } = require('./reportReader');
+const { allLookupKeys } = require('./itemCodes');
 
 const MIN_NAME_MATCH_SCORE = 25;
 
@@ -172,11 +173,44 @@ function buildBuildToEntriesForVendor(vendorCfg, buildToLines, catalogItems, ite
 function linesFromOrderGridByName(grid, buildToEntries) {
     const usedInputIds = new Set();
     const lines = [];
+    const rows = grid.rows || [];
+    const byCode = new Map();
+
+    for (const row of rows) {
+        const rowCode = normalizeItemCode(row.itemCode);
+        if (!rowCode) continue;
+        byCode.set(rowCode, row);
+    }
 
     for (const entry of buildToEntries || []) {
         if (entry.orderQty <= 0) continue;
 
-        const matches = (grid.rows || [])
+        // 1) Prefer exact code/alias match (most reliable, expected in MMX grids).
+        const lookupCodes = allLookupKeys(entry.iseItemCode || entry.catalogItemCode || '');
+        let codeRow = null;
+        for (const code of lookupCodes) {
+            const row = byCode.get(normalizeItemCode(code));
+            if (row && row.inputId && !usedInputIds.has(row.inputId)) {
+                codeRow = row;
+                break;
+            }
+        }
+        if (codeRow) {
+            usedInputIds.add(codeRow.inputId);
+            lines.push({
+                itemCode: codeRow.itemCode,
+                itemName: codeRow.itemName || codeRow.itemCode,
+                quantity: entry.orderQty,
+                matchedFrom: `code:${entry.iseItemCode || entry.catalogItemCode || ''}`,
+            });
+            continue;
+        }
+
+        // 2) If code failed, only allow fallback name matching for high-confidence catalog matches.
+        const sourceScore = Number(entry.matchScore || 0);
+        if (sourceScore < 80) continue;
+
+        const matches = rows
             .map((row, idx) => ({
                 row,
                 idx,

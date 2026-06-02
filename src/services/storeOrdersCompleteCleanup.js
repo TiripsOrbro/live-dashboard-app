@@ -26,7 +26,7 @@ function removeMatchingFiles(dir, pattern) {
 
 function deleteStoreReportFiles(storeNumber) {
     const storeDir = path.join(REPORTS_DIR, String(storeNumber));
-    return removeMatchingFiles(storeDir, /\.(xls|xlsx)$/i);
+    return removeMatchingFiles(storeDir, /\.(csv|xls|xlsx)$/i);
 }
 
 function deleteTempReportDownloadDirs() {

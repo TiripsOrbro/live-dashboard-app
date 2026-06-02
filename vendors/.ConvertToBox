@@ -1,0 +1,105 @@
+# Code   | Name                                          | Unit  | QntyPerBox
+# Formula: boxes = reportQty / QntyPerBox
+# Use N/A or blank where no conversion should apply.
+
+100358 | BOX CLAMSHELL MINI                           | EACH  | 500
+100399 | DRINK JUICE APPLE SPRING VALLEY              | EACH  | 24
+100400 | DRINK JUICE POP TOP APPLE 250ML              | EACH  | 24
+100401 | DRINK JUICE POP TOP ORANGE 250ML             | EACH  | 24
+100402 | DRINK WATER SPARKLING 500ML                  | EACH  | 24
+100403 | DRINK RED BULL ED 250ML                      | EACH  | 24
+100404 | DRINK RED BULL S/FREE 250ML                  | EACH  | 24
+100405 | DRINK RED BULL TROPICAL 250ML                | EACH  | 12
+100457 | SAUCE FIRE 10X1KG                            | KG    | 10
+106191 | SAUCE CARAMEL MONIN 1.89L                    | LITRE | 1.89
+106431 | 260 x 260mm Baking Paper Golden Silidor      | EACH  | N/A
+106491 | 4OZ PORTION CUP 50EA                         | EACH  | 1000
+106551 | 4OZ PORTION CUP LID 50EA                     | EACH  | 1000
+11172  | DESSERT CHOCETTES                            | KG    | 5
+12128  | DRINK PEPSI MAX 600ML                        | EACH  | 24
+12150  | DRINK PEPSI CAN                              | EACH  | 30
+12151  | DRINK PEPSI POST MIX                         | LITRE | 15
+12153  | DRINK 7UP BIB 15L                            | LITRE | 8
+12945  | CREAM SOUR LIGHT                             | KG    | 5
+13016  | LETTUCE SHREDDED                             | KG    | 8
+13529  | TRAYS DRINKS 4 CUP                           | EACH  | 100
+13735  | LID POSTMIX                                  | EACH  | 1000
+13839  | DRINK WATER 600ML PET                        | EACH  | 24
+14601  | DRINK PEPSI MAX CAN                          | EACH  | 30
+14602  | DRINK 7UP CAN                                | EACH  | 30
+14603  | DRINK MOUNTAIN DEW CAN                       | EACH  | 30
+14606  | DRINK MOUNTAIN DEW BIB 15L                   | LITRE | 30
+14648  | DRINK PEPSI 600ML                            | EACH  | 24
+14791  | GUACAMOLE                                    | KG    | 9
+15049  | FRIES SURECRISP                              | KG    | 12
+15112  | TOMATO DICED                                 | KG    | 4
+15659  | ONION BROWN DICED                            | KG    | 4
+15733  | DRINK SUNKIST ORANGE CAN                     | EACH  | 30
+15735  | DRINK SOLO CAN                               | EACH  | 30
+16235  | DRINK PEPSI MAX BIB 10L                      | LITRE | 30
+16520  | DRINK 7UP 600ML PET                          | EACH  | 24
+16521  | DRINK MOUNTAIN DEW 600ML PET                 | EACH  | 24
+16522  | DRINK SOLO LEMON 600ML PET                   | EACH  | 24
+16523  | DRINK SUNKIST ORANGE 600ML                   | EACH  | 24
+16524  | DRINK SUNKIST ORANGE BIB 15L                 | LITRE | 15
+16525  | DRINK SOLO LEMON BIB 15L                     | LITRE | 15
+17903  | SAUCE TOMATO SQUEEZE                         | EACH  | N/A
+20295  | JALAPENO                                     | KG    | 13.8
+33312  | OIL FRYING LIQUID CARGILL                    | KG    | 15
+34210  | SUGAR CINNAMON 5KG                           | KG    | 5
+36128  | DRINK FCB FREEZE PEPSI 10L                   | LITRE | 10
+36224  | DRINK FCB FREEZE MOUNTAIN DEW 10L            | LITRE | 10
+36549  | NAPKINS BROWN RECYCLE                        | EACH  | 1000
+37378  | CUP FCB 590 ML CH                            | EACH  | 1000
+37380  | LID FCB DOME 590 ML CH                       | EACH  | 1000
+37854  | CUP POSTMIX REGULAR                          | EACH  | 1000
+37856  | CUP POSTMIX LARGE                            | EACH  | 1000
+37862  | BEANS BLACK COOKED                           | KG    | 12
+37870  | SAUCE CHILLI MILD                            | KG    | 10
+37872  | CANTINA BROWN BOX                            | EACH  | 200
+37876  | CHEESE BLEND MOZZ/CHEDD (PIZZA) SHRED        | KG    | 12
+37883  | SAUCE CHOCOLATE DA VINCI                     | LITRE | 6
+37887  | CHIP NACHO CORN                              | KG    | 4.5
+37891  | TORTILLA CORN 6 INCH                         | EACH  | 1000
+37893  | BAG CRUNCHWRAP                               | EACH  | 6000
+37895  | FLATBREAD                                    | EACH  | 144
+37897  | CHURROS MINI                                 | EACH  | 72
+37901  | WRAP LARGE WHITE PRINTED                     | EACH  | 3000
+37907  | SEASONING MEXICAN RICE                       | KG    | 10
+37909  | SAUCE NACHO CHEESE                           | KG    | 10.8
+37911  | CHEESE CHEDD ANGEL HAIR/ S-FINE SHRED        | KG    | 12
+37913  | SAUCE PICO DE GALLO 100GM                    | KG    | 6
+37915  | RICE LONG GRAIN WHITE                        | KG    | 10
+37921  | WRAP SMALL WHITE PRINTED                     | EACH  | 3000
+37923  | TORTILLA FLOUR 10.25INCH                     | EACH  | 144
+37925  | TORTILLA FLOUR 12INCH                        | EACH  | 144
+37927  | TORTILLA FLOUR 6.5INCH                       | EACH  | 288
+37987  | BAG TAKEAWAY BROWN SMALL                     | EACH  | 1000
+37989  | BAG TAKEAWAY BROWN MEDIUM                    | EACH  | 1000
+37991  | BAG TAKEAWAY BROWN LARGE 2                   | EACH  | 250
+37993  | BAG CHIPS REGULAR                            | EACH  | 1000
+37995  | BAG CHIPS LARGE                              | EACH  | 3000
+37997  | BAG NACHO CHIPS LARGE                        | EACH  | 3000
+37999  | WRAP WASTE WHITE UNPRINTED                   | EACH  | 5000
+38082  | BAG MULTIPURPOSE                             | EACH  | 5000
+38239  | DRINK DARE ICED COFFEE DOUBLE                | EACH  | 1
+38352  | CINNAMON TWISTS                              | KG    | 10
+38372  | TB TACO SHELLS (FINISHED PRODUCT)            | EACH  | N/A
+38375  | TB LIME SLICES (FINISHED PRODUCT)            | EACH  | N/A
+38414  | SAUCE ZESTY RANCH 1                          | KG    | 15
+38493  | SAUCE CHIPOTLE MAYO 1                        | KG    | 15
+38531  | DRINK FCB FREEZE TRAD RASPBERRY 10L          | LITRE | 10
+38670  | SALAD CORIANDER CHOPPED                      | KG    | 0.5
+38701  | LAVA SAUCE                                   | KG    | 10
+38704  | DRINK LIPTON ICE TEA LEMON 500ML             | EACH  | 24
+38705  | DRINK LIPTON ICE TEA PEACH                   | EACH  | 24
+38722  | SAUCE CREAMY JALAPENO                        | KG    | 10
+38769  | SAUCE SACHET MILD                            | EACH  | N/A
+38892  | BIG BELL BOX 2                               | EACH  | 250
+39139  | MEAT CHICKEN COOKED                          | KG    | 6
+39185  | STRAW PAPER KFC                              | EACH  | 4000
+39520  | MEAT BEEF COOKED                             | KG    | 14.8
+39744  | DIPPING CUP 60ML                             | EACH  | 1000
+39746  | LID CLEAR 60ML DIPPING CUP                   | EACH  | 1000
+39769  | WOODEN FORK                                  | EACH  | 1000
+40303  | CHICKEN CRISPY                               | EACH  | 246

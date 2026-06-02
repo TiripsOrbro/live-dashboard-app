@@ -22,7 +22,7 @@ process.env.SCRAPER_HEADLESS = 'true';
 
 const scrapeData = require('./services/scraper');
 const { notifyScrapeFailure } = require('./services/alertNotifier');
-const { waitUntilMmxResourceIdle, isMmxResourceBusy } = require('./services/mmxResourceGate');
+const { isMmxResourceBusy } = require('./services/mmxResourceGate');
 const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./services/storeList');
 const {
     TEST_STORE_SLUG,
@@ -746,8 +746,13 @@ function runScrapeIntoCache(options) {
             }
 
             if (isMmxResourceBusy()) {
-                console.log('[Dashboard] Sales scrape waiting — MMX stock count / orders in progress');
-                await waitUntilMmxResourceIdle();
+                console.log('[Dashboard] Sales scrape paused — MMX stock count / orders in progress');
+                if (!salesCache) {
+                    salesCache = buildCacheShellFromStoreList();
+                    salesCacheAt = Date.now();
+                }
+                applyScrapeScheduleToCache(salesCache);
+                return salesCache;
             }
 
             const result = await scrapeWithRetry(options);
@@ -778,6 +783,15 @@ function runScrapeIntoCache(options) {
 
 async function getSalesDataCached() {
     applyScrapeScheduleToCache(salesCache);
+
+    if (isMmxResourceBusy()) {
+        if (!salesCache) {
+            salesCache = buildCacheShellFromStoreList();
+            salesCacheAt = Date.now();
+            applyScrapeScheduleToCache(salesCache);
+        }
+        return salesCache;
+    }
 
     if (salesCache) {
         if (anyStoreInActiveScrapeWindow() && !isSalesCacheFresh() && !salesInFlight) {

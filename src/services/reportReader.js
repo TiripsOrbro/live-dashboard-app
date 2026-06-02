@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
+const { qtyPerBoxForItem } = require('./convertToBox');
 
 function loadGrid(filePath) {
     const ext = path.extname(filePath).toLowerCase();
@@ -139,13 +140,17 @@ function resolveStoreReports(storeNumber, reportsRoot) {
     };
 }
 
-function onHandToCartons(onHandRow, iseUnit, isePackSize) {
+function onHandToCartons(onHandRow, iseUnit, isePackSize, itemCode) {
     if (!onHandRow) return 0;
     const qty = onHandRow.quantity;
     if (qty <= 0) return 0;
 
     const reportUnit = String(onHandRow.unit || '').trim().toUpperCase();
     const iseUnitText = String(iseUnit || '').trim().toUpperCase();
+    const overrideQtyPerBox = qtyPerBoxForItem(itemCode || onHandRow.itemCode, reportUnit);
+    if (Number.isFinite(overrideQtyPerBox) && overrideQtyPerBox > 0) {
+        return qty / overrideQtyPerBox;
+    }
 
     if (reportUnit.startsWith('CARTON') || reportUnit.startsWith('BAG') || reportUnit.startsWith('BOX')) {
         return qty;
@@ -165,8 +170,8 @@ function onHandToCartons(onHandRow, iseUnit, isePackSize) {
 }
 
 /** Convert on-order report qty to cartons (same unit rules as on-hand). */
-function onOrderToCartons(onOrderRow, iseUnit, isePackSize) {
-    return onHandToCartons(onOrderRow, iseUnit, isePackSize);
+function onOrderToCartons(onOrderRow, iseUnit, isePackSize, itemCode) {
+    return onHandToCartons(onOrderRow, iseUnit, isePackSize, itemCode || onOrderRow?.itemCode);
 }
 
 /** SCM flat exports often include every store — keep only rows for the target store (col 2 = store #). */

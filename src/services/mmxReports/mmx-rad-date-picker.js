@@ -429,6 +429,30 @@ async function findEndDatePickerMeta(page) {
     });
 }
 
+async function waitForDateFieldSettle(page) {
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 25000 }).catch(() => {});
+    const settleMs = Number(process.env.MMX_REPORT_DATE_SETTLE_MS || 2500);
+    await page.waitForTimeout(settleMs);
+}
+
+async function readDateValueWithRetry(page, which, dateInputId) {
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            return await readStartDateValue(page, dateInputId);
+        } catch (err) {
+            lastErr = err;
+            const msg = String(err && err.message ? err.message : err);
+            if (!/Execution context was destroyed|most likely because of a navigation|Target closed|Protocol error/i.test(msg)) {
+                throw err;
+            }
+            await waitForDateFieldSettle(page);
+        }
+    }
+    if (lastErr) throw lastErr;
+    return await readPlainDateValue(page, which);
+}
+
 /**
  * Set report Start or End date (RadDatePicker when present, else keyboard typing).
  * @param {import('puppeteer').Page} page
@@ -502,8 +526,8 @@ async function setReportDateField(page, dateText, which = 'start') {
             }
         }
 
-        await page.waitForTimeout(500);
-        const actual = await readStartDateValue(page, radMeta.dateInputId);
+        await waitForDateFieldSettle(page);
+        const actual = await readDateValueWithRetry(page, which, radMeta.dateInputId);
         if (!dateValueMatches(dateText, actual)) {
             throw new Error(`${fieldName} Date did not stick: expected "${dateText}", still "${actual || '(empty)'}"`);
         }

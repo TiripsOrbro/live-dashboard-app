@@ -16,7 +16,13 @@ const {
     buildCatalogBuildToIndex,
 } = require('./vendorCatalog');
 const { getSummary, melbourneDateKey } = require('./stockCountState');
-const { lookupKeysForMmx, mmxCodeForOrderCode, canonicalItemCode, findInReportMap } = require('./itemCodes');
+const {
+    lookupKeysForMmx,
+    mmxCodeForOrderCode,
+    canonicalItemCode,
+    findInReportMap,
+    allLookupKeys,
+} = require('./itemCodes');
 
 const REPORTS_DIR = path.join(__dirname, '..', '..', 'Reports');
 
@@ -204,10 +210,10 @@ async function loadManualCountsForStore(storeNumber, dateKey = melbourneDateKey(
 function resolveOnOrderCartons(onOrderReport, itemCode, iseUnit, isePack) {
     let total = 0;
     let sampleRow = null;
-    for (const key of lookupKeysForMmx(itemCode)) {
+    for (const key of allLookupKeys(itemCode)) {
         const row = onOrderReport.get(normalizeItemCode(key));
         if (!row) continue;
-        total += onOrderToCartons(row, iseUnit, isePack);
+        total += onOrderToCartons(row, iseUnit, isePack, key);
         sampleRow = sampleRow || row;
     }
     return { onOrderCartons: total, onOrderRow: sampleRow };
@@ -232,6 +238,8 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
 
     const countedCodes = allCountedItemCodes();
     const catalogRules = buildCatalogBuildToIndex();
+    const manualCounts = await loadManualCountsForStore(storeNumber, dateKey);
+    let manualCountItems = 0;
 
     const lines = [];
 
@@ -241,8 +249,16 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         const onHandRow = onHandHit?.row || null;
         const isePack = ise.packSize || packSizeFromUnit(ise.unit);
 
-        const onHandCartons = onHandToCartons(onHandRow, ise.unit, isePack);
-        const onHandSource = onHandRow ? 'report' : 'missing';
+        const manualEntry = manualCounts.get(normalizeItemCode(reportItemCode)) || null;
+        const onHandFromReport = onHandToCartons(onHandRow, ise.unit, isePack, reportItemCode);
+        const onHandFromManual =
+            manualEntry && manualEntry.catalogItem
+                ? manualCountToCartons({ columns: manualEntry.columns }, manualEntry.catalogItem, isePack)
+                : null;
+        const onHandCartons = onHandFromManual != null ? onHandFromManual : onHandFromReport;
+        const onHandSource =
+            onHandFromManual != null ? 'manual-count' : onHandRow ? 'report' : 'missing';
+        if (onHandFromManual != null) manualCountItems++;
 
         const { onOrderCartons, onOrderRow } = resolveOnOrderCartons(onOrderReport, reportItemCode, ise.unit, isePack);
         const description = ise.description || onHandRow?.description || onOrderRow?.description || '';
@@ -305,7 +321,7 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         dateKey,
         files,
         countedItemCodes: [...countedCodes],
-        manualCountItems: 0,
+        manualCountItems,
         lines,
         orderLines: lines.filter((l) => l.orderQty > 0),
         reportFiles: {

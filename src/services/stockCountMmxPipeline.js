@@ -17,6 +17,8 @@ const { buildOrderLinesByVendorId } = require('./buildToOrderLines');
 const { runVendorOrderEntry } = require('./mmxReports/pipeline-enter-vendor-orders');
 const { createSession, getSession, destroySession } = require('./mmxCountSession');
 const { acquireMmxResource, releaseMmxResource } = require('./mmxResourceGate');
+const { setCheckpoint, getCheckpoint, clearCheckpoint } = require('./mmxPipelineCheckpoint');
+const { runStoreOrdersCompleteCleanup } = require('./storeOrdersCompleteCleanup');
 const log = require('./mmxReports/util-logging');
 const runLockByStore = new Map();
 
@@ -144,6 +146,11 @@ async function runVendorOrdersForStore(page, storeNumber, dateKey) {
     return orderPipelineResult;
 }
 
+function ordersAllSuccessful(orderPipelineResult) {
+    const processed = orderPipelineResult?.processed;
+    return Array.isArray(processed) && processed.length > 0 && processed.every((p) => p && p.ok);
+}
+
 async function runOrdersAfterApply(storeNumber, dateKey, page, browser) {
     await downloadReportsForStores({
         storeNumber,
@@ -183,6 +190,9 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
 
             log.info(`Filling scheduled orders for store ${storeNumber}`);
             const orders = await runVendorOrdersForStore(page, storeNumber, dateKey);
+            if (ordersAllSuccessful(orders)) {
+                await runStoreOrdersCompleteCleanup(storeNumber, dateKey);
+            }
             return {
                 success: true,
                 storeNumber: String(storeNumber),
@@ -241,6 +251,13 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
                 variances: stockCountResult.variances || [],
             });
             sessionStarted = true;
+            await setCheckpoint(storeNumber, {
+                stage: 'prepared',
+                dateKey,
+                sessionId: session.sessionId,
+                vendorSlugs: toSend.map((row) => row.slug),
+                lastError: '',
+            });
 
             browser = null;
             page = null;
@@ -271,24 +288,93 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
  */
 async function applyStockCountSession(storeNumber, sessionId) {
     return withStoreLock(storeNumber, async () => {
-        const session = getSession(storeNumber, sessionId);
-        if (!session) throw new Error('Macromatix count session expired or not found. Send to MMX again.');
+        let session = getSession(storeNumber, sessionId);
+        const checkpoint = await getCheckpoint(storeNumber);
+        if (!session) {
+            if (checkpoint?.stage === 'applied-orders-pending' && checkpoint.dateKey) {
+                log.info(`Resuming pending scheduled orders for store ${storeNumber} from checkpoint`);
+                let browser;
+                let page;
+                try {
+                    ({ browser, page } = await openMacromatixBrowser({}));
+                    const orders = await runOrdersAfterApply(storeNumber, checkpoint.dateKey, page, browser);
+                    await setCheckpoint(storeNumber, {
+                        stage: 'completed',
+                        resumedFromCheckpoint: true,
+                        ordersCompletedAt: new Date().toISOString(),
+                        lastError: '',
+                    });
+                    await clearCheckpoint(storeNumber);
+                    return {
+                        success: true,
+                        resumed: true,
+                        storeNumber: String(storeNumber),
+                        dateKey: checkpoint.dateKey,
+                        vendorsSent: checkpoint.vendorSlugs || [],
+                        ordersRan: true,
+                        orders,
+                    };
+                } finally {
+                    await closeBrowserQuietly(browser, 'checkpoint resume orders');
+                }
+            }
+            throw new Error('Macromatix count session expired or not found. Send to MMX again.');
+        }
 
         const { page, browser, dateKey, vendorSlugs } = session;
         let orderPipelineResult = null;
+        let appliedInMmx = false;
 
         try {
+            await setCheckpoint(storeNumber, {
+                stage: 'applying',
+                dateKey,
+                sessionId,
+                vendorSlugs,
+                lastError: '',
+            });
             const { loadMmxStockCountConfig } = require('./mmxReports/mmx-stock-count');
             await applyKeyItemCount(page, loadMmxStockCountConfig());
+            appliedInMmx = true;
 
             for (const slug of vendorSlugs) {
                 await markMmxSent(storeNumber, slug, dateKey);
             }
 
+            await setCheckpoint(storeNumber, {
+                stage: 'applied-orders-pending',
+                dateKey,
+                sessionId,
+                vendorSlugs,
+                appliedAt: new Date().toISOString(),
+                lastError: '',
+            });
+
             if (await shouldRunOrderPipeline(storeNumber, dateKey)) {
                 log.info(`Key Item Count applied for store ${storeNumber} — downloading reports + entering orders`);
                 orderPipelineResult = await runOrdersAfterApply(storeNumber, dateKey, page, browser);
+                if (ordersAllSuccessful(orderPipelineResult)) {
+                    await runStoreOrdersCompleteCleanup(storeNumber, dateKey);
+                }
+                await setCheckpoint(storeNumber, {
+                    stage: 'completed',
+                    dateKey,
+                    sessionId,
+                    vendorSlugs,
+                    ordersCompletedAt: new Date().toISOString(),
+                    lastError: '',
+                });
             }
+            await clearCheckpoint(storeNumber);
+        } catch (error) {
+            await setCheckpoint(storeNumber, {
+                stage: appliedInMmx ? 'applied-orders-pending' : 'apply-failed',
+                dateKey,
+                sessionId,
+                vendorSlugs,
+                lastError: error.message || String(error),
+            });
+            throw error;
         } finally {
             await destroySession(session, 'applied');
         }

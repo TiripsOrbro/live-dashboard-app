@@ -23,6 +23,7 @@ let statusKind = '';
 let saving = false;
 let processing = false;
 let processingComplete = false;
+let processingStageLabel = 'Preparing MMX';
 
 function dashboardPath() {
     if (!STORE_NUMBER) return '/';
@@ -209,6 +210,29 @@ function setStatus(message, kind = '') {
     statusMessage = message;
     statusKind = kind;
     render();
+}
+
+function showMmxFailurePopup(detailMessage = '') {
+    const prev = document.getElementById('sc-mmx-failure-popup');
+    if (prev) prev.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'sc-mmx-failure-popup';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(8,10,18,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;';
+    overlay.innerHTML = `
+        <div style="max-width:520px;width:100%;background:#171c2c;border:1px solid rgba(255,255,255,.15);border-radius:16px;padding:20px;color:#eef2ff;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center;">
+            <div style="display:flex;justify-content:center;align-items:center;margin-bottom:10px;font-size:30px;line-height:1;" aria-hidden="true">:(</div>
+            <h3 style="margin:6px 0 10px;font-size:22px;line-height:1.2;">I broke</h3>
+            <p style="margin:0 0 10px;font-size:16px;line-height:1.45;">you'll have to try again soon or us the manual build tos.</p>
+            ${detailMessage ? `<p style="margin:0 0 16px;color:#c5ccdf;font-size:13px;line-height:1.4;">${escapeHtml(detailMessage)}</p>` : ''}
+            <button type="button" id="sc-mmx-failure-close" style="background:#f26f4c;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer;">Got it</button>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    const dismiss = () => overlay.remove();
+    overlay.addEventListener('click', (evt) => {
+        if (evt.target === overlay) dismiss();
+    });
+    document.getElementById('sc-mmx-failure-close')?.addEventListener('click', dismiss);
 }
 
 function getActiveCatalog() {
@@ -1095,12 +1119,14 @@ async function sendToMmx() {
         }
     } catch (error) {
         setStatus(error.message, 'error');
+        showMmxFailurePopup(error.message);
         render();
         return;
     }
 
     saving = true;
     processing = true;
+    processingStageLabel = 'Preparing MMX';
     setStatus('', '');
     render();
     try {
@@ -1125,6 +1151,7 @@ async function sendToMmx() {
         setStatus('', '');
     } catch (error) {
         setStatus(error.message, 'error');
+        showMmxFailurePopup(error.message);
     } finally {
         saving = false;
         if (viewMode === 'variances' && mmxSessionId && mmxVariances.length === 0) {
@@ -1140,6 +1167,7 @@ async function applyMmxCount() {
     if (!mmxSessionId || saving) return;
     saving = true;
     processing = true;
+    processingStageLabel = 'Applying Count & Building Orders';
     processingComplete = false;
     setStatus('', '');
     render();
@@ -1158,6 +1186,7 @@ async function applyMmxCount() {
         render();
     } catch (error) {
         setStatus(error.message, 'error');
+        showMmxFailurePopup(error.message);
         saving = false;
         processing = false;
         processingComplete = false;
@@ -1190,6 +1219,7 @@ async function recountMmx() {
         setStatus('', '');
     } catch (error) {
         setStatus(error.message || 'Could not open recount.', 'error');
+        showMmxFailurePopup(error.message || 'Could not open recount.');
     } finally {
         saving = false;
         render();
@@ -1282,9 +1312,10 @@ function buildProcessingOverlay() {
         <div class="stock-count-processing" role="progressbar" aria-label="Processing" aria-busy="true">
             <div class="stock-count-processing-card">
                 <div class="stock-count-processing-mark">${markSvg}</div>
-                <p class="stock-count-processing-label">
-                    Processing<span class="stock-count-processing-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
-                </p>
+                <p class="stock-count-processing-label">${escapeHtml(processingStageLabel)}</p>
+                <div class="stock-count-progress-shell" aria-hidden="true">
+                    <div class="stock-count-progress-bar"></div>
+                </div>
             </div>
         </div>
     `;

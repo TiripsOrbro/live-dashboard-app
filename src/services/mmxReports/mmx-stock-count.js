@@ -478,6 +478,123 @@ async function typeIntoInput(page, inputId, value) {
     return true;
 }
 
+async function openKeyItemCountForVerification(page, cfg, options = {}) {
+    await clickMainTab(page, 'count in progress');
+
+    const open = await findOpenKeyItemCount(page, cfg);
+    if (open) {
+        log.info(
+            `Verification using in-progress Key Item Count batch ${open.batch} (${open.status}) — ${open.countTitle}`
+        );
+        return { mode: 'in-progress', ...open };
+    }
+
+    if (!options.allowCreate) {
+        throw new Error(
+            'No open Key Item Count batch found. Open or start one in MMX first, or pass --allow-create (read-only — still no Save/Apply).'
+        );
+    }
+
+    log.info('No open Key Item Count — creating a new batch for verification only (will not save)');
+    return ensureKeyItemCountEditable(page, cfg);
+}
+
+function findGridRowWithAliases(byCode, grid, item, lookupKeysForMmx) {
+    let row = findGridRow(byCode, grid, item);
+    if (row) return row;
+
+    const code = normalizeItemCode(item.itemCode);
+    if (!code || !lookupKeysForMmx) return null;
+
+    for (const key of lookupKeysForMmx(code)) {
+        const aliasRow = byCode.get(normalizeItemCode(key));
+        if (aliasRow) return aliasRow;
+    }
+    return null;
+}
+
+/**
+ * Read-only: match vendor catalog items to MMX Key Item Count grid rows (no fill, no save).
+ */
+async function verifyKeyItemCountCatalog(page, catalog, cfg, options = {}) {
+    const lookupKeysForMmx = options.lookupKeysForMmx || null;
+    const results = {
+        vendor: catalog.label,
+        slug: catalog.slug,
+        locations: [],
+        skippedKeyItemCount: [],
+        summary: { found: 0, missing: 0, skipped: 0, tabErrors: 0 },
+    };
+
+    for (const item of catalog.items || []) {
+        if (item.skipKeyItemCount) {
+            results.skippedKeyItemCount.push({
+                itemCode: item.itemCode,
+                name: item.name,
+                locations: item.locations,
+            });
+        }
+    }
+    results.summary.skipped = results.skippedKeyItemCount.length;
+
+    for (const locationName of catalog.locations || []) {
+        const items = (catalog.items || []).filter(
+            (item) => item.locations.includes(locationName) && !item.skipKeyItemCount
+        );
+        if (!items.length) continue;
+
+        const mmxTab = mmxTabForLocation(cfg, locationName);
+        const locResult = {
+            locationName,
+            mmxTab,
+            gridRows: 0,
+            found: [],
+            missing: [],
+            error: null,
+        };
+
+        try {
+            await clickRadTab(page, mmxTab.toLowerCase());
+            const grid = await scrapeCountGrid(page);
+            locResult.gridRows = grid.length;
+            const byCode = buildGridLookup(grid);
+
+            for (const item of items) {
+                const row = findGridRowWithAliases(byCode, grid, item, lookupKeysForMmx);
+                if (row) {
+                    locResult.found.push({
+                        itemCode: item.itemCode,
+                        name: item.name,
+                        mmxCtx: row.ctx,
+                    });
+                    results.summary.found++;
+                } else {
+                    locResult.missing.push({
+                        itemCode: item.itemCode,
+                        name: item.name,
+                    });
+                    results.summary.missing++;
+                }
+            }
+        } catch (err) {
+            locResult.error = err.message || String(err);
+            results.summary.tabErrors++;
+            for (const item of items) {
+                locResult.missing.push({
+                    itemCode: item.itemCode,
+                    name: item.name,
+                    reason: locResult.error,
+                });
+                results.summary.missing++;
+            }
+        }
+
+        results.locations.push(locResult);
+    }
+
+    return results;
+}
+
 async function fillLocationTab(page, cfg, catalog, locationName, itemsAtLocation) {
     const mmxTab = mmxTabForLocation(cfg, locationName);
     await clickRadTab(page, mmxTab.toLowerCase());
@@ -935,6 +1052,8 @@ module.exports = {
     enterCombinedStockCount,
     enterVendorStockCount,
     ensureKeyItemCountEditable,
+    openKeyItemCountForVerification,
+    verifyKeyItemCountCatalog,
     scrapeCountGrid,
     buildGridLookup,
     findGridRow,
@@ -943,4 +1062,5 @@ module.exports = {
     applyKeyItemCount,
     normalizeItemCode,
     mergeVendorEntriesByLocation,
+    mmxTabForLocation,
 };

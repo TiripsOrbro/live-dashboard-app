@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { lookupKeysForMmx, mmxCodeForOrderCode, allLookupKeys } = require('./itemCodes');
+const { stockCountDisplayName } = require('./stockCountDisplayNames');
 const { normalizeItemCode } = require('./reportReader');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
@@ -431,11 +432,15 @@ function getVendorCatalog(slug, options = {}) {
     if (!catalog || !catalog.items.length) return null;
 
     const normalizeItems = (items) =>
-        items.map((item) => ({
-            ...item,
-            unitSlots: normalizeUnitSlots(item),
-            lookupCodes: allLookupKeys(item.itemCode),
-        }));
+        items.map((item) => {
+            const displayName = stockCountDisplayName(item.itemCode, item.name);
+            return {
+                ...item,
+                unitSlots: normalizeUnitSlots(item),
+                lookupCodes: allLookupKeys(item.itemCode),
+                displayName: displayName || item.name,
+            };
+        });
 
     if (options.forStockCount) {
         const countable = catalog.items.filter((item) => !item.skipStockCount);

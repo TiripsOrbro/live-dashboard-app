@@ -39,6 +39,18 @@ Unit columns use `N/a` for an unused slot (position is kept for the stock-count 
 
 Run `npm run verify-mmx-count -- 3811 --vendor americold` to confirm each item has a row **and** each count column has a matching MMX input.
 
+## Stock count display names (optional)
+
+Copy `vendors/examples/.display-names.example` to `vendors/.display-names` (tracked in git).
+
+```text
+# Catalog name or item code | Plain English label shown in stock count
+Oil Frying Liquid | Oil
+39520 | Beef cooked
+```
+
+The app shows the **second** column only. Saves, Macromatix, and build-to still use the real catalog name and code.
+
 ### Stock count code vs ISE code (Schweppes drinks)
 
 Use the **stock count / Key Item Count** code from Macromatix as `itemCode` in `vendors/.Schweppes`. Put **ISE / order-form** codes in `vendors/.item-codes` as the third column so build-to reports still match.

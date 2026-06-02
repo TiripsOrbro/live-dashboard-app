@@ -1316,7 +1316,8 @@ function buildVarianceEntryRowHtml(row) {
                 .map((slot) => ({ key: slot.key, label: slot.label })),
         };
     }
-    const displayName = mmxName || item.name || row.catalogName || row.itemCode || 'Unknown item';
+    const catalogLabel = item.displayName || item.name;
+    const displayName = mmxName || catalogLabel || row.catalogName || row.itemCode || 'Unknown item';
     const counts = mapVarianceClosingToCounts(item, row);
     const slots = resolveUnitSlots(item).slice(0, 3);
     const closingCells = slots.map((slot) => buildVarianceReadOnlyCellHtml(slot, counts)).join('');
@@ -1402,7 +1403,12 @@ function buildUnitSlotCellHtml(item, slot, ariaName) {
     </td>`;
 }
 
+function stockCountItemLabel(item) {
+    return item.displayName || item.name;
+}
+
 function buildEntryRowHtml(item) {
+    const label = stockCountItemLabel(item);
     const ariaName = item.itemCode ? `${item.itemCode} ${item.name}` : item.name;
     const slots = resolveUnitSlots(item).slice(0, 3);
     const slotCells = slots.map((slot) => buildUnitSlotCellHtml(item, slot, ariaName)).join('');
@@ -1411,7 +1417,7 @@ function buildEntryRowHtml(item) {
             ? `<span class="stock-count-grid-vendor">${escapeHtml(item.vendorLabel)}</span>`
             : '';
     return `<tr class="stock-count-grid-row">
-        <th scope="row" class="stock-count-grid-name">${vendorHint}${escapeHtml(item.name)}</th>
+        <th scope="row" class="stock-count-grid-name">${vendorHint}${escapeHtml(label)}</th>
         ${slotCells}
     </tr>`;
 }

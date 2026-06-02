@@ -1,0 +1,11 @@
+# Stock count display names (copy to vendors/.display-names)
+#
+# Shown in the stock count UI only. Backend still uses the real catalog name,
+# item code, and .item-codes aliases for Macromatix.
+#
+# Format:  Catalog name OR item code  |  Plain English label
+#
+# Examples:
+# Oil Frying Liquid | Oil
+# 39520 | Beef cooked
+# DRINK PEPSI MAX 600ML PET 24EA | Pepsi Max bottles

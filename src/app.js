@@ -1186,7 +1186,8 @@ app.get('/api/stock-count/catalog', (req, res) => {
         res.json({ success: true, catalog, vendorSlugs: catalog.vendorSlugs });
         return;
     }
-    const catalog = getVendorCatalog(vendorSlug, { forStockCount: true });
+    const fullCatalog = /^(1|true|yes)$/i.test(String(req.query.full || req.query.match || ''));
+    const catalog = getVendorCatalog(vendorSlug, fullCatalog ? {} : { forStockCount: true });
     if (!catalog) {
         res.status(404).json({ success: false, error: 'Vendor catalog not found.' });
         return;

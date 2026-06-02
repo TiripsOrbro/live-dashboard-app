@@ -2,6 +2,8 @@ const fs = require('fs');
 const path = require('path');
 const log = require('./util-logging');
 const { lookupKeysForMmx } = require('../itemCodes');
+const { enrichVariancesWithFilledItems } = require('../varianceCatalogMatch');
+const { getVendorCatalog } = require('../vendorCatalog');
 const { GOTO_OPTS } = require('./mmx-browser');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
@@ -547,73 +549,13 @@ function parseClosingNum(raw) {
     return Number.isFinite(n) ? n : null;
 }
 
-function filledItemKey(item) {
-    return `${item.vendorSlug || ''}:${item.key || ''}:${item.locationName || ''}`;
-}
-
-function scoreVarianceToFilledItem(variance, filled) {
-    const slotValues = countsToSlotValues(filled, filled.counts || {});
-    const vSlots = [
-        parseClosingNum(variance.closingBox),
-        parseClosingNum(variance.closingInner),
-        parseClosingNum(variance.closingUnit),
-    ];
-    let score = 0;
-    let comparisons = 0;
-    for (let i = 0; i < 3; i++) {
-        const vVal = vSlots[i];
-        const fVal = slotValues[i + 1] != null ? Number(slotValues[i + 1]) : null;
-        if (vVal == null && fVal == null) continue;
-        if (vVal != null && fVal != null) {
-            comparisons++;
-            if (Math.abs(vVal - fVal) < 0.015) score += 50;
-            else score -= 20;
-        }
-    }
-    if (!comparisons) return 0;
-
-    const code = normalizeItemCode(variance.itemCode);
-    if (code && normalizeItemCode(filled.itemCode) === code) score += 30;
-
-    return score;
-}
-
-function findFilledItemForVariance(variance, filledItems, usedKeys) {
-    const code = normalizeItemCode(variance.itemCode);
-    let candidates = filledItems.filter((item) => !usedKeys.has(filledItemKey(item)));
-
-    if (code) {
-        const byCode = candidates.filter((item) => normalizeItemCode(item.itemCode) === code);
-        if (byCode.length === 1) return byCode[0];
-        if (byCode.length > 1) candidates = byCode;
-    }
-
-    let best = null;
-    let bestScore = 0;
-    for (const item of candidates) {
-        const score = scoreVarianceToFilledItem(variance, item);
-        if (score > bestScore) {
-            bestScore = score;
-            best = item;
-        }
-    }
-    return bestScore >= 45 ? best : null;
-}
-
-function enrichVariancesWithFilledItems(variances, filledItems) {
-    if (!filledItems.length) return variances;
-    const usedKeys = new Set();
-    return variances.map((variance) => {
-        const match = findFilledItemForVariance(variance, filledItems, usedKeys);
-        if (!match) return variance;
-        usedKeys.add(filledItemKey(match));
-        return {
-            ...variance,
-            vendorSlug: match.vendorSlug,
-            catalogKey: match.key,
-            catalogName: match.name,
-            matchedItemCode: match.itemCode || '',
-        };
+function filledCountsToClosingArray(catalogItem, counts) {
+    const slotMap = countsToSlotValues(catalogItem, counts || {});
+    return [1, 2, 3].map((idx) => {
+        const raw = slotMap[idx];
+        if (raw == null || raw === '') return null;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : null;
     });
 }
 
@@ -1202,7 +1144,18 @@ async function enterCombinedStockCount(page, opts) {
     if (opts.stopAtConfirm) {
         await clickContinueFromFilledTab(page, cfg, results);
         const rawVariances = await scrapeConfirmCountVariances(page);
-        const variances = enrichVariancesWithFilledItems(rawVariances, filledItems);
+        const catalogsBySlug = new Map(
+            vendorEntries.map((entry) => [
+                entry.slug,
+                getVendorCatalog(entry.slug) || entry.catalog,
+            ])
+        );
+        const variances = enrichVariancesWithFilledItems(
+            rawVariances,
+            filledItems,
+            catalogsBySlug,
+            filledCountsToClosingArray
+        );
         log.info(`Confirm count loaded — ${variances.length} red variance row(s)`);
         return {
             mode: 'key-item-count-combined',

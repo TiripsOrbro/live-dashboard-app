@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { lookupKeysForMmx, mmxCodeForOrderCode } = require('./itemCodes');
+const { lookupKeysForMmx, mmxCodeForOrderCode, allLookupKeys } = require('./itemCodes');
 const { normalizeItemCode } = require('./reportReader');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
@@ -434,6 +434,7 @@ function getVendorCatalog(slug, options = {}) {
         items.map((item) => ({
             ...item,
             unitSlots: normalizeUnitSlots(item),
+            lookupCodes: allLookupKeys(item.itemCode),
         }));
 
     if (options.forStockCount) {

@@ -29,9 +29,14 @@ function dashboardPath() {
     return `/${STORE_NUMBER}`;
 }
 
-function apiQuery(base, vendorSlug = VENDOR_SLUG) {
+function apiQuery(base, vendorSlug = VENDOR_SLUG, options = {}) {
     const sep = base.includes('?') ? '&' : '?';
-    return `${window.location.origin}${base}${sep}store=${encodeURIComponent(STORE_NUMBER)}&vendor=${encodeURIComponent(vendorSlug)}`;
+    const params = new URLSearchParams();
+    params.set('store', STORE_NUMBER);
+    params.set('vendor', vendorSlug);
+    if (options.fullCatalog) params.set('full', '1');
+    const qs = params.toString();
+    return `${window.location.origin}${base}${base.includes('?') ? '&' : '?'}${qs}`;
 }
 
 async function fetchJson(url, options = {}) {
@@ -231,13 +236,24 @@ function normalizeItemName(name) {
         .toLowerCase();
 }
 
-async function loadVendorCatalogsForSlugs(slugs) {
+async function loadVendorCatalogsForSlugs(slugs, options = {}) {
     const unique = [...new Set(slugs.filter(Boolean))];
     await Promise.all(
         unique.map(async (slug) => {
-            if (vendorCatalogsCache.has(slug)) return;
-            const { res, data } = await fetchJson(apiQuery('/api/stock-count/catalog', slug));
-            if (res.ok && data.success) vendorCatalogsCache.set(slug, data.catalog);
+            const cacheKey = options.fullCatalog ? `${slug}:full` : slug;
+            if (vendorCatalogsCache.has(cacheKey)) {
+                if (!vendorCatalogsCache.has(slug)) {
+                    vendorCatalogsCache.set(slug, vendorCatalogsCache.get(cacheKey));
+                }
+                return;
+            }
+            const { res, data } = await fetchJson(
+                apiQuery('/api/stock-count/catalog', slug, { fullCatalog: Boolean(options.fullCatalog) })
+            );
+            if (res.ok && data.success) {
+                vendorCatalogsCache.set(cacheKey, data.catalog);
+                vendorCatalogsCache.set(slug, data.catalog);
+            }
         })
     );
 }
@@ -335,39 +351,20 @@ function findBestCatalogMatchByClosingValues(variance, catalogsBySlug, draftsByS
     return bestScore >= 45 ? { item: best, slug: bestSlug } : null;
 }
 
-function resolveVarianceCatalogMatch(variance) {
+function buildCatalogsBySlugForVarianceMatch() {
     const slugs = mmxVendorSlugs.length ? mmxVendorSlugs : [VENDOR_SLUG];
     const catalogsBySlug = new Map();
     for (const slug of [...new Set([VENDOR_SLUG, ...slugs])]) {
         const vendorCatalog = vendorCatalogsCache.get(slug) || (slug === VENDOR_SLUG ? catalog : null);
         if (vendorCatalog) catalogsBySlug.set(slug, vendorCatalog);
     }
-    const draftsBySlug = getDraftsBySlugForMatching();
+    return catalogsBySlug;
+}
 
-    if (variance.vendorSlug && variance.catalogKey) {
-        const enriched = findCatalogItemInCatalog(catalogsBySlug, variance.vendorSlug, variance.catalogKey);
-        if (enriched) return { item: enriched, slug: variance.vendorSlug };
-    }
-
-    const scopedSlugs = variance.vendorSlug ? [variance.vendorSlug] : [...catalogsBySlug.keys()];
-    const scopedCatalogs = new Map(
-        scopedSlugs.filter((slug) => catalogsBySlug.has(slug)).map((slug) => [slug, catalogsBySlug.get(slug)])
-    );
-
-    const tryMatch = (map) => {
-        const closing = findBestCatalogMatchByClosingValues(variance, map, draftsBySlug);
-        if (closing) return closing;
-        const draft = findBestCatalogMatchFromDrafts(variance, map, draftsBySlug);
-        if (draft) return draft;
-        return findBestCatalogMatchForVariance(variance, map);
-    };
-
-    if (scopedCatalogs.size && scopedCatalogs.size < catalogsBySlug.size) {
-        const scoped = tryMatch(scopedCatalogs);
-        if (scoped) return scoped;
-    }
-
-    return tryMatch(catalogsBySlug);
+function resolveVarianceCatalogMatch(variance) {
+    const matcher = globalThis.VarianceCatalogMatch;
+    if (!matcher) return null;
+    return matcher.resolveVarianceCatalogMatch(variance, buildCatalogsBySlugForVarianceMatch());
 }
 
 function findCatalogItemForVarianceAcrossVendors(variance) {
@@ -1099,7 +1096,7 @@ async function sendToMmx() {
         mmxSessionId = data.sessionId || '';
         mmxVariances = Array.isArray(data.variances) ? data.variances : [];
         mmxVendorSlugs = Array.isArray(data.vendorsSent) ? data.vendorsSent : [VENDOR_SLUG];
-        await loadVendorCatalogsForSlugs(mmxVendorSlugs);
+        await loadVendorCatalogsForSlugs(mmxVendorSlugs, { fullCatalog: true });
         varianceDrafts = { ...recountDrafts, [VENDOR_SLUG]: draft };
         for (const slug of mmxVendorSlugs) {
             if (slug === VENDOR_SLUG || varianceDrafts[slug]?.locations) continue;
@@ -1295,16 +1292,31 @@ function buildVarianceStatCellHtml(label, display, extraClass = '') {
 }
 
 function buildVarianceEntryRowHtml(row) {
-    const catalogItem = findCatalogItemForVarianceAcrossVendors(row);
-    const item = catalogItem || {
-        key: row.catalogKey || row.itemCode,
-        itemCode: row.matchedItemCode || row.itemCode,
-        name: row.catalogName || row.itemName || row.itemCode || 'Unknown item',
-        unitSlots: inferUnitSlotsFromVariance(row),
-        columns: inferUnitSlotsFromVariance(row)
-            .filter((slot) => !slot.na && slot.key)
-            .map((slot) => ({ key: slot.key, label: slot.label })),
-    };
+    const match = resolveVarianceCatalogMatch(row);
+    const matcher = globalThis.VarianceCatalogMatch;
+    let item = match?.item || null;
+    const mmxName = String(row.itemName || '').trim();
+    if (!item) {
+        item = {
+            key: row.catalogKey || row.itemCode,
+            itemCode: row.matchedItemCode || row.itemCode,
+            name: mmxName || row.catalogName || row.itemCode || 'Unknown item',
+            unitSlots: inferUnitSlotsFromVariance(row),
+            columns: inferUnitSlotsFromVariance(row)
+                .filter((slot) => !slot.na && slot.key)
+                .map((slot) => ({ key: slot.key, label: slot.label })),
+        };
+    } else if (mmxName && matcher && matcher.nameMatchScore(mmxName, item.name) < 45) {
+        item = {
+            ...item,
+            name: mmxName,
+            unitSlots: inferUnitSlotsFromVariance(row),
+            columns: inferUnitSlotsFromVariance(row)
+                .filter((slot) => !slot.na && slot.key)
+                .map((slot) => ({ key: slot.key, label: slot.label })),
+        };
+    }
+    const displayName = mmxName || item.name || row.catalogName || row.itemCode || 'Unknown item';
     const counts = mapVarianceClosingToCounts(item, row);
     const slots = resolveUnitSlots(item).slice(0, 3);
     const closingCells = slots.map((slot) => buildVarianceReadOnlyCellHtml(slot, counts)).join('');
@@ -1325,7 +1337,7 @@ function buildVarianceEntryRowHtml(row) {
         ),
     ].join('');
     return `<tr class="stock-count-grid-row stock-count-variance-row">
-        <th scope="row" class="stock-count-grid-name">${codePrefix}${escapeHtml(item.name)}</th>
+        <th scope="row" class="stock-count-grid-name">${codePrefix}${escapeHtml(displayName)}</th>
         ${closingCells}
         ${statCells}
     </tr>`;

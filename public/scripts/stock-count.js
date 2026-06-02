@@ -1486,12 +1486,14 @@ function buildView() {
             ? `<button type="button" class="stock-count-btn stock-count-btn--mmx" id="sc-send-mmx" ${saving ? 'disabled' : ''}>Send to MMX</button>`
             : '';
     const panelTitle = locationName;
+    const combinedTableClass =
+        isCombinedMode() && combinedVendorSlugs.length > 1 ? ' stock-count-table--combined' : '';
 
     return `
         <div class="stock-count-locations" role="tablist" aria-label="Storage locations">${locButtons}</div>
         <div class="stock-count-panel" role="tabpanel">
             <h2>${escapeHtml(panelTitle)}</h2>
-            <table class="stock-count-table stock-count-table--entry stock-count-table--connected">
+            <table class="stock-count-table stock-count-table--entry stock-count-table--connected${combinedTableClass}">
                 <tbody>${rows}</tbody>
             </table>
             ${emptyNote}

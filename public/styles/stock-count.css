@@ -183,15 +183,9 @@ body.stock-count-page {
     text-align: left;
     vertical-align: middle;
     background: color-mix(in srgb, var(--charcoal) 5%, var(--blank));
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 6px;
 }
 
 .stock-count-grid-name-text {
-    flex: 1 1 auto;
-    min-width: 0;
     hyphens: auto;
     word-break: break-word;
 }
@@ -207,7 +201,6 @@ body.stock-count-page {
 }
 
 .stock-count-grid-vendor {
-    flex: 0 0 auto;
     font-size: 0.55rem;
     font-weight: 700;
     text-transform: uppercase;
@@ -215,6 +208,58 @@ body.stock-count-page {
     color: color-mix(in srgb, var(--tb-purple-light, #9c27b0) 70%, var(--charcoal));
     text-align: right;
     white-space: nowrap;
+}
+
+/* Combined count: full-width name bar — item left, vendor at page right */
+.stock-count-table--combined.stock-count-table--connected {
+    display: block;
+}
+
+.stock-count-table--combined.stock-count-table--connected tbody {
+    display: block;
+    width: 100%;
+}
+
+.stock-count-table--combined.stock-count-table--connected .stock-count-grid-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-bottom: var(--cell-border, 2px solid) color-mix(in srgb, var(--charcoal) 18%, var(--blank));
+}
+
+.stock-count-table--combined.stock-count-table--connected .stock-count-grid-row th,
+.stock-count-table--combined.stock-count-table--connected .stock-count-grid-row td {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.stock-count-table--combined.stock-count-table--connected .stock-count-grid-name {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--charcoal) 12%, var(--blank-border));
+    padding: 4px 8px;
+}
+
+.stock-count-table--combined.stock-count-table--connected .stock-count-grid-name-text {
+    flex: 0 1 auto;
+    min-width: 0;
+    text-align: left;
+}
+
+.stock-count-table--combined.stock-count-table--connected .stock-count-grid-vendor {
+    flex: 0 0 auto;
+    margin-left: auto;
+    padding-left: 8px;
+}
+
+.stock-count-table--combined.stock-count-table--connected .stock-count-grid-cell {
+    grid-row: 2;
 }
 
 .stock-count-grid-cell {

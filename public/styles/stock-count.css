@@ -68,26 +68,45 @@ body.stock-count-page {
 
 .stock-count-locations {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 16px;
+    flex-wrap: nowrap;
+    gap: 0;
+    width: 100%;
+    margin-bottom: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+
+.stock-count-locations::-webkit-scrollbar {
+    display: none;
 }
 
 .stock-count-loc-btn {
+    flex: 1 1 0;
+    min-width: 0;
     border: var(--cell-border, 2px solid) var(--dark-purple-border, #4b3a63);
+    border-bottom: none;
     background: color-mix(in srgb, var(--blank) 12%, var(--dark-purple-border, #4b3a63));
     color: var(--blank, #fff);
-    padding: 8px 12px;
+    padding: 10px 8px;
     font: inherit;
-    font-size: 0.82rem;
+    font-size: 0.78rem;
     font-weight: 600;
     cursor: pointer;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     transition: background 0.15s ease;
 }
 
-.stock-count-loc-btn:hover {
+.stock-count-loc-btn + .stock-count-loc-btn {
+    border-left: none;
+}
+
+.stock-count-loc-btn:hover:not(.stock-count-loc-btn--active) {
     background: color-mix(in srgb, var(--blank) 22%, var(--dark-purple-border, #4b3a63));
 }
 
@@ -95,6 +114,7 @@ body.stock-count-page {
     background: var(--charcoal, #231e1f);
     color: var(--white, #fff);
     border-color: var(--charcoal, #231e1f);
+    cursor: default;
 }
 
 .stock-count-loc-btn--done:not(.stock-count-loc-btn--active) {
@@ -443,21 +463,40 @@ body.stock-count-page {
 .stock-count-variance-scroll {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    max-width: 100%;
 }
 
 .stock-count-table--variances.stock-count-table--connected {
     table-layout: auto;
-    min-width: min(100%, 36rem);
+    width: max-content;
+    min-width: 100%;
 }
 
-.stock-count-table--variances .stock-count-grid-name {
-    width: 26%;
-    min-width: 6.5rem;
+.stock-count-table--variances .stock-count-grid-name,
+.stock-count-table--variances th.stock-count-variance-header--name {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    width: 7.25rem;
+    min-width: 7.25rem;
+    max-width: 7.25rem;
+    background: color-mix(in srgb, var(--charcoal) 5%, var(--blank));
+    box-shadow: 2px 0 4px color-mix(in srgb, var(--charcoal) 12%, transparent);
+    word-break: break-word;
+    hyphens: auto;
 }
 
-.stock-count-table--variances .stock-count-grid-cell {
-    width: auto;
-    min-width: 3.25rem;
+.stock-count-table--variances thead th.stock-count-variance-header--name {
+    z-index: 3;
+    background: var(--charcoal, #231e1f);
+    box-shadow: 2px 0 4px color-mix(in srgb, var(--charcoal) 35%, transparent);
+}
+
+.stock-count-table--variances .stock-count-grid-cell,
+.stock-count-table--variances th.stock-count-variance-header:not(.stock-count-variance-header--name) {
+    width: 2.75rem;
+    min-width: 2.75rem;
+    max-width: 3.75rem;
 }
 
 .stock-count-table--variances .stock-count-grid-cell--variance-value .stock-count-unit-slot {
@@ -467,8 +506,9 @@ body.stock-count-page {
 }
 
 .stock-count-table--variances .stock-count-grid-cell--variance-value .stock-count-unit-label {
-    font-size: 0.52rem;
-    padding: 2px 2px 0;
+    font-size: 0.42rem;
+    padding: 1px 1px 0;
+    line-height: 1.1;
 }
 
 .stock-count-table--variances .stock-count-grid-cell--variance-value .stock-count-value-box--variance {
@@ -482,8 +522,8 @@ body.stock-count-page {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 2px 4px;
-    font-size: clamp(0.75rem, 2.8vw, 0.95rem);
+    padding: 1px 2px;
+    font-size: clamp(0.62rem, 2.2vw, 0.8rem);
     border: var(--cell-border, 2px solid) var(--bad-border, #b86f69);
     border-radius: 0;
     box-sizing: border-box;
@@ -501,17 +541,19 @@ body.stock-count-page {
 }
 
 .stock-count-variance-header-row th {
-    padding: 8px 6px;
-    font-size: 0.58rem;
+    padding: 5px 2px;
+    font-size: 0.48rem;
     font-weight: var(--font-weight-grid-label, 700);
-    line-height: 1.2;
+    line-height: 1.15;
     text-align: center;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.02em;
     vertical-align: bottom;
     background: var(--charcoal, #231e1f);
     color: var(--blank, #f8fafc);
     border: 1px solid color-mix(in srgb, var(--blank) 18%, var(--charcoal));
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .stock-count-variance-header--name {
@@ -992,8 +1034,8 @@ body.stock-count-page {
 
     .stock-count-table--variances.stock-count-table--connected {
         display: table;
-        width: 100%;
-        min-width: 34rem;
+        width: max-content;
+        min-width: 24rem;
     }
 
     .stock-count-table--variances.stock-count-table--connected thead,
@@ -1014,13 +1056,13 @@ body.stock-count-page {
     }
 
     .stock-count-table--variances .stock-count-grid-name {
-        font-size: 0.6rem;
-        padding: 3px 6px;
+        font-size: 0.58rem;
+        padding: 2px 4px;
     }
 
     .stock-count-table--variances.stock-count-table--connected {
-        --sc-slot-height: 2.7rem;
-        --sc-input-height: 2.2rem;
+        --sc-slot-height: 2.35rem;
+        --sc-input-height: 1.9rem;
     }
 
     .stock-count-item-box {

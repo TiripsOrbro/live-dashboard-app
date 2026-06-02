@@ -587,8 +587,8 @@ function inferUnitSlotsFromVariance(variance) {
     const unit = parseClosingValue(variance.closingUnit);
     return [
         { key: box != null ? 'box' : null, label: 'Box', na: box == null },
-        { key: inner != null ? 'bag' : null, label: 'Bag', na: inner == null },
-        { key: unit != null ? 'kg' : null, label: 'KG', na: unit == null },
+        { key: inner != null ? 'bag' : null, label: 'Inner', na: inner == null },
+        { key: unit != null ? 'kg' : null, label: 'Unit', na: unit == null },
     ];
 }
 
@@ -1214,6 +1214,16 @@ function formatMoney(value) {
     return `$${abs}`;
 }
 
+function formatVarianceQty(value) {
+    if (value == null || !Number.isFinite(Number(value))) return '0';
+    return formatQty(value);
+}
+
+function formatVarianceMoney(value) {
+    if (value == null || !Number.isFinite(Number(value))) return '$0.00';
+    return formatMoney(value);
+}
+
 function formatUnitLabel(label) {
     const s = String(label || '').trim();
     if (!s || /^n\/a/i.test(s) || s === '—') return '';
@@ -1282,12 +1292,12 @@ function buildProcessingOverlay() {
 
 const VARIANCE_TABLE_HEADERS = [
     { key: 'name', label: 'Item' },
+    { key: 'stockOnHand', label: 'Stock on Hand' },
+    { key: 'varianceQty', label: 'Variance' },
+    { key: 'varianceValue', label: 'Variance Value' },
     { key: 'box', label: 'Box' },
     { key: 'inner', label: 'Inner' },
     { key: 'unit', label: 'Unit' },
-    { key: 'counted', label: 'Counted' },
-    { key: 'expected', label: 'Expected' },
-    { key: 'variance', label: 'Variance' },
 ];
 
 function buildVarianceHeaderRowHtml() {
@@ -1302,22 +1312,17 @@ function buildVarianceHeaderRowHtml() {
 
 function buildVarianceReadOnlyCellHtml(slot, counts) {
     const label = slot.label || 'N/a';
-    if (slot.na) {
-        return `<td class="stock-count-grid-cell stock-count-grid-cell--variance-value stock-count-grid-cell--na">
-        <div class="stock-count-unit-slot">
-            <span class="stock-count-unit-label">${escapeHtml(label)}</span>
-            <div class="stock-count-value-box stock-count-value-box--variance stock-count-value-box--na" aria-hidden="true"></div>
-        </div>
-    </td>`;
+    let display = '0';
+    if (!slot.na && slot.key) {
+        const value = counts[slot.key];
+        if (value != null && Number.isFinite(Number(value))) {
+            display = formatQty(value);
+        }
     }
-    const value = counts[slot.key];
-    const display =
-        value != null && Number.isFinite(Number(value)) ? formatQty(value) : '—';
-    const emptyClass = display === '—' ? ' stock-count-value-box--empty' : '';
     return `<td class="stock-count-grid-cell stock-count-grid-cell--variance-value">
         <div class="stock-count-unit-slot">
             <span class="stock-count-unit-label">${escapeHtml(label)}</span>
-            <div class="stock-count-value-box stock-count-value-box--variance${emptyClass}">${escapeHtml(display)}</div>
+            <div class="stock-count-value-box stock-count-value-box--variance">${escapeHtml(display)}</div>
         </div>
     </td>`;
 }
@@ -1357,30 +1362,27 @@ function buildVarianceEntryRowHtml(row) {
         };
     }
     const catalogLabel = item.displayName || item.name;
-    const displayName = mmxName || catalogLabel || row.catalogName || row.itemCode || 'Unknown item';
+    const displayName = mmxName || catalogLabel || row.catalogName || 'Unknown item';
     const counts = mapVarianceClosingToCounts(item, row);
     const slots = resolveUnitSlots(item).slice(0, 3);
     const closingCells = slots.map((slot) => buildVarianceReadOnlyCellHtml(slot, counts)).join('');
-    const unitLabel = inferStockVarianceUnitLabel(row, item);
-    const varianceMoney = formatMoney(row.varianceValue);
-    const varianceClass =
+    const varianceQtyClass =
+        Number(row.varianceQty) < 0 ? ' stock-count-value-box--variance-negative' : '';
+    const varianceValueClass =
         Number(row.varianceValue) < 0 ? ' stock-count-value-box--variance-negative' : '';
-    const codePrefix = item.itemCode
-        ? `<span class="stock-count-grid-code">${escapeHtml(item.itemCode)}</span> `
-        : '';
     const statCells = [
-        buildVarianceStatCellHtml('Counted', formatQtyWithUnit(row.stockCounted, unitLabel)),
-        buildVarianceStatCellHtml('Expected', formatQtyWithUnit(row.stockExpected, unitLabel)),
+        buildVarianceStatCellHtml('Stock on Hand', formatVarianceQty(row.stockCounted)),
+        buildVarianceStatCellHtml('Variance', formatVarianceQty(row.varianceQty), varianceQtyClass),
         buildVarianceStatCellHtml(
-            'Variance',
-            varianceMoney,
-            ` stock-count-value-box--variance-money${varianceClass}`
+            'Variance Value',
+            formatVarianceMoney(row.varianceValue),
+            ` stock-count-value-box--variance-money${varianceValueClass}`
         ),
     ].join('');
     return `<tr class="stock-count-grid-row stock-count-variance-row">
-        <th scope="row" class="stock-count-grid-name">${codePrefix}${escapeHtml(displayName)}</th>
-        ${closingCells}
+        <th scope="row" class="stock-count-grid-name">${escapeHtml(displayName)}</th>
         ${statCells}
+        ${closingCells}
     </tr>`;
 }
 
@@ -1500,9 +1502,10 @@ function buildView() {
     const locButtons = visibleLocations
         .map((loc, idx) => {
             const classes = ['stock-count-loc-btn'];
-            if (idx === currentLocationIndex) classes.push('stock-count-loc-btn--active');
+            const isActive = idx === currentLocationIndex;
+            if (isActive) classes.push('stock-count-loc-btn--active');
             if (locationHasData(loc)) classes.push('stock-count-loc-btn--done');
-            return `<button type="button" class="${classes.join(' ')}" data-loc-index="${idx}">${escapeHtml(loc)}</button>`;
+            return `<button type="button" role="tab" aria-selected="${isActive ? 'true' : 'false'}" id="sc-loc-tab-${idx}" class="${classes.join(' ')}" data-loc-index="${idx}">${escapeHtml(loc)}</button>`;
         })
         .join('');
 
@@ -1518,7 +1521,7 @@ function buildView() {
 
     return `
         <div class="stock-count-locations" role="tablist" aria-label="Storage locations">${locButtons}</div>
-        <div class="stock-count-panel" role="tabpanel">
+        <div class="stock-count-panel" role="tabpanel" aria-labelledby="sc-loc-tab-${currentLocationIndex}">
             <h2>${escapeHtml(panelTitle)}</h2>
             <table class="stock-count-table stock-count-table--entry stock-count-table--connected${combinedTableClass}">
                 <tbody>${rows}</tbody>

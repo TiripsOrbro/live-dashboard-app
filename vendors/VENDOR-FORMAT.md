@@ -28,6 +28,16 @@ Use `location-order` and a trailing **location** on each line to group stock-cou
 
 Unit columns use `N/a` for an unused slot (position is kept for the stock-count UI).
 
+**Macromatix Key Item Count** maps your first three non–`N/a` columns left-to-right onto:
+
+| Catalog column (e.g.) | MMX field |
+|------------------------|-----------|
+| 1st (Boxes, Cartons, …) | Closing **Box** (`tbOH1`) |
+| 2nd (Bags, Packs, …) | Closing **Inner** (`tbOH2`) |
+| 3rd (KGs, Each, …) | Closing **Unit** (`tbOH3`) |
+
+Run `npm run verify-mmx-count -- 3811 --vendor americold` to confirm each item has a row **and** each count column has a matching MMX input.
+
 Optional trailing number after locations = **inner units per carton** (e.g. `| Carryover | 10` → 10 packs per carton). Stock count can enter cartons and packs/rolls; order qty uses the combined carton equivalent (e.g. 1 carton + 5 packs with `/10` → 1.5).
 
 ### Examples

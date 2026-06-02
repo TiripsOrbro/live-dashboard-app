@@ -71,7 +71,7 @@ function printResults(allResults) {
     for (const result of allResults) {
         console.log(`\n=== ${result.vendor} (${result.slug}) ===`);
         console.log(
-            `Found: ${result.summary.found}  Missing: ${result.summary.missing}  Skipped (order= / no KIC): ${result.summary.skipped}`
+            `Rows: ${result.summary.found} ok  ${result.summary.missing} not on tab  ${result.summary.columnMissing} column mismatch  Skipped: ${result.summary.skipped}`
         );
 
         for (const loc of result.locations) {
@@ -79,6 +79,17 @@ function printResults(allResults) {
             if (loc.error) console.log(`    TAB ERROR: ${loc.error}`);
             for (const f of loc.found) {
                 console.log(`    ✓ ${f.itemCode || '—'}  ${f.name}`);
+                if (f.columns) console.log(`        ${f.columns}`);
+            }
+            for (const c of loc.columnIssues || []) {
+                const miss = c.columnCheck?.missing || [];
+                const mmxSlots = c.columnCheck?.mmxSlots?.join(',') || '?';
+                console.log(`    ⚠ ${c.itemCode || '—'}  ${c.name}  (on tab; MMX slots: ${mmxSlots})`);
+                for (const col of miss) {
+                    console.log(
+                        `        catalog "${col.catalogLabel}" needs ${col.mmxLabel} (tbOH${col.mmxSlot}) — not on row`
+                    );
+                }
             }
             for (const m of loc.missing) {
                 console.log(`    ✗ ${m.itemCode || '—'}  ${m.name}${m.reason ? ` (${m.reason})` : ''}`);
@@ -146,12 +157,16 @@ async function main() {
         }
 
         const totalMissing = allResults.reduce((n, r) => n + r.summary.missing, 0);
+        const totalColumnMissing = allResults.reduce((n, r) => n + r.summary.columnMissing, 0);
         const totalTabErrors = allResults.reduce((n, r) => n + r.summary.tabErrors, 0);
         const totalReportMissing = reportResults.reduce((n, r) => n + r.summary.missing, 0);
         console.log(
-            `\nDone. KIC missing: ${totalMissing}, tab errors: ${totalTabErrors}, report gaps: ${totalReportMissing}`
+            `\nDone. Not on KIC tab: ${totalMissing}, column mismatch: ${totalColumnMissing}, tab errors: ${totalTabErrors}, report gaps (info): ${totalReportMissing}`
         );
-        process.exit(totalMissing || totalTabErrors || totalReportMissing ? 1 : 0);
+        console.log(
+            'MMX slots: 1=Box/carton, 2=Inner/bag, 3=Unit/kg/each — catalog columns map left-to-right to these fields.'
+        );
+        process.exit(totalMissing || totalColumnMissing || totalTabErrors ? 1 : 0);
     } finally {
         await closeBrowserQuietly(browser, 'verify-mmx-key-item-count');
     }

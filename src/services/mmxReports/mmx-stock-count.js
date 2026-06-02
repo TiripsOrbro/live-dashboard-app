@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const log = require('./util-logging');
+const { lookupKeysForMmx } = require('../itemCodes');
 const { GOTO_OPTS } = require('./mmx-browser');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
@@ -399,6 +400,87 @@ function findGridRow(byCode, grid, item) {
     );
 }
 
+/** Macromatix Key Item Count closing columns (tbOH1–tbOH3). */
+const MMX_COUNT_SLOT_LABELS = {
+    1: 'Closing Box (cartons/boxes)',
+    2: 'Closing Inner (bags/packs)',
+    3: 'Closing Unit (kg/each)',
+};
+
+/**
+ * Map each non–N/a dashboard unit column to the MMX slot index used when filling counts.
+ * Same order as countsToSlotValues — slot 1/2/3 align with catalog columns left to right.
+ */
+function catalogColumnMappings(catalogItem) {
+    const mappings = [];
+    let slotIndex = 1;
+    for (const slot of (catalogItem?.unitSlots || []).slice(0, 3)) {
+        if (slot.na) {
+            slotIndex++;
+            continue;
+        }
+        mappings.push({
+            catalogLabel: slot.label,
+            catalogKey: slot.key,
+            mmxSlot: slotIndex,
+            mmxLabel: MMX_COUNT_SLOT_LABELS[slotIndex] || `Slot ${slotIndex}`,
+        });
+        slotIndex++;
+    }
+    return mappings;
+}
+
+function mmxSlotsPresent(gridRow) {
+    if (!gridRow?.slots) return [];
+    return Object.keys(gridRow.slots)
+        .map(Number)
+        .filter((n) => Number.isFinite(n))
+        .sort((a, b) => a - b);
+}
+
+/**
+ * Verify catalog count columns can be entered on the matched MMX grid row.
+ */
+function verifyItemGridColumns(catalogItem, gridRow) {
+    const columns = catalogColumnMappings(catalogItem);
+    if (!gridRow) {
+        return {
+            ok: false,
+            reason: 'no-row',
+            columns,
+            matched: [],
+            missing: columns,
+            mmxSlots: [],
+        };
+    }
+    const mmxSlots = mmxSlotsPresent(gridRow);
+    const matched = [];
+    const missing = [];
+    for (const col of columns) {
+        if (gridRow.slots[col.mmxSlot]) matched.push(col);
+        else missing.push(col);
+    }
+    return {
+        ok: missing.length === 0,
+        reason: missing.length ? 'missing-slots' : 'ok',
+        columns,
+        matched,
+        missing,
+        mmxSlots,
+    };
+}
+
+function formatColumnMappingSummary(columnCheck) {
+    if (!columnCheck?.columns?.length) return 'no count columns';
+    const parts = columnCheck.matched.map(
+        (c) => `${c.catalogLabel}→${c.mmxLabel.replace(/^Closing /, '')}`
+    );
+    const miss = columnCheck.missing.map((c) => `${c.catalogLabel} needs slot ${c.mmxSlot}`);
+    if (!parts.length && miss.length) return miss.join('; ');
+    if (miss.length) return `${parts.join(', ')} | MISSING: ${miss.join('; ')}`;
+    return parts.join(', ');
+}
+
 function countsToSlotValues(catalogItem, counts) {
     // MMX columns: slot 1 = Closing Box (tbOH1), 2 = Closing Inner (tbOH2), 3 = Closing Unit (tbOH3).
     const slots = catalogItem.unitSlots || [];
@@ -556,7 +638,14 @@ async function verifyKeyItemCountCatalog(page, catalog, cfg, options = {}) {
         slug: catalog.slug,
         locations: [],
         skippedKeyItemCount: [],
-        summary: { found: 0, missing: 0, skipped: 0, tabErrors: 0 },
+        summary: {
+            found: 0,
+            missing: 0,
+            columnOk: 0,
+            columnMissing: 0,
+            skipped: 0,
+            tabErrors: 0,
+        },
     };
 
     for (const item of catalog.items || []) {
@@ -587,6 +676,7 @@ async function verifyKeyItemCountCatalog(page, catalog, cfg, options = {}) {
             gridRows: 0,
             found: [],
             missing: [],
+            columnIssues: [],
             error: null,
         };
 
@@ -598,19 +688,31 @@ async function verifyKeyItemCountCatalog(page, catalog, cfg, options = {}) {
 
             for (const item of items) {
                 const row = findGridRowWithAliases(byCode, grid, item, lookupKeysForMmx);
-                if (row) {
-                    locResult.found.push({
-                        itemCode: item.itemCode,
-                        name: item.name,
-                        mmxCtx: row.ctx,
-                    });
-                    results.summary.found++;
-                } else {
+                if (!row) {
                     locResult.missing.push({
                         itemCode: item.itemCode,
                         name: item.name,
                     });
                     results.summary.missing++;
+                    continue;
+                }
+
+                const columnCheck = verifyItemGridColumns(item, row);
+                const entry = {
+                    itemCode: item.itemCode,
+                    name: item.name,
+                    mmxCtx: row.ctx,
+                    columns: formatColumnMappingSummary(columnCheck),
+                    columnCheck,
+                };
+
+                if (columnCheck.ok) {
+                    locResult.found.push(entry);
+                    results.summary.found++;
+                    results.summary.columnOk++;
+                } else {
+                    locResult.columnIssues.push(entry);
+                    results.summary.columnMissing++;
                 }
             }
         } catch (err) {
@@ -646,9 +748,17 @@ async function fillLocationTab(page, cfg, catalog, locationName, itemsAtLocation
         const hasAny = Object.values(counts).some((v) => Number(v) > 0);
         if (!hasAny) continue;
 
-        const row = findGridRow(byCode, grid, item);
+        let row = findGridRow(byCode, grid, item);
+        if (!row) row = findGridRowWithAliases(byCode, grid, item, lookupKeysForMmx);
         if (!row) {
             missed.push(item.itemCode || item.key || item.name);
+            continue;
+        }
+
+        const columnCheck = verifyItemGridColumns(item, row);
+        if (!columnCheck.ok) {
+            const labels = columnCheck.missing.map((c) => c.catalogLabel).join(', ');
+            missed.push(`${item.itemCode || item.name} (no MMX field for: ${labels})`);
             continue;
         }
 
@@ -1107,6 +1217,10 @@ module.exports = {
     clickContinueFromFilledTab,
     applyKeyItemCount,
     normalizeItemCode,
+    MMX_COUNT_SLOT_LABELS,
+    catalogColumnMappings,
+    verifyItemGridColumns,
+    formatColumnMappingSummary,
     mergeVendorEntriesByLocation,
     mmxTabForLocation,
 };

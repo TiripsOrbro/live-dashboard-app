@@ -33,20 +33,21 @@
 
     function mountPodiumEl(el) {
         const dashboard = document.querySelector('.dashboard');
-        const grid = document.querySelector('.dashboard-grid');
         if (!dashboard) {
             document.body.appendChild(el);
             return;
         }
-        if (grid && grid.parentElement === dashboard) {
-            if (el.previousElementSibling !== grid) {
-                grid.insertAdjacentElement('afterend', el);
-            }
-            return;
-        }
         if (el.parentElement !== dashboard) {
             dashboard.appendChild(el);
+        } else if (dashboard.lastElementChild !== el) {
+            dashboard.appendChild(el);
         }
+    }
+
+    function setDashboardPodiumLayout(active) {
+        const dashboard = document.querySelector('.dashboard');
+        if (!dashboard) return;
+        dashboard.classList.toggle('dashboard--upsell-podium', Boolean(active));
     }
 
     function ensurePodiumEl() {
@@ -218,10 +219,13 @@
         const portrait = document.body.classList.contains('dashboard--portrait');
         if (!data?.enabled || portrait) {
             stopRevealCycle({ hide: true });
+            setDashboardPodiumLayout(false);
             root.classList.remove('upsell-podium--revealed', 'upsell-podium--persistent');
             root.setAttribute('hidden', '');
             return;
         }
+        setDashboardPodiumLayout(true);
+        mountPodiumEl(root);
         root.removeAttribute('hidden');
         if (PODIUM_ALWAYS_VISIBLE) root.classList.add('upsell-podium--persistent');
         root.classList.add('upsell-podium--revealed');
@@ -288,6 +292,7 @@
         const portrait = document.body.classList.contains('dashboard--portrait');
         if (portrait) {
             stopRevealCycle();
+            setDashboardPodiumLayout(false);
             const root = document.getElementById('upsell-podium');
             if (root) {
                 root.classList.remove('upsell-podium--revealed');

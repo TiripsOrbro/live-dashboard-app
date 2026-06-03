@@ -1,10 +1,10 @@
-/* Below the sales grid (in flow) — not overlaid on the hour columns */
+/* In flow at the bottom of the dashboard card (see .dashboard--upsell-podium) */
 #upsell-podium {
     position: relative;
     z-index: 1;
     width: 100%;
     max-width: 100%;
-    margin: clamp(20px, 3vh, 36px) auto 0;
+    margin: 0;
     padding: 0;
     box-sizing: border-box;
     display: flex;
@@ -12,6 +12,25 @@
     pointer-events: none;
     font-family: inherit;
     flex-shrink: 0;
+}
+
+@media (min-width: 901px) {
+    #app:has(.dashboard--upsell-podium) {
+        display: flex;
+        flex-direction: column;
+    }
+
+    #app:has(.dashboard--upsell-podium) .dashboard.dashboard--upsell-podium {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .dashboard.dashboard--upsell-podium #upsell-podium:not([hidden]) {
+        margin-top: auto;
+        padding-top: clamp(12px, 2vh, 24px);
+    }
 }
 
 #upsell-podium[hidden] {

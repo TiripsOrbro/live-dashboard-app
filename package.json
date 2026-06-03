@@ -22,6 +22,7 @@
     "upsell-sync": "node scripts/upsell-sync.js",
     "upsell-sync-today": "node scripts/upsell-sync.js --all-stores",
     "upsell-rescore": "node scripts/upsell-rescore-export.js",
+    "upsell-report": "node scripts/upsell-leaderboard-report.js",
     "upsell-discover": "node scripts/discover-bi-report.js",
     "upsell-probe-export": "node scripts/probe-powerbi-export.js",
     "upsell-score-sample": "node scripts/upsell-score-sample.js"

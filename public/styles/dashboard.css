@@ -115,6 +115,7 @@ body {
    Dashboard card & header
 ----------------------------------------------------------- */
 .dashboard {
+    position: relative;
     width: 100%;
     max-width: none;
     max-height: 100%;
@@ -1849,7 +1850,7 @@ body.rotate-hint-active .dashboard {
     object-fit: contain;
 }
 
-/* DEBUG: floating test popup trigger */
+/* Test store only — injected by dashboard.js on /teststore */
 #popup-test-btn {
     position: fixed;
     bottom: 100px;

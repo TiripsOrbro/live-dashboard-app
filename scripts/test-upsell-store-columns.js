@@ -154,6 +154,24 @@ assert(
     `All-period continuation row (got ${JSON.stringify(macyCont)})`
 );
 
+/** Chirnside today export: no Entity column; fiscal=All; continuation rows have qty in col 2. */
+const noEntityAllGrid = [
+    ['Fiscal YPWD', 'Cashier Name', 'Boss Burrito Box', 'Churros'],
+    ['', '', 'Sales Item Quantity', 'Sales Item Quantity'],
+    ['3811 Chirnside Park', '', '', ''],
+    ['All', 'ANGELA TRAJKOSKA', '1', '2'],
+    ['BENJAMIN JACKSON', '1', '3'],
+];
+const noEntityParsed = parseUpsellGrid(noEntityAllGrid, loadPointsMapForParsing().byLabel, {
+    reportDay: '2026-06-03',
+});
+assert(
+    noEntityParsed.cashiers.length === 2 &&
+        noEntityParsed.cashiers.every((c) => c.store === '3811' && c.day === '2026-06-03'),
+    `no-entity All export (got ${JSON.stringify(noEntityParsed.cashiers)})`
+);
+assert(!noEntityParsed.unassigned?.length, 'no-entity rows should assign to 3811');
+
 /** Orphan continuation row (no prior date) → unassigned, not scored anywhere. */
 const orphanGrid = [
     ['Fiscal YPWD', 'Cashier Name', 'Entity by State County Postcode', 'Cheesy G Taco Box', 'Cinnamon Twists'],

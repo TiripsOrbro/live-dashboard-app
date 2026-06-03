@@ -7,10 +7,10 @@ tmp/
 .Users.test
 scripts/probe-stock-count.png
 *.log
-data/buildto-grid*.json
-data/buildto-grid*.xlsx
 .Employees
 .Employees.example
+data/buildto-grid*.json
+data/buildto-grid*.xlsx
 data/upselling/*_leaderboard.json
 data/upselling/last-export.*
 data/upselling/*-upsell-by-cashier.*

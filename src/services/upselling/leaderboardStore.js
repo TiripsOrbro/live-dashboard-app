@@ -111,14 +111,33 @@ function effectivePoints(row) {
     return Number(row?.points) || 0;
 }
 
-function scoredPoints(row) {
-    const mmxPoints = Number(row?.points) || 0;
-    const total = effectivePoints(row);
+function normalizeDayShiftEmployeeMultiplier(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const employees = (Array.isArray(raw.employees) ? raw.employees : [])
+        .map((name) => String(name || '').trim())
+        .filter(Boolean);
+    if (!employees.length) return null;
+    const multiplier = Number(raw.multiplier);
     return {
-        mmxPoints,
-        total,
-        bonusPoints: Math.max(0, total - mmxPoints),
+        multiplier: Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1.5,
+        employees,
     };
+}
+
+function employeeMatchesDayShift(name, dayShiftConfig) {
+    if (!dayShiftConfig?.employees?.length) return false;
+    const key = normalizeCashierName(name);
+    return dayShiftConfig.employees.some((employee) => normalizeCashierName(employee) === key);
+}
+
+function scoredPoints(row, dayShiftConfig) {
+    const base = effectivePoints(row);
+    if (!base) return { base: 0, total: 0, multiplier: null };
+    if (!employeeMatchesDayShift(row.name, dayShiftConfig)) {
+        return { base, total: base, multiplier: null };
+    }
+    const multiplier = Number(dayShiftConfig.multiplier) || 1.5;
+    return { base, total: Math.round(base * multiplier), multiplier };
 }
 
 function normalizeScoreRow(row = {}, preserve = null) {
@@ -338,6 +357,7 @@ function loadScores(storeNumber) {
     return {
         storeNumber: store,
         lastSyncAt: raw.lastSyncAt || null,
+        dayShiftEmployeeMultiplier: normalizeDayShiftEmployeeMultiplier(raw.dayShiftEmployeeMultiplier),
         rows,
         source: fs.existsSync(file) ? path.basename(file) : null,
     };
@@ -359,6 +379,11 @@ function saveScores(storeNumber, rows = [], meta = {}) {
         lastSyncAt: meta.lastSyncAt || new Date().toISOString(),
         rows: normalized.map(serializeScoreRow),
     };
+    const dayShift =
+        meta.dayShiftEmployeeMultiplier !== undefined
+            ? normalizeDayShiftEmployeeMultiplier(meta.dayShiftEmployeeMultiplier)
+            : normalizeDayShiftEmployeeMultiplier(existing.dayShiftEmployeeMultiplier);
+    if (dayShift) payload.dayShiftEmployeeMultiplier = dayShift;
     writeJsonFile(file, payload);
     return normalized;
 }
@@ -377,13 +402,12 @@ function resolveLeaderboardPeriod(options = {}) {
     return '';
 }
 
-/** Rank cashiers. Default: best single day in retention. `{ period: 'week' }` sums Mon–Sun for the podium. */
+/** Rank cashiers. Default: best single day in retention. `{ period: 'week' }` = best day Mon–Sun (podium). */
 function aggregateLeaderboard(storeNumber, options = {}) {
     const dayFilter = resolveLeaderboardDayFilter(options);
     const weekMode = resolveLeaderboardPeriod(options) === 'week';
-    const { rows } = loadScores(storeNumber);
+    const { rows, dayShiftEmployeeMultiplier } = loadScores(storeNumber);
     const bestByName = new Map();
-    const weekTotalsByName = new Map();
     const effectiveByDay = [];
 
     for (const row of rows) {
@@ -391,38 +415,21 @@ function aggregateLeaderboard(storeNumber, options = {}) {
             if (!isDayInMelbourneWeek(row.day)) continue;
         } else if (dayFilter && row.day !== dayFilter) continue;
         if (row.excluded) continue;
-        const { mmxPoints, total, bonusPoints } = scoredPoints(row);
+        const { base, total, multiplier } = scoredPoints(row, dayShiftEmployeeMultiplier);
         if (!total) continue;
 
         effectiveByDay.push({
             day: row.day,
             name: row.name,
             points: total,
-            mmxPoints,
-            bonusPoints,
+            mmxPoints: Number(row.points) || 0,
+            basePoints: base,
             override: row.override,
+            dayShiftMultiplier: multiplier,
             sourceName: row.name,
         });
 
         const key = normalizeCashierName(row.name);
-        if (weekMode) {
-            const prev = weekTotalsByName.get(key);
-            const bestDay =
-                !prev || total > prev.bestDayPoints
-                    ? row.day
-                    : prev.bestDay;
-            const bestDayPoints = Math.max(prev?.bestDayPoints || 0, total);
-            weekTotalsByName.set(key, {
-                name: row.name,
-                points: (prev?.points || 0) + total,
-                mmxPoints: (prev?.mmxPoints || 0) + mmxPoints,
-                bonusPoints: (prev?.bonusPoints || 0) + bonusPoints,
-                bestDay,
-                bestDayPoints,
-            });
-            continue;
-        }
-
         const prev = bestByName.get(key);
         if (
             !prev ||
@@ -431,21 +438,22 @@ function aggregateLeaderboard(storeNumber, options = {}) {
         ) {
             bestByName.set(key, {
                 points: total,
-                mmxPoints,
-                bonusPoints,
+                basePoints: base,
+                mmxPoints: Number(row.points) || 0,
+                dayShiftMultiplier: multiplier,
                 day: row.day,
                 name: row.name,
             });
         }
     }
 
-    const aggregateSource = weekMode ? weekTotalsByName : bestByName;
-    const rankedRows = [...aggregateSource.values()]
+    const rankedRows = [...bestByName.values()]
         .map((best) => ({
             name: best.name,
             mmxPoints: best.mmxPoints,
-            bestDay: best.bestDay || best.day,
-            bonusPoints: best.bonusPoints || 0,
+            bestDay: best.day,
+            bonusPoints: Math.max(0, best.points - best.basePoints),
+            dayShiftMultiplier: best.dayShiftMultiplier,
             total: best.points,
         }))
         .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
@@ -460,7 +468,7 @@ function aggregateLeaderboard(storeNumber, options = {}) {
     return {
         rows: rankedRows,
         byDay: effectiveByDay,
-        period: weekMode ? 'week' : dayFilter ? 'day' : 'bestDay',
+        period: weekMode ? 'weekBestDay' : dayFilter ? 'day' : 'bestDay',
         weekStart: weekMode ? melbourneWeekStartIso() : null,
         weekEnd: weekMode ? melbourneWeekEndIso() : null,
     };

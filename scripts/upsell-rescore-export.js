@@ -79,8 +79,9 @@ function main() {
         for (const storeNumber of multi.storeNumbers) {
             const payload = buildLeaderboardPayload(storeNumber);
             const period =
-                payload.leaderboardPeriod === 'week' && payload.weekStart
-                    ? `week ${payload.weekStart} – ${payload.weekEnd}`
+                (payload.leaderboardPeriod === 'weekBestDay' || payload.leaderboardPeriod === 'week') &&
+                    payload.weekStart
+                    ? `best day ${payload.weekStart} – ${payload.weekEnd}`
                     : `day ${payload.leaderboardDay || '?'}`;
             console.log(`\n[upsell-rescore] Top 7 for ${storeNumber} (${period}):`);
             for (const r of payload.top7 || payload.top5 || payload.top3 || []) {
@@ -100,8 +101,9 @@ function main() {
     console.log(`[upsell-rescore] ${store}_leaderboard.json rows: ${rows.length}`);
     const payload = buildLeaderboardPayload(store);
     const period =
-        payload.leaderboardPeriod === 'week' && payload.weekStart
-            ? `week ${payload.weekStart} – ${payload.weekEnd}`
+        (payload.leaderboardPeriod === 'weekBestDay' || payload.leaderboardPeriod === 'week') &&
+            payload.weekStart
+            ? `best day ${payload.weekStart} – ${payload.weekEnd}`
             : `day ${payload.leaderboardDay || '?'}`;
     console.log(`[upsell-rescore] Top 7 for ${store} (${period}):`);
     for (const r of payload.top7 || payload.top5 || []) {

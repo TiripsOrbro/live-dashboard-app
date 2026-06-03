@@ -410,7 +410,7 @@ function buildLeaderboardPayload(storeNumber) {
         lastSyncAt,
         reportDate: reportDate || leaderboardDay,
         leaderboardDay,
-        leaderboardPeriod: period || 'week',
+        leaderboardPeriod: period || 'weekBestDay',
         weekStart: weekStart || null,
         weekEnd: weekEnd || null,
     };

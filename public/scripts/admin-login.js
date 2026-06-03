@@ -1,7 +1,6 @@
 (function () {
     const form = document.getElementById('admin-login-form');
     const errorEl = document.getElementById('admin-login-error');
-    const passkeyBtn = document.getElementById('admin-passkey-btn');
 
     if (window.DashboardNavBack) {
         window.DashboardNavBack.mountBackButton(document.getElementById('admin-login-back'), {
@@ -44,38 +43,6 @@
             window.location.replace(data.defaultPath || '/admin/overview');
         } catch (err) {
             showError('Could not sign in. Check your connection.');
-        }
-    });
-
-    passkeyBtn?.addEventListener('click', async () => {
-        showError('');
-        if (!window.SimpleWebAuthnBrowser && !window.startAuthentication) {
-            showError('Passkey sign-in is not available in this browser.');
-            return;
-        }
-        const { startAuthentication } = window.SimpleWebAuthnBrowser || window;
-        try {
-            const optRes = await fetch('/api/webauthn/login/options', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: document.getElementById('admin-username').value.trim() }),
-            });
-            const optData = await optRes.json();
-            if (!optData.success) throw new Error(optData.error || 'Could not start passkey login.');
-            const authResp = await startAuthentication({ optionsJSON: optData.options });
-            const verifyRes = await fetch('/api/webauthn/login/verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify(authResp),
-            });
-            const verifyData = await verifyRes.json();
-            if (!verifyRes.ok || !verifyData.success) {
-                throw new Error(verifyData.error || 'Passkey verification failed.');
-            }
-            window.location.replace(verifyData.defaultPath || '/admin/overview');
-        } catch (err) {
-            showError(err.message || 'Passkey sign-in failed.');
         }
     });
 })();

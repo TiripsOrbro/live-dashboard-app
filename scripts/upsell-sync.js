@@ -128,8 +128,10 @@ async function main() {
 function printStoreSummary(storeNumber) {
     const payload = buildLeaderboardPayload(storeNumber);
     const period =
-        payload.leaderboardPeriod === 'week' && payload.weekStart && payload.weekEnd
-            ? `week ${payload.weekStart} – ${payload.weekEnd}`
+        (payload.leaderboardPeriod === 'weekBestDay' || payload.leaderboardPeriod === 'week') &&
+            payload.weekStart &&
+            payload.weekEnd
+            ? `best day ${payload.weekStart} – ${payload.weekEnd}`
             : `day ${payload.leaderboardDay || '?'}`;
     console.log(`\n[upsell-sync] Leaderboard ${storeNumber} (${period}):`);
     for (const r of payload.top7 || payload.top5 || []) {

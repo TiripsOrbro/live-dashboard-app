@@ -54,9 +54,10 @@ function printStore(store) {
     }
 
     const { rows: weekTop, weekStart, weekEnd } = aggregateLeaderboard(store, { period: 'week' });
-    console.log(`\nWeek total ${weekStart} – ${weekEnd} (podium ranking):`);
+    console.log(`\nBest day this week ${weekStart} – ${weekEnd} (podium ranking):`);
     weekTop.slice(0, 7).forEach((r, i) => {
-        console.log(`  ${i + 1}. ${r.name} — ${r.total} pts`);
+        const day = r.bestDay ? ` on ${r.bestDay}` : '';
+        console.log(`  ${i + 1}. ${r.name} — ${r.total} pts${day}`);
     });
 }
 

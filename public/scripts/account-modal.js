@@ -196,7 +196,7 @@
         const body = root.querySelector('#account-accounts-body');
         if (!body) return;
         if (!accounts.length) {
-            body.innerHTML = '<p class="account-accounts-empty">No crew accounts have been created for this store yet.</p>';
+            body.innerHTML = '<p class="account-accounts-empty">No MIC accounts have been created for this store yet.</p>';
             return;
         }
         body.innerHTML = `<ul class="account-accounts-list"></ul>`;

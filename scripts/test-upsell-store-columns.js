@@ -123,6 +123,37 @@ assert(
     'ZARTASHA must score into 3902'
 );
 
+/** Today-only CSV: fiscal column is All instead of a date. */
+const allPeriodGrid = [
+    ['Fiscal YPWD', 'Cashier Name', 'Entity by State County Postcode', 'Boss Burrito Box', 'Churros'],
+    ['', '', 'Sales Item Quantity', 'Sales Item Quantity', 'Sales Item Quantity'],
+    ['All', 'JETT TEMPLETON', '3811 Chirnside Park', '2', '0'],
+    ['All', 'MACY VENDEL', '3902 Ellenbrook North', '1', '1'],
+    ['MACY VENDEL', '3811 Chirnside Park', '', '2', ''],
+];
+const allPeriodParsed = parseUpsellGrid(allPeriodGrid, loadPointsMapForParsing().byLabel, {
+    reportDay: '2026-06-03',
+});
+const jettAll = allPeriodParsed.cashiers.find(
+    (c) => c.name === 'JETT TEMPLETON' && c.day === '2026-06-03'
+);
+assert(jettAll && jettAll.store === '3811', `All-period JETT (got ${JSON.stringify(jettAll)})`);
+assert(
+    allPeriodParsed.cashiers.every((c) => c.day === '2026-06-03'),
+    `All-period rows should use report day (got ${JSON.stringify(allPeriodParsed.cashiers)})`
+);
+assert(
+    !allPeriodParsed.unassigned?.length,
+    `All-period rows should not be unassigned (got ${JSON.stringify(allPeriodParsed.unassigned)})`
+);
+const macyCont = allPeriodParsed.cashiers.filter(
+    (c) => c.name === 'MACY VENDEL' && c.day === '2026-06-03'
+);
+assert(
+    macyCont.some((c) => c.store === '3902') && macyCont.some((c) => c.store === '3811'),
+    `All-period continuation row (got ${JSON.stringify(macyCont)})`
+);
+
 /** Orphan continuation row (no prior date) → unassigned, not scored anywhere. */
 const orphanGrid = [
     ['Fiscal YPWD', 'Cashier Name', 'Entity by State County Postcode', 'Cheesy G Taco Box', 'Cinnamon Twists'],

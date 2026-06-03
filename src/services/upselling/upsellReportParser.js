@@ -1,5 +1,6 @@
 const { loadGrid } = require('../reportReader');
 const { normalizeLabel } = require('./pointsFile');
+const { melbourneTodayIso } = require('./upsellingConfig');
 
 const ONLINE_CASHIER_RE = /online\s*\d*\s*cashier/i;
 /** Store / entity label rows in the BI grid — not a person. */
@@ -61,8 +62,20 @@ function findFiscalDayColumn(headerRow, cashierCol) {
 function isDateLabel(value) {
     if (value instanceof Date && !Number.isNaN(value.getTime())) return true;
     const s = String(value || '').trim();
+    if (/^all$/i.test(s)) return false;
     if (/^\d{4}-\d{2}-\d{2}(?:T|\b|\s|$)/.test(s)) return true;
     return /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(s);
+}
+
+/** MMX "today only" export uses All in the fiscal column instead of a date. */
+function isAllPeriodDayLabel(value) {
+    return /^all$/i.test(String(value || '').trim());
+}
+
+function resolveDefaultReportDay(options = {}) {
+    const override = String(options.reportDay || options.syncDay || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(override)) return override;
+    return melbourneTodayIso();
 }
 
 function normalizeDayIso(value) {
@@ -421,7 +434,10 @@ function findStoreHeaderRow(grid, headerRowIndex, cashierCol) {
 function isCategoryGroupHeader(cell) {
     const s = String(cell || '').trim();
     if (!s || /\s/.test(s)) return false;
-    return CATEGORY_COLUMN_RE.test(s.replace(/\s+/g, '_').toUpperCase());
+    const upper = s.replace(/\s+/g, '_').toUpperCase();
+    if (!CATEGORY_COLUMN_RE.test(upper)) return false;
+    // Real item names (Churros, Nachos) are single words; OLAP groups are BOX_MEALS-style.
+    return upper.includes('_') || upper.length >= 10;
 }
 
 function isItemHeaderCell(cell) {
@@ -577,7 +593,8 @@ function findFlatFiscalCashierLayout(grid) {
                 storeNumber: '',
             });
         }
-        if (itemHeaders.length < 2) continue;
+        const minItemCols = entityCol >= 0 ? 1 : 2;
+        if (itemHeaders.length < minItemCols) continue;
 
         let dataStartRow = r + 1;
         const row1 = grid[r + 1] || [];
@@ -585,7 +602,9 @@ function findFlatFiscalCashierLayout(grid) {
 
         if (entityCol >= 0) {
             const row1LooksLikeData =
-                isDateLabel(row1[fiscalCol]) || looksLikeCashierName(cellText(row1[cashierCol]));
+                isDateLabel(row1[fiscalCol]) ||
+                isAllPeriodDayLabel(row1[fiscalCol]) ||
+                looksLikeCashierName(cellText(row1[cashierCol]));
             if (!row1LooksLikeData && rowHasSalesItemQuantity(row1)) {
                 dataStartRow = r + 2;
             }
@@ -634,7 +653,7 @@ function buildUnassignedRow(rowIndex, row, layout, fields, reason) {
     };
 }
 
-function parseFlatFiscalCashierRows(grid, layout, filterStore, pointsByLabel) {
+function parseFlatFiscalCashierRows(grid, layout, filterStore, pointsByLabel, options = {}) {
     const { fiscalCol, cashierCol, entityCol, itemHeaders, dataStartRow } = layout;
     let activeCols = itemHeaders;
     const mappedCols = activeCols.filter((col) => pointsByLabel.has(col.norm));
@@ -646,6 +665,7 @@ function parseFlatFiscalCashierRows(grid, layout, filterStore, pointsByLabel) {
     const productLabels = new Set(activeCols.map((col) => col.norm));
     const cashiers = [];
     const unassigned = [];
+    const defaultReportDay = resolveDefaultReportDay(options);
     let currentDay = '';
 
     for (let r = dataStartRow; r < grid.length; r++) {
@@ -678,6 +698,15 @@ function parseFlatFiscalCashierRows(grid, layout, filterStore, pointsByLabel) {
         if (isDateLabel(dateRaw)) {
             // Standard row: col1=date, col2=name, col3=store
             day = normalizeDayIso(dateRaw);
+            currentDay = day;
+            name = nameCell.trim();
+            storeLabel = entityCell.trim();
+            store = extractStoreNumber(storeLabel) || '';
+            if (!name) reason = 'missing name';
+            else if (!store) reason = 'missing store';
+        } else if (isAllPeriodDayLabel(dateRaw)) {
+            // Today-only export: col1=All, col2=name, col3=store
+            day = defaultReportDay;
             currentDay = day;
             name = nameCell.trim();
             storeLabel = entityCell.trim();
@@ -768,7 +797,8 @@ function parseUpsellGrid(grid, pointsByLabel, options = {}) {
             cleanGrid,
             flatLayout,
             filterStore,
-            pointsByLabel
+            pointsByLabel,
+            options
         );
         let cashiers = flatCashiers;
         if (options.syncDay) {

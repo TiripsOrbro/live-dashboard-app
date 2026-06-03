@@ -6,8 +6,33 @@ const {
     TIME_ZONE,
 } = require('./upsellingConfig');
 
+const LEADERBOARD_RETENTION_DAYS = Math.max(
+    1,
+    Number(process.env.UPSELL_LEADERBOARD_RETENTION_DAYS || 7) || 7
+);
+
 function melbourneTodayIso() {
     return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(new Date());
+}
+
+function melbourneDaysAgoIso(daysAgo) {
+    const d = new Date();
+    d.setDate(d.getDate() - Math.max(0, Number(daysAgo) || 0));
+    return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(d);
+}
+
+/** Keep the most recent N calendar days (Melbourne); drop older rows on each merge. */
+function pruneRowsToRetentionDays(rows, keepDays = LEADERBOARD_RETENTION_DAYS) {
+    const span = Math.max(1, keepDays);
+    const cutoff = melbourneDaysAgoIso(span - 1);
+    const pruned = rows.filter((row) => isDayField(row.day) && row.day >= cutoff);
+    const dropped = rows.length - pruned.length;
+    if (dropped > 0) {
+        console.log(
+            `[Leaderboard] Pruned ${dropped} row(s) older than ${span} days (before ${cutoff})`
+        );
+    }
+    return pruned;
 }
 
 function normalizeCashierName(name) {
@@ -427,7 +452,8 @@ function mergeSyncScores(storeNumber, byDay = [], options = {}) {
         );
     }
 
-    const mergedRows = [...byKey.values()].filter(Boolean);
+    let mergedRows = [...byKey.values()].filter(Boolean);
+    mergedRows = pruneRowsToRetentionDays(mergedRows);
 
     if (replaceDays.size || incoming.length) {
         const refreshed = replaceDays.size ? [...replaceDays].join(', ') : 'all incoming days';

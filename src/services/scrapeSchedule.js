@@ -88,6 +88,11 @@ function anyStoreInActiveScrapeWindow(now = new Date()) {
     return storesInActiveScrapeWindow(now).length > 0;
 }
 
+/** True for the hour after close — serve last sales totals, do not scrape. */
+function isPostCloseSalesGrace(store, now = new Date()) {
+    return getStoreScrapePhase(store, now) === 'retain';
+}
+
 function formatScrapeWindow(store, now = new Date()) {
     const { openHour, closeHour } = resolveStoreHoursForSchedule(store, now);
     const preOpen = Number.isFinite(PRE_OPEN_HOURS) && PRE_OPEN_HOURS >= 0 ? PRE_OPEN_HOURS : 2;
@@ -103,6 +108,7 @@ module.exports = {
     getStoreScrapePhaseByNumber,
     storesInActiveScrapeWindow,
     anyStoreInActiveScrapeWindow,
+    isPostCloseSalesGrace,
     formatScrapeWindow,
     melbourneWallClock,
     PRE_OPEN_HOURS,

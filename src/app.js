@@ -50,7 +50,12 @@ const {
     getStockCountQueueStatus,
     melbourneDateKey,
 } = require('./services/stockCountState');
-const { getStoreScrapePhase, anyStoreInActiveScrapeWindow } = require('./services/scrapeSchedule');
+const {
+    getStoreScrapePhase,
+    anyStoreInActiveScrapeWindow,
+    isPostCloseSalesGrace,
+} = require('./services/scrapeSchedule');
+const fsSync = require('fs');
 const { isUpsellingStore } = require('./services/upselling/upsellingConfig');
 const { buildLeaderboardPayload } = require('./services/upselling/upsellingScores');
 const {
@@ -849,6 +854,10 @@ async function scrapeWithRetry(scrapeOptions = {}) {
     throw lastError;
 }
 
+function sumHourly(arr) {
+    return Array.isArray(arr) ? arr.reduce((sum, v) => sum + (Number(v) || 0), 0) : 0;
+}
+
 /** Does a store payload carry usable hourly data (vs an empty/errored placeholder)? */
 function storeHasData(store) {
     return Boolean(
@@ -856,6 +865,69 @@ function storeHasData(store) {
             ((Array.isArray(store.actual) && store.actual.length) ||
                 (Array.isArray(store.forecast) && store.forecast.length))
     );
+}
+
+/** Non-empty arrays that are not all zeros (MMX often returns zeros after close). */
+function storeHasMeaningfulData(store) {
+    if (!store || store.error) return false;
+    return sumHourly(store.actual) > 0 || sumHourly(store.forecast) > 0;
+}
+
+const POST_CLOSE_SNAPSHOT_DIR = path.join(__dirname, '../data/sales-snapshots');
+
+function postCloseSnapshotPath(storeNumber) {
+    const key = String(storeNumber || '').replace(/[^0-9a-z]/gi, '');
+    return path.join(POST_CLOSE_SNAPSHOT_DIR, `${key || 'unknown'}.json`);
+}
+
+function capturePostCloseSnapshot(store) {
+    if (!storeHasMeaningfulData(store)) return;
+    const snap = {
+        capturedAt: new Date().toISOString(),
+        actual: [...store.actual],
+        forecast: [...store.forecast],
+        pendingVendors: Array.isArray(store.pendingVendors) ? [...store.pendingVendors] : [],
+    };
+    store.postCloseSnapshot = snap;
+    try {
+        fsSync.mkdirSync(POST_CLOSE_SNAPSHOT_DIR, { recursive: true });
+        fsSync.writeFileSync(postCloseSnapshotPath(store.storeNumber), JSON.stringify(snap, null, 2), 'utf8');
+    } catch (err) {
+        console.warn(`[Dashboard] Could not write post-close snapshot for ${store.storeNumber}:`, err.message);
+    }
+}
+
+function loadPostCloseSnapshotFromDisk(storeNumber) {
+    const filePath = postCloseSnapshotPath(storeNumber);
+    if (!fsSync.existsSync(filePath)) return null;
+    try {
+        const raw = JSON.parse(fsSync.readFileSync(filePath, 'utf8'));
+        if (!raw || !Array.isArray(raw.actual) || !Array.isArray(raw.forecast)) return null;
+        if (sumHourly(raw.actual) <= 0 && sumHourly(raw.forecast) <= 0) return null;
+        return raw;
+    } catch {
+        return null;
+    }
+}
+
+function restorePostCloseSnapshot(store) {
+    const snap = store.postCloseSnapshot || loadPostCloseSnapshotFromDisk(store.storeNumber);
+    if (!snap) return false;
+    store.actual = [...snap.actual];
+    store.forecast = [...snap.forecast];
+    store.pendingVendors = Array.isArray(snap.pendingVendors) ? [...snap.pendingVendors] : [];
+    store.postCloseSnapshot = snap;
+    store.retained = true;
+    return true;
+}
+
+function clearPostCloseSnapshot(storeNumber) {
+    const filePath = postCloseSnapshotPath(storeNumber);
+    try {
+        if (fsSync.existsSync(filePath)) fsSync.unlinkSync(filePath);
+    } catch (_) {
+        /* ignore */
+    }
 }
 
 /**
@@ -877,9 +949,9 @@ function mergeStoresPreservingGood(prevPayload, freshPayload) {
     return [...allKeys].map((key) => {
         const fresh = freshByNum.get(key);
         if (!fresh) return prevByNum.get(key);
-        if (storeHasData(fresh) && !fresh.error) return fresh;
+        if (storeHasMeaningfulData(fresh) && !fresh.error) return fresh;
         const prev = prevByNum.get(key);
-        if (storeHasData(prev)) {
+        if (storeHasMeaningfulData(prev)) {
             return {
                 ...prev,
                 openHour: Number.isFinite(fresh.openHour) ? fresh.openHour : prev.openHour,
@@ -928,7 +1000,9 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
         store.openHour = hours.openHour;
         store.closeHour = hours.closeHour;
 
-        if (phase === 'idle') {
+        const inPostCloseGrace = isPostCloseSalesGrace(listedStore, now);
+
+        if (phase === 'idle' && !inPostCloseGrace) {
             if (prev && prev !== 'idle') {
                 clearStoreScrapeCaches(key);
             }
@@ -937,8 +1011,16 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
             store.pendingVendors = [];
             delete store.error;
             delete store.retained;
+            delete store.postCloseSnapshot;
             store.scrapePhase = 'idle';
-        } else if (phase === 'retain') {
+            clearPostCloseSnapshot(key);
+        } else if (phase === 'retain' || inPostCloseGrace) {
+            if (prev === 'active' && storeHasMeaningfulData(store)) {
+                capturePostCloseSnapshot(store);
+            }
+            if (!storeHasMeaningfulData(store)) {
+                restorePostCloseSnapshot(store);
+            }
             store.scrapePhase = 'retain';
         } else {
             if (prev === 'idle') {

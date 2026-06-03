@@ -39,7 +39,10 @@ const { buildLeaderboardPayload } = require('../src/services/upselling/upselling
 async function main() {
     const args = process.argv.slice(2).filter((a) => a !== '--');
     const cfg = loadUpsellingConfig();
-    const allStores = args.includes('--all-stores') || (args.length === 0 && isSyncAllStores(cfg));
+    const onlyFlags = args.length > 0 && args.every((a) => a.startsWith('--'));
+    const allStores =
+        args.includes('--all-stores') ||
+        ((args.length === 0 || onlyFlags) && isSyncAllStores(cfg));
     const allDays = args.includes('--all-days') || args.includes('--backfill');
     const fileIdx = args.indexOf('--file');
     const filePath = fileIdx >= 0 ? args[fileIdx + 1] : null;
@@ -51,7 +54,7 @@ async function main() {
         if (fileIdx >= 0 && i === fileIdx + 1) return false;
         return true;
     });
-    const storeNumber = allStores ? null : positional[0];
+    const storeNumber = allStores ? null : positional.find((a) => !a.startsWith('--'));
 
     if (!allStores && !storeNumber) {
         console.error(
@@ -113,6 +116,7 @@ async function main() {
         process.exit(1);
     } else {
         await runUpsellMmxSync(storeNumber, {
+            allDays,
             browserOptions,
             exportMode: forceScrape ? 'scrape' : undefined,
         });

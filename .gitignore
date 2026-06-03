@@ -21,3 +21,4 @@ data/mic/*.json
 data/webauthn/
 data/mmx-users/
 data/account-audit.log
+data/sales-snapshots/

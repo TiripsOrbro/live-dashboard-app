@@ -104,7 +104,13 @@ async function runUpsellMmxSync(storeNumber, options = {}) {
 
         const reportDate = resolveSyncReportDate(cfg);
         const exportMode = String(options.exportMode || cfg.exportMode || 'scrape').toLowerCase();
-        const onOlap = (await pageHasOlapReport(page)) || /^(scrape|olap)$/.test(exportMode);
+        let onOlap = await pageHasOlapReport(page);
+        if (!onOlap && exportMode === 'download') {
+            log.warn(
+                '[Upselling] Portal shell URL without OLAP detection — rechecking frames (avoid legacy Excel export)'
+            );
+            onOlap = await pageHasOlapReport(page);
+        }
 
         if (!onOlap && !cfg.skipDatePicker && reportDate !== 'competition') {
             await setReportStartDate(page, reportDate);

@@ -7,12 +7,39 @@ function isOlapReportPage(url) {
     return /mdxview\.aspx|\/olap\//i.test(String(url || ''));
 }
 
+/** True when this frame shows the Upsell grid (OLAP toolbar and/or cashier table). */
+async function isFrameReportGridReady(ctx) {
+    return ctx
+        .evaluate(() => {
+            const body = document.body?.innerText || '';
+            const href = String(location.href || '');
+            const exportBtn = document.querySelector('#tdShowExport');
+            const table = document.querySelector('table');
+            const rows = table?.querySelectorAll('tr').length || 0;
+            const headerish = /upsell\s+by\s+cashier|fiscal\s+ypwd|cashier\s+name/i.test(body);
+            const todayAllCsv =
+                headerish && /^\s*all\s*$/im.test(body) && rows >= 4;
+            const loadingOnly =
+                /\bloading\.{0,3}\b/i.test(body) && rows < 2 && !exportBtn;
+            if (loadingOnly) return false;
+            if (/mdxview\.aspx|\/olap\/|viewframe\.aspx/i.test(href) && (exportBtn || rows >= 4)) {
+                return true;
+            }
+            if (exportBtn && rows >= 2) return true;
+            if (headerish && rows >= 4) return true;
+            if (todayAllCsv) return true;
+            return false;
+        })
+        .catch(() => false);
+}
+
 async function pageHasOlapReport(page) {
     if (isOlapReportPage(page.url())) return true;
+    if (/viewframe\.aspx/i.test(page.url()) && (await isFrameReportGridReady(page))) return true;
     for (const frame of page.frames()) {
         if (isOlapReportPage(frame.url())) return true;
-        const hasExport = await frame.$('#tdShowExport').catch(() => null);
-        if (hasExport) return true;
+        if (/viewframe\.aspx/i.test(frame.url()) && (await isFrameReportGridReady(frame))) return true;
+        if (await isFrameReportGridReady(frame)) return true;
     }
     return false;
 }
@@ -112,26 +139,12 @@ function writeOlapExportDebug(page, _storeNumber, detail) {
     }
 }
 
-async function waitForOlapReportReady(page, timeoutMs = 90000) {
+async function waitForOlapReportReady(page, timeoutMs = 30000) {
     const start = Date.now();
+    const pollMs = 400;
     while (Date.now() - start < timeoutMs) {
-        for (const { ctx } of collectOlapContexts(page)) {
-            const ready = await ctx
-                .evaluate(() => {
-                    const body = document.body?.innerText || '';
-                    const loading = /\bloading\.{0,3}\b/i.test(body);
-                    const title = /upsell by cashier/i.test(body);
-                    const table =
-                        document.querySelector('table') ||
-                        document.querySelector('[id*="grid"], [class*="grid"], [role="grid"]');
-                    const rows = table?.querySelectorAll('tr').length || 0;
-                    const hasExport = Boolean(document.querySelector('#tdShowExport'));
-                    return !loading && (title || hasExport) && table && rows >= 3;
-                })
-                .catch(() => false);
-            if (ready) return true;
-        }
-        await page.waitForTimeout(1000);
+        if (await pageHasOlapReport(page)) return true;
+        await page.waitForTimeout(pollMs);
     }
     return false;
 }
@@ -364,12 +377,14 @@ async function clickOlapExportOption(page, cfg = {}) {
 }
 
 async function exportOlapReportToFile(page, cfg = {}) {
-    const timeout = Number(cfg.reportReadyTimeoutMs) || 90000;
+    const timeout = Number(cfg.olapExportReadyMs) || 8000;
 
-    log.info('[Upselling] OLAP report (MdxView) — waiting for grid…');
-    const ready = await waitForOlapReportReady(page, timeout);
-    if (!ready) {
-        log.warn('[Upselling] OLAP grid slow to load — trying export anyway');
+    if (!(await pageHasOlapReport(page))) {
+        log.info('[Upselling] OLAP grid — brief ready check…');
+        const ready = await waitForOlapReportReady(page, timeout);
+        if (!ready) {
+            log.warn('[Upselling] OLAP grid not detected — trying export anyway');
+        }
     }
 
     await expandOlapCategories(page);
@@ -385,6 +400,7 @@ async function exportOlapReportToFile(page, cfg = {}) {
 
 module.exports = {
     isOlapReportPage,
+    isFrameReportGridReady,
     pageHasOlapReport,
     waitForOlapReportReady,
     expandOlapCategories,

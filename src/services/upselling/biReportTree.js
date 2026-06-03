@@ -1,5 +1,8 @@
 const { GOTO_OPTS } = require('../mmxReports/mmx-browser');
 const log = require('../mmxReports/util-logging');
+const { pageHasOlapReport, waitForOlapReportReady } = require('./olapReportExport');
+
+const DEFAULT_BI_FOLDER_PATH = ['VIC', 'Ash'];
 
 /** Business Intelligence / Power BI report portal (MenuCustomItemID=227). */
 const DEFAULT_BI_ENTRY_URL =
@@ -488,54 +491,53 @@ async function navigateViaReportTree(page, cfg) {
         }
         log.info(`[Upselling] Opened BI report: ${opened}`);
     } else {
-        log.info(`[Upselling] ${reportName} loads by default — waiting for report grid…`);
+        log.info(`[Upselling] ${reportName} — checking for OLAP grid…`);
+        const quickMs = Number(cfg.reportQuickReadyMs) || 12000;
+        if (!(await waitForOlapReportReady(page, quickMs))) {
+            log.info('[Upselling] Opening report via tree (VIC → Ash)…');
+            const treeTimeout = Number(cfg.treeReadyTimeoutMs) || 60000;
+            let { frame: treeFrame } = await findBestTreeFrame(page);
+            if (!treeFrame) {
+                treeFrame = await waitForReportTreeFrame(page, treeTimeout);
+            }
+            treeFrame = await waitForTreeLabels(page, treeFrame, reportName, treeTimeout);
+            for (const folder of DEFAULT_BI_FOLDER_PATH) {
+                await expandTreeFolderAnywhere(page, folder);
+                await page.waitForTimeout(600);
+            }
+            try {
+                const opened = await openReportInTreeAnywhere(page, reportName);
+                log.info(`[Upselling] Opened BI report: ${opened}`);
+            } catch (err) {
+                log.warn(`[Upselling] Tree open failed (${err.message}); trying search`);
+                const fallbackFrame = (await findBestTreeFrame(page)).frame || findReportTreeFrame(page);
+                if (fallbackFrame) {
+                    await searchReportInTree(fallbackFrame, reportName, page);
+                }
+            }
+        }
     }
 
     await waitForReportViewLoaded(page, cfg);
-    return { opened: reportName, mode: folderPath.length ? 'tree' : 'sidebar-default' };
+    return {
+        opened: reportName,
+        mode: folderPath.length ? 'tree' : 'sidebar-default',
+    };
 }
 
-/** Wait until MdxView report finishes loading (no "Loading..." spinner). */
+/** Wait until Upsell grid is ready in the OLAP iframe (not the portal shell URL). */
 async function waitForReportViewLoaded(page, cfg = {}) {
-    const timeoutMs = Number(cfg.reportReadyTimeoutMs) || 90000;
-    const start = Date.now();
+    const timeoutMs = Number(cfg.reportReadyTimeoutMs) || 30000;
     log.info('[Upselling] Waiting for Upsell by Cashier report to finish loading…');
-
-    while (Date.now() - start < timeoutMs) {
-        let loading = false;
-        let hasExport = false;
-        for (const frame of page.frames()) {
-            const state = await frame
-                .evaluate(() => {
-                    const body = document.body?.innerText || '';
-                    const isLoading =
-                        /\bloading\.{0,3}\b/i.test(body) &&
-                        !document.querySelector('table tr td');
-                    const exportBtn = document.querySelector('#tdShowExport');
-                    const rows = document.querySelectorAll('table tr').length;
-                    return {
-                        isLoading,
-                        hasExport: Boolean(exportBtn),
-                        rows,
-                        hasTitle: /upsell by cashier/i.test(body),
-                    };
-                })
-                .catch(() => null);
-            if (!state) continue;
-            if (state.isLoading) loading = true;
-            if (state.hasExport) hasExport = true;
-            if (state.hasExport && state.rows >= 3 && !state.isLoading) {
-                log.info('[Upselling] Report loaded');
-                await page.waitForTimeout(1500);
-                return true;
-            }
-        }
-        if (!loading && hasExport) {
-            log.info('[Upselling] Report toolbar ready');
-            await page.waitForTimeout(1500);
-            return true;
-        }
-        await page.waitForTimeout(1000);
+    const ready = await waitForOlapReportReady(page, timeoutMs);
+    if (ready) {
+        log.info('[Upselling] Report loaded');
+        await page.waitForTimeout(600);
+        return true;
+    }
+    if (await pageHasOlapReport(page)) {
+        log.info('[Upselling] Report grid detected after wait');
+        return true;
     }
     log.warn('[Upselling] Report load wait timed out — continuing');
     return false;

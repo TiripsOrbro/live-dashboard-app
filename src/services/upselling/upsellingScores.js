@@ -376,7 +376,6 @@ function buildLeaderboardPayload(storeNumber) {
             mmxPoints: r.mmxPoints,
             bestDay: r.bestDay || '',
             bonusPoints: r.bonusPoints,
-            dayShiftMultiplier: r.dayShiftMultiplier || null,
             total: r.total,
         }))
         .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))

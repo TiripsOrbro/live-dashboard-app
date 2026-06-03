@@ -157,7 +157,6 @@ function buildTestStoreLeaderboardPayload(stickyKey = '') {
             mmxPoints: total,
             bestDay: today,
             bonusPoints: 0,
-            dayShiftMultiplier: null,
             total,
         };
     })
@@ -178,7 +177,6 @@ function buildTestStoreLeaderboardPayload(stickyKey = '') {
             points: row.total,
             mmxPoints: row.mmxPoints,
             basePoints: row.total,
-            dayShiftMultiplier: null,
             sourceName: row.name,
         })),
         lastSyncAt: new Date().toISOString(),

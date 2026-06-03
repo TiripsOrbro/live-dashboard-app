@@ -111,33 +111,14 @@ function effectivePoints(row) {
     return Number(row?.points) || 0;
 }
 
-function normalizeDayShiftEmployeeMultiplier(raw) {
-    if (!raw || typeof raw !== 'object') return null;
-    const employees = (Array.isArray(raw.employees) ? raw.employees : [])
-        .map((name) => String(name || '').trim())
-        .filter(Boolean);
-    if (!employees.length) return null;
-    const multiplier = Number(raw.multiplier);
+function scoredPoints(row) {
+    const mmxPoints = Number(row?.points) || 0;
+    const total = effectivePoints(row);
     return {
-        multiplier: Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1.5,
-        employees,
+        mmxPoints,
+        total,
+        bonusPoints: Math.max(0, total - mmxPoints),
     };
-}
-
-function employeeMatchesDayShift(name, dayShiftConfig) {
-    if (!dayShiftConfig?.employees?.length) return false;
-    const key = normalizeCashierName(name);
-    return dayShiftConfig.employees.some((employee) => normalizeCashierName(employee) === key);
-}
-
-function scoredPoints(row, dayShiftConfig) {
-    const base = effectivePoints(row);
-    if (!base) return { base: 0, total: 0, multiplier: null };
-    if (!employeeMatchesDayShift(row.name, dayShiftConfig)) {
-        return { base, total: base, multiplier: null };
-    }
-    const multiplier = Number(dayShiftConfig.multiplier) || 1.5;
-    return { base, total: Math.round(base * multiplier), multiplier };
 }
 
 function normalizeScoreRow(row = {}, preserve = null) {
@@ -357,7 +338,6 @@ function loadScores(storeNumber) {
     return {
         storeNumber: store,
         lastSyncAt: raw.lastSyncAt || null,
-        dayShiftEmployeeMultiplier: normalizeDayShiftEmployeeMultiplier(raw.dayShiftEmployeeMultiplier),
         rows,
         source: fs.existsSync(file) ? path.basename(file) : null,
     };
@@ -379,11 +359,6 @@ function saveScores(storeNumber, rows = [], meta = {}) {
         lastSyncAt: meta.lastSyncAt || new Date().toISOString(),
         rows: normalized.map(serializeScoreRow),
     };
-    const dayShift =
-        meta.dayShiftEmployeeMultiplier !== undefined
-            ? normalizeDayShiftEmployeeMultiplier(meta.dayShiftEmployeeMultiplier)
-            : normalizeDayShiftEmployeeMultiplier(existing.dayShiftEmployeeMultiplier);
-    if (dayShift) payload.dayShiftEmployeeMultiplier = dayShift;
     writeJsonFile(file, payload);
     return normalized;
 }
@@ -406,7 +381,7 @@ function resolveLeaderboardPeriod(options = {}) {
 function aggregateLeaderboard(storeNumber, options = {}) {
     const dayFilter = resolveLeaderboardDayFilter(options);
     const weekMode = resolveLeaderboardPeriod(options) === 'week';
-    const { rows, dayShiftEmployeeMultiplier } = loadScores(storeNumber);
+    const { rows } = loadScores(storeNumber);
     const bestByName = new Map();
     const weekTotalsByName = new Map();
     const effectiveByDay = [];
@@ -416,17 +391,16 @@ function aggregateLeaderboard(storeNumber, options = {}) {
             if (!isDayInMelbourneWeek(row.day)) continue;
         } else if (dayFilter && row.day !== dayFilter) continue;
         if (row.excluded) continue;
-        const { base, total, multiplier } = scoredPoints(row, dayShiftEmployeeMultiplier);
+        const { mmxPoints, total, bonusPoints } = scoredPoints(row);
         if (!total) continue;
 
         effectiveByDay.push({
             day: row.day,
             name: row.name,
             points: total,
-            mmxPoints: row.points,
-            basePoints: base,
+            mmxPoints,
+            bonusPoints,
             override: row.override,
-            dayShiftMultiplier: multiplier,
             sourceName: row.name,
         });
 
@@ -441,9 +415,8 @@ function aggregateLeaderboard(storeNumber, options = {}) {
             weekTotalsByName.set(key, {
                 name: row.name,
                 points: (prev?.points || 0) + total,
-                basePoints: (prev?.basePoints || 0) + base,
-                mmxPoints: (prev?.mmxPoints || 0) + (Number(row.points) || 0),
-                dayShiftMultiplier: multiplier || prev?.dayShiftMultiplier || null,
+                mmxPoints: (prev?.mmxPoints || 0) + mmxPoints,
+                bonusPoints: (prev?.bonusPoints || 0) + bonusPoints,
                 bestDay,
                 bestDayPoints,
             });
@@ -458,9 +431,8 @@ function aggregateLeaderboard(storeNumber, options = {}) {
         ) {
             bestByName.set(key, {
                 points: total,
-                basePoints: base,
-                mmxPoints: row.points,
-                dayShiftMultiplier: multiplier,
+                mmxPoints,
+                bonusPoints,
                 day: row.day,
                 name: row.name,
             });
@@ -473,8 +445,7 @@ function aggregateLeaderboard(storeNumber, options = {}) {
             name: best.name,
             mmxPoints: best.mmxPoints,
             bestDay: best.bestDay || best.day,
-            bonusPoints: Math.max(0, best.points - best.basePoints),
-            dayShiftMultiplier: best.dayShiftMultiplier,
+            bonusPoints: best.bonusPoints || 0,
             total: best.points,
         }))
         .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
@@ -573,8 +544,6 @@ module.exports = {
     mergeSyncScores,
     effectivePoints,
     scoredPoints,
-    normalizeDayShiftEmployeeMultiplier,
-    employeeMatchesDayShift,
     migrateLegacyStore,
     migrateSharedLayout,
     cleanupLegacyFolders,

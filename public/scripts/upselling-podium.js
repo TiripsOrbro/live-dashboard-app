@@ -31,10 +31,20 @@
         return qs ? `${API_BASE}?${qs}` : API_BASE;
     }
 
+    function podiumMountParent() {
+        return document.querySelector('.dashboard') || document.body;
+    }
+
+    function mountPodiumEl(el) {
+        const parent = podiumMountParent();
+        if (el.parentElement !== parent) parent.appendChild(el);
+    }
+
     function ensurePodiumEl() {
         let el = document.getElementById('upsell-podium');
         if (el) {
             if (PODIUM_ALWAYS_VISIBLE) el.classList.add('upsell-podium--persistent');
+            mountPodiumEl(el);
             return el;
         }
         el = document.createElement('div');
@@ -48,7 +58,7 @@
                 <div class="upsell-podium__updated"></div>
             </div>
         `;
-        document.body.appendChild(el);
+        mountPodiumEl(el);
         return el;
     }
 
@@ -119,7 +129,9 @@
         cycleTimer.unref?.();
     }
 
-    /** Left-to-right podium: 7th, 5th, 3rd, 1st, 2nd, 4th, 6th. */
+    /** Left-to-right podium slots: 7th, 5th, 3rd, 1st, 2nd, 4th, 6th (#1 always centre). */
+    const PODIUM_LAYOUT = [7, 5, 3, 1, 2, 4, 6];
+
     function buildPodiumOrder(data) {
         const top7 = Array.isArray(data?.top7)
             ? data.top7
@@ -130,9 +142,8 @@
                 : Array.isArray(data?.top3)
                   ? data.top3
                   : [];
-        const byRank = new Map(top7.map((row) => [row.rank, row]));
-        const layout = [7, 5, 3, 1, 2, 4, 6];
-        return layout.map((rank) => byRank.get(rank)).filter(Boolean);
+        const byRank = new Map(top7.map((row) => [Number(row.rank), row]));
+        return PODIUM_LAYOUT.map((rank) => byRank.get(rank) || null);
     }
 
     function barClassForRank(rank) {
@@ -152,6 +163,20 @@
         return `<div class="upsell-podium__name">${escapeHtml(row.name)}</div>`;
     }
 
+    /** Empty slot keeps the 7-column podium balanced when e.g. rank 7 has no points yet. */
+    function renderPodiumSpacer(rank) {
+        return `
+                <div class="upsell-podium__col upsell-podium__col--spacer upsell-podium__col--place-${rank}" aria-hidden="true">
+                    <div class="upsell-podium__bar-slot">
+                        <div class="${barClassForRank(rank)}" aria-hidden="true"></div>
+                    </div>
+                    <div class="upsell-podium__place">#${rank}</div>
+                    <div class="upsell-podium__name">&nbsp;</div>
+                    <div class="upsell-podium__score">&nbsp;</div>
+                </div>
+            `;
+    }
+
     function renderPodiumColumn(row) {
         return `
                 <div class="upsell-podium__col upsell-podium__col--place-${row.rank}">
@@ -165,6 +190,10 @@
             `;
     }
 
+    function renderPodiumSlot(row, rank) {
+        return row ? renderPodiumColumn(row) : renderPodiumSpacer(rank);
+    }
+
     function formatUpdated(iso) {
         if (!iso) return '';
         try {
@@ -173,6 +202,30 @@
         } catch (_) {
             return '';
         }
+    }
+
+    function formatWeekLabel(start, end) {
+        if (!start || !end) return 'This week';
+        try {
+            const fmt = (iso) => {
+                const [y, m, d] = String(iso).split('-').map(Number);
+                return new Date(y, m - 1, d).toLocaleDateString('en-AU', {
+                    day: 'numeric',
+                    month: 'short',
+                });
+            };
+            return `${fmt(start)} – ${fmt(end)}`;
+        } catch (_) {
+            return 'This week';
+        }
+    }
+
+    function podiumTitle(data) {
+        if (data?.leaderboardPeriod === 'week') {
+            const range = formatWeekLabel(data.weekStart, data.weekEnd);
+            return `Upsell leaderboard — ${range}`;
+        }
+        return 'Upsell leaderboard';
     }
 
     function renderPodium(data) {
@@ -190,9 +243,14 @@
 
         const order = buildPodiumOrder(data);
 
+        const label = root.querySelector('.upsell-podium__label');
+        if (label) label.textContent = podiumTitle(data);
+
         const cols = root.querySelector('.upsell-podium__cols');
         if (cols) {
-            cols.innerHTML = order.map((row) => renderPodiumColumn(row)).join('');
+            cols.innerHTML = order
+                .map((row, index) => renderPodiumSlot(row, PODIUM_LAYOUT[index]))
+                .join('');
         }
 
         const updated = root.querySelector('.upsell-podium__updated');
@@ -242,6 +300,9 @@
     }
 
     function onLayoutChange() {
+        const root = document.getElementById('upsell-podium');
+        if (root) mountPodiumEl(root);
+
         const portrait = document.body.classList.contains('dashboard--portrait');
         if (portrait) {
             stopRevealCycle();

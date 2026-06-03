@@ -78,6 +78,32 @@ function resolveDefaultReportDay(options = {}) {
     return melbourneTodayIso();
 }
 
+/** When the CSV has no Entity column, infer store from "3811 Chirnside Park" text anywhere in the grid. */
+function inferDominantStoreFromGrid(grid) {
+    const counts = new Map();
+    const storeRe = /\b(38\d{2}|39\d{2})\b/g;
+    for (const row of grid || []) {
+        for (const cell of row || []) {
+            const text = String(cell ?? '');
+            if (!text) continue;
+            let match;
+            while ((match = storeRe.exec(text)) !== null) {
+                const store = match[1];
+                counts.set(store, (counts.get(store) || 0) + 1);
+            }
+        }
+    }
+    let best = '';
+    let max = 0;
+    for (const [store, n] of counts) {
+        if (n > max) {
+            max = n;
+            best = store;
+        }
+    }
+    return best;
+}
+
 function normalizeDayIso(value) {
     if (value instanceof Date && !Number.isNaN(value.getTime())) {
         return value.toISOString().slice(0, 10);
@@ -662,6 +688,12 @@ function parseFlatFiscalCashierRows(grid, layout, filterStore, pointsByLabel, op
         activeCols = activeCols.filter((col) => !col.storeNumber || col.storeNumber === filterStore);
     }
 
+    const inferredStore =
+        normalizeFilterStore(options.fallbackStoreNumber) ||
+        inferDominantStoreFromGrid(grid) ||
+        '';
+    const fallbackStore = filterStore || inferredStore;
+
     const productLabels = new Set(activeCols.map((col) => col.norm));
     const cashiers = [];
     const unassigned = [];
@@ -689,6 +721,16 @@ function parseFlatFiscalCashierRows(grid, layout, filterStore, pointsByLabel, op
         }
         const hasQty = Object.keys(qtyByColumn).length > 0;
 
+        // Store label row (e.g. "3811 Chirnside Park" in fiscal col) — not a cashier line.
+        if (
+            entityCol < 0 &&
+            !hasQty &&
+            !nameCell &&
+            (STORE_ENTITY_RE.test(dateCell) || extractStoreNumber(dateCell))
+        ) {
+            continue;
+        }
+
         let day = '';
         let name = '';
         let store = '';
@@ -705,22 +747,28 @@ function parseFlatFiscalCashierRows(grid, layout, filterStore, pointsByLabel, op
             if (!name) reason = 'missing name';
             else if (!store) reason = 'missing store';
         } else if (isAllPeriodDayLabel(dateRaw)) {
-            // Today-only export: col1=All, col2=name, col3=store
+            // Today-only export: col1=All, col2=name, col3=store (or no entity column)
             day = defaultReportDay;
             currentDay = day;
             name = nameCell.trim();
             storeLabel = entityCell.trim();
-            store = extractStoreNumber(storeLabel) || '';
+            store = extractStoreNumber(storeLabel) || fallbackStore;
             if (!name) reason = 'missing name';
             else if (!store) reason = 'missing store';
         } else if (
-            looksLikeCashierName(dateCell, productLabels) &&
-            extractStoreNumber(nameCell)
+            entityCol < 0
+                ? looksLikeCashierName(dateCell, productLabels) &&
+                  !isAllPeriodDayLabel(dateRaw) &&
+                  !isDateLabel(dateRaw)
+                : looksLikeCashierName(dateCell, productLabels) && extractStoreNumber(nameCell)
         ) {
-            // Continuation row: col1=name, col2=store (date carried from prior row)
+            // Continuation: col1=name, col2=store — or single-store layout with no entity column
             name = dateCell.trim();
-            storeLabel = nameCell.trim();
-            store = extractStoreNumber(storeLabel) || '';
+            storeLabel = entityCol >= 0 ? nameCell.trim() : '';
+            store =
+                entityCol >= 0
+                    ? extractStoreNumber(storeLabel) || ''
+                    : fallbackStore || extractStoreNumber(nameCell) || '';
             day = currentDay;
             if (!day) reason = 'missing date';
             else if (!name) reason = 'missing name';

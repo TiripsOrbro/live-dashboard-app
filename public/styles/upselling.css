@@ -1,11 +1,14 @@
+/* Anchored to .dashboard so zoom/letterboxing keeps the podium aligned with the grid */
 #upsell-podium {
-    position: fixed;
+    position: absolute;
+    left: 0;
+    right: 0;
     bottom: clamp(8px, 1.5vh, 28px);
-    left: 50%;
-    transform: translateX(-50%);
     z-index: 8000;
-    max-width: min(96vw, 1280px);
-    width: min(96vw, 1280px);
+    width: fit-content;
+    max-width: calc(100% - 2 * clamp(12px, 2vw, 32px));
+    margin-left: auto;
+    margin-right: auto;
     pointer-events: none;
     font-family: inherit;
 }
@@ -15,10 +18,16 @@
 }
 
 .upsell-podium__inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: max-content;
+    max-width: 100%;
+    margin: 0 auto;
     background: transparent;
     border: none;
     box-shadow: none;
-    padding: 0 1vw;
+    padding: 0;
     color: #2d1b3d;
     opacity: 0;
     transform: translateY(28px);
@@ -77,19 +86,32 @@
     justify-content: center;
     gap: clamp(6px, 1.2vw, 18px);
     min-height: min(34vh, 320px);
-    width: 100%;
+    width: max-content;
+    max-width: 100%;
+    margin: 0 auto;
 }
 
 .upsell-podium__col {
-    flex: 1 1 0;
+    flex: 0 0 auto;
+    width: clamp(4.5rem, 9vw, 7.25rem);
     min-width: 0;
-    max-width: 13%;
     text-align: center;
 }
 
 .upsell-podium__col--place-1 {
-    flex: 1.15 1 0;
-    max-width: 16%;
+    width: clamp(5rem, 10vw, 8rem);
+}
+
+/* Missing rank (e.g. no 7th yet) — same footprint, invisible labels */
+.upsell-podium__col--spacer {
+    pointer-events: none;
+}
+
+.upsell-podium__col--spacer .upsell-podium__bar,
+.upsell-podium__col--spacer .upsell-podium__place,
+.upsell-podium__col--spacer .upsell-podium__name,
+.upsell-podium__col--spacer .upsell-podium__score {
+    visibility: hidden;
 }
 
 .upsell-podium__bar-slot {

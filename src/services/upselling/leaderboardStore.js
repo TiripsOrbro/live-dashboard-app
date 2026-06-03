@@ -21,6 +21,46 @@ function melbourneDaysAgoIso(daysAgo) {
     return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(d);
 }
 
+function melbourneWeekdayIndex(date = new Date()) {
+    const wd = new Intl.DateTimeFormat('en-US', { timeZone: TIME_ZONE, weekday: 'short' }).format(
+        date
+    );
+    const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    return map[wd] ?? 0;
+}
+
+/** Monday (inclusive) of the current Melbourne calendar week. */
+function melbourneWeekStartIso(date = new Date()) {
+    const daysFromMonday = (melbourneWeekdayIndex(date) + 6) % 7;
+    const d = new Date(date);
+    d.setDate(d.getDate() - daysFromMonday);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(d);
+}
+
+function addDaysToIso(iso, days) {
+    const [y, m, d] = String(iso || '').split('-').map(Number);
+    if (!y || !m || !d) return '';
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + Number(days) || 0);
+    const y2 = dt.getFullYear();
+    const m2 = String(dt.getMonth() + 1).padStart(2, '0');
+    const d2 = String(dt.getDate()).padStart(2, '0');
+    return `${y2}-${m2}-${d2}`;
+}
+
+/** Sunday (inclusive) of the current Melbourne calendar week. */
+function melbourneWeekEndIso(date = new Date()) {
+    return addDaysToIso(melbourneWeekStartIso(date), 6);
+}
+
+function isDayInMelbourneWeek(dayIso, date = new Date()) {
+    const day = String(dayIso || '').trim();
+    if (!isDayField(day)) return false;
+    const start = melbourneWeekStartIso(date);
+    const end = melbourneWeekEndIso(date);
+    return day >= start && day <= end;
+}
+
 /** Keep the most recent N calendar days (Melbourne); drop older rows on each merge. */
 function pruneRowsToRetentionDays(rows, keepDays = LEADERBOARD_RETENTION_DAYS) {
     const span = Math.max(1, keepDays);
@@ -354,15 +394,27 @@ function resolveLeaderboardDayFilter(options = {}) {
     return isDayField(explicit) ? explicit : null;
 }
 
-/** Rank cashiers. Default: best single day in retention window. Pass { day: 'today' } for today's podium. */
+function resolveLeaderboardPeriod(options = {}) {
+    const period = String(options.period || '').trim().toLowerCase();
+    if (period === 'week') return 'week';
+    const day = String(options.day || '').trim().toLowerCase();
+    if (day === 'week' || day === 'thisweek') return 'week';
+    return '';
+}
+
+/** Rank cashiers. Default: best single day in retention. `{ period: 'week' }` sums Mon–Sun for the podium. */
 function aggregateLeaderboard(storeNumber, options = {}) {
     const dayFilter = resolveLeaderboardDayFilter(options);
+    const weekMode = resolveLeaderboardPeriod(options) === 'week';
     const { rows, dayShiftEmployeeMultiplier } = loadScores(storeNumber);
     const bestByName = new Map();
+    const weekTotalsByName = new Map();
     const effectiveByDay = [];
 
     for (const row of rows) {
-        if (dayFilter && row.day !== dayFilter) continue;
+        if (weekMode) {
+            if (!isDayInMelbourneWeek(row.day)) continue;
+        } else if (dayFilter && row.day !== dayFilter) continue;
         if (row.excluded) continue;
         const { base, total, multiplier } = scoredPoints(row, dayShiftEmployeeMultiplier);
         if (!total) continue;
@@ -379,6 +431,25 @@ function aggregateLeaderboard(storeNumber, options = {}) {
         });
 
         const key = normalizeCashierName(row.name);
+        if (weekMode) {
+            const prev = weekTotalsByName.get(key);
+            const bestDay =
+                !prev || total > prev.bestDayPoints
+                    ? row.day
+                    : prev.bestDay;
+            const bestDayPoints = Math.max(prev?.bestDayPoints || 0, total);
+            weekTotalsByName.set(key, {
+                name: row.name,
+                points: (prev?.points || 0) + total,
+                basePoints: (prev?.basePoints || 0) + base,
+                mmxPoints: (prev?.mmxPoints || 0) + (Number(row.points) || 0),
+                dayShiftMultiplier: multiplier || prev?.dayShiftMultiplier || null,
+                bestDay,
+                bestDayPoints,
+            });
+            continue;
+        }
+
         const prev = bestByName.get(key);
         if (
             !prev ||
@@ -396,11 +467,12 @@ function aggregateLeaderboard(storeNumber, options = {}) {
         }
     }
 
-    const rankedRows = [...bestByName.values()]
+    const aggregateSource = weekMode ? weekTotalsByName : bestByName;
+    const rankedRows = [...aggregateSource.values()]
         .map((best) => ({
             name: best.name,
             mmxPoints: best.mmxPoints,
-            bestDay: best.day,
+            bestDay: best.bestDay || best.day,
             bonusPoints: Math.max(0, best.points - best.basePoints),
             dayShiftMultiplier: best.dayShiftMultiplier,
             total: best.points,
@@ -414,7 +486,13 @@ function aggregateLeaderboard(storeNumber, options = {}) {
             a.name.localeCompare(b.name)
     );
 
-    return { rows: rankedRows, byDay: effectiveByDay };
+    return {
+        rows: rankedRows,
+        byDay: effectiveByDay,
+        period: weekMode ? 'week' : dayFilter ? 'day' : 'bestDay',
+        weekStart: weekMode ? melbourneWeekStartIso() : null,
+        weekEnd: weekMode ? melbourneWeekEndIso() : null,
+    };
 }
 
 function mergeSyncScores(storeNumber, byDay = [], options = {}) {
@@ -482,12 +560,16 @@ module.exports = {
     normalizeCashierName,
     isDayField,
     melbourneTodayIso,
+    melbourneWeekStartIso,
+    melbourneWeekEndIso,
+    isDayInMelbourneWeek,
     scoresPath,
     leaderboardFilePath,
     loadScores,
     saveScores,
     aggregateLeaderboard,
     resolveLeaderboardDayFilter,
+    resolveLeaderboardPeriod,
     mergeSyncScores,
     effectivePoints,
     scoredPoints,

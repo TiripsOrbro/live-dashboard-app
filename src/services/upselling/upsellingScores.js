@@ -267,7 +267,17 @@ function scoreAllStoresFromParsed(parsed, options = {}) {
         );
     }
 
-    return { parsed, stores: results, storeNumbers, skipped, syncDay };
+    const storesInExport = uniqueStoreNumbersFromParsed(parsed);
+    if (storeNumbers.length > 1 && storesInExport.length <= 1) {
+        const missing = storeNumbers.filter((s) => !storesInExport.includes(s));
+        console.warn(
+            `[Upselling] CSV only has data for: ${storesInExport.join(', ') || '(none)'}. ` +
+                `${missing.length} other enabled store(s) got 0 new row(s) today: ${missing.join(', ')}. ` +
+                'The BI export is not regional — in MMX add Entity (all sites) to Upsell by Cashier, or export the wide grid with a store row above each item column (see data/upselling/sample-multi-store.csv).'
+        );
+    }
+
+    return { parsed, stores: results, storeNumbers, skipped, syncDay, storesInExport };
 }
 
 /**
@@ -356,7 +366,9 @@ function processReportFile(filePath, storeNumber, options = {}) {
 
 function buildLeaderboardPayload(storeNumber) {
     const wantStore = String(storeNumber || '').trim();
-    const { rows, byDay } = aggregateLeaderboard(wantStore, { day: 'today' });
+    const { rows, byDay, period, weekStart, weekEnd } = aggregateLeaderboard(wantStore, {
+        period: 'week',
+    });
     const ranked = rows
         .map((r, i) => ({
             rank: i + 1,
@@ -399,6 +411,9 @@ function buildLeaderboardPayload(storeNumber) {
         lastSyncAt,
         reportDate: reportDate || leaderboardDay,
         leaderboardDay,
+        leaderboardPeriod: period || 'week',
+        weekStart: weekStart || null,
+        weekEnd: weekEnd || null,
     };
 }
 

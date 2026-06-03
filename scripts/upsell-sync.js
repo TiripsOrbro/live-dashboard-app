@@ -127,9 +127,13 @@ async function main() {
 
 function printStoreSummary(storeNumber) {
     const payload = buildLeaderboardPayload(storeNumber);
-    console.log(`\n[upsell-sync] Leaderboard ${storeNumber}:`);
-    for (const r of payload.top5 || []) {
-        console.log(`  ${r.rank}. ${r.name} — ${r.total} pts (best day ${r.bestDay || '?'})`);
+    const period =
+        payload.leaderboardPeriod === 'week' && payload.weekStart && payload.weekEnd
+            ? `week ${payload.weekStart} – ${payload.weekEnd}`
+            : `day ${payload.leaderboardDay || '?'}`;
+    console.log(`\n[upsell-sync] Leaderboard ${storeNumber} (${period}):`);
+    for (const r of payload.top7 || payload.top5 || []) {
+        console.log(`  ${r.rank}. ${r.name} — ${r.total} pts`);
     }
 }
 

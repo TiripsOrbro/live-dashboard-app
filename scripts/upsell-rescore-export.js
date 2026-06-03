@@ -78,9 +78,13 @@ function main() {
         console.log(`[upsell-rescore] Updated stores: ${multi.storeNumbers.join(', ') || '(none)'}`);
         for (const storeNumber of multi.storeNumbers) {
             const payload = buildLeaderboardPayload(storeNumber);
-            console.log(`\n[upsell-rescore] Top 3 for ${storeNumber}:`);
-            for (const r of payload.top3) {
-                console.log(`  ${r.rank}. ${r.name} — ${r.total} (best day ${r.bestDay || '?'})`);
+            const period =
+                payload.leaderboardPeriod === 'week' && payload.weekStart
+                    ? `week ${payload.weekStart} – ${payload.weekEnd}`
+                    : `day ${payload.leaderboardDay || '?'}`;
+            console.log(`\n[upsell-rescore] Top 7 for ${storeNumber} (${period}):`);
+            for (const r of payload.top7 || payload.top5 || payload.top3 || []) {
+                console.log(`  ${r.rank}. ${r.name} — ${r.total} pts`);
             }
         }
         return;
@@ -95,9 +99,13 @@ function main() {
     const { rows } = loadScores(store);
     console.log(`[upsell-rescore] ${store}_leaderboard.json rows: ${rows.length}`);
     const payload = buildLeaderboardPayload(store);
-    console.log(`[upsell-rescore] Top 5 for ${store}:`);
-    for (const r of payload.top5) {
-        console.log(`  ${r.rank}. ${r.name} — ${r.total} (best day ${r.bestDay || '?'})`);
+    const period =
+        payload.leaderboardPeriod === 'week' && payload.weekStart
+            ? `week ${payload.weekStart} – ${payload.weekEnd}`
+            : `day ${payload.leaderboardDay || '?'}`;
+    console.log(`[upsell-rescore] Top 7 for ${store} (${period}):`);
+    for (const r of payload.top7 || payload.top5 || []) {
+        console.log(`  ${r.rank}. ${r.name} — ${r.total} pts`);
     }
 }
 

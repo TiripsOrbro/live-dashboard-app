@@ -24,7 +24,8 @@ const DEFAULT_CONFIG = {
     ],
     updateIntervalMinutes: 60,
     reportDateMode: 'competition',
-    biFolderPath: ['VIC', 'Ash'],
+    biNavigationMode: 'direct',
+    biFolderPath: [],
     reportName: 'Upsell by Cashier',
     biReportUrl:
         'https://tacobellau.macromatix.net/reportportal5/Proxy.aspx?reportId=317',

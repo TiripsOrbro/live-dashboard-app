@@ -510,13 +510,8 @@ async function navigateViaReportTree(page, cfg) {
             return navigateToDirectBiReport(page, cfg);
         }
     } else {
-        log.info(`[Upselling] ${reportName} — OLAP not ready; trying default tree path…`);
-        try {
-            await tryOpenReportViaTree(page, cfg, reportName, []);
-        } catch (err) {
-            log.warn(`[Upselling] Default tree failed (${err.message}); trying direct report URL`);
-            return navigateToDirectBiReport(page, cfg);
-        }
+        log.info(`[Upselling] ${reportName} — OLAP not ready; opening direct report URL (tree skipped)`);
+        return navigateToDirectBiReport(page, cfg);
     }
 
     await waitForReportViewLoaded(page, cfg);
@@ -544,10 +539,21 @@ async function waitForReportViewLoaded(page, cfg = {}) {
     return false;
 }
 
+function resolveBiNavigationMode(cfg = {}) {
+    const mode = String(cfg.biNavigationMode || 'direct').trim().toLowerCase();
+    if (mode === 'tree' || mode === 'sidebar-tree') return 'tree';
+    return 'direct';
+}
+
 /**
- * Navigate to BI report — sidebar first, then tree, then direct Proxy.aspx?reportId=317.
+ * Navigate to BI report. Default: portal session + Proxy.aspx?reportId=317 (no sidebar tree).
+ * Set biNavigationMode to "tree" only if VIC/Ash folder navigation works in your tenant.
  */
 async function navigateToBiReport(page, cfg) {
+    if (resolveBiNavigationMode(cfg) === 'direct') {
+        log.info('[Upselling] BI navigation: direct report URL (skipping sidebar tree)');
+        return navigateToDirectBiReport(page, cfg);
+    }
     if (resolveBiReportUrl(cfg)) {
         return navigateToDirectBiReport(page, cfg);
     }

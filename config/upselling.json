@@ -28,7 +28,9 @@
     "$1 Sauce Add On": 1
   },
   "reportDateMode": "competition",
-  "_comment_biFolderPath": "Optional tree folders (e.g. VIC, Ash). Empty = BI opens report by default; tree only if needed.",
+  "biNavigationMode": "direct",
+  "_comment_biNavigationMode": "direct = portal + reportId 317 (fast, works on Pi). tree = sidebar + VIC/Ash folders (slow; only if your BI tree has them).",
+  "_comment_biFolderPath": "Only used when biNavigationMode is tree — e.g. [\"VIC\", \"Ash\"]",
   "biFolderPath": [],
   "reportName": "Upsell by Cashier",
   "biMenuParentText": "Reports",

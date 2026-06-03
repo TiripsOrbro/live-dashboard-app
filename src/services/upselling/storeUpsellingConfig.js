@@ -149,6 +149,21 @@ function isUpsellingEnabledForStore(storeNumber) {
     return resolveEnabledStoresLegacy(loadLegacyUpsellingConfig()).includes(key);
 }
 
+function getDayShiftEmployeeMultiplier(storeNumber) {
+    const entry = getRawStoreEntry(storeNumber);
+    const raw = entry?.dayShiftEmployeeMultiplier;
+    if (!raw || typeof raw !== 'object') return null;
+    const employees = (Array.isArray(raw.employees) ? raw.employees : [])
+        .map((name) => String(name || '').trim())
+        .filter(Boolean);
+    if (!employees.length) return null;
+    const multiplier = Number(raw.multiplier);
+    return {
+        multiplier: Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1.5,
+        employees,
+    };
+}
+
 function listStoreConfigs() {
     const file = loadStoreUpsellingFile();
     const out = [];
@@ -173,5 +188,6 @@ module.exports = {
     resolveEnabledStores,
     isUpsellingEnabledForStore,
     parseStorePointsOverrides,
+    getDayShiftEmployeeMultiplier,
     listStoreConfigs,
 };

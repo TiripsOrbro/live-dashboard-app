@@ -5,6 +5,7 @@ const {
     leaderboardFilePath,
     TIME_ZONE,
 } = require('./upsellingConfig');
+const { getDayShiftEmployeeMultiplier } = require('./storeUpsellingConfig');
 
 const LEADERBOARD_RETENTION_DAYS = Math.max(
     1,
@@ -122,6 +123,14 @@ function normalizeDayShiftEmployeeMultiplier(raw) {
         multiplier: Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1.5,
         employees,
     };
+}
+
+/** Leaderboard JSON overrides config/upselling-stores.json per store. */
+function resolveDayShiftEmployeeMultiplier(storeNumber, fromLeaderboardFile) {
+    return (
+        normalizeDayShiftEmployeeMultiplier(fromLeaderboardFile) ||
+        getDayShiftEmployeeMultiplier(storeNumber)
+    );
 }
 
 function employeeMatchesDayShift(name, dayShiftConfig) {
@@ -357,7 +366,7 @@ function loadScores(storeNumber) {
     return {
         storeNumber: store,
         lastSyncAt: raw.lastSyncAt || null,
-        dayShiftEmployeeMultiplier: normalizeDayShiftEmployeeMultiplier(raw.dayShiftEmployeeMultiplier),
+        dayShiftEmployeeMultiplier: resolveDayShiftEmployeeMultiplier(store, raw.dayShiftEmployeeMultiplier),
         rows,
         source: fs.existsSync(file) ? path.basename(file) : null,
     };
@@ -382,7 +391,7 @@ function saveScores(storeNumber, rows = [], meta = {}) {
     const dayShift =
         meta.dayShiftEmployeeMultiplier !== undefined
             ? normalizeDayShiftEmployeeMultiplier(meta.dayShiftEmployeeMultiplier)
-            : normalizeDayShiftEmployeeMultiplier(existing.dayShiftEmployeeMultiplier);
+            : resolveDayShiftEmployeeMultiplier(store, existing.dayShiftEmployeeMultiplier);
     if (dayShift) payload.dayShiftEmployeeMultiplier = dayShift;
     writeJsonFile(file, payload);
     return normalized;

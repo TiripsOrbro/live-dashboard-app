@@ -11,7 +11,11 @@
     },
     "3811": {
       "enabled": true,
-      "points": {}
+      "points": {},
+      "dayShiftEmployeeMultiplier": {
+        "multiplier": 1.5,
+        "employees": ["SARAH PAMPAKAS", "MONIQUE CAMPBELL"]
+      }
     },
     "3901": {
       "enabled": true,

@@ -1,5 +1,5 @@
 {
-  "_comment": "Copy to data/upselling/3811_leaderboard.json (or your store number). Sync writes points; add override on any row to adjust the displayed score.",
+  "_comment": "Copy to data/upselling/3811_leaderboard.json. Day-shift staff can also live in config/upselling-stores.json (used when missing here). Sync writes points; override adjusts displayed score.",
   "storeNumber": "3811",
   "lastSyncAt": "2026-06-03T09:19:32.128Z",
   "dayShiftEmployeeMultiplier": {

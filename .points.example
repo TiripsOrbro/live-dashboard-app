@@ -1,14 +1,23 @@
 # Item label | points
 # Pulled from BI report 317 (Upsell by Cashier), scraped 2026-06-01 after report update.
-Boss Burrito Box | 0
-Cheesy G Taco Box | 0
-Chipotle Crunch Burrito Box | 0
-Lava Crispy Chicken Burrito Box | 0
-Lava Crunch Burrito Box | 0
-Zesty Crispy Chicken Burrito Box | 0
-Chocodilla | 0
-Churros | 0
-Cinnamon Twists | 0
-Lava Crispy Chicken Taco Crispy Chicken | 0
-Zesty Taco Crispy Chicken | 0
-$1 Sauce Add On | 0
+# Set the points value on the right for each item.
+Boss Burrito Box | 5
+Cheesy G Taco Box | 5
+Chipotle Crunch Burrito Box | 5
+Lava Crispy Chicken Burrito Box | 5
+Lava Crunch Burrito Box | 5
+Zesty Crispy Chicken Burrito Box | 5
+Chocodilla | 8
+Churros | 8
+Cinnamon Twists | 4
+Lava Crispy Chicken Taco Crispy Chicken | 5
+Zesty Taco Crispy Chicken | 5
+$1 Sauce Add On | 2
+Iced Coffee | 10
+Pop Tops Apple | 5
+Pop Tops Orange | 5
+Red Bull Energy Drink | 5
+Red Bull Sugar Free | 5
+Red Bull Tropical | 5
+Spring Valley Apple Juice | 5
+Nacho Cheese 16OZ | 16

@@ -1,7 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const { loadPointsMap, loadPointsMapForParsing, pointsForColumn, normalizeLabel } = require('./pointsFile');
-const { mergeSyncScores, aggregateLeaderboard, loadScores } = require('./leaderboardStore');
+const {
+    mergeSyncScores,
+    aggregateLeaderboard,
+    loadScores,
+    melbourneTodayIso,
+} = require('./leaderboardStore');
 const { saveUnassignedForReview } = require('./unassignedStore');
 const { parseUpsellReport } = require('./upsellReportParser');
 const {
@@ -355,7 +360,7 @@ function processReportFile(filePath, storeNumber, options = {}) {
 
 function buildLeaderboardPayload(storeNumber) {
     const wantStore = String(storeNumber || '').trim();
-    const { rows, byDay } = aggregateLeaderboard(wantStore);
+    const { rows, byDay } = aggregateLeaderboard(wantStore, { day: 'today' });
     const ranked = rows
         .map((r, i) => ({
             rank: i + 1,
@@ -385,6 +390,8 @@ function buildLeaderboardPayload(storeNumber) {
         }
     }
 
+    const leaderboardDay = melbourneTodayIso();
+
     return {
         enabled: true,
         storeNumber: wantStore,
@@ -394,7 +401,8 @@ function buildLeaderboardPayload(storeNumber) {
         ranks: ranked,
         byDay,
         lastSyncAt,
-        reportDate,
+        reportDate: reportDate || leaderboardDay,
+        leaderboardDay,
     };
 }
 

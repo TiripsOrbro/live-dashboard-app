@@ -348,12 +348,21 @@ function saveScores(storeNumber, rows = [], meta = {}) {
     return normalized;
 }
 
-function aggregateLeaderboard(storeNumber) {
+function resolveLeaderboardDayFilter(options = {}) {
+    if (options.day === 'today') return melbourneTodayIso();
+    const explicit = String(options.day || '').trim();
+    return isDayField(explicit) ? explicit : null;
+}
+
+/** Rank cashiers. Default: best single day in retention window. Pass { day: 'today' } for today's podium. */
+function aggregateLeaderboard(storeNumber, options = {}) {
+    const dayFilter = resolveLeaderboardDayFilter(options);
     const { rows, dayShiftEmployeeMultiplier } = loadScores(storeNumber);
     const bestByName = new Map();
     const effectiveByDay = [];
 
     for (const row of rows) {
+        if (dayFilter && row.day !== dayFilter) continue;
         if (row.excluded) continue;
         const { base, total, multiplier } = scoredPoints(row, dayShiftEmployeeMultiplier);
         if (!total) continue;
@@ -472,11 +481,13 @@ function mergeSyncScores(storeNumber, byDay = [], options = {}) {
 module.exports = {
     normalizeCashierName,
     isDayField,
+    melbourneTodayIso,
     scoresPath,
     leaderboardFilePath,
     loadScores,
     saveScores,
     aggregateLeaderboard,
+    resolveLeaderboardDayFilter,
     mergeSyncScores,
     effectivePoints,
     scoredPoints,

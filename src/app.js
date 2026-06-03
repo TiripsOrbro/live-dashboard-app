@@ -54,6 +54,7 @@ const {
     getStoreScrapePhase,
     anyStoreInActiveScrapeWindow,
     isPostCloseSalesGrace,
+    POST_CLOSE_RETAIN_HOURS,
 } = require('./services/scrapeSchedule');
 const fsSync = require('fs');
 const { isUpsellingStore } = require('./services/upselling/upsellingConfig');
@@ -1165,6 +1166,7 @@ function storeSliceFromPayload(payload, requestedStore) {
               storeName: store.storeName || store.storeNumber || '',
               openHour: Number.isFinite(store.openHour) ? store.openHour : storeHours(store.storeNumber).openHour,
               closeHour: Number.isFinite(store.closeHour) ? store.closeHour : storeHours(store.storeNumber).closeHour,
+              postCloseRetainHours: POST_CLOSE_RETAIN_HOURS,
               ...(store.error ? { storeError: store.error } : {}),
           }
         : emptyStorePayload(requestedStore, '');

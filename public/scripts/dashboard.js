@@ -90,6 +90,13 @@ let PART_LUNCH_END = 5;
 let LUNCH_WALL_START = 10;
 let LUNCH_WALL_END_EXCLUSIVE = MEAL_SPLIT_HOUR;
 let DINNER_WALL_START = MEAL_SPLIT_HOUR;
+/** Hours after close to keep hourly + meal-period colours (matches server SCRAPE_POST_CLOSE_RETAIN_HOURS). */
+let postCloseGridColourHours = 2;
+
+function setPostCloseGridColourHours(hours) {
+    const n = Number(hours);
+    if (Number.isFinite(n) && n >= 0) postCloseGridColourHours = Math.trunc(n);
+}
 
 function clampInt(n, lo, hi) {
     return Math.max(lo, Math.min(hi, n));
@@ -422,6 +429,9 @@ async function saveAuditState() {
 function applySalesPayload(data) {
     if (Number.isFinite(data.openHour) && Number.isFinite(data.closeHour)) {
         setTradingHours(data.openHour, data.closeHour);
+    }
+    if (data.postCloseRetainHours != null) {
+        setPostCloseGridColourHours(data.postCloseRetainHours);
     }
     // Trim the raw Macromatix hourly arrays (index 0 ≈ RAW_BASE_HOUR) down to this store's trading window.
     const sliceStart = clampInt(TRADING_GRID_START_HOUR - RAW_BASE_HOUR, 0, Number.MAX_SAFE_INTEGER);
@@ -1047,21 +1057,31 @@ setInterval(() => {
     processBoiloutSchedule();
 }, 1000);
 
-// DEBUG: random notification popup test (disabled for production)
-// document.getElementById('popup-test-btn')?.addEventListener('click', () => {
-//     const keys = Object.keys(NOTIFICATIONS);
-//     if (!keys.length) {
-//         showPopup('Add entries to popup-content.js', 8000, null, { wrapMessage: true });
-//         return;
-//     }
-//     const count = Math.floor(Math.random() * 3) + 1;
-//     const picked = [];
-//     while (picked.length < count) {
-//         const k = keys[Math.floor(Math.random() * keys.length)];
-//         if (!picked.includes(k)) picked.push(k);
-//     }
-//     showNotificationGroup(picked);
-// });
+function initPopupTestButton() {
+    if (STORE_NUMBER !== 'teststore') return;
+    let btn = document.getElementById('popup-test-btn');
+    if (!btn) {
+        btn = document.createElement('button');
+        btn.id = 'popup-test-btn';
+        btn.type = 'button';
+        btn.textContent = 'Test popups';
+        document.body.appendChild(btn);
+    }
+    btn.addEventListener('click', () => {
+        const keys = Object.keys(NOTIFICATIONS);
+        if (!keys.length) {
+            showPopup('Add entries to popup-content.js', 8000, null, { wrapMessage: true });
+            return;
+        }
+        const count = Math.floor(Math.random() * 3) + 1;
+        const picked = [];
+        while (picked.length < count) {
+            const k = keys[Math.floor(Math.random() * keys.length)];
+            if (!picked.includes(k)) picked.push(k);
+        }
+        showNotificationGroup(picked);
+    });
+}
 
 window.showPopup = showPopup;
 window.NOTIFICATIONS = NOTIFICATIONS;
@@ -1090,8 +1110,8 @@ function getCurrentHourProgress() {
 
     const startHour = TRADING_GRID_START_HOUR;
     const tradeEndHourExclusive = tradingEndHourExclusive();
-    /** After close (e.g. 10PM), keep hourly grid colours for one more wall-clock hour (until 11PM). */
-    const gridColoursEndHourExclusive = tradeEndHourExclusive + 1;
+    /** After close, keep hourly grid colours for postCloseGridColourHours (default 2h). */
+    const gridColoursEndHourExclusive = tradeEndHourExclusive + postCloseGridColourHours;
 
     if (hour < startHour || hour >= gridColoursEndHourExclusive) {
         return { hourIndex: -1, progress: 0 };
@@ -2335,6 +2355,7 @@ function initMobileLandscape() {
     await initTradingHours();
     await applyUserPreferences();
     renderDashboard();
+    initPopupTestButton();
     initMobileLandscape();
     await loadAuditSchedule();
     await loadAuditState();

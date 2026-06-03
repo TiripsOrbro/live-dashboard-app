@@ -7,6 +7,8 @@
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "list-stores": "node scripts/list-stores.js",
+    "force-sales-scrape": "node scripts/force-sales-scrape.js",
+    "test-scrape": "node scripts/test-scrape.js",
     "download-reports": "node scripts/download-reports.js",
     "download-reports-order-day": "node scripts/download-reports.js --order-day",
     "report-download-scheduler": "node scripts/run-report-download-scheduler.js",

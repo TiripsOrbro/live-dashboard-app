@@ -32,15 +32,9 @@
     }
 
     function mountPodiumEl(el) {
-        const dashboard = document.querySelector('.dashboard');
-        if (!dashboard) {
-            document.body.appendChild(el);
-            return;
-        }
-        if (el.parentElement !== dashboard) {
-            dashboard.appendChild(el);
-        } else if (dashboard.lastElementChild !== el) {
-            dashboard.appendChild(el);
+        const host = document.getElementById('app') || document.body;
+        if (el.parentElement !== host) {
+            host.appendChild(el);
         }
     }
 

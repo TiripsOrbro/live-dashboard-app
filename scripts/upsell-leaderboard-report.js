@@ -5,30 +5,32 @@
  *   node scripts/upsell-leaderboard-report.js 3811
  *   node scripts/upsell-leaderboard-report.js --all-stores
  */
-const { loadScores, aggregateLeaderboard } = require('../src/services/upselling/leaderboardStore');
+const {
+    loadScores,
+    aggregateLeaderboard,
+    scoredPoints,
+} = require('../src/services/upselling/leaderboardStore');
 const {
     resolveEnabledStores,
     isUpsellingMmxSyncStore,
 } = require('../src/services/upselling/upsellingConfig');
 
-function effectivePts(row) {
-    if (row.excluded) return null;
-    if (Number.isFinite(row.override)) return row.override;
-    return Number(row.points) || 0;
-}
-
 function printStore(store) {
-    const { rows, lastSyncAt } = loadScores(store);
+    const { rows, lastSyncAt, dayShiftEmployeeMultiplier } = loadScores(store);
     console.log(`\n=== Store ${store} ===`);
     console.log(`Last sync: ${lastSyncAt || '(unknown)'}`);
 
     const dayRows = rows
-        .filter((r) => effectivePts(r) > 0)
+        .map((r) => {
+            const { total, multiplier } = scoredPoints(r, dayShiftEmployeeMultiplier);
+            return { row: r, total, multiplier };
+        })
+        .filter((e) => e.total > 0)
         .sort(
             (a, b) =>
-                a.day.localeCompare(b.day) ||
-                effectivePts(b) - effectivePts(a) ||
-                a.name.localeCompare(b.name)
+                a.row.day.localeCompare(b.row.day) ||
+                b.total - a.total ||
+                a.row.name.localeCompare(b.row.name)
         );
 
     if (!dayRows.length) {
@@ -37,20 +39,19 @@ function printStore(store) {
     }
 
     let currentDay = '';
-    for (const row of dayRows) {
+    for (const { row, total, multiplier } of dayRows) {
         if (row.day !== currentDay) {
             currentDay = row.day;
             console.log(`\n${currentDay}`);
         }
-        const pts = effectivePts(row);
         const mmx = Number(row.points) || 0;
-        const note =
-            Number.isFinite(row.override) && row.override !== mmx
-                ? `  (MMX ${mmx}, override ${row.override})`
-                : row.note
-                  ? `  (${row.note})`
-                  : '';
-        console.log(`  ${row.name.padEnd(26)} ${String(pts).padStart(4)} pts${note}`);
+        const parts = [];
+        if (multiplier) parts.push(`day-shift ×${multiplier}`);
+        if (Number.isFinite(row.override) && row.override !== mmx) {
+            parts.push(`MMX ${mmx}, override ${row.override}`);
+        } else if (row.note) parts.push(row.note);
+        const note = parts.length ? `  (${parts.join('; ')})` : '';
+        console.log(`  ${row.name.padEnd(26)} ${String(total).padStart(4)} pts${note}`);
     }
 
     const { rows: weekTop, weekStart, weekEnd } = aggregateLeaderboard(store, { period: 'week' });

@@ -31,13 +31,22 @@
         return qs ? `${API_BASE}?${qs}` : API_BASE;
     }
 
-    function podiumMountParent() {
-        return document.querySelector('.dashboard') || document.body;
-    }
-
     function mountPodiumEl(el) {
-        const parent = podiumMountParent();
-        if (el.parentElement !== parent) parent.appendChild(el);
+        const dashboard = document.querySelector('.dashboard');
+        const grid = document.querySelector('.dashboard-grid');
+        if (!dashboard) {
+            document.body.appendChild(el);
+            return;
+        }
+        if (grid && grid.parentElement === dashboard) {
+            if (el.previousElementSibling !== grid) {
+                grid.insertAdjacentElement('afterend', el);
+            }
+            return;
+        }
+        if (el.parentElement !== dashboard) {
+            dashboard.appendChild(el);
+        }
     }
 
     function ensurePodiumEl() {
@@ -204,30 +213,6 @@
         }
     }
 
-    function formatWeekLabel(start, end) {
-        if (!start || !end) return 'This week';
-        try {
-            const fmt = (iso) => {
-                const [y, m, d] = String(iso).split('-').map(Number);
-                return new Date(y, m - 1, d).toLocaleDateString('en-AU', {
-                    day: 'numeric',
-                    month: 'short',
-                });
-            };
-            return `${fmt(start)} – ${fmt(end)}`;
-        } catch (_) {
-            return 'This week';
-        }
-    }
-
-    function podiumTitle(data) {
-        if (data?.leaderboardPeriod === 'week') {
-            const range = formatWeekLabel(data.weekStart, data.weekEnd);
-            return `Upsell leaderboard — ${range}`;
-        }
-        return 'Upsell leaderboard';
-    }
-
     function renderPodium(data) {
         const root = ensurePodiumEl();
         const portrait = document.body.classList.contains('dashboard--portrait');
@@ -242,9 +227,6 @@
         root.classList.add('upsell-podium--revealed');
 
         const order = buildPodiumOrder(data);
-
-        const label = root.querySelector('.upsell-podium__label');
-        if (label) label.textContent = podiumTitle(data);
 
         const cols = root.querySelector('.upsell-podium__cols');
         if (cols) {

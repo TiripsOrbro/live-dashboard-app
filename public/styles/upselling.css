@@ -1,16 +1,17 @@
-/* Anchored to .dashboard so zoom/letterboxing keeps the podium aligned with the grid */
+/* Below the sales grid (in flow) — not overlaid on the hour columns */
 #upsell-podium {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: clamp(8px, 1.5vh, 28px);
-    z-index: 8000;
-    width: fit-content;
-    max-width: calc(100% - 2 * clamp(12px, 2vw, 32px));
-    margin-left: auto;
-    margin-right: auto;
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 100%;
+    margin: clamp(20px, 3vh, 36px) auto 0;
+    padding: 0;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: center;
     pointer-events: none;
     font-family: inherit;
+    flex-shrink: 0;
 }
 
 #upsell-podium[hidden] {
@@ -85,7 +86,7 @@
     align-items: flex-end;
     justify-content: center;
     gap: clamp(6px, 1.2vw, 18px);
-    min-height: min(34vh, 320px);
+    min-height: min(28vh, 280px);
     width: max-content;
     max-width: 100%;
     margin: 0 auto;

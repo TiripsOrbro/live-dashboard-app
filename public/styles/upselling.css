@@ -5,8 +5,8 @@
     bottom: max(4px, env(safe-area-inset-bottom, 0px));
     transform: translateX(-50%);
     z-index: 8000;
-    width: min(98vw, 1440px);
-    max-width: min(98vw, 1440px);
+    width: min(99vw, 1680px);
+    max-width: min(99vw, 1680px);
     box-sizing: border-box;
     pointer-events: none;
     font-family: inherit;
@@ -88,24 +88,27 @@
 .upsell-podium__cols {
     display: flex;
     align-items: flex-end;
-    justify-content: center;
-    gap: clamp(16px, 2.8vw, 40px);
+    justify-content: space-evenly;
+    gap: clamp(36px, 6.5vw, 96px);
     width: 100%;
+    max-width: 100%;
+    padding: 0 clamp(8px, 1.5vw, 24px);
+    box-sizing: border-box;
 }
 
+/* Column width follows labels; bar thickness is fixed on .upsell-podium__bar-slot */
 .upsell-podium__col {
     display: flex;
     flex-direction: column;
     align-items: center;
-    flex: 0 1 auto;
-    min-width: clamp(72px, 8vw, 112px);
-    max-width: clamp(96px, 11vw, 140px);
+    flex: 0 0 auto;
+    width: max-content;
+    max-width: clamp(88px, 10vw, 132px);
     text-align: center;
 }
 
 .upsell-podium__col--place-1 {
-    min-width: clamp(80px, 9vw, 124px);
-    max-width: clamp(108px, 12vw, 156px);
+    max-width: clamp(96px, 11vw, 148px);
 }
 
 /* Missing rank (e.g. no 7th yet) — same footprint, invisible labels */

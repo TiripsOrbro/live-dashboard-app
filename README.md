@@ -81,6 +81,8 @@ DASHBOARD_TIME_ZONE=Australia/Melbourne
 SALES_CACHE_SECONDS=300
 # Background refresh keeps the cache warm for every store (0 disables it).
 SALES_REFRESH_SECONDS=240
+# Keep today's sales on screen for this many hours after close (default 2).
+SCRAPE_POST_CLOSE_RETAIN_HOURS=2
 # Full cycle = login + every store's labour + orders. ~1 min/store; allow plenty on a slow Pi.
 SCRAPE_TIMEOUT_MS=900000
 CONFIRMED_EMPTY_ORDER_CHECKS=2

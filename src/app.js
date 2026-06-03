@@ -1015,16 +1015,19 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
             store.scrapePhase = 'idle';
             clearPostCloseSnapshot(key);
         } else if (phase === 'retain' || inPostCloseGrace) {
-            if (prev === 'active' && storeHasMeaningfulData(store)) {
-                capturePostCloseSnapshot(store);
-            }
             if (!storeHasMeaningfulData(store)) {
                 restorePostCloseSnapshot(store);
+            }
+            if (storeHasMeaningfulData(store)) {
+                capturePostCloseSnapshot(store);
             }
             store.scrapePhase = 'retain';
         } else {
             if (prev === 'idle') {
                 resetScheduledOrdersForNewDay(key);
+            }
+            if (storeHasMeaningfulData(store)) {
+                capturePostCloseSnapshot(store);
             }
             store.scrapePhase = 'active';
         }
@@ -1073,6 +1076,9 @@ function runScrapeIntoCache(options) {
                 stores: mergeStoresPreservingGood(salesCache, fresh),
             };
             salesCacheAt = Date.now();
+            for (const store of salesCache.stores) {
+                if (storeHasMeaningfulData(store)) capturePostCloseSnapshot(store);
+            }
             applyScrapeScheduleToCache(salesCache);
             logDashboardScrapeComplete(salesCache);
             return salesCache;
@@ -2452,6 +2458,16 @@ app.get('/api/area-dashboard', async (req, res) => {
 // Background refresh: keep the multi-store cache warm so browser requests never wait through a full scrape.
 let refreshTimer = null;
 let upsellingSchedulerTimer = null;
+function primeSalesCacheFromDisk() {
+    salesCache = buildCacheShellFromStoreList();
+    salesCacheAt = Date.now();
+    applyScrapeScheduleToCache(salesCache);
+    const retained = (salesCache.stores || []).filter((s) => storeHasMeaningfulData(s)).length;
+    if (retained) {
+        console.log(`[Dashboard] Restored sales data for ${retained} store(s) from cache/snapshots`);
+    }
+}
+
 function startBackgroundRefresh() {
     if (SALES_REFRESH_SECONDS <= 0) {
         console.log('[Dashboard] Background refresh disabled (SALES_REFRESH_SECONDS <= 0)');
@@ -2487,6 +2503,7 @@ function startBackgroundRefresh() {
 
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on http://0.0.0.0:${PORT}`);
+    primeSalesCacheFromDisk();
     startBackgroundRefresh();
     upsellingSchedulerTimer = startUpsellingScheduler();
 });

@@ -766,3 +766,109 @@ body.welcome-overlay-active .stores-sign-out-btn {
         transform: none !important;
     }
 }
+
+.login-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.login-actions-dual {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+}
+
+.login-actions-dual[hidden],
+.login-submit--single[hidden] {
+    display: none !important;
+}
+
+.login-submit--dashboard,
+.login-submit--mic {
+    min-height: 3rem;
+}
+
+.login-submit--mic {
+    background: color-mix(in srgb, var(--tb-purple-light) 82%, #000);
+}
+
+.login-path-chooser {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.login-path-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.85rem 1rem;
+    border-radius: 12px;
+    border: 1px solid var(--login-border);
+    background: var(--login-surface-raised);
+    color: var(--login-text);
+    text-decoration: none;
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.login-path-card:hover,
+.login-path-card:focus-visible {
+    border-color: var(--login-border-focus);
+    background: color-mix(in srgb, var(--login-surface-raised) 88%, var(--tb-purple-light));
+}
+
+.login-path-card-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.login-path-card-desc {
+    font-size: 0.78rem;
+    color: var(--login-text-muted);
+    line-height: 1.35;
+}
+
+.login-divider {
+    border: none;
+    border-top: 1px solid var(--login-border);
+    margin: 1.25rem 0;
+}
+
+.login-section-label {
+    margin: 0 0 0.75rem;
+    font-size: 0.82rem;
+    color: var(--login-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.login-account-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    justify-content: center;
+    margin-top: 1.25rem;
+    padding-top: 0.5rem;
+}
+
+.login-link-btn {
+    background: none;
+    border: none;
+    color: var(--tb-purple-light);
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+}
+
+a.login-link-btn {
+    display: inline;
+}
+
+@media (max-width: 520px) {
+    .login-path-chooser {
+        grid-template-columns: 1fr;
+    }
+}

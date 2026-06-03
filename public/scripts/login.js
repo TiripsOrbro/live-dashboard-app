@@ -106,12 +106,14 @@ function shakeLoginCard() {
 }
 
 function setFormBusy(busy) {
-    submitBtn.disabled = busy;
+    if (submitBtn) submitBtn.disabled = busy;
     usernameInput.disabled = busy;
     passwordInput.disabled = busy;
     rememberInput.disabled = busy;
-    submitBtn.classList.toggle('login-submit--loading', busy);
-    submitLabel.textContent = busy ? 'Signing in...' : 'Sign in';
+    if (submitBtn) {
+        submitBtn.classList.toggle('login-submit--loading', busy);
+    }
+    if (submitLabel) submitLabel.textContent = busy ? 'Signing in...' : 'Sign in';
     if (loginProgress) {
         loginProgress.hidden = !busy;
         loginProgress.setAttribute('aria-hidden', busy ? 'false' : 'true');
@@ -147,9 +149,9 @@ function loginDestination(data, username) {
     if (fromApi && fromApi !== '/') return fromApi;
     const name = String(username || '').trim();
     const cbMatch = name.match(/^CB(\d{3,6})$/i);
-    if (cbMatch) return `/${cbMatch[1]}`;
-    if (/^\d{3,6}$/.test(name)) return `/${name}`;
-    return '/';
+    const store = cbMatch ? cbMatch[1] : /^\d{3,6}$/.test(name) ? name : '';
+    if (store) return `/${store}/mic`;
+    return '/login';
 }
 
 let dashboardPreloadFrame = null;
@@ -160,7 +162,7 @@ function ensureDashboardPreloadFrame() {
     iframe.id = 'dashboard-preload';
     iframe.className = 'dashboard-preload';
     iframe.hidden = true;
-    iframe.title = 'Dashboard';
+    iframe.title = 'MIC overview';
     document.body.appendChild(iframe);
     dashboardPreloadFrame = iframe;
     return iframe;
@@ -302,11 +304,10 @@ async function playWelcomeTransition(welcomeName, dest) {
         return;
     }
 
-    window.location.replace(dest || '/');
+    window.location.replace(dest || '/login');
 }
 
-loginForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
+async function submitLogin() {
     showError('');
 
     const username = usernameInput.value.trim();
@@ -329,7 +330,7 @@ loginForm.addEventListener('submit', async (event) => {
                 'Content-Type': 'application/json',
             },
             credentials: 'include',
-            body: JSON.stringify({ username, password, remember }),
+            body: JSON.stringify({ username, password, remember, mode: 'mic' }),
         });
 
         const data = await res.json().catch(() => ({}));
@@ -344,6 +345,11 @@ loginForm.addEventListener('submit', async (event) => {
         }
 
         const dest = loginDestination(data, username);
+        try {
+            sessionStorage.setItem('dashboard-entry', 'store');
+        } catch (_) {
+            /* ignore */
+        }
         if (shouldSkipWelcomeToday()) {
             window.location.replace(dest);
             return;
@@ -356,6 +362,11 @@ loginForm.addEventListener('submit', async (event) => {
         shakeLoginCard();
         setFormBusy(false);
     }
+}
+
+loginForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await submitLogin();
 });
 
 readQueryError();

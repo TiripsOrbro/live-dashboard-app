@@ -5,9 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#000000">
     <meta name="color-scheme" content="dark">
-    <title>Sign in — Sales Dashboard</title>
+    <title>Sign in — TBA Dashboard</title>
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="/icon-mark.svg">
     <link rel="stylesheet" href="/styles/brand-mark.css">
     <link rel="stylesheet" href="/styles/login.css">
 </head>
@@ -20,7 +19,7 @@
                         <div class="login-logo" id="login-brand-mark" role="img" aria-label="TBA Dashboard"></div>
                         <h1 class="login-title">TBA DASHBOARD</h1>
                     </div>
-                    <p class="login-subtitle">Sign in to view live store data</p>
+                    <p class="login-subtitle">Sign in to your store</p>
                 </header>
 
                 <form id="login-form" class="login-form" novalidate>
@@ -36,11 +35,17 @@
                         <input id="remember-me" name="remember" type="checkbox" checked>
                         <span>Stay signed in on this device</span>
                     </label>
-                    <button type="submit" class="login-submit" id="login-submit">
-                        <span class="login-submit-label">Sign in</span>
-                    </button>
+                    <div id="login-actions" class="login-actions">
+                        <button type="submit" class="login-submit login-submit--single" id="login-submit">
+                            <span class="login-submit-label">Sign in</span>
+                        </button>
+                    </div>
                     <p id="login-error" class="login-error" role="alert" aria-live="polite"></p>
                 </form>
+
+                <footer class="login-account-footer">
+                    <a class="login-link-btn" href="/Create-Account">Create account</a>
+                </footer>
             </div>
             <div id="login-progress" class="login-progress" role="progressbar" aria-label="Signing in" hidden>
                 <div class="login-progress-track">
@@ -70,12 +75,17 @@
                 if (!host || !window.TbaBrandMark || !window.TbaBrandMark.svg) return;
                 host.innerHTML = window.TbaBrandMark.svg('login-mark');
             }
-            if (window.TbaBrandMark) {
-                paint();
-            } else {
-                document.querySelector('script[src="/scripts/brand-mark.js"]')?.addEventListener('load', paint);
-            }
+            if (window.TbaBrandMark) paint();
+            else document.querySelector('script[src="/scripts/brand-mark.js"]')?.addEventListener('load', paint);
         })();
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('created') === '1') {
+            const err = document.getElementById('login-error');
+            if (err) {
+                err.style.color = 'var(--tb-purple-light)';
+                err.textContent = 'Account created. Sign in with your new username.';
+            }
+        }
     </script>
     <script src="/scripts/login.js"></script>
 </body>

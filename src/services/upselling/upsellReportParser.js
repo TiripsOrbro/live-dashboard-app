@@ -59,8 +59,34 @@ function findFiscalDayColumn(headerRow, cashierCol) {
 }
 
 function isDateLabel(value) {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return true;
     const s = String(value || '').trim();
-    return /^\d{4}-\d{2}-\d{2}|^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(s);
+    if (/^\d{4}-\d{2}-\d{2}(?:T|\b|\s|$)/.test(s)) return true;
+    return /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(s);
+}
+
+function normalizeDayIso(value) {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+    }
+    const s = String(value || '').trim();
+    const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (iso) return iso[1];
+    const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+    if (!dmy) return '';
+    let year = Number(dmy[3]);
+    if (year < 100) year += 2000;
+    const month = String(dmy[2]).padStart(2, '0');
+    const day = String(dmy[1]).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function cellText(value) {
+    if (value == null || value === '') return '';
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString();
+    }
+    return String(value).trim();
 }
 
 function findTotalColumn(headerRow, cashierCol) {
@@ -495,10 +521,278 @@ function selectLeafColumns(columns, pointsByLabel) {
     return columns.filter((col) => !col.isCategory && col.index > 0);
 }
 
+function rowHasSalesItemQuantity(row) {
+    return (row || []).some((cell) => /sales\s+item\s+quantity/i.test(String(cell || '').trim()));
+}
+
+function findEntityColumn(row, fiscalCol, cashierCol) {
+    for (let c = 0; c < row.length; c++) {
+        if (c === fiscalCol || c === cashierCol) continue;
+        const s = String(row[c] ?? '').trim();
+        if (
+            /^entity/i.test(s) ||
+            /^store\s*(#|number|name)?$/i.test(s) ||
+            /^site\b/i.test(s)
+        ) {
+            return c;
+        }
+    }
+    return -1;
+}
+
+function resolveRowStore(row, entityCol, filterStore, defaultStore) {
+    if (entityCol >= 0) {
+        const fromEntity =
+            extractStoreNumber(row[entityCol]) || extractStoreNumber(cellText(row[entityCol])) || '';
+        if (fromEntity) return fromEntity;
+    }
+    return filterStore || defaultStore || '';
+}
+
+/** BI CSV / flat export: Fiscal YPWD + Cashier Name columns, then item qty columns. */
+function findFlatFiscalCashierLayout(grid) {
+    for (let r = 0; r < (grid || []).length; r++) {
+        const row = grid[r] || [];
+        let fiscalCol = -1;
+        let cashierCol = -1;
+        for (let c = 0; c < row.length; c++) {
+            const s = String(row[c] ?? '').trim();
+            if (/^fiscal\s+ypwd$/i.test(s)) fiscalCol = c;
+            else if (/^cashier\s+name$/i.test(s)) cashierCol = c;
+        }
+        if (fiscalCol < 0 || cashierCol < 0) continue;
+
+        const entityCol = findEntityColumn(row, fiscalCol, cashierCol);
+        const itemHeaders = [];
+        for (let c = 0; c < row.length; c++) {
+            if (c === fiscalCol || c === cashierCol || c === entityCol) continue;
+            const item = String(row[c] ?? '').trim();
+            if (!item || isHeaderMetaColumn(item)) continue;
+            if (isCategoryGroupHeader(item)) continue;
+            if (isDateColumnHeader(item)) continue;
+            itemHeaders.push({
+                index: c,
+                item,
+                norm: normalizeLabel(item),
+                storeNumber: '',
+            });
+        }
+        if (itemHeaders.length < 2) continue;
+
+        let dataStartRow = r + 1;
+        const row1 = grid[r + 1] || [];
+        const row2 = grid[r + 2] || [];
+
+        if (entityCol >= 0) {
+            const row1LooksLikeData =
+                isDateLabel(row1[fiscalCol]) || looksLikeCashierName(cellText(row1[cashierCol]));
+            if (!row1LooksLikeData && rowHasSalesItemQuantity(row1)) {
+                dataStartRow = r + 2;
+            }
+        } else {
+            const storeRowLooksLikeStores =
+                countStoreCells(row1, cashierCol) >= 1 ||
+                itemHeaders.some((col) => extractStoreNumber(row1[col.index]));
+            if (storeRowLooksLikeStores) {
+                for (const col of itemHeaders) {
+                    col.storeNumber = extractStoreNumber(row1[col.index]) || '';
+                }
+                dataStartRow = r + 2;
+                if (rowHasSalesItemQuantity(row2)) {
+                    dataStartRow = r + 3;
+                }
+            }
+        }
+
+        return {
+            headerRowIndex: r,
+            fiscalCol,
+            cashierCol,
+            entityCol,
+            itemHeaders,
+            dataStartRow,
+        };
+    }
+    return null;
+}
+
+function buildUnassignedRow(rowIndex, row, layout, fields, reason) {
+    const { fiscalCol, cashierCol, entityCol } = layout;
+    return {
+        rowIndex,
+        reason,
+        day: fields.day || '',
+        name: fields.name || '',
+        store: fields.store || '',
+        storeLabel: fields.storeLabel || '',
+        raw: {
+            date: cellText(row[fiscalCol]),
+            name: cellText(row[cashierCol]),
+            entity: entityCol >= 0 ? cellText(row[entityCol]) : '',
+        },
+        qtyByColumn: fields.qtyByColumn || {},
+    };
+}
+
+function parseFlatFiscalCashierRows(grid, layout, filterStore, pointsByLabel) {
+    const { fiscalCol, cashierCol, entityCol, itemHeaders, dataStartRow } = layout;
+    let activeCols = itemHeaders;
+    const mappedCols = activeCols.filter((col) => pointsByLabel.has(col.norm));
+    if (mappedCols.length) activeCols = mappedCols;
+    if (filterStore && entityCol < 0) {
+        activeCols = activeCols.filter((col) => !col.storeNumber || col.storeNumber === filterStore);
+    }
+
+    const productLabels = new Set(activeCols.map((col) => col.norm));
+    const cashiers = [];
+    const unassigned = [];
+    let currentDay = '';
+
+    for (let r = dataStartRow; r < grid.length; r++) {
+        const row = grid[r];
+        if (!row || !row.length || isMegaOlapRow(row)) continue;
+
+        const dateRaw = row[fiscalCol];
+        const nameRaw = row[cashierCol];
+        const entityRaw = entityCol >= 0 ? row[entityCol] : null;
+        const dateCell = cellText(dateRaw);
+        const nameCell = cellText(nameRaw);
+        const entityCell = cellText(entityRaw);
+
+        if (/^(sum|total)$/i.test(dateCell) || /^(sum|total)$/i.test(nameCell)) break;
+        if (!dateCell && !nameCell && !entityCell) continue;
+
+        const qtyByColumn = {};
+        for (const col of activeCols) {
+            const value = num(row[col.index]);
+            if (value) qtyByColumn[col.item] = value;
+        }
+        const hasQty = Object.keys(qtyByColumn).length > 0;
+
+        let day = '';
+        let name = '';
+        let store = '';
+        let storeLabel = '';
+        let reason = '';
+
+        if (isDateLabel(dateRaw)) {
+            // Standard row: col1=date, col2=name, col3=store
+            day = normalizeDayIso(dateRaw);
+            currentDay = day;
+            name = nameCell.trim();
+            storeLabel = entityCell.trim();
+            store = extractStoreNumber(storeLabel) || '';
+            if (!name) reason = 'missing name';
+            else if (!store) reason = 'missing store';
+        } else if (
+            looksLikeCashierName(dateCell, productLabels) &&
+            extractStoreNumber(nameCell)
+        ) {
+            // Continuation row: col1=name, col2=store (date carried from prior row)
+            name = dateCell.trim();
+            storeLabel = nameCell.trim();
+            store = extractStoreNumber(storeLabel) || '';
+            day = currentDay;
+            if (!day) reason = 'missing date';
+            else if (!name) reason = 'missing name';
+            else if (!store) reason = 'missing store';
+        } else {
+            reason = 'column 1 is not a date';
+            name = nameCell || dateCell;
+            storeLabel = entityCell || nameCell;
+            store = extractStoreNumber(storeLabel) || '';
+            day = currentDay;
+        }
+
+        const incomplete = Boolean(reason || !day || !name || !store);
+
+        if (incomplete) {
+            if (hasQty || name || dateCell) {
+                unassigned.push(
+                    buildUnassignedRow(
+                        r,
+                        row,
+                        layout,
+                        { day, name, store, storeLabel, qtyByColumn },
+                        reason || 'incomplete row (date, name, or store missing)'
+                    )
+                );
+            }
+            continue;
+        }
+
+        if (looksLikeDateOrGroupLabel(name)) continue;
+        if (ONLINE_CASHIER_RE.test(name) || STORE_ENTITY_RE.test(name)) continue;
+
+        if (!filterStore && !store) {
+            unassigned.push(
+                buildUnassignedRow(
+                    r,
+                    row,
+                    layout,
+                    { day, name, store, storeLabel, qtyByColumn },
+                    'missing store'
+                )
+            );
+            continue;
+        }
+        if (filterStore && store !== filterStore) continue;
+        if (!hasQty) continue;
+
+        cashiers.push({
+            name,
+            day,
+            store,
+            qtyByColumn,
+        });
+    }
+
+    return {
+        cashiers: mergeCashierRecords([], cashiers),
+        unassigned,
+    };
+}
+
+function normalizeFilterStore(value) {
+    const store = String(value || '').trim();
+    if (!store || store === '*' || store.toLowerCase() === 'all') return '';
+    return store;
+}
+
 function parseUpsellGrid(grid, pointsByLabel, options = {}) {
-    const filterStore = String(options.filterStoreNumber || '').trim();
-    const megaText = extractMegaOlapText(grid);
+    const filterStore = normalizeFilterStore(options.filterStoreNumber);
     const cleanGrid = stripMegaOlapRows(grid);
+    const flatLayout = findFlatFiscalCashierLayout(cleanGrid);
+    if (flatLayout) {
+        const { cashiers: flatCashiers, unassigned = [] } = parseFlatFiscalCashierRows(
+            cleanGrid,
+            flatLayout,
+            filterStore,
+            pointsByLabel
+        );
+        let cashiers = flatCashiers;
+        if (options.syncDay) {
+            cashiers = cashiers.filter((row) => row.day === options.syncDay);
+        }
+        const columnsUsed = [];
+        const seenItems = new Set();
+        for (const col of flatLayout.itemHeaders) {
+            if (seenItems.has(col.item)) continue;
+            seenItems.add(col.item);
+            columnsUsed.push(col.item);
+        }
+        return {
+            sheetName: 'MdxView',
+            cashierCol: flatLayout.cashierCol,
+            headerRowIndex: flatLayout.headerRowIndex,
+            columnsUsed,
+            scoringMode: 'fiscalItems',
+            cashiers,
+            unassigned,
+        };
+    }
+
+    const megaText = extractMegaOlapText(grid);
     const { rowIndex, cashierCol, headerRow } = findHeaderRow(cleanGrid);
     const fiscalCol = findFiscalDayColumn(headerRow, cashierCol);
     const totalCol = findTotalColumn(headerRow, cashierCol);
@@ -618,6 +912,12 @@ function parseUpsellGrid(grid, pointsByLabel, options = {}) {
         cashiers.push(...mergedCashiers);
     }
 
+    if (options.syncDay) {
+        const filtered = cashiers.filter((row) => row.day === options.syncDay);
+        cashiers.length = 0;
+        cashiers.push(...filtered);
+    }
+
     return {
         sheetName: 'MdxView',
         cashierCol,
@@ -625,6 +925,7 @@ function parseUpsellGrid(grid, pointsByLabel, options = {}) {
         columnsUsed,
         scoringMode,
         cashiers,
+        unassigned: [],
     };
 }
 

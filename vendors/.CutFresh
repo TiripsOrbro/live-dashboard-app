@@ -4,7 +4,7 @@
 # Format: [buildToDays | buildToDays+N | manual] | itemCode | name | unit | unit | unit [| location…]
 # Lettuce: 10-day target plus 2 extra cartons (10+2)
 
-7+2 | SLETT | LETTUCE SHREDDED 4X2KG | Boxes | Bags | KGs | Fridge | In Use
-7 | DTOM4 | TOMATO DICED 4X1KG | Boxes | Bags | KGs | Fridge | In Use
-7 | DO4 | ONION BROWN DICED 4X1KG | Boxes | Bags | KGs | Fridge
-7 | CHOPC | TB SALAD CORIANDER CHOPPED 1X500GM | Boxes | Bags | KGs | Fridge
+7+2 | SLETT | LETTUCE SHREDDED 4X2KG                     | Boxes | Bags | KGs | Fridge | In Use
+7   | DTOM4 | TOMATO DICED 4X1KG                         | Boxes | Bags | KGs | Fridge | In Use
+7   | DO4   | ONION BROWN DICED 4X1KG                    | Boxes | Bags | KGs | Fridge | In Use
+7   | CHOPC | TB SALAD CORIANDER CHOPPED 1X500GM         | Boxes | Bags | KGs | Fridge | In Use

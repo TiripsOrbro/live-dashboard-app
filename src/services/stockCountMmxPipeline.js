@@ -286,7 +286,7 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
 /**
  * Apply confirmed count in Macromatix, then download reports and enter orders.
  */
-async function applyStockCountSession(storeNumber, sessionId) {
+async function applyStockCountSession(storeNumber, sessionId, options = {}) {
     return withStoreLock(storeNumber, async () => {
         let session = getSession(storeNumber, sessionId);
         const checkpoint = await getCheckpoint(storeNumber);
@@ -296,7 +296,7 @@ async function applyStockCountSession(storeNumber, sessionId) {
                 let browser;
                 let page;
                 try {
-                    ({ browser, page } = await openMacromatixBrowser({}));
+                    ({ browser, page } = await openMacromatixBrowser(options));
                     const orders = await runOrdersAfterApply(storeNumber, checkpoint.dateKey, page, browser);
                     await setCheckpoint(storeNumber, {
                         stage: 'completed',

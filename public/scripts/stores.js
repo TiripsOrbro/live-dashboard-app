@@ -426,7 +426,7 @@ async function loadStores() {
             const me = await meRes.json();
             showUserGreeting(me);
             const dest = storePathFromProfile(me);
-            if (me.success && dest) {
+            if (me.success && me.skipStorePicker && dest) {
                 markLandscapePreference();
                 window.location.replace(dest);
                 return;

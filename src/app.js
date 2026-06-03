@@ -29,6 +29,8 @@ const {
     isTestStore,
     normalizeStoreKey,
     buildTestStoreSalesSlice,
+    buildTestStoreLeaderboardPayload,
+    stickyKeyForTestMirror,
     testStoreListEntry,
 } = require('./services/testStore');
 const { listConfiguredVendors, getVendorCatalog } = require('./services/vendorCatalog');
@@ -150,6 +152,9 @@ const {
     userCanAccessStore,
     filterStoresForUser,
     getLoginRedirectPath,
+    getAdminRedirectPath,
+    getKioskRedirectPath,
+    singleStoreForUser,
     sessionCookieOptions,
     nologinCookieOptions,
     isNologinStoreAllowed,
@@ -158,7 +163,42 @@ const {
     timingSafeEqualString,
     readUsersFileSync,
     resolveUsersFilePath,
+    isStorePatternUsername,
+    changeUserPassword,
+    setAccountColourBlindPreference,
+    setAccountMicDarkModePreference,
+    appendStoreUser,
+    canUserCreateAccounts,
+    canUserManageStoreAccounts,
+    listManagedStoreAccounts,
+    deleteManagedStoreAccount,
+    isRealDashboardUser,
+    parseCookies,
+    usernameMatches,
 } = require('./services/dashboardUsers');
+const {
+    buildMicPayload,
+    addDailyItemMultiplier,
+    removeDailyItemMultiplier,
+    setDailyItemMultiplier,
+    clearStoreDailyMultipliers,
+} = require('./services/mic/micStore');
+const { buildAdminOverviewPayload } = require('./services/mic/adminOverview');
+const {
+    setAccountGateCookie,
+    clearAccountGateCookie,
+    resolveCreateAccountParent,
+} = require('./services/createAccountGate');
+const { saveMmxCredentialsForUser, deleteMmxCredentialsForUser } = require('./services/mmxUserCredentials');
+const { verifyMacromatixLogin } = require('./services/macromatixScraper');
+const {
+    createRegistrationOptions,
+    verifyRegistration,
+    createLoginOptions,
+    verifyLogin: verifyPasskeyLogin,
+} = require('./services/webauthnPasskeys');
+const ENTRY_COOKIE = 'dashboard_entry';
+const PUBLIC_ROOT = path.join(__dirname, '../public');
 const DASHBOARD_ACCESS_KEY = String(process.env.DASHBOARD_ACCESS_KEY || '');
 const DASHBOARD_ALLOWED_IPS = String(process.env.DASHBOARD_ALLOWED_IPS || '')
     .split(',')
@@ -239,31 +279,48 @@ function wantsJsonResponse(req) {
     return /\bapplication\/json\b/i.test(contentType) || /\bjson\b/i.test(accept);
 }
 
-function sendLoginSuccess(req, res, user) {
+function entryCookieOptions(remember = true) {
+    return sessionCookieOptions({ remember });
+}
+
+function dashboardEntryFromRequest(req) {
+    const cookies = parseCookies(req.headers?.cookie);
+    return String(cookies[ENTRY_COOKIE] || '').trim().toLowerCase();
+}
+
+function setEntryCookie(res, entry, remember = true) {
+    res.cookie(ENTRY_COOKIE, String(entry || '').trim(), entryCookieOptions(remember));
+}
+
+function setSessionCookie(res, user, remember = true, entry = '') {
+    res.cookie(SESSION_COOKIE, createSessionToken(user), sessionCookieOptions({ remember }));
+    res.clearCookie(LEGACY_COOKIE, sessionCookieOptions({ remember }));
+    if (entry) setEntryCookie(res, entry, remember);
+}
+
+function sendLoginSuccess(req, res, user, destOverride = '') {
+    const mode = String(req.body?.mode || 'dashboard').trim().toLowerCase();
     const profile = userProfileForClient(user);
-    const dest = profile.defaultPath || getLoginRedirectPath(user);
+    const dest = destOverride || getLoginRedirectPath(user, mode) || profile.defaultPath || '/login';
     if (wantsJsonResponse(req)) {
         res.json({
             success: true,
             welcomeName: profile.welcomeName || '',
             defaultPath: dest,
+            mode,
         });
         return;
     }
     res.redirect(dest);
 }
 
-function sendLoginFailure(req, res, message = 'Incorrect username or password.') {
+function sendLoginFailure(req, res, message = 'Incorrect username or password.', returnTo = '/login') {
     if (wantsJsonResponse(req)) {
         res.status(401).json({ success: false, error: message });
         return;
     }
-    res.redirect('/login?error=invalid');
-}
-
-function setSessionCookie(res, user, remember = true) {
-    res.cookie(SESSION_COOKIE, createSessionToken(user), sessionCookieOptions({ remember }));
-    res.clearCookie(LEGACY_COOKIE, sessionCookieOptions({ remember }));
+    const base = String(returnTo || '/login').split('?')[0];
+    res.redirect(`${base}?error=invalid`);
 }
 
 function setLegacyAccessCookie(res, remember = true) {
@@ -306,12 +363,53 @@ function ipAllowlistMiddleware(req, res, next) {
 }
 
 function isLoginPublicPath(reqPath) {
-    if (reqPath === '/login' || reqPath === '/unlock' || reqPath === '/logout') return true;
-    if (/^\/nologin\/\d{3,6}\/?$/i.test(reqPath)) return true;
+    if (
+        reqPath === '/login' ||
+        reqPath === '/Create-Account' ||
+        reqPath === '/create-account' ||
+        reqPath === '/admin' ||
+        reqPath === '/kiosk' ||
+        reqPath === '/unlock' ||
+        reqPath === '/logout'
+    ) {
+        return true;
+    }
+    if (reqPath === '/Create-Account/details' || reqPath === '/create-account/details') return true;
+    if (reqPath === '/Create-Account/verify' || reqPath === '/create-account/verify') return true;
     if (reqPath === '/icon.svg' || reqPath === '/icon-mark.svg') return true;
-    if (reqPath === '/styles/login.css' || reqPath === '/styles/brand-mark.css') return true;
-    if (reqPath === '/scripts/login.js' || reqPath === '/scripts/brand-mark.js') return true;
+    if (
+        reqPath === '/styles/login.css' ||
+        reqPath === '/styles/brand-mark.css' ||
+        reqPath === '/styles/nav-back.css' ||
+        reqPath === '/styles/account-modal.css'
+    ) {
+        return true;
+    }
+    if (
+        reqPath === '/scripts/create-account.js' ||
+        reqPath === '/scripts/create-account-details.js' ||
+        reqPath === '/scripts/login.js' ||
+        reqPath === '/scripts/brand-mark.js' ||
+        reqPath === '/scripts/admin-login.js' ||
+        reqPath === '/scripts/kiosk-login.js' ||
+        reqPath === '/scripts/nav-back.js' ||
+        reqPath === '/scripts/account-modal.js'
+    ) {
+        return true;
+    }
+    if (reqPath === '/api/account/login-ui') return true;
+    if (reqPath === '/api/account/create') return true;
+    if (reqPath.startsWith('/api/webauthn/')) return true;
     return false;
+}
+
+function requireAdminPage(req, res, next) {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!user || !isAdminUser(user)) {
+        sendUnauthorized(req, res);
+        return;
+    }
+    next();
 }
 
 function dashboardAuthMiddleware(req, res, next) {
@@ -341,22 +439,96 @@ app.get('/unlock', (req, res) => {
     res.redirect('/login');
 });
 
-app.get('/login', (req, res) => {
-    if (!authRequired() || isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
-        const user = getRequestUser(req);
-        res.redirect(getLoginRedirectPath(user));
+app.get('/', (req, res) => {
+    if (!isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
+        res.redirect('/login');
         return;
     }
-    res.sendFile(path.join(__dirname, '../public', 'login.html'));
+    const user = getRequestUser(req);
+    if (isAdminUser(user)) {
+        res.redirect(getAdminRedirectPath());
+        return;
+    }
+    const dest = getLoginRedirectPath(user);
+    res.redirect(dest === '/login' ? '/login' : dest);
+});
+
+app.get('/login', (req, res) => {
+    if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
+        const user = getRequestUser(req);
+        const dest = getLoginRedirectPath(user);
+        res.redirect(dest === '/login' ? '/login' : dest);
+        return;
+    }
+    res.sendFile(path.join(PUBLIC_ROOT, 'login.html'));
+});
+
+app.get('/admin', (req, res) => {
+    if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
+        const user = getRequestUser(req);
+        if (isAdminUser(user)) {
+            res.redirect(getAdminRedirectPath());
+            return;
+        }
+        res.redirect(getKioskRedirectPath(user));
+        return;
+    }
+    res.sendFile(path.join(PUBLIC_ROOT, 'admin-login.html'));
+});
+
+app.get('/kiosk', (req, res) => {
+    if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
+        const user = getRequestUser(req);
+        if (isAdminUser(user)) {
+            res.redirect('/admin');
+            return;
+        }
+        res.redirect(getKioskRedirectPath(user));
+        return;
+    }
+    res.sendFile(path.join(PUBLIC_ROOT, 'kiosk-login.html'));
+});
+
+app.get(['/Create-Account', '/create-account'], (req, res) => {
+    res.sendFile(path.join(PUBLIC_ROOT, 'create-account.html'));
+});
+
+app.get(['/Create-Account/details', '/create-account/details'], (req, res) => {
+    if (!resolveCreateAccountParent(req)) {
+        res.redirect('/Create-Account?error=session');
+        return;
+    }
+    res.sendFile(path.join(PUBLIC_ROOT, 'create-account-details.html'));
+});
+
+app.post(['/Create-Account/verify', '/create-account/verify'], (req, res) => {
+    if (!authRequired()) {
+        res.status(503).json({ success: false, error: 'Authentication is not configured.' });
+        return;
+    }
+    const username = String(req.body?.username || '').trim();
+    const password = String(req.body?.password || '');
+    const user = authenticate(username, password);
+    if (!user || isAdminUser(user) || !canUserCreateAccounts(user)) {
+        logAuthLoginFailed(req, username, 'create-account gate');
+        res.status(401).json({
+            success: false,
+            error: 'Sign in with your store manager account (e.g. store number) to create sub-accounts.',
+        });
+        return;
+    }
+    setAccountGateCookie(res, user);
+    logAuthLogin(req, user);
+    res.json({ success: true, nextPath: '/Create-Account/details' });
 });
 
 app.post('/login', (req, res) => {
     if (!authRequired()) {
         if (wantsJsonResponse(req)) {
-            res.json({ success: true, welcomeName: '', defaultPath: '/' });
+            res.json({ success: true, welcomeName: '', defaultPath: '/login' });
             return;
         }
-        res.redirect('/');
+        res.redirect('/login');
         return;
     }
 
@@ -364,33 +536,85 @@ app.post('/login', (req, res) => {
     const password = String(req.body?.password || req.body?.accessKey || '');
     const remember = !(req.body?.remember === false || req.body?.remember === '0' || req.body?.remember === 0);
 
-    if (!username && DASHBOARD_ACCESS_KEY && timingSafeEqualString(password, DASHBOARD_ACCESS_KEY)) {
-        setLegacyAccessCookie(res, remember);
-        logAuthLogin(req, { username: '__legacy__', role: 'admin', stores: '*' });
-        sendLoginSuccess(req, res, { username: '__legacy__', role: 'admin', stores: '*' });
-        return;
-    }
-
     const user = authenticate(username, password);
     if (!user) {
         logAuthLoginFailed(req, username);
-        sendLoginFailure(req, res);
+        sendLoginFailure(req, res, 'Incorrect username or password.', '/login');
+        return;
+    }
+    if (isAdminUser(user)) {
+        sendLoginFailure(req, res, 'Use Admin sign-in at /admin.', '/login');
         return;
     }
 
-    setSessionCookie(res, user, remember);
+    setSessionCookie(res, user, remember, 'store');
     logAuthLogin(req, user);
-    sendLoginSuccess(req, res, user);
+    sendLoginSuccess(req, res, user, getLoginRedirectPath(user, 'mic'));
+});
+
+app.post('/admin/login', (req, res) => {
+    if (!authRequired()) {
+        res.redirect(getAdminRedirectPath());
+        return;
+    }
+    const username = String(req.body?.username || '').trim();
+    const password = String(req.body?.password || '');
+    const remember = !(req.body?.remember === false || req.body?.remember === '0' || req.body?.remember === 0);
+    const user = authenticate(username, password);
+    if (!user || !isAdminUser(user)) {
+        logAuthLoginFailed(req, username, 'admin login');
+        sendLoginFailure(req, res, 'Admin access only.', '/admin');
+        return;
+    }
+    setSessionCookie(res, user, remember, 'admin');
+    logAuthLogin(req, user);
+    sendLoginSuccess(req, res, user, getAdminRedirectPath());
+});
+
+app.post('/kiosk/login', (req, res) => {
+    if (!authRequired()) {
+        res.redirect('/login');
+        return;
+    }
+    const username = String(req.body?.username || '').trim();
+    const password = String(req.body?.password || '');
+    const remember = !(req.body?.remember === false || req.body?.remember === '0' || req.body?.remember === 0);
+    const user = authenticate(username, password);
+    if (!user) {
+        logAuthLoginFailed(req, username, 'kiosk login');
+        sendLoginFailure(req, res, 'Incorrect username or password.', '/kiosk');
+        return;
+    }
+    if (isAdminUser(user)) {
+        sendLoginFailure(req, res, 'Admins should sign in at /admin.', '/kiosk');
+        return;
+    }
+    const store = singleStoreForUser(user);
+    if (!store) {
+        sendLoginFailure(req, res, 'Kiosk login requires a single-store account.', '/kiosk');
+        return;
+    }
+    setSessionCookie(res, user, remember, 'kiosk');
+    logAuthLogin(req, user);
+    sendLoginSuccess(req, res, user, getKioskRedirectPath(user));
+});
+
+app.get('/api/account/login-ui', (req, res) => {
+    const username = String(req.query.username || '').trim();
+    res.json({
+        success: true,
+        dualLogin: isStorePatternUsername(username),
+    });
 });
 
 app.post('/unlock', (req, res) => {
     const password = String(req.body?.accessKey || '');
     if (!authRequired()) {
         if (wantsJsonResponse(req)) {
-            res.json({ success: true, welcomeName: '', defaultPath: '/' });
+            res.json({ success: true, welcomeName: '', defaultPath: '/stores' });
             return;
         }
-        res.redirect('/');
+        res.redirect('/stores');
         return;
     }
     if (DASHBOARD_ACCESS_KEY && timingSafeEqualString(password, DASHBOARD_ACCESS_KEY)) {
@@ -407,6 +631,7 @@ app.get('/logout', (req, res) => {
     res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
     res.clearCookie(LEGACY_COOKIE, sessionCookieOptions());
     res.clearCookie(NOLOGIN_COOKIE, nologinCookieOptions());
+    res.clearCookie(ENTRY_COOKIE, sessionCookieOptions());
     res.redirect('/login');
 });
 
@@ -458,7 +683,6 @@ app.get(/^\/nologin\/(\d{3,6})\/?$/i, async (req, res) => {
 });
 
 /** Login page assets — must be reachable before authentication (for sign-in screen animation). */
-const PUBLIC_ROOT = path.join(__dirname, '../public');
 for (const loginAsset of ['/scripts/brand-mark.js', '/styles/brand-mark.css']) {
     app.get(loginAsset, (_req, res) => {
         res.sendFile(path.join(PUBLIC_ROOT, loginAsset.slice(1)));
@@ -1096,27 +1320,55 @@ app.get('/welcome', (req, res) => {
 });
 
 // Root path is the store picker — a grid of clickable store tiles (see public/stores.html).
-app.get('/', (req, res) => {
+app.get('/stores', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
-    const dest = user ? getLoginRedirectPath(user) : '/';
-    if (user && dest !== '/' && dest !== '/login') {
-        res.redirect(dest);
+    if (!user || !isAdminUser(user)) {
+        sendForbidden(req, res, 'Store picker is for admin accounts.');
         return;
     }
-    res.sendFile(path.join(__dirname, '../public', 'stores.html'));
+    res.sendFile(path.join(PUBLIC_ROOT, 'stores.html'));
 });
 
-// Per-store dashboard pages, e.g. /3811 or /teststore. The SPA reads the store from the path.
-// Static assets and /api/* are matched earlier, so this only catches a bare store segment.
+app.get('/admin/overview', requireAdminPage, (req, res) => {
+    res.sendFile(path.join(PUBLIC_ROOT, 'admin-overview.html'));
+});
+
+// Kiosk wall dashboard — /kiosk/3811 (no back button; entry cookie kiosk).
+app.get(/^\/kiosk\/teststore\/?$/i, (req, res) => {
+    if (!assertStoreAccess(req, res, TEST_STORE_SLUG)) return;
+    res.sendFile(path.join(__dirname, '../public', 'index.html'));
+});
+
+app.get(/^\/kiosk\/(\d{3,6})\/?$/i, (req, res) => {
+    const storeNumber = (req.path.match(/^\/kiosk\/(\d{3,6})\/?$/i) || [])[1];
+    if (!assertStoreAccess(req, res, storeNumber)) return;
+    res.sendFile(path.join(__dirname, '../public', 'index.html'));
+});
+
+// Per-store dashboard (MIC / manager) — e.g. /3811. Kiosk sessions redirect to /kiosk/{store}.
 app.get(/^\/teststore\/?$/i, (req, res) => {
+    if (dashboardEntryFromRequest(req) === 'kiosk') {
+        res.redirect('/kiosk/teststore');
+        return;
+    }
     if (!assertStoreAccess(req, res, TEST_STORE_SLUG)) return;
     res.sendFile(path.join(__dirname, '../public', 'index.html'));
 });
 
 app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
     const storeNumber = (req.path.match(/^\/(\d{3,6})\/?$/) || [])[1];
+    if (dashboardEntryFromRequest(req) === 'kiosk') {
+        res.redirect(`/kiosk/${storeNumber}`);
+        return;
+    }
     if (!assertStoreAccess(req, res, storeNumber)) return;
     res.sendFile(path.join(__dirname, '../public', 'index.html'));
+});
+
+app.get(/^\/(\d{3,6})\/mic\/?$/i, (req, res) => {
+    const storeNumber = (req.path.match(/^\/(\d{3,6})\/mic\/?$/i) || [])[1];
+    if (!assertStoreAccess(req, res, storeNumber)) return;
+    res.sendFile(path.join(__dirname, '../public', 'mic.html'));
 });
 
 app.get(/^\/(area\/[a-z0-9-]+|a\d+)\/?$/i, (req, res) => {
@@ -1136,6 +1388,149 @@ app.get(/^\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)\/?$/i, (req, res) => 
 app.get('/api/me', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     res.json({ success: true, ...userProfileForClient(user) });
+});
+
+app.post('/api/account/change-password', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.status(403).json({ success: false, error: 'Account password change is not available for this session.' });
+        return;
+    }
+    const currentPassword = String(req.body?.currentPassword || '');
+    const newPassword = String(req.body?.newPassword || '');
+    const result = changeUserPassword(user.username, currentPassword, newPassword);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({ success: true });
+});
+
+app.post('/api/account/colour-blind-mode', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.status(403).json({ success: false, error: 'Sign in with your store account to change this setting.' });
+        return;
+    }
+    const enabled = !(req.body?.enabled === false || req.body?.enabled === 0 || req.body?.enabled === '0');
+    const result = setAccountColourBlindPreference(user.username, enabled);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    const freshUser = { ...user, colorBlind: Boolean(result.colorBlind) };
+    setSessionCookie(res, freshUser, true, dashboardEntryFromRequest(req) || 'store');
+    res.json({ success: true, colorBlind: Boolean(result.colorBlind) });
+});
+
+app.post('/api/account/mic-dark-mode', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.status(403).json({ success: false, error: 'Sign in with your store account to change this setting.' });
+        return;
+    }
+    const enabled = !(req.body?.enabled === false || req.body?.enabled === 0 || req.body?.enabled === '0');
+    const result = setAccountMicDarkModePreference(user.username, enabled);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    const freshUser = { ...user, micDarkMode: Boolean(result.micDarkMode) };
+    setSessionCookie(res, freshUser, true, dashboardEntryFromRequest(req) || 'store');
+    res.json({ success: true, micDarkMode: Boolean(result.micDarkMode) });
+});
+
+app.get('/api/account/managed-accounts', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    const store = String(req.query.store || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    if (!canUserManageStoreAccounts(user, store)) {
+        res.status(403).json({ success: false, error: 'You do not have permission to view accounts for this store.' });
+        return;
+    }
+    res.json({
+        success: true,
+        storeNumber: normalizeStoreKey(store),
+        accounts: listManagedStoreAccounts(store),
+    });
+});
+
+app.delete('/api/account/managed-accounts', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    const store = String(req.body?.store || req.query?.store || '').trim();
+    const username = String(req.body?.username || req.query?.username || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    const result = deleteManagedStoreAccount(user, store, username);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    deleteMmxCredentialsForUser(result.username);
+    res.json({ success: true, storeNumber: normalizeStoreKey(store), username: result.username });
+});
+
+app.post('/api/account/create', async (req, res) => {
+    const parent = resolveCreateAccountParent(req);
+    if (!parent) {
+        res.status(403).json({
+            success: false,
+            error: 'Sign in with your store account on the Create Account page first.',
+        });
+        return;
+    }
+
+    const username = String(req.body?.username || '').trim();
+    const password = String(req.body?.password || '');
+    const confirmPassword = String(req.body?.confirmPassword || '');
+    const displayName = String(req.body?.displayName || username).trim();
+    const mmxUsername = String(req.body?.mmxUsername || '').trim();
+    const mmxPassword = String(req.body?.mmxPassword || '');
+
+    if (password !== confirmPassword) {
+        res.status(400).json({ success: false, error: 'Passwords do not match.' });
+        return;
+    }
+    if (!mmxUsername || !mmxPassword) {
+        res.status(400).json({ success: false, error: 'Macromatix username and password are required.' });
+        return;
+    }
+
+    const mmxCheck = await verifyMacromatixLogin(mmxUsername, mmxPassword);
+    if (!mmxCheck.ok) {
+        res.status(400).json({
+            success: false,
+            error: mmxCheck.error || 'Macromatix login failed.',
+        });
+        return;
+    }
+
+    const result = appendStoreUser({
+        username,
+        password,
+        displayName,
+        stores: parent.stores,
+        createdBy: parent.parentUsername,
+        addCbAlias: parent.addCbAlias,
+    });
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+
+    const mmxSave = saveMmxCredentialsForUser(result.username, mmxUsername, mmxPassword);
+    if (!mmxSave.ok) {
+        res.status(500).json({ success: false, error: mmxSave.error });
+        return;
+    }
+
+    clearAccountGateCookie(res);
+    res.json({
+        success: true,
+        username: result.username,
+        cbUsername: result.cbUsername,
+        mmxVerified: true,
+        message: 'Account created. Macromatix login verified for Key Item Counts.',
+    });
 });
 
 app.get('/api/audit-schedule', (req, res) => {
@@ -1374,8 +1769,10 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
         if (!store || !assertStoreAccess(req, res, store)) return;
 
         console.log(`[StockCount] Send to MMX (prepare) — store ${store} vendor ${vendorSlug}`);
+        const actor = req.dashboardUser || getRequestUser(req);
         const result = await prepareStockCountForMmx(store, vendorSlug, {
             pendingVendorLabels: pendingVendorLabelsForStockCount(req, store),
+            dashboardUsername: actor?.username || '',
         });
         res.json({ success: true, ...result });
     } catch (error) {
@@ -1412,7 +1809,10 @@ app.post('/api/stock-count/send-to-mmx/apply', async (req, res) => {
         }
 
         console.log(`[StockCount] Apply MMX count — store ${store} session ${sessionId}`);
-        const result = await applyStockCountSession(store, sessionId);
+        const actor = req.dashboardUser || getRequestUser(req);
+        const result = await applyStockCountSession(store, sessionId, {
+            dashboardUsername: actor?.username || '',
+        });
         res.json({ success: true, ...result });
     } catch (error) {
         console.error('API: Error applying stock count in MMX:', error);
@@ -1523,8 +1923,13 @@ app.get('/api/sales', async (req, res) => {
     try {
         console.log('API: Sales data requested', requestedStore ? `(store ${requestedStore})` : '');
         if (isTestStore(requestedStore)) {
+            const user = req.dashboardUser || getRequestUser(req);
+            const fullPayload = await getSalesDataCached();
             const slice = await enrichSalesSliceWithStockCount(
-                filterSalesSliceForUser(buildTestStoreSalesSlice(), req.dashboardUser || getRequestUser(req)),
+                filterSalesSliceForUser(
+                    buildTestStoreSalesSlice(fullPayload, { stickyKey: stickyKeyForTestMirror(req, user) }),
+                    user
+                ),
                 { testPending: true }
             );
             res.json(slice);
@@ -1592,12 +1997,182 @@ app.get('/api/sales', async (req, res) => {
     }
 });
 
+// MIC overview — store manager dashboard tiles.
+app.get('/api/mic', async (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        let storeSlice = {};
+        if (isTestStore(store)) {
+            const user = req.dashboardUser || getRequestUser(req);
+            const payload = await getSalesDataCached();
+            storeSlice = buildTestStoreSalesSlice(payload, { stickyKey: stickyKeyForTestMirror(req, user) });
+        } else {
+            const payload = await getSalesDataCached();
+            storeSlice = storeSliceFromPayload(payload, store) || {};
+            await enrichSalesSliceWithStockCount(storeSlice);
+        }
+        res.json({ success: true, ...buildMicPayload(store, storeSlice) });
+    } catch (error) {
+        console.error('API: Error loading MIC overview:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/mic/daily-item-multiplier', (req, res) => {
+    try {
+        const user = req.dashboardUser || getRequestUser(req);
+        const itemLabel = String(req.body?.itemLabel || '').trim();
+        const store = String(req.body?.store || req.query?.store || '').trim();
+        const stores = req.body?.stores;
+        const scopeAll = req.body?.allStores === true || stores === '*';
+
+        if (isAdminUser(user) && (scopeAll || (Array.isArray(stores) && stores.length))) {
+            const result = addDailyItemMultiplier({
+                itemLabel,
+                stores: scopeAll ? '*' : stores,
+                setBy: user?.username || '',
+            });
+            if (!result.ok) {
+                res.status(400).json({ success: false, error: result.error });
+                return;
+            }
+            res.json({ success: true, rule: result.rule });
+            return;
+        }
+
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (req.body?.clear === true || /^nothing$/i.test(itemLabel)) {
+            const result = clearStoreDailyMultipliers(store);
+            if (!result.ok) {
+                res.status(400).json({ success: false, error: result.error });
+                return;
+            }
+            res.json({ success: true, cleared: true });
+            return;
+        }
+        const result = setDailyItemMultiplier(store, itemLabel, {
+            setBy: user?.username || '',
+            replace: true,
+        });
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, rule: result.rule });
+    } catch (error) {
+        console.error('API: Error setting MIC multiplier:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.delete('/api/mic/daily-item-multiplier/:id', (req, res) => {
+    try {
+        const user = req.dashboardUser || getRequestUser(req);
+        if (!isAdminUser(user)) {
+            res.status(403).json({ success: false, error: 'Admin only.' });
+            return;
+        }
+        const result = removeDailyItemMultiplier(req.params.id);
+        if (!result.ok) {
+            res.status(404).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/admin/overview', async (req, res) => {
+    try {
+        const user = req.dashboardUser || getRequestUser(req);
+        if (!isAdminUser(user)) {
+            res.status(403).json({ success: false, error: 'Admin only.' });
+            return;
+        }
+        let payload;
+        try {
+            payload = await getSalesDataCached();
+        } catch (error) {
+            payload = salesCache || buildCacheShellFromStoreList();
+        }
+        let stores = getStoreList().map((s) => ({
+            storeNumber: s.storeNumber,
+            storeName: s.storeName,
+            area: areaNameFromStore(s),
+            areaKey: normalizeAreaKey(areaNameFromStore(s)),
+        }));
+        stores = filterStoresForUser(user, stores);
+        const areas = buildAreaGroups(stores);
+        res.json({ success: true, ...buildAdminOverviewPayload(payload, areas) });
+    } catch (error) {
+        console.error('API: Error loading admin overview:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/webauthn/login/options', async (req, res) => {
+    try {
+        const options = await createLoginOptions(req.body?.username);
+        res.json({ success: true, options });
+    } catch (error) {
+        res.status(400).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/webauthn/login/verify', async (req, res) => {
+    try {
+        const user = await verifyPasskeyLogin(req.body);
+        setSessionCookie(res, user, true, 'admin');
+        logAuthLogin(req, user);
+        res.json({ success: true, defaultPath: getAdminRedirectPath() });
+    } catch (error) {
+        res.status(401).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/webauthn/register/options', async (req, res) => {
+    try {
+        const user = req.dashboardUser || getRequestUser(req);
+        if (!isAdminUser(user)) {
+            res.status(403).json({ success: false, error: 'Admin only.' });
+            return;
+        }
+        const options = await createRegistrationOptions(user);
+        res.json({ success: true, options });
+    } catch (error) {
+        res.status(400).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/webauthn/register/verify', async (req, res) => {
+    try {
+        const user = req.dashboardUser || getRequestUser(req);
+        if (!isAdminUser(user)) {
+            res.status(403).json({ success: false, error: 'Admin only.' });
+            return;
+        }
+        await verifyRegistration(user, req.body);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(400).json({ success: false, error: error.message });
+    }
+});
+
 // Upselling leaderboard — landscape podium reads this (enabled stores in config/upselling.json).
 app.get('/api/upselling', (req, res) => {
     try {
         const store = String(req.query.store || '').trim();
-        if (!store || !isUpsellingStore(store)) {
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!isUpsellingStore(store)) {
             return res.json({ enabled: false });
+        }
+        if (isTestStore(store)) {
+            const user = req.dashboardUser || getRequestUser(req);
+            return res.json(
+                buildTestStoreLeaderboardPayload(stickyKeyForTestMirror(req, user))
+            );
         }
         res.json(buildLeaderboardPayload(store));
     } catch (error) {

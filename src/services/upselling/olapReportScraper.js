@@ -1,6 +1,18 @@
 const log = require('../mmxReports/util-logging');
 const { loadPointsMap } = require('./pointsFile');
-const { resolveUpsellSyncStore } = require('./upsellingConfig');
+const { resolveUpsellSyncStore, isSyncAllStores } = require('./upsellingConfig');
+
+function resolveScrapeFilterStore(syncStoreNumber, cfg = {}) {
+    if (syncStoreNumber !== undefined && syncStoreNumber !== null) {
+        const explicit = String(syncStoreNumber).trim();
+        if (explicit === '*' || explicit.toLowerCase() === 'all') return '';
+        return explicit;
+    }
+    if (isSyncAllStores(cfg)) return '';
+    const fromCfg = String(resolveUpsellSyncStore(cfg) || '').trim();
+    if (fromCfg === '*' || fromCfg.toLowerCase() === 'all') return '';
+    return fromCfg;
+}
 const { parseUpsellGrid } = require('./upsellReportParser');
 const { waitForOlapReportReady, expandOlapCategories } = require('./olapReportExport');
 
@@ -150,10 +162,11 @@ async function scrapeOlapUpsellReport(page, cfg = {}, syncStoreNumber = '') {
     }
 
     log.info(`[Upselling] Table rows scraped: ${grid.length}`);
-    const syncStore = String(syncStoreNumber || resolveUpsellSyncStore() || '').trim();
-    const { byLabel } = loadPointsMap(syncStore);
+    const filterStore = resolveScrapeFilterStore(syncStoreNumber, cfg);
+    const pointsStore = filterStore || String(resolveUpsellSyncStore(cfg) || '3811').replace(/^\*$/i, '3811');
+    const { byLabel } = loadPointsMap(pointsStore);
     const parsed = parseUpsellGrid(grid, byLabel, {
-        filterStoreNumber: syncStore,
+        filterStoreNumber: filterStore,
     });
     parsed.gridSample = grid.slice(0, 25);
     log.info(

@@ -18,6 +18,7 @@
     "pm2:logs": "pm2 logs dashboard",
     "pm2:scheduler:logs": "pm2 logs report-download-scheduler",
     "upsell-sync": "node scripts/upsell-sync.js",
+    "upsell-rescore": "node scripts/upsell-rescore-export.js",
     "upsell-discover": "node scripts/discover-bi-report.js",
     "upsell-probe-export": "node scripts/probe-powerbi-export.js",
     "upsell-score-sample": "node scripts/upsell-score-sample.js"
@@ -26,6 +27,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@simplewebauthn/server": "^13.3.1",
     "cors": "^2.8.6",
     "dotenv": "^10.0.0",
     "express": "^4.22.1",

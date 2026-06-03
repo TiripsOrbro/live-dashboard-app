@@ -5,6 +5,7 @@ const { isTestStore, normalizeStoreKey, TEST_STORE_SLUG } = require('./testStore
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const USERS_PATH = path.join(PROJECT_ROOT, '.Users');
+const ACCOUNT_AUDIT_LOG = path.join(PROJECT_ROOT, 'data', 'account-audit.log');
 
 const SESSION_COOKIE = 'dashboard_session';
 const LEGACY_COOKIE = 'dashboard_access';
@@ -18,6 +19,8 @@ const FIELD_LABELS = {
     username: ['username', 'user'],
     password: ['password', 'pass'],
     access: ['access', 'stores', 'store'],
+    colourBlind: ['colourblind', 'colorblind', 'color blind', 'colour blind'],
+    micDarkMode: ['micdarkmode', 'mic dark mode', 'darkmode', 'dark mode'],
 };
 
 let usersCache = null;
@@ -105,10 +108,24 @@ function parseAccessBlock(block) {
     let username = '';
     let password = '';
     let accessRaw = '';
+    let colourBlindPref = false;
+    let micDarkModePref = false;
 
     for (const line of lines) {
         const trimmed = line.trim();
         const lower = trimmed.toLowerCase();
+        if (
+            FIELD_LABELS.colourBlind.some((k) => lower.startsWith(`${k} `) || lower.startsWith(`${k}|`))
+        ) {
+            const val = parseFieldLine(trimmed, FIELD_LABELS.colourBlind);
+            colourBlindPref = /^(1|true|yes|on)$/i.test(String(val || '').trim());
+            continue;
+        }
+        if (FIELD_LABELS.micDarkMode.some((k) => lower.startsWith(`${k} `) || lower.startsWith(`${k}|`))) {
+            const val = parseFieldLine(trimmed, FIELD_LABELS.micDarkMode);
+            micDarkModePref = /^(1|true|yes|on)$/i.test(String(val || '').trim());
+            continue;
+        }
         if (!username && FIELD_LABELS.username.some((k) => lower.startsWith(`${k} `) || lower.startsWith(`${k}|`))) {
             username = parseFieldLine(trimmed, FIELD_LABELS.username);
             continue;
@@ -150,6 +167,8 @@ function parseAccessBlock(block) {
         password,
         role: access.role,
         stores: access.stores,
+        colourBlindPref,
+        micDarkModePref,
     };
 }
 
@@ -177,14 +196,15 @@ function parseUsersFile(text) {
                 role: row.role,
                 stores: row.stores,
             };
+            const micDarkMode = Boolean(row.micDarkModePref);
             if (row.username && !isCbUsername(row.username)) {
-                users.push({ ...base, username: row.username, colorBlind: false });
+                users.push({ ...base, username: row.username, colorBlind: Boolean(row.colourBlindPref), micDarkMode });
             }
             if (row.cbUsername) {
-                users.push({ ...base, username: row.cbUsername, colorBlind: true });
+                users.push({ ...base, username: row.cbUsername, colorBlind: true, micDarkMode });
             }
             if (row.username && isCbUsername(row.username)) {
-                users.push({ ...base, username: row.username, colorBlind: true });
+                users.push({ ...base, username: row.username, colorBlind: true, micDarkMode });
             }
         }
         block = [];
@@ -207,6 +227,321 @@ function parseUsersFile(text) {
     flushBlock();
 
     return users;
+}
+
+function parseUsersFileBlocks(text) {
+    const blocks = [];
+    const lines = String(text || '').split(/\r?\n/);
+    let block = [];
+    let blockName = '';
+
+    function flushBlock() {
+        const row = parseAccessBlock(block);
+        if (row) {
+            blocks.push({
+                displayName: blockName,
+                username: row.username,
+                cbUsername: row.cbUsername || '',
+                password: row.password,
+                role: row.role,
+                stores: row.stores,
+                colourBlindPref: Boolean(row.colourBlindPref),
+                micDarkModePref: Boolean(row.micDarkModePref),
+            });
+        }
+        block = [];
+        blockName = '';
+    }
+
+    for (const rawLine of lines) {
+        const trimmed = rawLine.trim();
+        if (!trimmed) {
+            flushBlock();
+            continue;
+        }
+        if (trimmed.startsWith('#')) {
+            flushBlock();
+            blockName = trimmed.replace(/^#\s*/, '').trim();
+            continue;
+        }
+        block.push(rawLine);
+    }
+    flushBlock();
+    return blocks;
+}
+
+function formatAccessRaw(stores) {
+    if (stores === '*') return '*';
+    return [...new Set(stores.map(String))].join(', ');
+}
+
+function serializeUserBlock(block) {
+    const out = [];
+    if (block.displayName) out.push(`# ${block.displayName}`);
+    out.push(`${block.username} |`);
+    if (block.cbUsername) out.push(`${block.cbUsername} |`);
+    out.push(`${block.password} |`);
+    out.push(`${formatAccessRaw(block.stores)} |`);
+    if (block.colourBlindPref) out.push('colourblind | on');
+    if (block.micDarkModePref) out.push('micdarkmode | on');
+    out.push('');
+    return out.join('\n');
+}
+
+function serializeUsersFile(blocks) {
+    return blocks.map(serializeUserBlock).join('\n').trimEnd() + '\n';
+}
+
+function invalidateUsersCache() {
+    usersCache = null;
+    usersCacheMtime = 0;
+    usersCachePath = '';
+}
+
+function readUsersFileText() {
+    if (!fs.existsSync(USERS_PATH)) return '';
+    return fs.readFileSync(USERS_PATH, 'utf8');
+}
+
+function writeUsersFileText(text) {
+    fs.mkdirSync(path.dirname(USERS_PATH), { recursive: true });
+    fs.writeFileSync(USERS_PATH, String(text || '').endsWith('\n') ? text : `${text}\n`, 'utf8');
+    invalidateUsersCache();
+}
+
+function appendAccountAudit(entry) {
+    try {
+        fs.mkdirSync(path.dirname(ACCOUNT_AUDIT_LOG), { recursive: true });
+        fs.appendFileSync(ACCOUNT_AUDIT_LOG, `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`, 'utf8');
+    } catch (err) {
+        console.warn('[Auth] Account audit log write failed:', err.message);
+    }
+}
+
+function isStorePatternUsername(username) {
+    const name = String(username || '').trim();
+    return /^\d{3,6}$/.test(name) || /^CB\d{3,6}$/i.test(name);
+}
+
+function usernameExists(username) {
+    const name = String(username || '').trim();
+    if (!name) return false;
+    return readUsersFileSync().some((row) => usernameMatches(row.username, name));
+}
+
+function blockMatchesUsername(block, username) {
+    const name = String(username || '').trim();
+    if (!name) return false;
+    if (usernameMatches(block.username, name)) return true;
+    if (block.cbUsername && usernameMatches(block.cbUsername, name)) return true;
+    return false;
+}
+
+function isSyntheticUser(user) {
+    const name = String(user?.username || '');
+    return !name || name.startsWith('__');
+}
+
+function isRealDashboardUser(user) {
+    return Boolean(user && !isSyntheticUser(user) && !isNologinUser(user));
+}
+
+function canUserCreateAccounts(user) {
+    return isRealDashboardUser(user) && !isAdminUser(user);
+}
+
+function canUserManageStoreAccounts(user, storeNumber) {
+    if (!user) return false;
+    if (isAdminUser(user)) return userCanAccessStore(user, storeNumber);
+    return canUserCreateAccounts(user) && userCanAccessStore(user, storeNumber);
+}
+
+function blockGrantsStore(block, storeNumber) {
+    const store = normalizeStoreKey(storeNumber);
+    if (!store || isTestStore(store)) return false;
+    if (block?.stores === '*') return false;
+    const list = Array.isArray(block.stores) ? block.stores.map(String) : [];
+    return list.includes(store);
+}
+
+/** Crew logins created via Create account — not the primary 3811 / CB3811 store login. */
+function isManagedStoreAccountBlock(block) {
+    if (!block?.username || block.stores === '*') return false;
+    if (isStorePatternUsername(block.username)) return false;
+    if (isCbUsername(block.username)) return false;
+    return true;
+}
+
+function listManagedStoreAccounts(storeNumber) {
+    const store = normalizeStoreKey(storeNumber);
+    if (!store || isTestStore(store)) return [];
+    const blocks = parseUsersFileBlocks(readUsersFileText());
+    return blocks
+        .filter((block) => blockGrantsStore(block, store) && isManagedStoreAccountBlock(block))
+        .map((block) => ({
+            username: String(block.username || '').trim(),
+            nickname: String(block.displayName || block.username || '').trim(),
+        }))
+        .filter((row) => row.username)
+        .sort((a, b) => a.nickname.localeCompare(b.nickname, undefined, { sensitivity: 'base' }));
+}
+
+function deleteManagedStoreAccount(actor, storeNumber, targetUsername) {
+    const store = normalizeStoreKey(storeNumber);
+    const target = String(targetUsername || '').trim();
+    if (!store) {
+        return { ok: false, error: 'Store is required.' };
+    }
+    if (!target) {
+        return { ok: false, error: 'Account username is required.' };
+    }
+    if (!canUserManageStoreAccounts(actor, store)) {
+        return { ok: false, error: 'You do not have permission to manage accounts for this store.' };
+    }
+    if (usernameMatches(actor?.username, target)) {
+        return { ok: false, error: 'You cannot delete your own account here.' };
+    }
+    if (isStorePatternUsername(target) || isCbUsername(target)) {
+        return { ok: false, error: 'Primary store logins cannot be deleted from the dashboard.' };
+    }
+
+    const blocks = parseUsersFileBlocks(readUsersFileText());
+    const index = blocks.findIndex(
+        (block) =>
+            blockGrantsStore(block, store) &&
+            isManagedStoreAccountBlock(block) &&
+            usernameMatches(block.username, target)
+    );
+    if (index < 0) {
+        return { ok: false, error: 'Account not found for this store.' };
+    }
+
+    const removed = blocks.splice(index, 1)[0];
+    writeUsersFileText(serializeUsersFile(blocks));
+    appendAccountAudit({
+        action: 'delete-managed-account',
+        username: removed.username,
+        nickname: removed.displayName || removed.username,
+        store,
+        deletedBy: String(actor?.username || '').trim(),
+    });
+    return { ok: true, username: removed.username, nickname: removed.displayName || removed.username };
+}
+
+function changeUserPassword(username, currentPassword, newPassword) {
+    const name = String(username || '').trim();
+    const current = String(currentPassword || '');
+    const next = String(newPassword || '');
+    if (!name || !current || !next) {
+        return { ok: false, error: 'Current and new password are required.' };
+    }
+    if (next.length < 6) {
+        return { ok: false, error: 'New password must be at least 6 characters.' };
+    }
+    const verified = authenticate(name, current);
+    if (!verified) {
+        return { ok: false, error: 'Current password is incorrect.' };
+    }
+    const blocks = parseUsersFileBlocks(readUsersFileText());
+    const block = blocks.find((row) => blockMatchesUsername(row, name));
+    if (!block) {
+        return { ok: false, error: 'Account not found.' };
+    }
+    block.password = hashPassword(next);
+    writeUsersFileText(serializeUsersFile(blocks));
+    appendAccountAudit({ action: 'change-password', username: name });
+    return { ok: true };
+}
+
+function setAccountColourBlindPreference(username, enabled) {
+    const name = String(username || '').trim();
+    if (!name) {
+        return { ok: false, error: 'Not signed in.' };
+    }
+    const blocks = parseUsersFileBlocks(readUsersFileText());
+    const block = blocks.find((row) => blockMatchesUsername(row, name));
+    if (!block) {
+        return { ok: false, error: 'Account not found.' };
+    }
+    block.colourBlindPref = Boolean(enabled);
+    writeUsersFileText(serializeUsersFile(blocks));
+    appendAccountAudit({
+        action: 'colour-blind-pref',
+        username: block.username,
+        enabled: block.colourBlindPref,
+        setBy: name,
+    });
+    const colorBlind =
+        block.colourBlindPref || (block.cbUsername && usernameMatches(block.cbUsername, name));
+    return { ok: true, colorBlind: Boolean(colorBlind) };
+}
+
+function setAccountMicDarkModePreference(username, enabled) {
+    const name = String(username || '').trim();
+    if (!name) {
+        return { ok: false, error: 'Not signed in.' };
+    }
+    const blocks = parseUsersFileBlocks(readUsersFileText());
+    const block = blocks.find((row) => blockMatchesUsername(row, name));
+    if (!block) {
+        return { ok: false, error: 'Account not found.' };
+    }
+    block.micDarkModePref = Boolean(enabled);
+    writeUsersFileText(serializeUsersFile(blocks));
+    appendAccountAudit({
+        action: 'mic-dark-mode-pref',
+        username: block.username,
+        enabled: block.micDarkModePref,
+        setBy: name,
+    });
+    return { ok: true, micDarkMode: Boolean(block.micDarkModePref) };
+}
+
+function appendStoreUser({ username, password, stores, displayName, createdBy, addCbAlias = false }) {
+    const name = String(username || '').trim();
+    const pass = String(password || '');
+    const creator = String(createdBy || '').trim();
+    if (!name || !pass) {
+        return { ok: false, error: 'Username and password are required.' };
+    }
+    if (pass.length < 6) {
+        return { ok: false, error: 'Password must be at least 6 characters.' };
+    }
+    if (/^CB/i.test(name) && isCbUsername(name)) {
+        return { ok: false, error: 'Create the main username; a colour-blind alias is added automatically when applicable.' };
+    }
+    if (usernameExists(name)) {
+        return { ok: false, error: 'That username is already in use.' };
+    }
+    const storeList = stores === '*' ? null : [...new Set((stores || []).map(String))].filter(Boolean);
+    if (!storeList?.length) {
+        return { ok: false, error: 'Store accounts cannot be created without store access.' };
+    }
+    let cbUsername = '';
+    if (addCbAlias && storeList.length === 1) {
+        cbUsername = `CB${storeList[0]}`;
+        if (usernameExists(cbUsername) && !usernameMatches(cbUsername, name)) {
+            cbUsername = '';
+        }
+    }
+    const block = {
+        displayName: String(displayName || name).trim(),
+        username: name,
+        cbUsername,
+        password: hashPassword(pass),
+        role: 'store',
+        stores: storeList,
+    };
+    const existing = readUsersFileText().trimEnd();
+    const addition = serializeUserBlock(block);
+    writeUsersFileText(existing ? `${existing}\n\n${addition}` : addition);
+    appendAccountAudit({
+        action: 'create-account',
+        username: name,
+        createdBy: creator,
+        stores: storeList,
+    });
+    return { ok: true, username: name, cbUsername: cbUsername || null, stores: storeList };
 }
 
 function resolveUsersFilePath() {
@@ -259,6 +594,7 @@ function normalizeUser(row) {
         role: row.role === 'admin' ? 'admin' : 'store',
         stores,
         colorBlind: Boolean(row.colorBlind),
+        micDarkMode: Boolean(row.micDarkMode),
     };
 }
 
@@ -306,6 +642,7 @@ function parseSessionToken(token) {
         stores,
         displayName: String(payload.d || '').trim(),
         colorBlind: payload.c === 1,
+        micDarkMode: payload.m === 1,
     };
 }
 
@@ -317,6 +654,7 @@ function createSessionToken(user) {
         r: user.role,
         s: stores,
         c: user.colorBlind ? 1 : 0,
+        m: user.micDarkMode ? 1 : 0,
         exp: Date.now() + SESSION_MAX_AGE_MS,
     });
 }
@@ -492,12 +830,24 @@ function singleStoreForUser(user) {
     return '';
 }
 
-function getLoginRedirectPath(user) {
-    if (!user) return '/login';
-    if (isAdminUser(user)) return '/';
+function getAdminRedirectPath() {
+    return '/admin/overview';
+}
+
+function getKioskRedirectPath(user) {
+    if (!user) return '/kiosk';
+    if (isAdminUser(user)) return '/admin';
     const store = singleStoreForUser(user);
-    if (store) return `/${store}`;
-    return '/';
+    if (store) return `/kiosk/${store}`;
+    return '/kiosk';
+}
+
+function getLoginRedirectPath(user, mode = 'mic') {
+    if (!user) return '/login';
+    if (isAdminUser(user)) return getAdminRedirectPath();
+    const store = singleStoreForUser(user);
+    if (store) return `/${store}/mic`;
+    return '/login';
 }
 
 function sessionCookieOptions(options = {}) {
@@ -527,7 +877,11 @@ function userProfileForClient(user) {
             stores,
             skipStorePicker: true,
             defaultPath: store ? `/${store}` : '/',
+            micPath: store ? `/${store}/mic` : null,
+            canCreateAccount: false,
+            canViewManagedAccounts: false,
             colorBlind: false,
+            micDarkMode: false,
             nologin: true,
         };
     }
@@ -539,14 +893,19 @@ function userProfileForClient(user) {
             role: 'admin',
             stores: '*',
             skipStorePicker: false,
-            defaultPath: '/',
+            defaultPath: '/stores',
+            micPath: null,
+            canCreateAccount: false,
+            canViewManagedAccounts: true,
             colorBlind: false,
+            micDarkMode: false,
         };
     }
     const stores = user.stores === '*' ? '*' : [...user.stores];
     const skipStorePicker = Boolean(singleStoreForUser(user));
     const displayName = String(user.displayName || lookupDisplayName(user.username) || '').trim();
     const welcomeName = displayName || user.username;
+    const store = singleStoreForUser(user);
     return {
         username: user.username,
         displayName,
@@ -554,8 +913,12 @@ function userProfileForClient(user) {
         role: user.role,
         stores,
         skipStorePicker,
-        defaultPath: getLoginRedirectPath(user),
+            defaultPath: isAdminUser(user) ? getAdminRedirectPath() : getLoginRedirectPath(user, 'mic'),
+        micPath: store ? `/${store}/mic` : null,
+        canCreateAccount: canUserCreateAccounts(user),
+        canViewManagedAccounts: canUserCreateAccounts(user),
         colorBlind: Boolean(user.colorBlind),
+        micDarkMode: Boolean(user.micDarkMode),
     };
 }
 
@@ -587,8 +950,27 @@ module.exports = {
     userCanAccessStore,
     filterStoresForUser,
     getLoginRedirectPath,
+    getAdminRedirectPath,
+    getKioskRedirectPath,
     singleStoreForUser,
     sessionCookieOptions,
     userProfileForClient,
     timingSafeEqualString,
+    invalidateUsersCache,
+    isStorePatternUsername,
+    usernameExists,
+    changeUserPassword,
+    setAccountColourBlindPreference,
+    setAccountMicDarkModePreference,
+    appendStoreUser,
+    canUserCreateAccounts,
+    canUserManageStoreAccounts,
+    listManagedStoreAccounts,
+    deleteManagedStoreAccount,
+    isRealDashboardUser,
+    isSyntheticUser,
+    parseUsersFileBlocks,
+    normalizeUser,
+    parseCookies,
+    usernameMatches,
 };

@@ -3,7 +3,6 @@ const areaCodeMatch = window.location.pathname.match(/\/(a\d+)\/?$/i);
 const areaKey = (areaPathMatch ? areaPathMatch[1] : areaCodeMatch ? areaCodeMatch[1].toUpperCase() : '') || '';
 const titleEl = document.getElementById('title');
 const areaLabelEl = document.getElementById('area-label');
-const metaEl = document.getElementById('meta');
 const areaGrids = document.getElementById('area-grids');
 const ordersList = document.getElementById('orders-list');
 const auditsList = document.getElementById('audits-list');
@@ -132,6 +131,25 @@ function buildHourCellHtml(row, idx, live, displayValue) {
     return `<div class="grid-cell grid-cell--live-hour" style="border: var(--cell-border) ${outcomeBorder};">${layers}<span class="grid-cell-live-value">${fmtCurrency(displayValue)}</span></div>`;
 }
 
+function buildDayPartCharcoalCellHtml(actualTotal, forecastTotal) {
+    let statusClass = 'cell-green';
+    const dayForecast = Number(forecastTotal) || 0;
+    const dayActual = Number(actualTotal) || 0;
+    if (dayForecast > 0) {
+        statusClass = getActualCellClass(dayActual, dayForecast);
+    }
+    const barBg = paceFillMap[statusClass] || paceFillMap['cell-green'];
+    return `<div class="grid-label meal-period-label meal-period-day-sales-total" role="region" aria-label="Day sales total">
+        <div class="meal-period-day-sales-stack">
+            <div class="meal-period-day-sales-figures">
+                <div class="meal-period-day-sales-line">A${fmtCurrency(dayActual)}</div>
+                <div class="meal-period-day-sales-line">F${fmtCurrency(dayForecast)}</div>
+            </div>
+        </div>
+        <div class="meal-period-day-sales-fullbar" style="background-color: ${barBg}"></div>
+    </div>`;
+}
+
 function buildGrid(rows, titleText = '', dash = {}) {
     if (!areaGrids) return;
     const hours = rows || [];
@@ -168,26 +186,22 @@ function buildGrid(rows, titleText = '', dash = {}) {
         .join('');
     const forecastTotal = sum(hours, 'forecast');
     const actualTotal = sum(hours, 'actual');
+    const dayStatusClass =
+        forecastTotal > 0 ? getActualCellClass(actualTotal, forecastTotal) : 'cell-green';
+    const dayOutcomeBorder = paceBorderMap[dayStatusClass] || 'var(--blank-border)';
     grid.innerHTML = `
         <div class="grid-label header-label">Time</div>
         ${headerCells}
-        <div class="grid-label">Forecast Sales</div>
+        <div class="grid-label">Forecast</div>
         ${forecastCells}
-        <div class="grid-label">Actual Sales</div>
+        <div class="grid-label">Actual</div>
         ${actualCells}
-        <div class="grid-label meal-period-label meal-period-day-sales-total">
-            <div class="meal-period-day-sales-stack">
-                <div class="meal-period-day-sales-figures">
-                    <div class="meal-period-day-sales-line">A${fmtCurrency(actualTotal)}</div>
-                    <div class="meal-period-day-sales-line">F${fmtCurrency(forecastTotal)}</div>
-                </div>
-            </div>
-        </div>
-        <div class="grid-cell meal-period-cell" style="grid-column: span ${hours.length};">
+        ${buildDayPartCharcoalCellHtml(actualTotal, forecastTotal)}
+        <div class="grid-cell meal-period-cell ${dayStatusClass}" style="grid-column: span ${hours.length}; border: var(--cell-border) ${dayOutcomeBorder};">
             <div class="meal-period-body">
                 <div class="meal-period-stats">
-                    <span class="meal-period-line"><span class="meal-period-k">Actual:</span> <span class="meal-period-value">${fmtCurrency(actualTotal)}</span></span>
-                    <span class="meal-period-line"><span class="meal-period-k">Forecast:</span> <span class="meal-period-value">${fmtCurrency(forecastTotal)}</span></span>
+                    <span class="meal-period-line"><span class="meal-period-k">Actual</span> <span class="meal-period-value">${fmtCurrency(actualTotal)}</span></span>
+                    <span class="meal-period-line"><span class="meal-period-k">Forecast</span> <span class="meal-period-value">${fmtCurrency(forecastTotal)}</span></span>
                 </div>
             </div>
         </div>
@@ -231,7 +245,6 @@ async function loadArea() {
 
     titleEl.textContent = 'SALES DASHBOARD';
     if (areaLabelEl) areaLabelEl.textContent = `${data.area} Area`;
-    metaEl.textContent = `Updated ${new Date(data.timestamp).toLocaleString()} · ${data.stores.length} stores`;
     if (updatedEl) {
         updatedEl.textContent = new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
@@ -261,8 +274,7 @@ async function loadArea() {
 }
 
 loadArea().catch((err) => {
-    setStatus('Unable to refresh area data. If issue persists, contact Ash.');
-    metaEl.textContent = err.message || 'Failed to load area dashboard.';
+    setStatus(err.message || 'Unable to refresh area data. If issue persists, contact Ash.');
 });
 
 updateClock();

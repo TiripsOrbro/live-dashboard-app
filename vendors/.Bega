@@ -4,6 +4,7 @@
 # Format: [buildToDays | manual] | itemCode | name | unit | unit | unit [| location…]
 # Dare Iced Coffee: order qty rounds up to multiples of 6 (config/vendor-orders.json → orderRoundToByItemCode)
 
-# # 10 | 8418 | CREAM SOUR LIGHT 2KG | Tubs | N/a | KGs | Fridge | In Use
-10 | 8419 | CREAM SOUR LIGHT 5KG BEGA | Tubs | N/a | KGs | Fridge | In Use
-10 | 7759 | DRINK DARE ICED COFFEE DOUBLE | N/a | N/a | Bottles | Fridge
+
+# # 10 | 8418 | CREAM SOUR LIGHT 2KG                        | Tubs | N/a | KGs     | Fridge | In Use
+10     | 8419 | CREAM SOUR LIGHT 5KG BEGA                   | Tubs | N/a | KGs     | Fridge | In Use
+10     | 7759 | DRINK DARE ICED COFFEE DOUBLE               | N/a  | N/a | Bottles | Fridge | N/a

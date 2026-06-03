@@ -2,13 +2,13 @@
 /**
  * Sync upselling leaderboard from MMX or a local export file.
  *
+ *   npm run upsell-sync -- --all-stores
+ *   npm run upsell-sync -- --all-stores --file path/to/regional-export.csv
  *   npm run upsell-sync -- 3811
  *   npm run upsell-sync -- 3811 --headed
- *   npm run upsell-sync -- 3811 --headed --slow   (adds SCRAPER_SLOW_MO_MS stepping)
  *   npm run upsell-sync -- 3811 --file path/to/export.xls
  *
- * Prefer MMX Excel download (exportMode "download" in config/upselling.json) over HTML scrape —
- * the OLAP pivot aligns store columns correctly in the spreadsheet.
+ * With syncAllStores in config/upselling.json, one CSV export updates every enabled store.
  */
 const path = require('path');
 const fs = require('fs');
@@ -26,49 +26,107 @@ if (!process.env.SCRAPER_EXECUTABLE_PATH && process.platform === 'win32') {
     if (found) process.env.SCRAPER_EXECUTABLE_PATH = found;
 }
 
-const { isUpsellingStore, isUpsellingMmxSyncStore } = require('../src/services/upselling/upsellingConfig');
+const {
+    isUpsellingStore,
+    isUpsellingMmxSyncStore,
+    isSyncAllStores,
+    loadUpsellingConfig,
+    resolveEnabledStores,
+} = require('../src/services/upselling/upsellingConfig');
 const { runUpsellMmxSync, runUpsellFromFile } = require('../src/services/upselling/upsellMmxPipeline');
 const { buildLeaderboardPayload } = require('../src/services/upselling/upsellingScores');
 
 async function main() {
     const args = process.argv.slice(2).filter((a) => a !== '--');
-    const storeNumber = args[0];
-    if (!storeNumber) {
-        console.error('Usage: npm run upsell-sync -- <storeNumber> [--file <export.xlsx>]');
-        process.exit(1);
-    }
-    if (!isUpsellingStore(storeNumber)) {
-        console.error(`Store ${storeNumber} is not enabled in config/upselling-stores.json.`);
-        process.exit(1);
-    }
-
+    const cfg = loadUpsellingConfig();
+    const allStores = args.includes('--all-stores') || (args.length === 0 && isSyncAllStores(cfg));
+    const allDays = args.includes('--all-days') || args.includes('--backfill');
     const fileIdx = args.indexOf('--file');
     const filePath = fileIdx >= 0 ? args[fileIdx + 1] : null;
     const headed = args.includes('--headed');
     const forceScrape = args.includes('--scrape');
+    const slowDebug = args.includes('--slow');
+    const positional = args.filter((a, i) => {
+        if (a.startsWith('--')) return false;
+        if (fileIdx >= 0 && i === fileIdx + 1) return false;
+        return true;
+    });
+    const storeNumber = allStores ? null : positional[0];
+
+    if (!allStores && !storeNumber) {
+        console.error(
+            'Usage:\n' +
+                '  npm run upsell-sync -- --all-stores [--all-days] [--file export.csv] [--headed]\n' +
+                '  npm run upsell-sync -- <storeNumber> [--file export.csv] [--headed]'
+        );
+        process.exit(1);
+    }
+
+    if (!allStores && !isUpsellingStore(storeNumber)) {
+        console.error(`Store ${storeNumber} is not enabled in config/upselling-stores.json.`);
+        process.exit(1);
+    }
+
+    const browserOptions = {
+        headless: headed ? false : !/^(0|false|no)$/i.test(String(process.env.SCRAPER_HEADLESS ?? 'true')),
+        skipSlowMo: headed ? false : !slowDebug,
+        slowMo: headed || slowDebug ? 250 : undefined,
+        keepBrowserOpen: headed,
+    };
+
+    if (headed) {
+        console.log('[upsell-sync] Headed mode — Edge/Chrome will open maximized, slow, and stay open 90s at the end');
+    }
 
     if (filePath) {
         const abs = path.resolve(filePath);
-        runUpsellFromFile(storeNumber, abs);
+        const multi = runUpsellFromFile(allStores ? null : storeNumber, abs, { allStores, allDays });
         console.log(`[upsell-sync] Scored from file: ${abs}`);
+        if (allStores) {
+            console.log(`[upsell-sync] Updated stores: ${(multi.storeNumbers || []).join(', ') || '(none)'}`);
+            for (const store of multi.storeNumbers || []) {
+                printStoreSummary(store);
+            }
+            return;
+        }
+    } else if (allStores) {
+        const mmxStores = resolveEnabledStores(cfg).filter(isUpsellingMmxSyncStore);
+        if (!mmxStores.length) {
+            console.error('No MMX sync stores enabled in config/upselling-stores.json.');
+            process.exit(1);
+        }
+        const out = await runUpsellMmxSync(null, {
+            syncAllStores: true,
+            allDays,
+            browserOptions,
+            exportMode: forceScrape ? 'scrape' : undefined,
+        });
+        console.log(`[upsell-sync] Regional sync updated: ${(out.storeNumbers || []).join(', ') || '(none)'}`);
+        for (const store of out.storeNumbers || []) {
+            printStoreSummary(store);
+        }
+        return;
     } else if (!isUpsellingMmxSyncStore(storeNumber)) {
         console.error(
-            `Store ${storeNumber} has no MMX sync (test store). Use: npm run upsell-sync -- ${storeNumber} --file path/to/export.xlsx`
+            `Store ${storeNumber} has no MMX sync (test store). Use: npm run upsell-sync -- ${storeNumber} --file path/to/export.csv`
         );
         process.exit(1);
     } else {
-        const headless = headed
-            ? false
-            : !/^(0|false|no)$/i.test(String(process.env.SCRAPER_HEADLESS ?? 'true'));
-        const slowDebug = args.includes('--slow');
         await runUpsellMmxSync(storeNumber, {
-            browserOptions: { headless, skipSlowMo: !slowDebug },
+            browserOptions,
             exportMode: forceScrape ? 'scrape' : undefined,
         });
     }
 
+    printStoreSummary(storeNumber);
+}
+
+function printStoreSummary(storeNumber) {
     const payload = buildLeaderboardPayload(storeNumber);
-    console.log(JSON.stringify(payload, null, 2));
+    console.log(`\n[upsell-sync] Leaderboard ${storeNumber}:`);
+    for (const r of payload.top5 || []) {
+        console.log(`  ${r.rank}. ${r.name} — ${r.total} pts (best day ${r.bestDay || '?'})`);
+    }
 }
 
 main().catch((e) => {

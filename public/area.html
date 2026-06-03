@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="/styles/brand-mark.css">
     <link rel="stylesheet" href="/styles/dashboard.css">
     <link rel="stylesheet" href="/styles/page-transition.css">
+    <link rel="stylesheet" href="/styles/nav-back.css">
     <style>
         /* Scroll: inherit dashboard.css (.dashboard max-height 100% + overflow-y on desktop; page scroll on mobile). */
         body.area-dashboard-page .area-grid-section .dashboard-grid {
@@ -48,16 +49,14 @@
             gap: 16px;
         }
         .area-grid-section {
-            background: color-mix(in srgb, var(--white) 92%, var(--charcoal));
-            border: 1px solid color-mix(in srgb, var(--charcoal) 18%, var(--white));
-            border-radius: 12px;
-            padding: 10px;
+            padding: 0;
         }
         .area-grid-heading {
-            margin: 0 0 10px;
+            margin: 0 0 calc(10px * var(--dashboard-scale));
             font-size: var(--font-size-3);
             font-weight: var(--font-weight-semibold);
             color: var(--charcoal);
+            text-align: center;
         }
         .area-live-header {
             outline: 2px solid color-mix(in srgb, var(--tb-purple-light) 55%, var(--charcoal));
@@ -71,6 +70,7 @@
     </style>
 </head>
 <body class="area-dashboard-page">
+    <div id="area-nav-back"></div>
     <script src="/scripts/brand-mark.js"></script>
     <div id="app">
         <div class="dashboard">
@@ -94,7 +94,6 @@
             </header>
 
             <div class="sales-status" id="status-banner" hidden></div>
-            <p id="meta" class="dashboard-colour-note">Loading…</p>
 
             <div class="area-grid-stack" id="area-grids"></div>
             <div class="dashboard-grid-footer">
@@ -119,6 +118,10 @@
         </div>
     </div>
     <script src="/scripts/page-transition.js"></script>
+    <script src="/scripts/nav-back.js"></script>
+    <script>
+        DashboardNavBack?.mountBackButton(document.getElementById('area-nav-back'), { fallback: '/stores' });
+    </script>
     <script>DashboardPageTransition.initEnterFade();</script>
     <script src="/scripts/area-dashboard.js"></script>
 </body>

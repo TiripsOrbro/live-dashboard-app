@@ -11,6 +11,14 @@
     <link rel="stylesheet" href="/styles/brand-mark.css">
     <link rel="stylesheet" href="/styles/login.css">
     <link rel="stylesheet" href="/styles/page-transition.css">
+    <link rel="stylesheet" href="/styles/nav-back.css">
+    <script>
+        try {
+            if (sessionStorage.getItem('dashboard-nav-transition') === 'from-dashboard') {
+                document.documentElement.classList.add('page-nav-enter-pending');
+            }
+        } catch (e) { /* ignore */ }
+    </script>
     <link rel="manifest" href="/manifest.json">
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icon.svg">
@@ -33,11 +41,21 @@
             max-width: 520px;
         }
 
-        .stores-sign-out-btn {
+        .stores-top-bar {
             position: fixed;
             top: max(12px, env(safe-area-inset-top));
-            left: max(12px, env(safe-area-inset-left));
+            right: max(12px, env(safe-area-inset-right));
+            left: auto;
             z-index: 10;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        .stores-sign-out-btn {
+            pointer-events: auto;
+            position: static;
             font: inherit;
             font-size: var(--font-size-5);
             font-weight: var(--font-weight-semibold);
@@ -493,7 +511,10 @@
     <script src="/scripts/brand-mark.js"></script>
     <script src="/scripts/page-transition.js"></script>
     <script src="/scripts/welcome-overlay.js"></script>
-    <a href="/logout" class="stores-sign-out-btn">Sign out</a>
+    <div class="nav-back-host" id="stores-nav-back"></div>
+    <div class="stores-top-bar">
+        <a href="/logout" class="stores-sign-out-btn">Sign out</a>
+    </div>
     <header class="stores-header">
         <p id="stores-greeting" class="stores-greeting" hidden></p>
         <h1 class="stores-title">Store Dashboards</h1>
@@ -502,9 +523,14 @@
 
     <main id="store-grid" class="store-grid" aria-label="Store list"></main>
 
+    <script src="/scripts/nav-back.js"></script>
     <script src="/scripts/stores.js"></script>
     <script>
+        DashboardNavBack?.mountBackButton(document.getElementById('stores-nav-back'), {
+            fallback: '/admin/overview',
+        });
         DashboardPageTransition.installStoreLinkFade(document);
+        DashboardPageTransition.initStoresEnterFade();
     </script>
 </body>
 </html>

@@ -67,13 +67,48 @@ function isUpsellingStore(storeNumber) {
 
 const { isTestStore } = require('../testStore');
 
-/** Test store uses local .Employees only — no Macromatix BI sync. */
+/** Test store uses local leaderboard JSON only — no Macromatix BI sync. */
 function isUpsellingMmxSyncStore(storeNumber) {
     return isUpsellingStore(storeNumber) && !isTestStore(storeNumber);
 }
 
-function upsellingDataDir(storeNumber) {
-    return path.join(PROJECT_ROOT, 'data', 'upselling', String(storeNumber || '').trim());
+function upsellingRootDir() {
+    return path.join(PROJECT_ROOT, 'data', 'upselling');
+}
+
+function upsellingSharedPath(filename) {
+    return path.join(upsellingRootDir(), String(filename || '').trim());
+}
+
+function leaderboardFilePath(storeNumber) {
+    const store = String(storeNumber || '').trim();
+    return path.join(upsellingRootDir(), `${store}_leaderboard.json`);
+}
+
+function upsellingLastSyncPath() {
+    return upsellingSharedPath('last-sync.json');
+}
+
+function upsellingLastParsePath() {
+    return upsellingSharedPath('last-parse.json');
+}
+
+function upsellingLastExportPath(ext = '.csv') {
+    return upsellingSharedPath(`last-export${ext}`);
+}
+
+/** @deprecated All upselling data lives in data/upselling/ (flat layout). */
+function upsellingDataDir(_storeNumber) {
+    return upsellingRootDir();
+}
+
+/** @deprecated Regional export files live in data/upselling/ root. */
+function upsellingRegionalDataDir() {
+    return upsellingRootDir();
+}
+
+function backfillMarkerPath() {
+    return upsellingSharedPath('backfill-complete.json');
 }
 
 function resolveUpsellReportDateSpec(mode) {
@@ -93,6 +128,82 @@ function resolveUpsellSyncStore(cfg = loadUpsellingConfig()) {
     return String(cfg.syncStoreNumber || '').trim();
 }
 
+function isSyncAllStores(cfg = loadUpsellingConfig()) {
+    if (cfg.syncAllStores === true) return true;
+    const store = resolveUpsellSyncStore(cfg);
+    return store === '*' || store.toLowerCase() === 'all';
+}
+
+function isLeaderboardBackfillComplete() {
+    return fs.existsSync(backfillMarkerPath());
+}
+
+function markLeaderboardBackfillComplete(meta = {}) {
+    const dir = upsellingRootDir();
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+        backfillMarkerPath(),
+        JSON.stringify(
+            {
+                at: new Date().toISOString(),
+                ...meta,
+            },
+            null,
+            2
+        ),
+        'utf8'
+    );
+}
+
+function melbourneTodayIso() {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(new Date());
+}
+
+/** Which fiscal day to score from each sync (default: today only). Set syncDayMode to "all" for full competition export. */
+function resolveUpsellSyncDay(cfg = loadUpsellingConfig()) {
+    const envOverride = String(process.env.UPSELL_SYNC_DAY || '').trim();
+    if (envOverride === 'all' || envOverride === 'competition') return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(envOverride)) return envOverride;
+
+    const mode = String(cfg.syncDayMode || 'today').trim().toLowerCase();
+    if (mode === 'all' || mode === 'competition') return null;
+    if (mode === 'today') return melbourneTodayIso();
+    if (mode === 'yesterday') {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(d);
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(mode)) return mode;
+    return melbourneTodayIso();
+}
+
+/**
+ * syncDay for this run: null = every fiscal day in the export, string = one day only.
+ * First run with backfillOnFirstSync imports all days once; scheduled syncs then use syncDayMode (today).
+ */
+function resolveUpsellSyncDayForRun(cfg = loadUpsellingConfig(), options = {}) {
+    if (options.allDays || options.backfill) return null;
+    if (Object.prototype.hasOwnProperty.call(options, 'syncDay')) {
+        return options.syncDay || null;
+    }
+
+    if (cfg.backfillOnFirstSync !== false && !isLeaderboardBackfillComplete()) {
+        console.log(
+            '[Upselling] Leaderboard backfill pending — importing all fiscal days from this export (once)'
+        );
+        return null;
+    }
+
+    return resolveUpsellSyncDay(cfg);
+}
+
+function maybeMarkBackfillComplete(syncDay, meta = {}) {
+    if (syncDay) return;
+    if (!meta.storesUpdated?.length) return;
+    markLeaderboardBackfillComplete(meta);
+    console.log('[Upselling] Leaderboard backfill complete — future syncs use syncDayMode only');
+}
+
 module.exports = {
     PROJECT_ROOT,
     CONFIG_PATH,
@@ -103,7 +214,22 @@ module.exports = {
     isUpsellingMmxSyncStore,
     resolveEnabledStores: resolveEnabledStoresForScheduler,
     normalizeUpsellingStoreKey,
+    upsellingRootDir,
+    upsellingSharedPath,
+    leaderboardFilePath,
+    upsellingLastSyncPath,
+    upsellingLastParsePath,
+    upsellingLastExportPath,
     upsellingDataDir,
     resolveUpsellReportDateSpec,
     resolveUpsellSyncStore,
+    resolveUpsellSyncDay,
+    resolveUpsellSyncDayForRun,
+    isLeaderboardBackfillComplete,
+    markLeaderboardBackfillComplete,
+    maybeMarkBackfillComplete,
+    backfillMarkerPath,
+    isSyncAllStores,
+    upsellingRegionalDataDir,
+    melbourneTodayIso,
 };

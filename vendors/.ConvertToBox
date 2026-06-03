@@ -13,13 +13,13 @@
 100457 | SAUCE FIRE 10X1KG                            | KG    | 10
 106191 | SAUCE CARAMEL MONIN 1.89L                    | LITRE | 1.89
 106431 | 260 x 260mm Baking Paper Golden Silidor      | EACH  | N/A
-106491 | 4OZ PORTION CUP 50EA                         | EACH  | 1000
-106551 | 4OZ PORTION CUP LID 50EA                     | EACH  | 1000
+106491 | 4OZ PORTION CUP 50EA                         | EACH  | N/A
+106551 | 4OZ PORTION CUP LID 50EA                     | EACH  | N/A
 11172  | DESSERT CHOCETTES                            | KG    | 5
 12128  | DRINK PEPSI MAX 600ML                        | EACH  | 24
 12150  | DRINK PEPSI CAN                              | EACH  | 30
 12151  | DRINK PEPSI POST MIX                         | LITRE | 15
-12153  | DRINK 7UP BIB 15L                            | LITRE | 8
+12153  | DRINK 7UP BIB 15L                            | LITRE | 15
 12945  | CREAM SOUR LIGHT                             | KG    | 5
 13016  | LETTUCE SHREDDED                             | KG    | 8
 13529  | TRAYS DRINKS 4 CUP                           | EACH  | 100
@@ -28,7 +28,7 @@
 14601  | DRINK PEPSI MAX CAN                          | EACH  | 30
 14602  | DRINK 7UP CAN                                | EACH  | 30
 14603  | DRINK MOUNTAIN DEW CAN                       | EACH  | 30
-14606  | DRINK MOUNTAIN DEW BIB 15L                   | LITRE | 30
+14606  | DRINK MOUNTAIN DEW BIB 15L                   | LITRE | 15
 14648  | DRINK PEPSI 600ML                            | EACH  | 24
 14791  | GUACAMOLE                                    | KG    | 9
 15049  | FRIES SURECRISP                              | KG    | 12
@@ -36,7 +36,7 @@
 15659  | ONION BROWN DICED                            | KG    | 4
 15733  | DRINK SUNKIST ORANGE CAN                     | EACH  | 30
 15735  | DRINK SOLO CAN                               | EACH  | 30
-16235  | DRINK PEPSI MAX BIB 10L                      | LITRE | 30
+16235  | DRINK PEPSI MAX BIB 10L                      | LITRE | 10
 16520  | DRINK 7UP 600ML PET                          | EACH  | 24
 16521  | DRINK MOUNTAIN DEW 600ML PET                 | EACH  | 24
 16522  | DRINK SOLO LEMON 600ML PET                   | EACH  | 24

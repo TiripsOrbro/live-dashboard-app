@@ -385,6 +385,19 @@ node -e "const crypto=require('crypto'); const key=crypto.createHash('sha256').u
 
 Then store only `SCRAPER_CREDENTIALS_KEY` and `SCRAPER_CREDENTIALS_ENCRYPTED` in `.env.production`, and remove `SCRAPER_USERNAME` / `SCRAPER_PASSWORD`.
 
+### Per-user Macromatix logins (Create account flow)
+
+When crew accounts enter their Macromatix username and password on **Create account → Step 2**, the server verifies the login, then saves credentials under `data/mmx-users/{dashboard-username}.json`. The MMX username and password are **encrypted at rest** with AES-256-GCM (same style as `SCRAPER_CREDENTIALS_ENCRYPTED`). Only the dashboard username appears in cleartext in that file so the app knows which file to open.
+
+Use the same secret as the scraper, or a dedicated one:
+
+```env
+# Optional — defaults to SCRAPER_CREDENTIALS_KEY when unset
+MMX_USER_CREDENTIALS_KEY=long-random-secret
+```
+
+`data/mmx-users/` is gitignored. In production, set `MMX_USER_CREDENTIALS_KEY` or `SCRAPER_CREDENTIALS_KEY`; without either, the app refuses to save new per-user MMX credentials.
+
 Example service file at `/etc/systemd/system/live-dashboard.service`:
 
 ```ini

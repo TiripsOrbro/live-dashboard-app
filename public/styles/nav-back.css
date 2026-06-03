@@ -1,0 +1,77 @@
+.nav-back-host {
+    position: fixed;
+    top: max(14px, env(safe-area-inset-top));
+    left: max(14px, env(safe-area-inset-left));
+    z-index: 120;
+    pointer-events: none;
+}
+
+.nav-back-host--floating {
+    display: block;
+}
+
+.nav-back-bubble {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--white, #fff);
+    color: var(--charcoal, #231e1f);
+    box-shadow:
+        0 2px 8px color-mix(in srgb, var(--charcoal, #231e1f) 18%, transparent),
+        0 1px 2px color-mix(in srgb, var(--charcoal, #231e1f) 10%, transparent);
+    cursor: pointer;
+    transition:
+        transform 0.15s ease,
+        box-shadow 0.15s ease,
+        background 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.nav-back-bubble:hover {
+    transform: translateY(-1px);
+    box-shadow:
+        0 4px 14px color-mix(in srgb, var(--charcoal, #231e1f) 22%, transparent),
+        0 2px 4px color-mix(in srgb, var(--charcoal, #231e1f) 12%, transparent);
+}
+
+.nav-back-bubble:active {
+    transform: scale(0.96);
+}
+
+.nav-back-bubble:focus-visible {
+    outline: 2px solid var(--tb-purple-light, #7a3eb1);
+    outline-offset: 2px;
+}
+
+.nav-back-icon {
+    display: block;
+    margin-left: -2px;
+}
+
+.login-body .nav-back-bubble {
+    background: color-mix(in srgb, var(--login-surface-raised, #231e1f) 92%, white);
+    color: var(--login-text, #f5f5f5);
+    box-shadow:
+        0 2px 10px rgba(0, 0, 0, 0.45),
+        0 0 0 1px color-mix(in srgb, var(--login-border, #3d3344) 80%, transparent);
+}
+
+.login-body .nav-back-bubble:hover {
+    background: color-mix(in srgb, var(--tb-purple-light, #7a3eb1) 28%, var(--login-surface-raised, #231e1f));
+}
+
+.login-body .nav-back-bubble:focus-visible {
+    outline-color: var(--tb-purple-light, #7a3eb1);
+}
+
+/* Legacy class — hide if any old markup remains */
+.nav-back-btn {
+    display: none;
+}

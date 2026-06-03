@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
+    <title>Admin sign in — TBA Dashboard</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles/brand-mark.css">
+    <link rel="stylesheet" href="/styles/login.css">
+    <link rel="stylesheet" href="/styles/nav-back.css">
+</head>
+<body class="login-body">
+    <div class="login-root">
+        <section class="login-stage">
+            <div class="login-card">
+                <div class="nav-back-host" id="admin-login-back"></div>
+                <header class="login-brand">
+                    <div class="login-brand-hero">
+                        <div class="login-logo" id="login-brand-mark"></div>
+                        <h1 class="login-title">ADMIN</h1>
+                    </div>
+                    <p class="login-subtitle">Sign in for regional overview. Passkeys require HTTPS in production.</p>
+                </header>
+                <form id="admin-login-form" class="login-form" novalidate>
+                    <label class="login-field">
+                        Username
+                        <input id="admin-username" name="username" type="text" autocomplete="username" autofocus>
+                    </label>
+                    <label class="login-field">
+                        Password
+                        <input id="admin-password" name="password" type="password" autocomplete="current-password" required>
+                    </label>
+                    <label class="login-remember">
+                        <input id="admin-remember" type="checkbox" checked>
+                        <span>Stay signed in</span>
+                    </label>
+                    <button type="submit" class="login-submit" id="admin-submit">Sign in</button>
+                    <button type="button" class="login-submit login-submit--mic" id="admin-passkey-btn">Sign in with Face ID / fingerprint</button>
+                    <p id="admin-login-error" class="login-error" role="alert"></p>
+                </form>
+            </div>
+        </section>
+    </div>
+    <script src="https://unpkg.com/@simplewebauthn/browser@13.1.0/dist/bundle/index.umd.min.js"></script>
+    <script src="/scripts/brand-mark.js"></script>
+    <script src="/scripts/nav-back.js"></script>
+    <script src="/scripts/admin-login.js"></script>
+</body>
+</html>

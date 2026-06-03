@@ -1,15 +1,34 @@
 # Dashboard login accounts — copy to `.Users` on the server and edit.
 # One block per person. Lines may be indented; a trailing | on each field is optional.
 #
-# access: * or all = every store (admin picker). Otherwise comma-separated store numbers.
-# Usernames are case-insensitive at login (Admin = admin). Passwords are case-sensitive.
+# access: * or all = Admin (all stores). Otherwise comma-separated store numbers = Store level.
+# Admin accounts can ONLY be created by editing this file — not via the dashboard UI.
+# Named admins: NicholasAntonello, ThomasRead, AshOwens
+#
+# Usernames are case-insensitive at login. Passwords are case-sensitive.
 # Passwords: plaintext for quick setup, or scrypt:… from scripts/hash-dashboard-password.js
 #
 # Optional CB username (e.g. CB3811): same password and welcome name, opens the dashboard
 # with blue/yellow/red colours instead of green/yellow/red (colour-blind friendly).
+#
+# Store logins see two sign-in buttons: "Login to dashboard" and "Login as MIC".
+# Admin logins see a single Sign in button.
 
-# Admin
-admin |
+# Admin — Nicholas Antonello
+NicholasAntonello |
+CBNicholasAntonello |
+changeme-admin-password |
+*
+
+# Admin — Thomas Read
+ThomasRead |
+CBThomasRead |
+changeme-admin-password |
+*
+
+# Admin — Ash Owens
+AshOwens |
+CBAshOwens |
 changeme-admin-password |
 *
 
@@ -25,7 +44,7 @@ CB3806 |
 changeme-3806-password |
 3806
 
-# Regional manager (multiple stores)
+# Regional manager (multiple stores, Store level — not Admin)
 # regional |
 # changeme-regional |
 # 3806, 3808, 3811

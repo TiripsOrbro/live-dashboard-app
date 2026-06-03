@@ -1,18 +1,75 @@
 const fs = require('fs');
 const path = require('path');
 const log = require('../mmxReports/util-logging');
+const { upsellingRootDir } = require('./upsellingConfig');
 
 function isOlapReportPage(url) {
     return /mdxview\.aspx|\/olap\//i.test(String(url || ''));
 }
 
-function collectOlapContexts(page) {
-    const contexts = [{ name: 'main', ctx: page }];
+async function pageHasOlapReport(page) {
+    if (isOlapReportPage(page.url())) return true;
     for (const frame of page.frames()) {
-        if (frame === page.mainFrame()) continue;
-        contexts.push({ name: String(frame.url() || '').slice(-100), ctx: frame });
+        if (isOlapReportPage(frame.url())) return true;
+        const hasExport = await frame.$('#tdShowExport').catch(() => null);
+        if (hasExport) return true;
+    }
+    return false;
+}
+
+function collectOlapContexts(page) {
+    const contexts = [];
+    const seen = new Set();
+    for (const frame of page.frames()) {
+        const key = String(frame.url() || frame.name() || contexts.length);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        contexts.push({ name: key.slice(-100), ctx: frame });
     }
     return contexts;
+}
+
+async function findExportButtonFrame(page) {
+    for (const { ctx } of collectOlapContexts(page)) {
+        const found = await ctx.$('#tdShowExport').catch(() => null);
+        if (found) return ctx;
+    }
+    return null;
+}
+
+async function clickSelectExport(ctx, format = 'csv') {
+    const fmt = String(format || 'csv').trim().toLowerCase();
+    return ctx.evaluate((formatWant) => {
+        for (const el of document.querySelectorAll('div.MenuItem, .MenuItem')) {
+            const onclick = String(el.getAttribute('onclick') || '');
+            if (onclick.includes(`SelectExport('${formatWant}')`) || onclick.includes(`SelectExport("${formatWant}")`)) {
+                el.click();
+                return 'MenuItem';
+            }
+            const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+            if (new RegExp(`^${formatWant}$`, 'i').test(text)) {
+                el.click();
+                return text;
+            }
+        }
+        try {
+            if (typeof SelectExport === 'function') {
+                SelectExport(formatWant);
+                return 'SelectExport';
+            }
+        } catch (_) {
+            /* ignore */
+        }
+        try {
+            if (typeof parent !== 'undefined' && typeof parent.SelectExport === 'function') {
+                parent.SelectExport(formatWant);
+                return 'parent.SelectExport';
+            }
+        } catch (_) {
+            /* ignore */
+        }
+        return null;
+    }, fmt);
 }
 
 async function snapshotMenuLabels(ctx) {
@@ -44,13 +101,12 @@ async function snapshotMenuLabels(ctx) {
         .catch((err) => [{ tag: 'error', label: err.message }]);
 }
 
-function writeOlapExportDebug(page, storeNumber, detail) {
+function writeOlapExportDebug(page, _storeNumber, detail) {
     try {
-        const store = String(storeNumber || '3811').trim() || '3811';
-        const dir = path.join(__dirname, '..', '..', '..', 'data', 'upselling', store);
+        const dir = upsellingRootDir();
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, 'export-menu-debug.json'), JSON.stringify(detail, null, 2), 'utf8');
-        log.warn(`[Upselling] Wrote export-menu-debug.json (${detail.frames?.length || 0} frames)`);
+        log.warn('[Upselling] Wrote data/upselling/export-menu-debug.json');
     } catch (_) {
         /* ignore */
     }
@@ -59,17 +115,22 @@ function writeOlapExportDebug(page, storeNumber, detail) {
 async function waitForOlapReportReady(page, timeoutMs = 90000) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-        const ready = await page
-            .evaluate(() => {
-                const title = (document.body?.innerText || '').includes('Upsell by Cashier');
-                const table =
-                    document.querySelector('table') ||
-                    document.querySelector('[id*="grid"], [class*="grid"], [role="grid"]');
-                const rows = table?.querySelectorAll('tr').length || 0;
-                return title && table && rows >= 3;
-            })
-            .catch(() => false);
-        if (ready) return true;
+        for (const { ctx } of collectOlapContexts(page)) {
+            const ready = await ctx
+                .evaluate(() => {
+                    const body = document.body?.innerText || '';
+                    const loading = /\bloading\.{0,3}\b/i.test(body);
+                    const title = /upsell by cashier/i.test(body);
+                    const table =
+                        document.querySelector('table') ||
+                        document.querySelector('[id*="grid"], [class*="grid"], [role="grid"]');
+                    const rows = table?.querySelectorAll('tr').length || 0;
+                    const hasExport = Boolean(document.querySelector('#tdShowExport'));
+                    return !loading && (title || hasExport) && table && rows >= 3;
+                })
+                .catch(() => false);
+            if (ready) return true;
+        }
         await page.waitForTimeout(1000);
     }
     return false;
@@ -99,25 +160,18 @@ async function expandOlapCategories(page) {
 }
 
 async function openOlapExportMenu(page) {
-    const exportSelectors = [
-        '#tdShowExport',
-        '#tdShowExport button',
-        'button[onclick*="ShowExport"]',
-        'button[data-original-title="Export"]',
-        'button[title="Export"]',
-    ];
+    const exportFrame = await findExportButtonFrame(page);
+    const ctx = exportFrame || page;
 
-    for (const sel of exportSelectors) {
-        try {
-            await page.waitForSelector(sel, { timeout: 8000 });
-            await page.click(sel);
-            return true;
-        } catch (_) {
-            /* try next */
-        }
+    try {
+        await ctx.waitForSelector('#tdShowExport', { timeout: 20000, visible: true });
+        await ctx.click('#tdShowExport');
+        return ctx;
+    } catch (_) {
+        /* fall through */
     }
 
-    const opened = await page.evaluate(() => {
+    const opened = await ctx.evaluate(() => {
         try {
             if (typeof ShowExport === 'function') {
                 ShowExport({ preventDefault: () => {}, stopPropagation: () => {} });
@@ -139,7 +193,7 @@ async function openOlapExportMenu(page) {
             'Export toolbar button (#tdShowExport / ShowExport) not found on MdxView.'
         );
     }
-    return true;
+    return ctx;
 }
 
 async function clickMenuOptionInContext(ctx, menuLabel, format = 'excel') {
@@ -252,17 +306,27 @@ async function clickOlapExportOption(page, cfg = {}) {
     ).trim();
     const storeNumber = String(cfg.syncStoreNumber || '3811').trim();
 
-    await openOlapExportMenu(page);
+    const exportFrame = await openOlapExportMenu(page);
 
-    const waitSteps = [400, 800, 1200, 1800];
+    const waitSteps = [300, 600, 1000, 1500];
     let picked = null;
-    let lastDebug = null;
 
     for (const waitMs of waitSteps) {
         await page.waitForTimeout(waitMs);
 
+        picked = await clickSelectExport(exportFrame, format);
+        if (picked) {
+            log.info(`[Upselling] OLAP export (${exportFrame.url?.().slice(-60) || 'frame'}): ${menuLabel} via ${picked}`);
+            return menuLabel;
+        }
+
         const contexts = collectOlapContexts(page);
         for (const { name, ctx } of contexts) {
+            picked = await clickSelectExport(ctx, format);
+            if (picked) {
+                log.info(`[Upselling] OLAP export menu (${name}): "${menuLabel}" via ${picked}`);
+                return menuLabel;
+            }
             picked = await clickMenuOptionInContext(ctx, menuLabel, format);
             if (picked) {
                 log.info(`[Upselling] OLAP export menu (${name}): "${picked}"`);
@@ -287,8 +351,7 @@ async function clickOlapExportOption(page, cfg = {}) {
     for (const { name, ctx } of contexts) {
         debug.menuLabels[name] = await snapshotMenuLabels(ctx);
     }
-    lastDebug = debug;
-    writeOlapExportDebug(page, storeNumber, lastDebug);
+    writeOlapExportDebug(page, storeNumber, debug);
 
     const sample = Object.values(debug.menuLabels)
         .flat()
@@ -322,6 +385,7 @@ async function exportOlapReportToFile(page, cfg = {}) {
 
 module.exports = {
     isOlapReportPage,
+    pageHasOlapReport,
     waitForOlapReportReady,
     expandOlapCategories,
     clickOlapExportOption,

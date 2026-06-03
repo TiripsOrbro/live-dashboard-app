@@ -4,6 +4,8 @@
 (function pageTransitionModule(global) {
     const KEY = 'dashboard-nav-transition';
     const FROM_STORES = 'from-stores';
+    const FROM_DASHBOARD = 'from-dashboard';
+    const FROM_PICKER_KEY = 'dashboard-from-picker';
     const EXIT_MS = 420;
 
     function prefersReducedMotion() {
@@ -13,6 +15,14 @@
     function markFromStores() {
         try {
             sessionStorage.setItem(KEY, FROM_STORES);
+        } catch {
+            /* ignore */
+        }
+    }
+
+    function markFromDashboard() {
+        try {
+            sessionStorage.setItem(KEY, FROM_DASHBOARD);
         } catch {
             /* ignore */
         }
@@ -28,6 +38,32 @@
         }
     }
 
+    function consumeFromDashboard() {
+        try {
+            if (sessionStorage.getItem(KEY) !== FROM_DASHBOARD) return false;
+            sessionStorage.removeItem(KEY);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    function markCameFromStorePicker() {
+        try {
+            sessionStorage.setItem(FROM_PICKER_KEY, '1');
+        } catch {
+            /* ignore */
+        }
+    }
+
+    function clearCameFromStorePicker() {
+        try {
+            sessionStorage.removeItem(FROM_PICKER_KEY);
+        } catch {
+            /* ignore */
+        }
+    }
+
     function navigateTo(url) {
         const dest = String(url || '').trim();
         if (!dest) return;
@@ -36,6 +72,20 @@
             return;
         }
         markFromStores();
+        document.body.classList.add('page-nav-fade-out');
+        global.setTimeout(() => {
+            global.location.href = dest;
+        }, EXIT_MS);
+    }
+
+    function navigateBackToStores(url = '/stores') {
+        const dest = String(url || '/stores').trim() || '/stores';
+        clearCameFromStorePicker();
+        if (prefersReducedMotion()) {
+            global.location.href = dest;
+            return;
+        }
+        markFromDashboard();
         document.body.classList.add('page-nav-fade-out');
         global.setTimeout(() => {
             global.location.href = dest;
@@ -70,15 +120,67 @@
         });
     }
 
-    function initEnterFade() {
-        if (!consumeFromStores()) return;
+    function resetNavTransitionState() {
         document.documentElement.classList.remove('page-nav-enter-pending');
+        document.body.classList.remove('page-nav-fade-out', 'page-nav-fade-in', 'page-nav-fade-in--visible');
+    }
+
+    function runEnterFade() {
         if (prefersReducedMotion()) return;
         document.body.classList.add('page-nav-fade-in');
         global.requestAnimationFrame(() => {
             global.requestAnimationFrame(() => {
                 document.body.classList.add('page-nav-fade-in--visible');
             });
+        });
+    }
+
+    function initEnterFade() {
+        if (!consumeFromStores()) return;
+        markCameFromStorePicker();
+        resetNavTransitionState();
+        runEnterFade();
+    }
+
+    function initStoresEnterFade() {
+        if (!consumeFromDashboard()) return;
+        resetNavTransitionState();
+        runEnterFade();
+    }
+
+    /** Back/forward restores bfcache with fade-out still on body — clear or fade in. */
+    function installPageshowReset() {
+        global.addEventListener('pageshow', (event) => {
+            const stuckOnExit = document.body.classList.contains('page-nav-fade-out');
+            if (stuckOnExit) {
+                resetNavTransitionState();
+                return;
+            }
+            if (event.persisted) {
+                try {
+                    if (sessionStorage.getItem(KEY) === FROM_DASHBOARD) {
+                        initStoresEnterFade();
+                        return;
+                    }
+                } catch {
+                    /* ignore */
+                }
+                resetNavTransitionState();
+            }
+        });
+    }
+
+    /** When leaving a store dashboard opened from the picker (incl. browser back). */
+    function installDashboardPagehide() {
+        global.addEventListener('pagehide', () => {
+            try {
+                if (sessionStorage.getItem(FROM_PICKER_KEY) === '1') {
+                    sessionStorage.setItem(KEY, FROM_DASHBOARD);
+                    sessionStorage.removeItem(FROM_PICKER_KEY);
+                }
+            } catch {
+                /* ignore */
+            }
         });
     }
 
@@ -93,14 +195,33 @@
         }
     }
 
+    /** Call from stores.html <head> when returning from a store dashboard. */
+    function markStoresEnterPendingInHtml() {
+        try {
+            if (sessionStorage.getItem(KEY) === FROM_DASHBOARD) {
+                document.documentElement.classList.add('page-nav-enter-pending');
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+
+    installPageshowReset();
+
     global.DashboardPageTransition = {
         KEY,
         FROM_STORES,
+        FROM_DASHBOARD,
         markFromStores,
         consumeFromStores,
         navigateTo,
+        navigateBackToStores,
         installStoreLinkFade,
         initEnterFade,
+        initStoresEnterFade,
         markEnterPendingInHtml,
+        markStoresEnterPendingInHtml,
+        installDashboardPagehide,
+        resetNavTransitionState,
     };
 })(window);

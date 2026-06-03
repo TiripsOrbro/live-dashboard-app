@@ -5,6 +5,7 @@ const {
     getStoreUpsellingConfig,
     listStoreConfigs,
     normalizeUpsellingStoreKey,
+    resolveEnabledStores,
 } = require('./storeUpsellingConfig');
 
 const POINTS_PATH = path.join(PROJECT_ROOT, '.points');
@@ -32,6 +33,33 @@ function parsePointsText(text) {
     return byLabel;
 }
 
+function loadLegacyUpsellingConfig() {
+    const legacyPath = path.join(PROJECT_ROOT, 'config', 'upselling.json');
+    if (!fs.existsSync(legacyPath)) return {};
+    try {
+        return JSON.parse(fs.readFileSync(legacyPath, 'utf8'));
+    } catch (_) {
+        return {};
+    }
+}
+
+function loadDefaultPointsMap() {
+    const cfg = loadLegacyUpsellingConfig();
+    return parsePointsTextFromObject(cfg.defaultPoints || {});
+}
+
+function parsePointsTextFromObject(pointsObj) {
+    const byLabel = new Map();
+    if (!pointsObj || typeof pointsObj !== 'object') return byLabel;
+    for (const [label, pts] of Object.entries(pointsObj)) {
+        if (!label || label.startsWith('_')) continue;
+        const value = Number(pts);
+        if (!Number.isFinite(value)) continue;
+        byLabel.set(normalizeLabel(label), { label: String(label).trim(), points: value });
+    }
+    return byLabel;
+}
+
 function readGlobalPointsMap() {
     const file = fs.existsSync(POINTS_PATH) ? POINTS_PATH : POINTS_EXAMPLE_PATH;
     if (!fs.existsSync(file)) {
@@ -55,21 +83,33 @@ function mergeStoreOverrides(byLabel, overrides) {
  */
 function loadPointsMap(storeNumber = '') {
     const global = readGlobalPointsMap();
+    const defaults = loadDefaultPointsMap();
     const key = normalizeUpsellingStoreKey(storeNumber);
     if (!key) {
-        return global;
+        const byLabel = new Map(global.byLabel);
+        mergeStoreOverrides(byLabel, defaults);
+        return {
+            byLabel,
+            source: defaults.size
+                ? `${global.source || '.points'} + upselling.json defaultPoints`
+                : global.source,
+        };
     }
 
     const storeCfg = getStoreUpsellingConfig(key);
-    if (!storeCfg.points.size) {
-        return global;
+    const byLabel = new Map(global.byLabel);
+    mergeStoreOverrides(byLabel, defaults);
+    if (storeCfg.points.size) {
+        mergeStoreOverrides(byLabel, storeCfg.points);
     }
 
-    const byLabel = new Map(global.byLabel);
-    mergeStoreOverrides(byLabel, storeCfg.points);
+    const sourceParts = [global.source || '.points'];
+    if (defaults.size) sourceParts.push('upselling.json defaultPoints');
+    if (storeCfg.points.size) sourceParts.push(`upselling-stores (${key})`);
+
     return {
         byLabel,
-        source: `${global.source || '.points'} + upselling-stores (${key})`,
+        source: sourceParts.filter(Boolean).join(' + '),
     };
 }
 
@@ -79,6 +119,7 @@ function loadPointsMap(storeNumber = '') {
 function loadPointsMapForParsing() {
     const global = readGlobalPointsMap();
     const byLabel = new Map(global.byLabel);
+    mergeStoreOverrides(byLabel, loadDefaultPointsMap());
     const storeKeys = [];
 
     for (const entry of listStoreConfigs()) {
@@ -91,8 +132,8 @@ function loadPointsMapForParsing() {
 
     const source =
         storeKeys.length > 0
-            ? `${global.source || '.points'} + stores (${storeKeys.join(', ')})`
-            : global.source;
+            ? `${global.source || '.points'} + defaultPoints + stores (${storeKeys.join(', ')})`
+            : `${global.source || '.points'} + defaultPoints`;
 
     return { byLabel, source };
 }

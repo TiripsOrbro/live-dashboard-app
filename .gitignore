@@ -9,3 +9,15 @@ scripts/probe-stock-count.png
 *.log
 data/buildto-grid*.json
 data/buildto-grid*.xlsx
+.Employees
+.Employees.example
+data/upselling/*_leaderboard.json
+data/upselling/last-export.*
+data/upselling/*-upsell-by-cashier.*
+data/upselling/backfill-complete.json
+data/upselling/unassigned-review.json
+data/upselling/unassigned-review-log.jsonl
+data/mic/*.json
+data/webauthn/
+data/mmx-users/
+data/account-audit.log

@@ -3,10 +3,12 @@ const path = require('path');
 const {
     loadUpsellingConfig,
     isUpsellingMmxSyncStore,
+    isSyncAllStores,
     resolveEnabledStores,
-    upsellingDataDir,
+    upsellingLastSyncPath,
     TIME_ZONE,
 } = require('./upsellingConfig');
+const { loadScores } = require('./leaderboardStore');
 const { runUpsellMmxSync } = require('./upsellMmxPipeline');
 
 function melbourneWallClock(now = new Date()) {
@@ -70,14 +72,24 @@ function currentHourKey(now = new Date()) {
 }
 
 function readLastHourKey(storeNumber) {
-    const p = path.join(upsellingDataDir(storeNumber), 'last-sync.json');
-    if (!fs.existsSync(p)) return null;
-    try {
-        const data = JSON.parse(fs.readFileSync(p, 'utf8'));
-        return data.lastHourKey || null;
-    } catch (_) {
-        return null;
+    const sharedPath = upsellingLastSyncPath();
+    if (fs.existsSync(sharedPath)) {
+        try {
+            const data = JSON.parse(fs.readFileSync(sharedPath, 'utf8'));
+            const stores = data.storesUpdated || [];
+            const store = String(storeNumber || '').trim();
+            if (!store || store === 'all' || stores.includes(store) || !stores.length) {
+                return data.lastHourKey || null;
+            }
+        } catch (_) {
+            /* fall through */
+        }
     }
+    const store = String(storeNumber || '').trim();
+    if (!store) return null;
+    const lastSyncAt = loadScores(store).lastSyncAt;
+    if (!lastSyncAt) return null;
+    return currentHourKey(new Date(lastSyncAt));
 }
 
 async function maybeRunScheduledUpsell(now = new Date()) {
@@ -88,6 +100,24 @@ async function maybeRunScheduledUpsell(now = new Date()) {
 
     const hourKey = currentHourKey(now);
     const results = [];
+
+    if (isSyncAllStores(cfg)) {
+        if (readLastHourKey('all') === hourKey) {
+            return { skipped: true, reason: 'already synced this hour', hourKey };
+        }
+        try {
+            const out = await runUpsellMmxSync(null, { lastHourKey: hourKey, syncAllStores: true });
+            results.push({
+                storeNumber: 'all',
+                ok: true,
+                stores: out.storeNumbers || [],
+            });
+        } catch (error) {
+            console.warn('[Upselling] Scheduled regional sync failed:', error.message);
+            results.push({ storeNumber: 'all', ok: false, error: error.message });
+        }
+        return { skipped: false, hourKey, results, regional: true };
+    }
 
     for (const storeNumber of resolveEnabledStores(cfg)) {
         if (!isUpsellingMmxSyncStore(storeNumber)) {
@@ -154,9 +184,10 @@ function startUpsellingScheduler() {
         };
 
         scheduleNext();
-        console.log(
-            `[Upselling] Hourly sync on the hour (${TIME_ZONE}) for MMX stores: ${mmxStores.join(', ') || '(none)'}`
-        );
+        const syncLabel = isSyncAllStores(cfg)
+            ? 'regional (all stores, one export)'
+            : `MMX stores: ${mmxStores.join(', ') || '(none)'}`;
+        console.log(`[Upselling] Hourly sync on the hour (${TIME_ZONE}) for ${syncLabel}`);
 
         return {
             cancel() {

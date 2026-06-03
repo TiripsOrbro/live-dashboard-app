@@ -1579,6 +1579,7 @@ function render() {
     app.innerHTML = `
         <div class="stock-count">
             <header class="stock-count-header">
+                <div class="nav-back-host" id="stock-nav-back"></div>
                 <div>
                     <h1>Stock count</h1>
                     ${viewMode !== 'variances' ? `<p class="stock-count-subtitle">Store ${escapeHtml(STORE_NUMBER)} · ${escapeHtml(catalog.label)}</p>` : ''}
@@ -1589,6 +1590,10 @@ function render() {
             ${buildProcessingOverlay()}
         </div>
     `;
+
+    window.DashboardNavBack?.mountBackButton(document.getElementById('stock-nav-back'), {
+        fallback: dashboardPath(),
+    });
 
     if (processing) {
         window.TbaBrandMark?.setBusy(true);

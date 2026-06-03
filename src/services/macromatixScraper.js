@@ -439,7 +439,7 @@ function getPuppeteerLaunchOptions(overrides = {}) {
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
-            '--disable-gpu',
+            ...(headless ? ['--disable-gpu'] : ['--start-maximized']),
             '--disable-background-networking',
             '--disable-background-timer-throttling',
             '--disable-renderer-backgrounding',
@@ -462,9 +462,15 @@ function getPuppeteerLaunchOptions(overrides = {}) {
     }
     const skipSlowMo = overrides.skipSlowMo === true;
     if (!skipSlowMo) {
-        const slowMo = Number(process.env.SCRAPER_SLOW_MO_MS);
-        if (Number.isFinite(slowMo) && slowMo > 0) {
-            opts.slowMo = slowMo;
+        if (Number.isFinite(overrides.slowMo) && overrides.slowMo > 0) {
+            opts.slowMo = overrides.slowMo;
+        } else {
+            const slowMo = Number(process.env.SCRAPER_SLOW_MO_MS);
+            if (Number.isFinite(slowMo) && slowMo > 0) {
+                opts.slowMo = slowMo;
+            } else if (!headless) {
+                opts.slowMo = 200;
+            }
         }
     }
     if (/^(1|true|yes|on)$/i.test(String(process.env.SCRAPER_DEVTOOLS ?? '').trim())) {
@@ -1355,6 +1361,74 @@ async function loginPage(page, username, password) {
     console.log('[Macromatix] Logged in');
 }
 
+/**
+ * Verify Macromatix username/password (opens browser, attempts login, closes).
+ * Used when creating store sub-accounts with their own Key Item Count credentials.
+ */
+async function verifyMacromatixLogin(username, password) {
+    const mmxUser = String(username || '').trim();
+    const mmxPass = String(password || '');
+    if (!mmxUser || !mmxPass) {
+        return { ok: false, error: 'Macromatix username and password are required.' };
+    }
+
+    let browser;
+    try {
+        browser = await puppeteer.launch(getPuppeteerLaunchOptions({ skipSlowMo: true }));
+        const page = await browser.newPage();
+        await page.setViewport({ width: 1280, height: 720 });
+        await applyResourceBlocking(page);
+        try {
+            await loginPage(page, mmxUser, mmxPass);
+        } catch (loginErr) {
+            return {
+                ok: false,
+                error: loginErr.message || 'Macromatix login failed. Check username and password.',
+            };
+        }
+
+        const stillOnLogin = await page.$('#Login_UserName');
+        const loginError = await page
+            .evaluate(() => {
+                const el = document.querySelector(
+                    '.validation-summary-errors, #FailureText, .failureNotification, span[style*="color: red"]'
+                );
+                return el ? String(el.textContent || '').trim() : '';
+            })
+            .catch(() => '');
+
+        if (stillOnLogin) {
+            return {
+                ok: false,
+                error: loginError || 'Macromatix login failed. Check username and password.',
+            };
+        }
+
+        return { ok: true };
+    } catch (err) {
+        return { ok: false, error: err.message || 'Could not reach Macromatix.' };
+    } finally {
+        await closeBrowserQuietly(browser, 'mmx-login-verify');
+    }
+}
+
+/** Resolve MMX credentials: per-dashboard-user file, else global env. */
+function resolveMacromatixCredentials(options = {}) {
+    if (options.username != null && options.password != null) {
+        return {
+            username: String(options.username || '').trim(),
+            password: String(options.password || ''),
+        };
+    }
+    const dashUser = String(options.dashboardUsername || '').trim();
+    if (dashUser) {
+        const { readMmxCredentialsForUser } = require('./mmxUserCredentials');
+        const stored = readMmxCredentialsForUser(dashUser);
+        if (stored?.username && stored?.password) return stored;
+    }
+    return getMacromatixCredentials();
+}
+
 /** Placeholder result used when a single store's scrape throws — keeps the store in the payload. */
 function buildErrorResult(store, err, todayKey) {
     const hours = resolveStoreHours(store, store.storeNumber);
@@ -1617,7 +1691,7 @@ async function submitStockCountToMacromatix(page, storeNumber, vendorSlug, aggre
 
 /** Launch Puppeteer, log in, and return `{ browser, page }` for one-off automation (e.g. report downloads). */
 async function openMacromatixBrowser(options = {}) {
-    const { username, password } = getMacromatixCredentials();
+    const { username, password } = resolveMacromatixCredentials(options);
     if (!String(username || '').trim() || !String(password || '').trim()) {
         throw new Error('Macromatix credentials are not configured (SCRAPER_USERNAME / SCRAPER_PASSWORD or encrypted creds).');
     }
@@ -1627,6 +1701,9 @@ async function openMacromatixBrowser(options = {}) {
         skipSlowMo: options.browserOptions?.skipSlowMo !== false,
     });
     const browser = await puppeteer.launch(launchOpts);
+    if (!launchOpts.headless) {
+        console.log('[Macromatix] Visible browser — watch for Edge/Chrome window (headed mode)');
+    }
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 720 });
     await applyResourceBlocking(page);
@@ -1641,6 +1718,9 @@ module.exports = scrapeMacromatix;
 module.exports.listStores = listStores;
 module.exports.submitStockCountToMacromatix = submitStockCountToMacromatix;
 module.exports.openMacromatixBrowser = openMacromatixBrowser;
+module.exports.verifyMacromatixLogin = verifyMacromatixLogin;
+module.exports.resolveMacromatixCredentials = resolveMacromatixCredentials;
+module.exports.loginPage = loginPage;
 module.exports.closeBrowserQuietly = closeBrowserQuietly;
 module.exports.probePendingOrdersForStores = probePendingOrdersForStores;
 module.exports.selectStoreOnPage = selectStoreOnPage;

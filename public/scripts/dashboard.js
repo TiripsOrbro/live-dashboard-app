@@ -3,11 +3,13 @@
 ----------------------------------------------------------- */
 const app = document.getElementById('app');
 
-/** Store id from the URL path (e.g. /3811, /nologin/3811, or /teststore). Empty on `/` → server uses the default store. */
+/** Store id from URL (/3811, /kiosk/3811, /nologin/3811, or /teststore). */
 const STORE_NUMBER =
-    (window.location.pathname.match(/\/nologin\/(\d{3,6})\/?$/i) ||
-        window.location.pathname.match(/\/(teststore|\d{3,6})\/?$/i) ||
-        [])[1]?.toLowerCase() || '';
+    (
+        window.location.pathname.match(/\/(?:nologin|kiosk)\/(\d{3,6})\/?$/i) ||
+        window.location.pathname.match(/^\/(teststore|\d{3,6})\/?$/i) ||
+        []
+    )[1]?.toLowerCase() || '';
 const KIOSK_TOKEN =
     typeof window !== 'undefined' && window.__DASHBOARD_KIOSK__
         ? String(window.__DASHBOARD_KIOSK__)
@@ -590,30 +592,9 @@ function updateSalesStatus(data = {}) {
     el.hidden = true;
 }
 
-/* -----------------------------------------------------------
-   Notification defaults — animation length, easing, sound URL & volume
------------------------------------------------------------ */
-window.POPUP_CONFIG = window.POPUP_CONFIG || {
-    transitionDuration: 350,
-    easing: 'cubic-bezier(0.22,1,0.36,1)',
-    soundUrl: '/assets/sounds/8_bit.mp3',
-    soundVolume: 0.9,
-    // Adjust this to make notification cards taller/shorter.
-    cardMinHeight: 160,
-};
-
-/* -----------------------------------------------------------
-   Notification icons — task type label → sprite image path
------------------------------------------------------------ */
-window.iconMap = window.iconMap || {
-    "Clean": "/assets/Sprites/Clean.png",
-    "Close": "/assets/Sprites/Close.png",
-    "Front Counter": "/assets/Sprites/Front%20Counter.png",
-    "Fry": "/assets/Sprites/Fry2.png",
-    "Toilets": "/assets/Sprites/Toilets.png",
-};
-const iconMap = window.iconMap;
-const POPUP_CONFIG = window.POPUP_CONFIG;
+/* Popups — edit popup-timing.js (when/how long) and popup-content.js (text/icons) */
+const iconMap = window.iconMap || {};
+const POPUP_CONFIG = window.POPUP_CONFIG || {};
 
 if (typeof POPUP_CONFIG.cardMinHeight === 'number') {
     document.documentElement.style.setProperty('--popup-card-min-height', `${POPUP_CONFIG.cardMinHeight}px`);
@@ -669,7 +650,7 @@ function generateBeep({duration = 140, frequency = 880, volume = 0.06} = {}) {
 /* -----------------------------------------------------------
    Single notification — one message, top progress bar (drains R→L)
 ----------------------------------------------------------- */
-function showPopup(message, duration = 10000, type = null, options = {}) {
+function showPopup(message, duration = POPUP_CONFIG.defaultSinglePopupMs ?? 10000, type = null, options = {}) {
     const container = document.getElementById('popup-container');
     if (!container) return;
 
@@ -780,144 +761,30 @@ function makeMultiPopupCard(cfg, cellDuration, iconSide) {
     return card;
 }
 
-/* ============================================================
-   NOTIFICATIONS — edit this object only (no coding knowledge needed)
+function buildNotificationsMap() {
+    const content = window.NOTIFICATION_CONTENT || {};
+    const durations = window.NOTIFICATION_DURATIONS || {};
+    const out = {};
+    for (const key of Object.keys(content)) {
+        const timing = durations[key] || {};
+        out[key] = { ...content[key], ...timing };
+    }
+    return out;
+}
 
-   Each entry needs:
-   • A short key on the left (e.g. fryCheck) — you use that key in the schedule below.
-   • name        — big heading on the card
-   • instruction — smaller text under it
-   • icon        — must match a name from the icon list under window.iconMap above
-                   (e.g. "Fry", "Close", "Clean", "Front Counter", "Toilets")
+function notificationDurationMs(key) {
+    const durations = window.NOTIFICATION_DURATIONS || {};
+    const d = durations[key];
+    const defaultSec = durations._defaultSeconds ?? 15;
+    if (!d) return defaultSec * 1000;
+    if (typeof d.duration === 'number') return d.duration;
+    if (typeof d.seconds === 'number') return d.seconds * 1000;
+    return defaultSec * 1000;
+}
 
-   Optional: duration — how long the card stays (milliseconds), default 15000 (15 sec)
-            seconds  — alternative: seconds (e.g. seconds: 20)
-   ============================================================ */
-const NOTIFICATIONS = {
-
-    //BOILOUTS (see processBoiloutSchedule). */
-    boiloutOilDump: { name: 'Dump the oil (boilout prep)', instruction: 'Dump the oil tonightfor boilout, tomorrow is the scheduled boilout.', icon: 'Fry', seconds: 3600 },
-    boiloutComplete: { name: 'Complete a boilout', instruction: 'Complete the scheduled fryer boilout for this period.', icon: 'Fry', seconds: 3600 },
-
-    //COOKS
-
-    '845AM': {name: 'Cook',instruction: 'Put down cook, and set the timer for 45 minutes', icon: 'Clean', seconds: 600},
-    '1030AM': {name: 'Cook',instruction: 'Put down cook, and set the timer for 45 minutes', icon: 'Clean', seconds: 600},
-    '2PM': {name: 'Cook',instruction: 'Put down cook, and set the timer for 45 minutes', icon: 'Clean', seconds: 600},
-    '330PM': {name: 'Cook',instruction: 'Put down cook, and set the timer for 45 minutes', icon: 'Clean', seconds: 600},
-    '8PM': {name: 'Cook',instruction: 'Put down cook, and set the timer for 45 minutes', icon: 'Clean', seconds: 600},
-
-
-    //RESTOCK
-    stockUpUnderlineFridge: {name: 'Stock Up Underline Fridge',instruction: 'Stock up the underline fridge with enough products to last the shift following the ubild to', icon: 'Clean', seconds: 3600},
-    stockUpDeserts: {name: 'Stock Up Deserts',instruction: 'Build to enough Choc and Caramel Sauce for the shift', icon: 'Clean', seconds: 3600},
-
-    //OPEN
-    safeCount: {name: 'Safe Count',instruction: 'Count the safe and ensure the count is correct', icon: 'Clean', seconds: 7200}, //3600 seconds = 1 hour
-    AMStockCount: {name: 'Morning Stock Count',instruction: 'Count the stock and share count in group chat', icon: 'Clean', seconds: 7200}, //3600 seconds = 1 hour
-    recieveOrders: {name: 'Recieve Orders',instruction: 'Recieve orders in MMX', icon: 'Clean', seconds: 7200}, //3600 seconds = 1 hour
-    completeFryPrep: {name: 'Complete Fry Prep',instruction: 'Complete fry prep for the day, ensuring all ingredients are ready for the day', icon: 'Clean', seconds: 7200}, //3600 seconds = 1 hour
-    completeSaladPrep: {name: 'Complete Salad Prep',instruction: 'Complete salad prep for the day, ensuring all ingredients are ready for the day', icon: 'Clean', seconds: 7200}, //3600 seconds = 1 hour
-    checkToilets: {name: 'Check Toilets',instruction: 'Check the toilets and ensure they are clean and stocked', icon: 'Clean', seconds: 7200},
-    stockUpPaperStockOnLine: {name: 'Stock Up Paper Stock On Line',instruction: 'Stock up the paper stock on the line, ensuring there is enough takeaway bags, chip bags, cups, lids, wraps and boxes for the day', icon: 'Clean', seconds: 7200},
-    thawing: {name: 'Thawing',instruction: 'Check the thawing guide and confirm if more thawing is needed', icon: 'Clean', seconds: 7200},
-
-
-    //CHANGEOVER
-    changeUtensils: {name: 'Change Utensils',instruction: 'Gather up the clean utensiles and then change over and remove the in use utensils from the line, replacing them as you go with the new clean ones', icon: 'Clean', seconds: 600},
-    changeoverSafeCount: {name: 'Changeover Safe Count',instruction: 'Count the safe with the closing MIC and ensure the count is correct', icon: 'Clean', seconds: 600},
-    changeoverTills: {name: 'Change Over Tills',instruction: 'Change over tills and deposit money into safe', icon: 'Close', seconds: 600},
-    changeSink: {name: 'Change Sink',instruction: 'Check with MIC first, then clear all dishes from the sink, drain it and refill using 2 packets of powersoak detergent and sanitiser powder', icon: 'Clean', seconds: 600},
-    changeBuckets: {name: 'Changeover Buckets',instruction: 'Change buckets, ensuring the sink has been drained and refilled with fersh sanitiser water', icon: 'Clean', seconds: 600},
-    changeoverStockCount: {name: 'Changeover Stock Count',instruction: 'Count the stock and share count in group chat', icon: 'Clean', seconds: 600},
-
-
-    //CLOSE
-    cleanToilets: {name: 'Clean and stock Toilets',instruction: 'Clean and stock Toilets', icon: 'Toilets', seconds: 600},
-    diningBins: {name: 'Dining room bins',instruction: 'Empty, clean and reline dining room bins', icon: 'Clean', seconds: 600},
-    patioBins: {name: 'Patio bins',instruction: 'Empty, clean and reline patio bins', icon: 'Clean', seconds: 600},
-    removeBins: {name: 'Remove and clean bins',instruction: 'Remove and clean inside and outside of bins, then allow them to air dry. Leave 1 bin for the line and one 1 for washup, bins should be relined once they are dry', icon: 'Clean', seconds: 600},
-    smallVats: {name: 'Begin shutting down 2 small fry vats',instruction: 'Complete a full daily filter on all 3 vats and shut fown the 2 smaller vats, leaving the largest vat running. make sure a full scrub vat, wash, rinse and full polish is completed before moving on to the next vat. While waiting for the vats to filter, use degreaser to clean the front of the fryer', icon: 'Fry', seconds: 600},
-    hotLine: {name: 'Clean Hot Line (KEEPING PRODUCTS HOT!!!)',instruction: 'Clean the hot line well by well by shifting the pans back on row and then replacing them once complete, pans should NEVER be left on the bench!!!', icon: 'Clean', seconds: 600},
-    filterPan: {name: 'Last fry filter',instruction: 'Ensure there are enough chips to make orders for 5 minutes before completing an express filter on the large vat, once that is complete, allow filter pan to cool before carefully removing the filter pan and taking it to washup to be cleaned and left to dry', icon: 'Fry', seconds: 600},
-    removeExtras: {name: 'Remove any EXTRAs from line',instruction: 'Nothing that impacts speed should be removed, only holders for cantina bowls, dipping cups and lids, wrappers, chip bag holders, scale insert, underline fridge and containers', icon: 'Clean', seconds: 600},   
-    DTBench: {name: 'Clean DT bench',instruction: 'Remove tray and items from bench to clean underneath them and then put back, if tray is dirty consider replacing it with a new clean one and leaving the old one at washup', icon: 'Clean', seconds: 600},  
-    prepBench: {name: 'Clean Prep Bench',instruction: 'Unplug and move the rice cooker to clean under it, check if the seasoning, sugar and rice tub are clean, if not clean them and leave to air dry', icon: 'Clean', seconds: 600},
-    fryBench: {name: 'Clean Fry Bench',instruction: "Use degreaser to clean the fry bench, don't neglect the rails that hold the baskets or the shelf that holds nacho chips", icon: 'Fry', seconds: 600},   
-    cleanFloors: {name: 'Begin cleaning floors',instruction: 'Clean all floors except in use line, make sure to clean under shelves, benches, equipement (Drink machines, Fryer, Retherm) and the line', icon: 'Clean', seconds: 600},
-    drains: {name: 'Clean drains',instruction: 'Remove drains from wherever you have mopped, remove any buildup from underneath the catchers', icon: 'Clean', seconds: 600},   
-    setupCarryover: {name: 'Setup Carryover Sink',instruction: 'Sink should be filled 3/4 of the way with just ice, water will be added to it later in the night', icon: 'Clean', seconds: 600},
-    cleanRetherm: {name: 'Clean Retherm',instruction: 'Drain and clean inside the retherm following the standard card, once the inside has been cleaned, close the lids and valves and clean the outside of the retherm', icon: 'Clean', seconds: 600},
-    removeStickers: {name: 'MIC - Remove Stickers',instruction: 'Remove Stickers of anything that is going to before open tomorrow, typically stickers that have hold times of 24 hours or less', icon: 'Close', seconds: 600},
-    wipePrepGuide: {name: 'MIC - Wipe off Prep Guide',instruction: 'Use Grafitti cleaner to remove sharpie, then use either degreaser, glass cleaner or hand sanitizer to remove residue', icon: 'Close', seconds: 600},
-    wipeTREDPoster: {name: 'MIC - Wipe off TRED Poster',instruction: 'Use Grafitti cleaner to remove sharpie, then use either degreaser, glass cleaner or hand sanitizer to remove residue', icon: 'Close', seconds: 600},
-    mopDining: {name: 'Mop dining room',instruction: 'Clean dining room using the green mop and bucket, use multiple bucket loads if your water is turning grey. REMINDER: make sure the mop is properly wrung out before using it to avoid flooding the floor', icon: 'Clean', seconds: 600},  
-    carryoverPan: {name: 'Setup Carryover pan',instruction: 'Setup Carryover pan, line it with enough bags for your expected carryover, a full pan of chicken= 2 bags, beef = 3, nacho = 2', icon: 'Clean', seconds: 600},  
-    carryoverFirstRound: {name: 'First Round of Carryover',instruction: 'Check with MIC if there are any ingredients that can be carried over, ensuring there is enough product to last the night, if there are any issues, inform MIC and they will handle it', icon: 'Clean', seconds: 600},  
-    chipDump: {name: 'Clean Chip Dump',instruction: 'Remove all chips and peices from the inside chip dump, inclusing the grill on the top of the dump', icon: 'Clean', seconds: 600},     
-    coldLine: {name: 'Clean cold line',instruction: 'Clean cold line, items should only be removed from the cold line for a short period of time to avoid them warming up and becoming unsafe to eat', icon: 'Clean', seconds: 600},    
-    remainingFloors: {name: 'Clean floors',instruction: 'Clean remaining floors that were missed during the night', icon: 'Clean', seconds: 600},    
-    stockCount: {name: 'MIC -Complete Stock Count',instruction: 'While completing your count remove any half opened boxes, after completing count, investigate any red variances', icon: 'Close', seconds: 600},    
-    countSafe: {name: 'MIC - Count safe',instruction: "MIC - Stock up tills to ensure you don't need to swap around any money at the end of the night and then Count safe", icon: 'Close', seconds: 600},     
-    bigGrillFirstAlert: {name: 'MIC - Switch off Big Grill',instruction: 'Turn off the big grill, and allow to cool for 20 minutes', icon: 'Close', seconds: 600}, 
-    bigGrillSecondAlert: {name: 'MIC - Clean Big Grill',instruction: 'Put on PPE and begin cleaning the big grill, ensuring that you are pouring chemicals on the scrubber not directly on the grill. remember clean the entire grill,the chemical is heat activated and takes time to heat up and remove build up.', icon: 'Close', seconds: 600},
-    drinkNozzles: {name: 'Drink Nozzles',instruction: 'Get a bucket of clean sanitiser water, collect all the drink nozzles and place them in the bucket, then clean the nozzles with the sanitiser water before laying them out on cloths', icon: 'Close', seconds: 3600}, 
-    remainingBins: {name: 'Remove Bins',instruction: 'Remove remaining bins cleaned them and allow them to airdry and relined dry bins', icon: 'Clean', seconds: 3600},
-    carryover: {name: 'Carryover',instruction: 'Complete remaining carryover, keeping products hot in the hotline until they are being carried over', icon: 'Clean', seconds: 3600},
-    cleanOutSpotSweeps: {name: 'Clean spot sweeps',instruction: 'Disassemble and clean out spot sweeps and leave them to air dry', icon: 'Clean', seconds: 3600},
-    checkThawing: {name: 'Check if more thawing is needed',instruction: 'Check thwaing guide and confirm if more thawing is needed', icon: 'Clean', seconds: 600},
-    organiseFreezer: {name: 'Organise Freezer',instruction: 'Organise freezer stock, removing any expired products and organising the stock correctly', icon: 'Clean', seconds: 600},
-    printReports: {name: 'MIC- print reports',instruction: 'Print Daily Roster and Prep Guide', icon: 'Clean', seconds: 600},
-    shutDownTills: {name: 'MIC - Shut down tills',instruction: 'Close tills and deposit money into safe for the night', icon: 'Clean', seconds: 3600},
-
-};						
-
-/* ============================================================
-   SCHEDULE — when to show 1, 2, or 3 cards at the same time
-
-   • time — 24-hour clock as "HH:MM" (e.g. "14:30" for 2:30 PM)
-   • show — list of keys from NOTIFICATIONS above (1 to 3 names)
-
-   Examples:
-     { time: '9:00',  show: ['fryCheck'] }
-     { time: '14:15', show: ['closeSoon', 'volumeCheck'] }
-     { time: '20:00', show: ['fryCheck', 'volumeCheck', 'closeSoon'] }
-   ============================================================ */
-const SCHEDULE = [
-    //COOKS
-    { time: '8:45', show: ['cook845AM'] },
-    { time: '10:30', show: ['cook1030AM'] },
-    { time: '2:00', show: ['cook2PM'] },
-    { time: '3:30', show: ['cook330PM'] },
-    { time: '8:00', show: ['cook8PM'] },
-
-    //OPEN
-    { time: '8:00', show: ['safeCount', 'AMStockCount', 'recieveOrders', 'completeFryPrep', 'completeSaladPrep', 'checkToilets', 'stockUpPaperStockOnLine', 'stockUpDeserts', 'thawing']},
-
-
-    // "Before 9:30PM"
-    { time: '20:00', show: ['smallVats','prepBench', 'fryBench']},    
-    { time: '20:10', show: ['DTBench', 'setupCarryover','removeExtras'] },
-    { time: '20:20', show: ['cleanFloors', 'drains','cleanRetherm'] },
-    { time: '20:30', show: ['cleanToilets', 'patioBins','diningBins']},
-    { time: '20:40', show: ['removeBins', 'wipeTREDPoster','filterPan'] },
-    { time: '20:50', show: ['wipePrepGuide', 'carryoverPan', 'removeStickers']},
-    { time: '21:00', show: ['countSafe', 'printReports','carryoverFirstRound'] },
-
-    // "After 9:30PM"
-    { time: '21:10', show: ['bigGrillFirstAlert','checkThawing','hotLine']},
-    { time: '21:20', show: ['stockCount','organiseFreezer','chipDump']},
-    { time: '21:30', show: ['mopDining','coldLine','bigGrillSecondAlert'] },
-    { time: '21:40', show: ['remainingFloors'] },                                   //Room for 2 more to be added
-
-
-    // "After Close"
-    { time: '22:00', show: ['drinkNozzles'] },
-    { time: '22:00', show: ['remainingBins'] },
-    { time: '22:00', show: ['carryover'] },
-    { time: '22:00', show: ['cleanOutSpotSweeps'] },
-    { time: '22:00', show: ['shutDownTills'] },
-];
+const NOTIFICATIONS = buildNotificationsMap();
+const SCHEDULE = window.SCHEDULE || [];
+const BOILOUT_RULE = window.BOILOUT_RULE || {};
 
 const _notificationSchedule = [];
 const _iconSides = ['left', 'left', 'left'];
@@ -936,19 +803,16 @@ function parseScheduleTime(value) {
 }
 
 function presetKeyToCardConfig(key) {
-    const p = NOTIFICATIONS[key];
+    const p = (window.NOTIFICATION_CONTENT || {})[key];
     if (!p) {
-        console.warn('[Notifications] Unknown key — not in NOTIFICATIONS:', key);
+        console.warn('[Notifications] Unknown key — not in popup-content.js:', key);
         return null;
     }
-    let duration = 15000;
-    if (typeof p.duration === 'number') duration = p.duration;
-    else if (typeof p.seconds === 'number') duration = p.seconds * 1000;
     return {
         title: p.name,
         instruction: p.instruction || '',
         type: p.icon || null,
-        duration,
+        duration: notificationDurationMs(key),
     };
 }
 
@@ -1019,22 +883,6 @@ function processPopupSchedule() {
         showNotificationGroup(entry.show);
     });
 }
-
-/* ============================================================
-   BOILOUT_RULE — calendar reminders (Melbourne date + times)
-
-   • anchor       — first day of period 0 (YYYY-MM-DD). Next Period 1 June
-   • periodDays   — length of each period (28).
-   • Each period: the **first Monday** on or after the block start, still inside the block, is “boilout day”.
-   • oilDump      — evening **calendar day before** that Monday (Sunday night if boilout is Monday).
-   Times use **Australia/Melbourne** wall clock (not the PC timezone).
-   ============================================================ */
-const BOILOUT_RULE = {
-    anchor: '2026-06-01',
-    periodDays: 28,
-    oilDump: { time: '21:30', show: ['boiloutOilDump'] },
-    boilout: { time: '07:00', show: ['boiloutComplete'] },
-};
 
 function gregorianToJd(y, m, d) {
     const a = Math.floor((14 - m) / 12);
@@ -1203,7 +1051,7 @@ setInterval(() => {
 // document.getElementById('popup-test-btn')?.addEventListener('click', () => {
 //     const keys = Object.keys(NOTIFICATIONS);
 //     if (!keys.length) {
-//         showPopup('Add entries to NOTIFICATIONS in dashboard.js', 8000, null, { wrapMessage: true });
+//         showPopup('Add entries to popup-content.js', 8000, null, { wrapMessage: true });
 //         return;
 //     }
 //     const count = Math.floor(Math.random() * 3) + 1;
@@ -1217,11 +1065,9 @@ setInterval(() => {
 
 window.showPopup = showPopup;
 window.NOTIFICATIONS = NOTIFICATIONS;
-window.SCHEDULE = SCHEDULE;
 window.showNotificationGroup = showNotificationGroup;
 window.openNotificationCards = openNotificationCards;
 window.registerSchedule = registerSchedule;
-window.BOILOUT_RULE = BOILOUT_RULE;
 
 /* -----------------------------------------------------------
    Past-hour cells — actual vs forecast (beat / slightly low / well below)
@@ -2246,6 +2092,7 @@ function renderDashboard() {
                     <p id="store-label" class="store-label">${currentStoreLabel ? `Store ${currentStoreLabel}` : ''}</p>
                 </div>
                 <div class="top-info">
+                    <div class="nav-back-host" id="dashboard-nav-back"></div>
                     <div class="top-info-group">
                         <span class="top-info-label">Current Time</span>
                         <span id="time-display" class="top-info-value">${formatTime(new Date())}</span>
@@ -2290,6 +2137,33 @@ function renderDashboard() {
     applyPortraitTabVisibility();
     if (STORE_NUMBER && typeof window.upsellingPodium?.init === 'function') {
         window.upsellingPodium.init(STORE_NUMBER);
+    }
+    const isKioskDashboard = /^\/kiosk(\/|$)/i.test(window.location.pathname);
+    const isKioskEntry = (() => {
+        if (isKioskDashboard) return true;
+        try {
+            if (sessionStorage.getItem('dashboard-entry') === 'kiosk') return true;
+        } catch (_) {
+            /* ignore */
+        }
+        return document.cookie.split(';').some((c) => c.trim() === 'dashboard_entry=kiosk');
+    })();
+    const isMicStoreEntry =
+        !isKioskEntry &&
+        (document.cookie.split(';').some((c) => c.trim() === 'dashboard_entry=store') ||
+            /^\/\d{3,6}\/?$/i.test(window.location.pathname) ||
+            /^\/teststore\/?$/i.test(window.location.pathname));
+    if (STORE_NUMBER && window.DashboardNavBack) {
+        if (isMicStoreEntry) {
+            window.DashboardNavBack.mountBackButton(document.getElementById('dashboard-nav-back'), {
+                fallback: `/${STORE_NUMBER}/mic`,
+            });
+        } else if (!isKioskEntry) {
+            window.DashboardNavBack.mountBackButton(document.getElementById('dashboard-nav-back'), {
+                fallback: '/stores',
+                fadeToStores: true,
+            });
+        }
     }
 }
 

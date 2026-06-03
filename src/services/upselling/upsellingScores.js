@@ -1,15 +1,23 @@
 const fs = require('fs');
 const path = require('path');
-const { loadPointsMap, pointsForColumn, normalizeLabel } = require('./pointsFile');
-const {
-    normalizeCashierName,
-    saveRankedEmployees,
-    loadEmployees,
-    aggregateRowsFromByDay,
-    filterByDayForStoreLeaderboard,
-} = require('./employeesFile');
+const { loadPointsMap, loadPointsMapForParsing, pointsForColumn, normalizeLabel } = require('./pointsFile');
+const { mergeSyncScores, aggregateLeaderboard, loadScores } = require('./leaderboardStore');
+const { saveUnassignedForReview } = require('./unassignedStore');
 const { parseUpsellReport } = require('./upsellReportParser');
-const { upsellingDataDir, resolveUpsellSyncStore, TIME_ZONE } = require('./upsellingConfig');
+const {
+    upsellingLastParsePath,
+    upsellingLastSyncPath,
+    resolveUpsellSyncStore,
+    resolveUpsellSyncDay,
+    resolveUpsellSyncDayForRun,
+    loadUpsellingConfig,
+    maybeMarkBackfillComplete,
+    isUpsellingMmxSyncStore,
+    TIME_ZONE,
+} = require('./upsellingConfig');
+const { resolveEnabledStores, isUpsellingEnabledForStore } = require('./storeUpsellingConfig');
+const { normalizeStoreKey } = require('../testStore');
+const { getDailyItemMultipliers } = require('../mic/micStore');
 
 function melbourneTodayIso() {
     return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(new Date());
@@ -18,7 +26,8 @@ function melbourneTodayIso() {
 // Guardrail: item quantities in Upsell by Cashier should be small counts, not long ID-like numbers.
 const MAX_REASONABLE_ITEM_QTY = Number(process.env.UPSELL_MAX_ITEM_QTY || 500);
 
-function scoreCashierRow(qtyByColumn, byLabel) {
+function scoreCashierRow(qtyByColumn, byLabel, options = {}) {
+    const micRules = options.micRules || [];
     let mmxPoints = 0;
     const unmapped = [];
     const skippedHuge = [];
@@ -30,10 +39,21 @@ function scoreCashierRow(qtyByColumn, byLabel) {
             skippedHuge.push(`${colName}=${qtyNum}`);
             continue;
         }
-        const pts = pointsForColumn(byLabel, colName);
+        let pts = pointsForColumn(byLabel, colName);
         if (pts == null) {
             unmapped.push(colName);
             continue;
+        }
+        if (micRules.length) {
+            const colKey = normalizeLabel(colName);
+            let best = pts;
+            for (const rule of micRules) {
+                if (normalizeLabel(rule.itemLabel) !== colKey) continue;
+                const base = Number.isFinite(Number(rule.basePoints)) ? Number(rule.basePoints) : pts;
+                const mult = Number(rule.multiplier) || 3;
+                best = Math.max(best, base * mult);
+            }
+            pts = best;
         }
         mmxPoints += qtyNum * pts;
     }
@@ -48,25 +68,46 @@ function scoreCashierRow(qtyByColumn, byLabel) {
     return mmxPoints;
 }
 
-function scoreParsedReport(parsed, syncStoreNumber = '') {
+function scoreParsedReport(parsed, syncStoreNumber = '', options = {}) {
     const wantStore = String(syncStoreNumber || resolveUpsellSyncStore() || '').trim();
+    const syncDay = options.syncDay || null;
     const { byLabel } = loadPointsMap(wantStore || undefined);
     const mmxByCashier = new Map();
     const displayNames = new Map();
     const byDay = [];
+    const micByDay = new Map();
+
+    function micRulesForDay(day) {
+        const key = String(day || '').trim() || melbourneTodayIso();
+        if (!wantStore) return [];
+        if (!micByDay.has(key)) {
+            micByDay.set(key, getDailyItemMultipliers(wantStore, key));
+        }
+        return micByDay.get(key);
+    }
 
     for (const row of parsed.cashiers || []) {
-        const rowStore = String(row.store || '').trim();
-        if (wantStore && rowStore && rowStore !== wantStore) continue;
-        const store = wantStore || rowStore;
-        if (!store) continue;
+        if (syncDay && String(row.day || '').trim() !== syncDay) continue;
+        const rowStore = normalizeLeaderboardStoreNumber(row.store);
+        if (wantStore) {
+            const want = normalizeLeaderboardStoreNumber(wantStore);
+            if (!rowStore || rowStore !== want) continue;
+        } else if (!rowStore) {
+            continue;
+        }
+        const store = rowStore;
 
-        const key = normalizeCashierName(row.name);
+        const key = String(row.name || '')
+            .trim()
+            .replace(/\s+/g, ' ')
+            .toLowerCase();
         let pts;
         if (row.totalPoints != null && parsed.scoringMode !== 'items') {
             pts = Number(row.totalPoints) || 0;
         } else {
-            pts = scoreCashierRow(row.qtyByColumn, byLabel);
+            pts = scoreCashierRow(row.qtyByColumn, byLabel, {
+                micRules: micRulesForDay(String(row.day || '').trim() || melbourneTodayIso()),
+            });
         }
         if (!pts) continue;
 
@@ -98,18 +139,17 @@ function scoreParsedReport(parsed, syncStoreNumber = '') {
     return { ranked: merged, byDay };
 }
 
-function writeParseDiagnostics(storeNumber, parsed, extra = {}) {
-    const dir = upsellingDataDir(storeNumber);
-    fs.mkdirSync(dir, { recursive: true });
-    const diagPath = path.join(dir, 'last-parse.json');
+function writeParseDiagnostics(parsed, extra = {}) {
+    fs.mkdirSync(path.dirname(upsellingLastParsePath()), { recursive: true });
     fs.writeFileSync(
-        diagPath,
+        upsellingLastParsePath(),
         JSON.stringify(
             {
                 at: new Date().toISOString(),
                 columnsUsed: parsed.columnsUsed,
                 scoringMode: parsed.scoringMode || 'items',
                 cashierCount: parsed.cashiers.length,
+                storesSeen: uniqueStoreNumbersFromParsed(parsed),
                 ...extra,
             },
             null,
@@ -131,48 +171,191 @@ function warnIfPointsMapAllZero(byLabel, source) {
     );
 }
 
+function normalizeLeaderboardStoreNumber(store) {
+    return normalizeStoreKey(store) || String(store || '').trim();
+}
+
+function uniqueStoreNumbersFromParsed(parsed) {
+    const stores = new Set();
+    for (const row of parsed.cashiers || []) {
+        const store = normalizeLeaderboardStoreNumber(row.store);
+        if (store) stores.add(store);
+    }
+    return [...stores].sort();
+}
+
+function writeRegionalParseDiagnostics(parsed, extra = {}) {
+    writeParseDiagnostics(parsed, extra);
+}
+
+function scoreAndMergeStore(parsed, storeNumber, options = {}) {
+    const store = normalizeLeaderboardStoreNumber(storeNumber);
+    const { byLabel, source: pointsSource } = loadPointsMap(store);
+    warnIfPointsMapAllZero(byLabel, pointsSource);
+    const { ranked, byDay } = scoreParsedReport(parsed, store, {
+        syncDay: options.syncDay || null,
+    });
+    writeParseDiagnostics(parsed, {
+        storeNumber: store,
+        pointsSource,
+        syncDay: options.syncDay || null,
+        ...options,
+    });
+    const { rows: savedRows } = mergeSyncScores(store, byDay, {
+        replaceDays: options.syncDay ? [options.syncDay] : undefined,
+    });
+    return {
+        storeNumber: store,
+        ranked: savedRows.length ? savedRows : ranked,
+        byDay,
+        top3: (savedRows.length ? savedRows : ranked).slice(0, 3),
+    };
+}
+
+function scoreAllStoresFromParsed(parsed, options = {}) {
+    const syncDay =
+        options.syncDay !== undefined
+            ? options.syncDay || null
+            : resolveUpsellSyncDayForRun(loadUpsellingConfig(), options);
+    const onlyEnabled = options.onlyEnabled !== false;
+
+    writeRegionalParseDiagnostics(parsed, {
+        pointsSource: options.pointsSource || null,
+        source: options.source || 'parsed',
+        syncDay: syncDay || null,
+        unassignedCount: (parsed.unassigned || []).length,
+    });
+
+    let unassigned = parsed.unassigned || [];
+    if (syncDay) {
+        unassigned = unassigned.filter((row) => !row.day || row.day === syncDay);
+    }
+    saveUnassignedForReview(unassigned, {
+        source: options.source || 'parsed',
+        exportFile: options.file || null,
+        syncDay: syncDay || null,
+    });
+
+    let storeNumbers = resolveEnabledStores(loadUpsellingConfig())
+        .map(normalizeLeaderboardStoreNumber)
+        .filter((store) => isUpsellingMmxSyncStore(store));
+    if (!onlyEnabled) {
+        storeNumbers = uniqueStoreNumbersFromParsed(parsed);
+    }
+
+    const results = {};
+    for (const store of storeNumbers) {
+        results[store] = scoreAndMergeStore(parsed, store, {
+            syncDay: syncDay || null,
+            source: options.source || 'parsed',
+            pointsSource: options.pointsSource || null,
+        });
+        const top = results[store].top3[0];
+        console.log(
+            `[Upselling] Store ${store}: ${results[store].byDay.length} cashier-day row(s)` +
+                (top ? ` — leader ${top.name} (${top.total} pts on ${top.bestDay || syncDay || '?'})` : '')
+        );
+    }
+
+    const skipped = uniqueStoreNumbersFromParsed(parsed).filter(
+        (store) => !storeNumbers.includes(store)
+    );
+    if (skipped.length) {
+        console.log(
+            `[Upselling] Skipped ${skipped.length} store(s) not enabled in config: ${skipped.join(', ')}`
+        );
+    }
+
+    return { parsed, stores: results, storeNumbers, skipped, syncDay };
+}
+
+/**
+ * Parse one regional MMX export (Entity column per row) and score every store found.
+ * Only merges scores for stores enabled in config/upselling-stores.json unless onlyEnabled=false.
+ */
+function processMultiStoreReportFile(filePath, options = {}) {
+    const syncDay =
+        Object.prototype.hasOwnProperty.call(options, 'syncDay')
+            ? options.syncDay || null
+            : resolveUpsellSyncDayForRun(loadUpsellingConfig(), options);
+    const { byLabel, source: pointsSource } = loadPointsMapForParsing();
+    if (syncDay) {
+        console.log(`[Upselling] Scoring fiscal day ${syncDay} for all stores in export`);
+    } else {
+        console.log('[Upselling] Scoring all fiscal days for all stores in export');
+    }
+
+    const parsed = parseUpsellReport(filePath, byLabel, {
+        filterStoreNumber: '',
+        syncDay: syncDay || undefined,
+    });
+
+    return scoreAllStoresFromParsed(parsed, {
+        ...options,
+        syncDay,
+        pointsSource,
+        file: path.basename(filePath),
+        source: options.source || 'file',
+    });
+}
+
 function processParsedReport(parsed, storeNumber, extra = {}) {
     const { byLabel, source: pointsSource } = loadPointsMap(storeNumber);
     warnIfPointsMapAllZero(byLabel, pointsSource);
-    const { ranked, byDay } = scoreParsedReport(parsed, storeNumber);
+    const { ranked, byDay } = scoreParsedReport(parsed, storeNumber, {
+        syncDay: extra.syncDay || null,
+    });
+    saveUnassignedForReview(parsed.unassigned || [], {
+        source: extra.source || 'parsed',
+        syncDay: extra.syncDay || null,
+    });
     const gridSample = (parsed.gridSample || []).slice(0, 20);
-    writeParseDiagnostics(storeNumber, parsed, { pointsSource, gridSample, ...extra });
-    const { rows: savedRows } = saveRankedEmployees(ranked, byDay, storeNumber);
+    writeParseDiagnostics(parsed, {
+        storeNumber,
+        pointsSource,
+        gridSample,
+        syncDay: extra.syncDay || null,
+        ...extra,
+    });
+    const { rows: savedRows } = mergeSyncScores(storeNumber, byDay, {
+        replaceDays: extra.syncDay ? [extra.syncDay] : undefined,
+    });
     return { parsed, ranked: savedRows.length ? savedRows : ranked, byDay };
 }
 
 function processReportFile(filePath, storeNumber, options = {}) {
+    if (options.allStores) {
+        return processMultiStoreReportFile(filePath, options);
+    }
+
     const syncStore = String(storeNumber || resolveUpsellSyncStore() || '').trim();
     const { byLabel, source: pointsSource } = loadPointsMap(syncStore);
     const filterStoreNumber =
         options.filterStoreNumber !== undefined
             ? String(options.filterStoreNumber || '').trim()
             : syncStore;
+    const syncDay =
+        Object.prototype.hasOwnProperty.call(options, 'syncDay')
+            ? options.syncDay || null
+            : resolveUpsellSyncDayForRun(loadUpsellingConfig(), options);
+    if (syncDay) {
+        console.log(`[Upselling] Scoring fiscal day ${syncDay} only (store ${syncStore})`);
+    }
     const parsed = parseUpsellReport(filePath, byLabel, {
         filterStoreNumber,
+        syncDay: syncDay || undefined,
     });
     return processParsedReport(parsed, storeNumber, {
         file: path.basename(filePath),
         pointsSource,
         source: options.source || 'file',
+        syncDay: syncDay || null,
     });
 }
 
 function buildLeaderboardPayload(storeNumber) {
-    const { byDay, bonusByKey, bonusNames } = loadEmployees();
     const wantStore = String(storeNumber || '').trim();
-    const filteredByDay = filterByDayForStoreLeaderboard(byDay, wantStore);
-    const keysInStore = new Set(
-        filteredByDay.map((r) => normalizeCashierName(r.name)).filter(Boolean)
-    );
-    const storeBonusByKey = new Map();
-    const storeBonusNames = new Map();
-    for (const [key, bonus] of bonusByKey.entries()) {
-        if (!keysInStore.has(key)) continue;
-        storeBonusByKey.set(key, bonus);
-        storeBonusNames.set(key, bonusNames.get(key) || key);
-    }
-    const { rows } = aggregateRowsFromByDay(filteredByDay, storeBonusByKey, storeBonusNames);
+    const { rows, byDay } = aggregateLeaderboard(wantStore);
     const ranked = rows
         .map((r, i) => ({
             rank: i + 1,
@@ -180,6 +363,7 @@ function buildLeaderboardPayload(storeNumber) {
             mmxPoints: r.mmxPoints,
             bestDay: r.bestDay || '',
             bonusPoints: r.bonusPoints,
+            dayShiftMultiplier: r.dayShiftMultiplier || null,
             total: r.total,
         }))
         .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
@@ -188,13 +372,13 @@ function buildLeaderboardPayload(storeNumber) {
     const top7 = ranked.slice(0, 7);
     const top5 = top7.slice(0, 5);
     const top3 = top7.slice(0, 3);
-    let lastSyncAt = null;
+    const scores = loadScores(wantStore);
+    let lastSyncAt = scores.lastSyncAt || null;
     let reportDate = null;
-    const syncPath = path.join(upsellingDataDir(storeNumber), 'last-sync.json');
-    if (fs.existsSync(syncPath)) {
+    if (fs.existsSync(upsellingLastSyncPath())) {
         try {
-            const sync = JSON.parse(fs.readFileSync(syncPath, 'utf8'));
-            lastSyncAt = sync.lastSyncAt || null;
+            const sync = JSON.parse(fs.readFileSync(upsellingLastSyncPath(), 'utf8'));
+            if (!lastSyncAt) lastSyncAt = sync.lastSyncAt || null;
             reportDate = sync.reportDate || null;
         } catch (_) {
             /* ignore */
@@ -203,12 +387,12 @@ function buildLeaderboardPayload(storeNumber) {
 
     return {
         enabled: true,
-        storeNumber: String(storeNumber),
+        storeNumber: wantStore,
         top7,
         top5,
         top3,
         ranks: ranked,
-        byDay: filteredByDay,
+        byDay,
         lastSyncAt,
         reportDate,
     };
@@ -219,5 +403,7 @@ module.exports = {
     scoreParsedReport,
     processParsedReport,
     processReportFile,
+    processMultiStoreReportFile,
+    scoreAllStoresFromParsed,
     buildLeaderboardPayload,
 };

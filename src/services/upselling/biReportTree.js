@@ -448,73 +448,74 @@ async function navigateToDirectBiReport(page, cfg) {
     return { opened: reportUrl, mode: 'direct' };
 }
 
+async function tryOpenReportViaTree(page, cfg, reportName, folderPath) {
+    const treeTimeout = Number(cfg.treeReadyTimeoutMs) || 60000;
+    let { frame: treeFrame, names: treeNames } = await findBestTreeFrame(page);
+    if (!treeFrame || !treeNames.length) {
+        treeFrame = await waitForReportTreeFrame(page, treeTimeout);
+        ({ frame: treeFrame, names: treeNames } = await findBestTreeFrame(page));
+    }
+    if (treeNames.length) {
+        log.info(`[Upselling] Report tree sample: ${treeNames.slice(0, 8).join(', ')}`);
+    }
+
+    treeFrame = await waitForTreeLabels(page, treeFrame, reportName, treeTimeout);
+
+    const folders = folderPath.length ? folderPath : DEFAULT_BI_FOLDER_PATH;
+    for (const folder of folders) {
+        await expandTreeFolderAnywhere(page, folder);
+        await page.waitForTimeout(800);
+    }
+
+    try {
+        const opened = await openReportInTreeAnywhere(page, reportName);
+        log.info(`[Upselling] Opened BI report: ${opened}`);
+        return opened;
+    } catch (err) {
+        log.warn(`[Upselling] Tree open failed (${err.message}); trying search`);
+        const fallbackFrame = (await findBestTreeFrame(page)).frame || findReportTreeFrame(page);
+        if (fallbackFrame) {
+            const searched = await searchReportInTree(fallbackFrame, reportName, page);
+            if (searched) {
+                log.info(`[Upselling] Opened BI report via search: ${searched}`);
+                return searched;
+            }
+        }
+        await writeTreeDebug(page);
+        throw err;
+    }
+}
+
 /**
- * Sidebar → Business Intelligence. Report opens by default (no tree clicks unless biFolderPath set).
+ * Sidebar → Business Intelligence. Prefer already-loaded OLAP; tree path is optional fallback.
  */
 async function navigateViaReportTree(page, cfg) {
     await navigateToBusinessIntelligence(page, cfg);
 
     const folderPath = (cfg.biFolderPath || []).map((f) => String(f || '').trim()).filter(Boolean);
     const reportName = cfg.reportName || 'Upsell by Cashier';
+    const quickMs = Number(cfg.reportQuickReadyMs) || 12000;
+
+    if (await waitForOlapReportReady(page, quickMs)) {
+        log.info('[Upselling] Upsell report already open after Business Intelligence');
+        await waitForReportViewLoaded(page, cfg);
+        return { opened: reportName, mode: 'sidebar-default' };
+    }
 
     if (folderPath.length) {
-        const treeTimeout = Number(cfg.treeReadyTimeoutMs) || 60000;
-        let { frame: treeFrame, names: treeNames } = await findBestTreeFrame(page);
-        if (!treeFrame || !treeNames.length) {
-            treeFrame = await waitForReportTreeFrame(page, treeTimeout);
-            ({ frame: treeFrame, names: treeNames } = await findBestTreeFrame(page));
-        }
-        if (treeNames.length) {
-            log.info(`[Upselling] Report tree sample: ${treeNames.slice(0, 8).join(', ')}`);
-        }
-
-        treeFrame = await waitForTreeLabels(page, treeFrame, reportName, treeTimeout);
-
-        for (const folder of folderPath) {
-            await expandTreeFolderAnywhere(page, folder);
-            await page.waitForTimeout(800);
-        }
-
-        let opened = null;
         try {
-            opened = await openReportInTreeAnywhere(page, reportName);
+            await tryOpenReportViaTree(page, cfg, reportName, folderPath);
         } catch (err) {
-            log.warn(`[Upselling] Folder path open failed (${err.message}); trying tree search`);
-            const fallbackFrame = (await findBestTreeFrame(page)).frame || findReportTreeFrame(page);
-            if (fallbackFrame) {
-                opened = await searchReportInTree(fallbackFrame, reportName, page);
-            }
-            if (!opened) {
-                await writeTreeDebug(page);
-                throw err;
-            }
+            log.warn(`[Upselling] Folder path failed (${err.message}); trying direct report URL`);
+            return navigateToDirectBiReport(page, cfg);
         }
-        log.info(`[Upselling] Opened BI report: ${opened}`);
     } else {
-        log.info(`[Upselling] ${reportName} — checking for OLAP grid…`);
-        const quickMs = Number(cfg.reportQuickReadyMs) || 12000;
-        if (!(await waitForOlapReportReady(page, quickMs))) {
-            log.info('[Upselling] Opening report via tree (VIC → Ash)…');
-            const treeTimeout = Number(cfg.treeReadyTimeoutMs) || 60000;
-            let { frame: treeFrame } = await findBestTreeFrame(page);
-            if (!treeFrame) {
-                treeFrame = await waitForReportTreeFrame(page, treeTimeout);
-            }
-            treeFrame = await waitForTreeLabels(page, treeFrame, reportName, treeTimeout);
-            for (const folder of DEFAULT_BI_FOLDER_PATH) {
-                await expandTreeFolderAnywhere(page, folder);
-                await page.waitForTimeout(600);
-            }
-            try {
-                const opened = await openReportInTreeAnywhere(page, reportName);
-                log.info(`[Upselling] Opened BI report: ${opened}`);
-            } catch (err) {
-                log.warn(`[Upselling] Tree open failed (${err.message}); trying search`);
-                const fallbackFrame = (await findBestTreeFrame(page)).frame || findReportTreeFrame(page);
-                if (fallbackFrame) {
-                    await searchReportInTree(fallbackFrame, reportName, page);
-                }
-            }
+        log.info(`[Upselling] ${reportName} — OLAP not ready; trying default tree path…`);
+        try {
+            await tryOpenReportViaTree(page, cfg, reportName, []);
+        } catch (err) {
+            log.warn(`[Upselling] Default tree failed (${err.message}); trying direct report URL`);
+            return navigateToDirectBiReport(page, cfg);
         }
     }
 
@@ -544,13 +545,18 @@ async function waitForReportViewLoaded(page, cfg = {}) {
 }
 
 /**
- * Navigate to BI report — sidebar Business Intelligence (report loads by default).
+ * Navigate to BI report — sidebar first, then tree, then direct Proxy.aspx?reportId=317.
  */
 async function navigateToBiReport(page, cfg) {
     if (resolveBiReportUrl(cfg)) {
         return navigateToDirectBiReport(page, cfg);
     }
-    return navigateViaReportTree(page, cfg);
+    try {
+        return await navigateViaReportTree(page, cfg);
+    } catch (err) {
+        log.warn(`[Upselling] BI navigation failed (${err.message}); using direct report URL`);
+        return navigateToDirectBiReport(page, cfg);
+    }
 }
 
 module.exports = {

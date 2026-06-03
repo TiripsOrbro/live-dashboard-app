@@ -24,10 +24,6 @@ const { resolveEnabledStores, isUpsellingEnabledForStore } = require('./storeUps
 const { normalizeStoreKey } = require('../testStore');
 const { getDailyItemMultipliers } = require('../mic/micStore');
 
-function melbourneTodayIso() {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(new Date());
-}
-
 // Guardrail: item quantities in Upsell by Cashier should be small counts, not long ID-like numbers.
 const MAX_REASONABLE_ITEM_QTY = Number(process.env.UPSELL_MAX_ITEM_QTY || 500);
 

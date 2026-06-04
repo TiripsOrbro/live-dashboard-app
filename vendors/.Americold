@@ -67,19 +67,19 @@ oh:10     | 37901  | TB WRAP LARGE WHITE PRINTED 3000EA             | Boxes | N/
 oh:10     | 37999  | TB WRAP WASTE WHITE UNPRINTED 5X1000EA         | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 38050  | NAPKINS BROWN RECYCLE                          | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 
-# --- Dry manual — stock count only (no Key Item Count; no auto build-to order) ---
-manual    | 100481 | GLOVE NITRILE MEDIUM 10X100                    | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
-manual    | 100482 | GLOVE NITRILE LARGE10X100                      | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
-manual    | 100483 | GLOVE NITRILE XLARGE 10X100                    | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
-manual    | 38076  | TOWEL PAPER HAND TORK WHITE 6 ROLLS            | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
-manual    | 38078  | TOILET PAPER SMARTONE 12 ROLLS                 | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 12
-manual    | 38686  | TOWEL PAPER BLUE AUTOMATIC CENTREFEED 6 ROLLS  | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
-manual    | 38464  | FILTER SHEET EVOLUTION LOADED 100EA            | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
-manual    | 38542  | BIN LINER 240L H/DUTY 8X25 EA                  | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
-manual    | 504245 | SCOURERS SMALL GREEN MAXPAC 30                 | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
-manual    | 504372 | WIPING CLOTH BLUE 350EA                        | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
-manual    | 505796 | WIPING CLOTH YELLOW                            | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
-manual    | 505253 | TB BAG MULTIPURPOSE 5000EA                     | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
+# --- Dry manual= — stock count; fixed build-to; order = build-to − count (no Key Item Count) ---
+manual=2  | 100481 | GLOVE NITRILE MEDIUM 10X100                    | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
+manual=2  | 100482 | GLOVE NITRILE LARGE10X100                      | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
+manual=2  | 100483 | GLOVE NITRILE XLARGE 10X100                    | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
+manual=1  | 38076  | TOWEL PAPER HAND TORK WHITE 6 ROLLS            | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
+manual=1  | 38078  | TOILET PAPER SMARTONE 12 ROLLS                 | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 12
+manual=1  | 38686  | TOWEL PAPER BLUE AUTOMATIC CENTREFEED 6 ROLLS  | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
+manual=1  | 38464  | FILTER SHEET EVOLUTION LOADED 100EA            | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
+manual=2  | 38542  | BIN LINER 240L H/DUTY 8X25 EA                  | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
+manual=1  | 504245 | SCOURERS SMALL GREEN MAXPAC 30                 | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
+manual=1  | 504372 | WIPING CLOTH BLUE 350EA                        | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
+manual=1  | 505796 | WIPING CLOTH YELLOW                            | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
+manual=0.2 | 505253 | TB BAG MULTIPURPOSE 5000EA                     | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
 
 ignore    | 106431 | 260 x 260mm Baking Paper Golden Silidor        | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
 ignore    | 106551 | 4OZ PORTION CUP LID 50EA                       | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |

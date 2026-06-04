@@ -107,7 +107,7 @@ function looksLikeItemCode(value) {
     return false;
 }
 
-/** Leading column: `order=N`, `=N`, `oh:N`, days, or `manual` (see VENDOR-FORMAT.md). */
+/** Leading column: `order=N`, `manual=N`, `=N`, `oh:N`, days, or `manual` (see VENDOR-FORMAT.md). */
 function parseBuildToPrefix(parts) {
     if (!parts.length) return null;
     const first = String(parts[0] || '').trim();
@@ -155,6 +155,23 @@ function parseBuildToPrefix(parts) {
                 buildToManual: false,
                 buildToOrderManual: false,
                 skipKeyItemCount: false,
+                skipStockCount: false,
+                buildToDays: null,
+                buildToAdd: 0,
+                buildToFixed,
+                rest: parts.slice(1),
+            };
+        }
+    }
+
+    const manualParMatch = first.match(/^manual=(\d+(?:\.\d+)?)$/i);
+    if (manualParMatch) {
+        const buildToFixed = Number(manualParMatch[1]);
+        if (Number.isFinite(buildToFixed) && buildToFixed >= 0 && buildToFixed <= 999) {
+            return {
+                buildToManual: true,
+                buildToOrderManual: true,
+                skipKeyItemCount: true,
                 skipStockCount: false,
                 buildToDays: null,
                 buildToAdd: 0,
@@ -418,8 +435,9 @@ function parseCatalogText(text, def) {
             buildToOrderManual: Boolean(buildToOrderManual),
             skipKeyItemCount: Boolean(skipKeyItemCount),
             skipStockCount: Boolean(skipStockCount),
-            buildToAdd: buildToManual ? 0 : buildToAdd,
-            buildToFixed: buildToManual ? null : buildToFixed,
+            buildToAdd: buildToManual && !buildToOrderManual ? 0 : buildToAdd,
+            buildToFixed:
+                buildToFixed != null && Number.isFinite(buildToFixed) ? buildToFixed : null,
         });
     }
 
@@ -521,16 +539,15 @@ function getVendorCatalog(slug, options = {}) {
  */
 function catalogItemBuildToRule(item, vendorSlug) {
     const buildToFixed =
-        !item.buildToManual && item.buildToFixed != null && Number.isFinite(item.buildToFixed)
-            ? item.buildToFixed
-            : null;
+        item.buildToFixed != null && Number.isFinite(item.buildToFixed) ? item.buildToFixed : null;
+    const manualStockOnly = Boolean(item.buildToManual) && !item.buildToOrderManual;
     return {
         buildToDays:
-            item.buildToManual || item.buildToOrderManual || buildToFixed != null ? null : item.buildToDays,
-        buildToManual: Boolean(item.buildToManual),
+            manualStockOnly || item.buildToOrderManual || buildToFixed != null ? null : item.buildToDays,
+        buildToManual: manualStockOnly,
         buildToOrderManual: Boolean(item.buildToOrderManual),
         buildToFixed,
-        buildToAdd: item.buildToManual ? 0 : Number(item.buildToAdd) || 0,
+        buildToAdd: manualStockOnly ? 0 : Number(item.buildToAdd) || 0,
         vendorSlug,
     };
 }

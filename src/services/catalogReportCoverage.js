@@ -57,7 +57,7 @@ function verifyCatalogReportCoverage(storeNumber, catalog, reportsRoot) {
         const code = String(item.itemCode || '').trim();
         if (!code) continue;
 
-        if (item.buildToManual) {
+        if (item.buildToManual && !item.buildToOrderManual) {
             skipped.push({ itemCode: code, name: item.name, reason: 'manual' });
             continue;
         }
@@ -75,7 +75,7 @@ function verifyCatalogReportCoverage(storeNumber, catalog, reportsRoot) {
             skipped.push({
                 itemCode: code,
                 name: item.name,
-                reason: 'count-driven (=N / order= — use app count vs catalog build-to; reports optional)',
+                reason: 'count-driven (=N / order= / manual= — use app count vs catalog build-to; reports optional)',
             });
             continue;
         }

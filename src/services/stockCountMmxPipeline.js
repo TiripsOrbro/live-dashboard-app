@@ -276,7 +276,8 @@ function allVendorsMarkedMmxSent(vendorSlugs, sentSlugs) {
 
 /**
  * Open MMX and fill scheduled orders only (skip stock count + optional report download).
- * Downloads reports first when missing or when skipReportDownload is false.
+ * Downloads reports when skipReportDownload is false and on-disk reports fail validation.
+ * With skipReportDownload true, never downloads — uses whatever is in Reports/{store}/.
  */
 async function runScheduledOrdersOnly(storeNumber, options = {}) {
     return withStoreLock(storeNumber, async () => {
@@ -289,16 +290,22 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
             const { REPORTS_DIR } = require('./buildToCalculator');
             const files = resolveStoreReports(storeNumber, options.reportsDir || REPORTS_DIR);
             const { ready, validation } = reportsReadyForStore(storeNumber, options.reportsDir || REPORTS_DIR);
-            const shouldDownload = !options.skipReportDownload || !ready;
+            const skipDownload = Boolean(options.skipReportDownload);
+            const shouldDownload = !skipDownload && !ready;
 
             if (shouldDownload) {
                 await ensureReportsForOrders(storeNumber, {
                     ...options,
-                    forceDownload: !options.skipReportDownload || !ready,
+                    forceDownload: true,
                 });
             } else if (!ready) {
+                const detail = validation?.issues?.length
+                    ? validation.issues.join('; ')
+                    : 'missing or stale reports';
                 log.warn(
-                    `Reports incomplete for store ${storeNumber} — using existing data; order quantities may be incomplete`
+                    skipDownload
+                        ? `Reports not validated for store ${storeNumber} (${detail}) — skipReportDownload: using files on disk anyway`
+                        : `Reports incomplete for store ${storeNumber} (${detail}) — order quantities may be wrong`
                 );
             } else {
                 const names = describeResolvedStoreReports(files);

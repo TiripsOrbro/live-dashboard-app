@@ -1101,29 +1101,42 @@ async function isStockCountConfirmScreen(page, cfg) {
 }
 
 /**
- * Click Apply on the confirm screen when enabled.
+ * Click Apply on the confirm screen when enabled (waits for MMX to enable the button).
  * @returns {{ applied: boolean, alreadyApplied: boolean }}
  */
 async function applyKeyItemCount(page, cfg) {
     const applyId = cfg.applyButtonId;
     if (!applyId) throw new Error('Apply button id not configured.');
-    const enabled = await page.evaluate((btnId) => {
-        const el = document.getElementById(btnId);
-        return el && !el.disabled && el.offsetParent !== null;
-    }, applyId);
-    if (enabled) {
-        log.info(`Applying Key Item Count via #${applyId}`);
-        await clickButtonById(page, applyId);
-        return { applied: true, alreadyApplied: false };
-    }
-    if (await clickButtonByValue(page, 'Apply')) {
-        log.info('Applying Key Item Count via Apply button');
-        return { applied: true, alreadyApplied: false };
-    }
+    const maxMs = Number(process.env.MMX_APPLY_WAIT_MS || 60000);
+    const pollMs = 500;
+    const start = Date.now();
+    let loggedWait = false;
 
-    if (!(await isStockCountConfirmScreen(page, cfg))) {
-        log.info('Key Item Count already applied in Macromatix — nothing to apply on this screen');
-        return { applied: false, alreadyApplied: true };
+    while (Date.now() - start < maxMs) {
+        const enabled = await page.evaluate((btnId) => {
+            const el = document.getElementById(btnId);
+            return el && !el.disabled && el.offsetParent !== null;
+        }, applyId);
+        if (enabled) {
+            log.info(`Applying Key Item Count via #${applyId}`);
+            await clickButtonById(page, applyId);
+            return { applied: true, alreadyApplied: false };
+        }
+        if (await clickButtonByValue(page, 'Apply')) {
+            log.info('Applying Key Item Count via Apply button');
+            return { applied: true, alreadyApplied: false };
+        }
+
+        if (!(await isStockCountConfirmScreen(page, cfg))) {
+            log.info('Key Item Count already applied in Macromatix — nothing to apply on this screen');
+            return { applied: false, alreadyApplied: true };
+        }
+
+        if (!loggedWait) {
+            log.info('Waiting for Key Item Count Apply button to enable…');
+            loggedWait = true;
+        }
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
     }
 
     throw new Error('Apply button not enabled on confirm count screen.');

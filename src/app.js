@@ -72,7 +72,13 @@ const {
     clearStoreScrapeCaches,
     resetScheduledOrdersForNewDay,
 } = require('./services/macromatixScraper');
-const { prepareStockCountForMmx, applyStockCountSession, cancelStockCountSession, runScheduledOrdersOnly } = require('./services/stockCountMmxPipeline');
+const {
+    prepareStockCountForMmx,
+    applyStockCountSession,
+    cancelStockCountSession,
+    runScheduledOrdersOnly,
+    getStockCountPipelineStatus,
+} = require('./services/stockCountMmxPipeline');
 const {
     getDismissalPeriodKey,
     getAuditSchedule,
@@ -1877,10 +1883,22 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
     }
 });
 
+app.get('/api/stock-count/pipeline-status', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const status = await getStockCountPipelineStatus(store);
+        res.json(status);
+    } catch (error) {
+        console.error('API: Error reading stock count pipeline status:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.post('/api/stock-count/send-to-mmx/apply', async (req, res) => {
     try {
         const store = stockCountStoreFromQuery(req);
-        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        let sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
         const ordersOnly = /^(1|true|yes|on)$/i.test(String(req.body?.ordersOnly ?? req.query.ordersOnly ?? ''));
         if (!store || !assertStoreAccess(req, res, store)) return;
 
@@ -1894,6 +1912,12 @@ app.post('/api/stock-count/send-to-mmx/apply', async (req, res) => {
             return;
         }
 
+        if (!sessionId) {
+            const pipeline = await getStockCountPipelineStatus(store);
+            if (pipeline.inProgress && pipeline.sessionId) {
+                sessionId = pipeline.sessionId;
+            }
+        }
         if (!sessionId) {
             res.status(400).json({ success: false, error: 'sessionId is required.' });
             return;

@@ -41,6 +41,10 @@ function apiQuery(base, vendorSlug = VENDOR_SLUG, options = {}) {
     return `${window.location.origin}${base}${base.includes('?') ? '&' : '?'}${qs}`;
 }
 
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function fetchJson(url, options = {}) {
     const headers = { Accept: 'application/json', ...(options.headers || {}) };
     const res = await fetch(url, { ...options, headers, credentials: 'include' });
@@ -1084,8 +1088,64 @@ async function saveAndSubmitVendor() {
     return true;
 }
 
+function finishMmxOrdersSuccess(data) {
+    processingComplete = true;
+    mmxSessionId = '';
+    if (data?.orderFailures) {
+        setStatus(`Some scheduled orders could not be filled: ${data.orderFailures}`, 'error');
+    } else {
+        setStatus('Counts sent — scheduled orders updated in Macromatix.', 'success');
+    }
+}
+
+async function waitForPipelineApplyComplete(sessionId) {
+    const sid = sessionId || mmxSessionId;
+    processing = true;
+    processingStageLabel = 'Placing scheduled orders';
+    setStatus('Still placing orders in Macromatix…', '');
+    render();
+
+    for (let attempt = 0; attempt < 90; attempt++) {
+        await sleep(5000);
+        try {
+            const { res: statusRes, data: status } = await fetchJson(
+                apiQuery('/api/stock-count/pipeline-status')
+            );
+            if (statusRes.ok && status.ordersComplete) {
+                finishMmxOrdersSuccess({ orderFailures: status.lastError || null });
+                return true;
+            }
+            if (statusRes.ok && status.stage === 'apply-failed' && !status.inProgress) {
+                throw new Error(status.lastError || 'Apply failed.');
+            }
+            if (statusRes.ok && status.inProgress) {
+                const { res, data } = await fetchJson(apiQuery('/api/stock-count/send-to-mmx/apply'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId: sid || status.sessionId || '' }),
+                });
+                if (res.ok && data.success) {
+                    finishMmxOrdersSuccess(data);
+                    return true;
+                }
+            }
+        } catch (pollError) {
+            if (/apply failed/i.test(pollError.message) && attempt < 89) continue;
+            throw pollError;
+        }
+    }
+    throw new Error('Timed out waiting for scheduled orders to finish. Check pm2 logs on the Pi.');
+}
+
+function shouldRecoverApplyError(message) {
+    return /session expired|apply failed|apply button|failed to fetch|network|invalid server response|timed out/i.test(
+        String(message || '')
+    );
+}
+
 async function sendToMmx() {
     if (!canShowSendToMmx() || saving) return;
+    let preparedAutoApplied = false;
 
     try {
         if (viewMode === 'recount') {
@@ -1129,13 +1189,16 @@ async function sendToMmx() {
         if (!res.ok || !data.success) {
             throw new Error(data.error || 'Send to Macromatix failed.');
         }
-        if (data.keyItemCountSkipped) {
+        if (data.keyItemCountSkipped || data.autoApplied) {
+            preparedAutoApplied = true;
             processingComplete = true;
             mmxSessionId = '';
             if (data.orderFailures) {
                 setStatus(`Some scheduled orders could not be filled: ${data.orderFailures}`, 'error');
-            } else {
+            } else if (data.keyItemCountSkipped) {
                 setStatus('Manual counts sent — Key Item Count skipped; scheduled orders updated.', 'success');
+            } else {
+                setStatus('Counts sent — scheduled orders updated in Macromatix.', 'success');
             }
             return;
         }
@@ -1155,15 +1218,35 @@ async function sendToMmx() {
         viewMode = 'variances';
         setStatus('', '');
     } catch (error) {
-        setStatus(error.message, 'error');
-        showMmxFailurePopup(error.message);
+        if (shouldRecoverApplyError(error.message)) {
+            try {
+                const recovered = await waitForPipelineApplyComplete(mmxSessionId);
+                if (recovered) {
+                    preparedAutoApplied = true;
+                    return;
+                }
+            } catch (recoverError) {
+                setStatus(recoverError.message, 'error');
+                showMmxFailurePopup(recoverError.message);
+            }
+        } else {
+            setStatus(error.message, 'error');
+            showMmxFailurePopup(error.message);
+        }
     } finally {
         saving = false;
-        if (viewMode === 'variances' && mmxSessionId && mmxVariances.length === 0) {
+        if (
+            !preparedAutoApplied &&
+            viewMode === 'variances' &&
+            mmxSessionId &&
+            mmxVariances.length === 0
+        ) {
             await applyMmxCount();
             return;
         }
-        processing = false;
+        if (!processingComplete) {
+            processing = false;
+        }
         render();
     }
 }
@@ -1184,13 +1267,21 @@ async function applyMmxCount() {
         });
         if (!res.ok || !data.success) {
             const msg = data.error || 'Apply failed.';
-            if (/already applied|nothing to apply|session expired/i.test(msg)) {
+            if (/already applied|nothing to apply/i.test(msg)) {
                 mmxSessionId = '';
                 processing = false;
                 processingComplete = true;
                 setStatus('', '');
                 render();
                 return;
+            }
+            if (shouldRecoverApplyError(msg)) {
+                const recovered = await waitForPipelineApplyComplete(mmxSessionId);
+                if (recovered) {
+                    saving = false;
+                    render();
+                    return;
+                }
             }
             throw new Error(msg);
         }
@@ -1212,6 +1303,24 @@ async function applyMmxCount() {
             setStatus('', '');
             render();
             return;
+        }
+        if (shouldRecoverApplyError(msg)) {
+            try {
+                const recovered = await waitForPipelineApplyComplete(mmxSessionId);
+                if (recovered) {
+                    saving = false;
+                    render();
+                    return;
+                }
+            } catch (recoverError) {
+                setStatus(recoverError.message, 'error');
+                showMmxFailurePopup(recoverError.message);
+                saving = false;
+                processing = false;
+                processingComplete = false;
+                render();
+                return;
+            }
         }
         setStatus(msg, 'error');
         showMmxFailurePopup(msg);

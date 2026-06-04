@@ -1308,17 +1308,28 @@ async function configureAndGenerateReport(page, report, reportNav) {
     await selectReportInList(page, report.reportName);
 
     const startDate = resolveReportDate(report.startDate || 'lastWeekMonday', dateOpts(report));
+    const formatText = report.format || 'Excel Data Only';
+    const hasEndDate = Boolean(report.endDate);
+
+    // On Hand: dates → format → tree. On Order (start + end): format must be set before date inputs appear.
+    if (hasEndDate) {
+        await setReportFormat(page, formatText);
+        await page.waitForTimeout(500);
+    }
+
     await setStartDate(page, startDate);
 
-    if (report.endDate) {
+    if (hasEndDate) {
         const endDate = resolveReportDate(report.endDate, dateOpts(report));
         await setEndDate(page, endDate);
     }
 
     await waitForDateFieldSettle(page);
 
-    await setReportFormat(page, report.format || 'Excel Data Only');
-    await page.waitForTimeout(500);
+    if (!hasEndDate) {
+        await setReportFormat(page, formatText);
+        await page.waitForTimeout(500);
+    }
 
     if (report.scmTreeStoreNumber) {
         await selectScmStoreCheckboxInTree(page, report.scmTreeStoreNumber, report.storeName);

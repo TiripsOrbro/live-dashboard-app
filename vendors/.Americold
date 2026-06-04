@@ -39,18 +39,18 @@
 10+1      | 39054  | TB SEASONING MEXICAN RECI 10X1                 | Bags  | N/a     | KGs  | N/a     | N/a     | Dry  | N/a    |
 order=8   | 607826 | OIL FRYING LIQUID 15KG                         | Boxes | N/a     | KGs  | Dry     | order:FRG | N/a  | N/a    |
 
-# order=X is set manually
-order=2   | 100481 | GLOVE NITRILE MEDIUM 10X100                    | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
-order=2   | 100482 | GLOVE NITRILE LARGE10X100                      | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
-order=2   | 100483 | GLOVE NITRILE XLARGE 10X100                    | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
-order=1   | 38076  | TOWEL PAPER HAND TORK WHITE 6 ROLLS            | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
-order=1   | 38078  | TOILET PAPER SMARTONE 12 ROLLS                 | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 12
-order=0.1 | 38464  | FILTER SHEET EVOLUTION LOADED 100EA            | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
-order=2   | 38542  | BIN LINER 240L H/DUTY 8X25 EA                  | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
-order=1   | 504245 | SCOURERS SMALL GREEN MAXPAC 30                 | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
-order=1   | 504372 | WIPING CLOTH BLUE 350EA                        | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
-order=1   | 505796 | WIPING CLOTH YELLOW                            | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
-order=0.2 | 505253 | TB BAG MULTIPURPOSE 5000EA                     | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
+# oh:10 — not on Key Item Count; build-to = ISE avg × 10; order from stock-on-hand + stock-on-order
+oh:10     | 100481 | GLOVE NITRILE MEDIUM 10X100                    | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
+oh:10     | 100482 | GLOVE NITRILE LARGE10X100                      | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
+oh:10     | 100483 | GLOVE NITRILE XLARGE 10X100                    | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
+oh:10     | 38076  | TOWEL PAPER HAND TORK WHITE 6 ROLLS            | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
+oh:10     | 38078  | TOILET PAPER SMARTONE 12 ROLLS                 | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 12
+oh:10     | 38464  | FILTER SHEET EVOLUTION LOADED 100EA            | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
+oh:10     | 38542  | BIN LINER 240L H/DUTY 8X25 EA                  | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
+oh:10     | 504245 | SCOURERS SMALL GREEN MAXPAC 30                 | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
+oh:10     | 504372 | WIPING CLOTH BLUE 350EA                        | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
+oh:10     | 505796 | WIPING CLOTH YELLOW                            | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
+oh:10     | 505253 | TB BAG MULTIPURPOSE 5000EA                     | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
 
 
 ignore    | 106431 | 260 x 260mm Baking Paper Golden Silidor        | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |

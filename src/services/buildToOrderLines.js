@@ -1,6 +1,12 @@
 const fs = require('fs');
 const path = require('path');
-const { calculateBuildToOrders, loadManualCountsForStore, manualCountToCartons } = require('./buildToCalculator');
+const {
+    calculateBuildToOrders,
+    loadManualCountsForStore,
+    manualCountToCartons,
+    finalizeOrderQty,
+    orderRoundingDisabled,
+} = require('./buildToCalculator');
 const { melbourneDateKey } = require('./stockCountState');
 const { getVendorCatalog } = require('./vendorCatalog');
 const { normalizeItemCode } = require('./reportReader');
@@ -55,12 +61,6 @@ function buildCatalogItemIndex() {
         }
     }
     return index;
-}
-
-function ceilOrderQty(value) {
-    const n = Number(value);
-    if (!Number.isFinite(n) || n <= 0) return 0;
-    return Math.ceil(n);
 }
 
 /** Per-item pack size from vendor config (e.g. iced coffee bottles in cases of 6). */
@@ -145,7 +145,7 @@ async function buildOrderManualEntriesFromCounts(
             continue;
         }
 
-        const orderQty = ceilOrderQty(buildTo - onHandCartons);
+        const orderQty = finalizeOrderQty(buildTo - onHandCartons, options);
         if (orderQty <= 0 && !countEntry) continue;
 
         entries.push({
@@ -189,9 +189,10 @@ function mergeBuildToEntries(...entrySets) {
  * Final order quantity for MMX entry.
  * Default: always round up (ceil). Iced coffee (orderRoundToByItemCode): nearest pack multiple.
  */
-function roundOrderQtyForVendor(qty, vendorCfg, ...itemCodes) {
+function roundOrderQtyForVendor(qty, vendorCfg, options = {}, ...itemCodes) {
     const n = Number(qty);
     if (!Number.isFinite(n) || n <= 0) return 0;
+    if (orderRoundingDisabled(options)) return finalizeOrderQty(n, options);
 
     const itemStep = orderRoundStepForItem(vendorCfg, ...itemCodes);
     if (Number.isFinite(itemStep) && itemStep > 1) {
@@ -245,7 +246,7 @@ async function buildOrderLinesByVendorId(storeNumber, options = {}) {
             vendorCfg,
             catalog,
             dateKey,
-            { coveredByIse }
+            { coveredByIse, ...options }
         );
         const vendorCodeSet = vendorCodes;
         const lineMatchesVendorCatalog = (line) => {
@@ -275,6 +276,7 @@ async function buildOrderLinesByVendorId(storeNumber, options = {}) {
             orderQty: roundOrderQtyForVendor(
                 entry.orderQty,
                 vendorCfg,
+                options,
                 entry.iseItemCode,
                 entry.catalogItemCode
             ),

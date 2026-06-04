@@ -233,7 +233,10 @@ async function runOrdersAfterApply(storeNumber, dateKey, mmx = {}) {
     const page = mmx?.page ?? mmx;
     const browser = mmx?.browser ?? null;
     await ensureReportsForOrders(storeNumber, { page, browser, reportsDir: mmx.reportsDir });
-    const orderPack = await buildOrderLinesByVendorId(storeNumber, { dateKey });
+    const orderPack = await buildOrderLinesByVendorId(storeNumber, {
+        dateKey,
+        noOrderRounding: mmx.noOrderRounding,
+    });
     return runVendorOrdersForStore(page, storeNumber, dateKey, orderPack);
 }
 
@@ -287,7 +290,10 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
                 log.info(`Using existing reports in ${files.storeDir} — skipping download`);
             }
 
-            const orderPack = await buildOrderLinesByVendorId(storeNumber, { dateKey });
+            const orderPack = await buildOrderLinesByVendorId(storeNumber, {
+                dateKey,
+                noOrderRounding: options.noOrderRounding,
+            });
 
             ({ browser, page } = await openMacromatixBrowser(options));
             log.info(`Filling scheduled orders for store ${storeNumber}`);

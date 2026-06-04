@@ -2,7 +2,7 @@
 # location-order: Fridge | In Use
 #
 # Format: [buildToDays | manual] | itemCode | name | unit | unit | unit [| location…]
-# Dare Iced Coffee: order qty rounds up to multiples of 6 (config/vendor-orders.json → orderRoundToByItemCode)
+# Dare Iced Coffee: order qty rounds to nearest multiple of 6 (vendor-orders.json → orderRoundToByItemCode)
 
 
 # # 10 | 8418 | CREAM SOUR LIGHT 2KG                        | Tubs | N/a | KGs     | Fridge | In Use

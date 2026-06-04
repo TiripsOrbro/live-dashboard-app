@@ -8,9 +8,7 @@
       "vendorMatch": "americold",
       "orderClass": "DRY",
       "catalogSlug": "americold",
-      "orderClasses": ["DRY"],
-      "orderFromCount": true,
-      "uncountedBuildTo": 10
+      "orderClasses": ["DRY"]
     },
     {
       "id": "americold-frg",
@@ -34,7 +32,8 @@
       "vendorMatch": "bega",
       "catalogSlug": "bega",
       "orderRoundToByItemCode": {
-        "38239": 6
+        "38239": 6,
+        "7759": 6
       }
     },
     {

@@ -164,9 +164,17 @@ function num(value) {
     return Number.isFinite(n) ? n : 0;
 }
 
-function ceilOrderQty(value) {
+function orderRoundingDisabled(options = {}) {
+    if (options.noOrderRounding) return true;
+    const env = String(process.env.ORDER_NO_ROUNDING || '').trim().toLowerCase();
+    return env === '1' || env === 'true' || env === 'yes';
+}
+
+/** Order qty from build-to − on-hand − on-order. Default: ceil up; testing: raw (4 dp). */
+function finalizeOrderQty(value, options = {}) {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return 0;
+    if (orderRoundingDisabled(options)) return round4(n);
     return Math.ceil(n);
 }
 
@@ -204,7 +212,7 @@ async function loadManualCountsForStore(storeNumber, dateKey = melbourneDateKey(
 
 /**
  * Build-to order lines for a store.
- * orderQty = ceil(max(0, buildTo - onHandCartons - onOrderCartons))
+ * orderQty = finalizeOrderQty(max(0, buildTo - onHandCartons - onOrderCartons))
  * On-hand comes from the Stock On Hand report (refreshed after stock count apply).
  */
 function resolveOnOrderCartons(onOrderReport, itemCode, iseUnit, isePack) {
@@ -256,19 +264,31 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
                 if (manualEntry) break;
             }
         }
+        const catalogRule = catalogRuleForItem(itemCode, catalogRules);
         const onHandFromReport = onHandToCartons(onHandRow, ise.unit, isePack, reportItemCode);
         const onHandFromManual =
             manualEntry && manualEntry.catalogItem
                 ? manualCountToCartons({ columns: manualEntry.columns }, manualEntry.catalogItem, isePack)
                 : null;
-        const onHandCartons = onHandFromManual != null ? onHandFromManual : onHandFromReport;
-        const onHandSource =
-            onHandFromManual != null ? 'manual-count' : onHandRow ? 'report' : 'missing';
-        if (onHandFromManual != null) manualCountItems++;
+        const useReportOnHandOnly = Boolean(catalogRule?.skipStockCount);
+        const onHandCartons = useReportOnHandOnly
+            ? onHandFromReport
+            : onHandFromManual != null
+              ? onHandFromManual
+              : onHandFromReport;
+        const onHandSource = useReportOnHandOnly
+            ? onHandRow
+                ? 'report'
+                : 'missing'
+            : onHandFromManual != null
+              ? 'manual-count'
+              : onHandRow
+                ? 'report'
+                : 'missing';
+        if (onHandFromManual != null && !useReportOnHandOnly) manualCountItems++;
 
         const { onOrderCartons, onOrderRow } = resolveOnOrderCartons(onOrderReport, reportItemCode, ise.unit, isePack);
         const description = ise.description || onHandRow?.description || onOrderRow?.description || '';
-        const catalogRule = catalogRuleForItem(itemCode, catalogRules);
 
         if (catalogRule?.buildToManual) {
             lines.push({
@@ -292,7 +312,7 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         const buildToDays = buildToDaysForItem(itemCode, description, catalogRules);
         const buildTo = buildToTarget(ise.avgDaily, itemCode, description, catalogRules);
         const rawOrder = buildTo - onHandCartons - onOrderCartons;
-        const orderQty = ceilOrderQty(rawOrder);
+        const orderQty = finalizeOrderQty(rawOrder, options);
         const buildToSource =
             catalogRule?.buildToFixed != null
                 ? 'catalog-fixed'
@@ -353,6 +373,8 @@ function filterAmericoldOrderLines(result) {
 
 module.exports = {
     calculateBuildToOrders,
+    finalizeOrderQty,
+    orderRoundingDisabled,
     filterAmericoldOrderLines,
     loadManualCountsForStore,
     manualCountToCartons,

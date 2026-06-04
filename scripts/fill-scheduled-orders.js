@@ -8,6 +8,7 @@
  *   npm run fill-orders -- 3811 --dry-run --item 40303
  *   npm run fill-orders -- 3811 --dry-run --vendor americold-frz
  *   npm run fill-orders -- 3811 --skip-report-download   (use files already in Reports/)
+ *   npm run fill-orders -- 3811 --dry-run --no-order-rounding   (raw shortage, no ceil)
  */
 const path = require('path');
 require('../src/loadEnv').loadEnv();
@@ -27,7 +28,12 @@ function parseArgs(argv) {
     const vendorId = vendorIdx >= 0 ? args[vendorIdx + 1] : '';
     const itemIdx = args.indexOf('--item');
     const itemCode = itemIdx >= 0 ? normalizeItemCode(args[itemIdx + 1]) : '';
-    return { storeNumber, skipReportDownload, dryRun, vendorId, itemCode };
+    const noOrderRounding = args.includes('--no-order-rounding');
+    return { storeNumber, skipReportDownload, dryRun, vendorId, itemCode, noOrderRounding };
+}
+
+function orderOptionsFromArgs({ noOrderRounding }) {
+    return noOrderRounding ? { noOrderRounding: true } : {};
 }
 
 function printBuildToLine(line) {
@@ -45,12 +51,16 @@ function printBuildToLine(line) {
     );
 }
 
-async function printDryRun(storeNumber, { vendorId, itemCode }) {
+async function printDryRun(storeNumber, { vendorId, itemCode, noOrderRounding }) {
     const dateKey = melbourneDateKey();
+    const orderOpts = orderOptionsFromArgs({ noOrderRounding });
     console.log(`[fill-orders] DRY RUN — store ${storeNumber} (${dateKey}) — using Reports/${storeNumber}/ on disk`);
+    if (noOrderRounding) {
+        console.log('[fill-orders] Order rounding OFF — quantities are raw build-to − on-hand − on-order');
+    }
 
-    const buildTo = await calculateBuildToOrders(storeNumber);
-    const { byVendorId } = await buildOrderLinesByVendorId(storeNumber, { dateKey });
+    const buildTo = await calculateBuildToOrders(storeNumber, orderOpts);
+    const { byVendorId } = await buildOrderLinesByVendorId(storeNumber, { dateKey, ...orderOpts });
 
     const iseLines = buildTo.lines.filter((line) => {
         if (itemCode && normalizeItemCode(line.itemCode) !== itemCode) return false;
@@ -95,7 +105,9 @@ async function printDryRun(storeNumber, { vendorId, itemCode }) {
 }
 
 async function main() {
-    const { storeNumber, skipReportDownload, dryRun, vendorId, itemCode } = parseArgs(process.argv);
+    const { storeNumber, skipReportDownload, dryRun, vendorId, itemCode, noOrderRounding } =
+        parseArgs(process.argv);
+    const orderOpts = orderOptionsFromArgs({ noOrderRounding });
 
     if (dryRun) {
         if (!skipReportDownload) {
@@ -104,15 +116,18 @@ async function main() {
         } else {
             console.log(`[fill-orders] Dry run — using existing Reports/${storeNumber}/ (--skip-report-download)`);
         }
-        await printDryRun(storeNumber, { vendorId, itemCode });
+        await printDryRun(storeNumber, { vendorId, itemCode, noOrderRounding });
         return;
     }
 
     console.log(
         `[fill-orders] Store ${storeNumber} — ${skipReportDownload ? 'using existing reports' : 'will download reports first'}`
     );
+    if (noOrderRounding) {
+        console.log('[fill-orders] Order rounding OFF — quantities are raw build-to − on-hand − on-order');
+    }
     console.log('[fill-orders] Skipping Key Item Count — scheduled orders only');
-    const result = await runScheduledOrdersOnly(storeNumber, { skipReportDownload });
+    const result = await runScheduledOrdersOnly(storeNumber, { skipReportDownload, ...orderOpts });
     const processed = result.orders?.processed || [];
     const ok = processed.filter((p) => p.ok);
     const failed = processed.filter((p) => !p.ok);

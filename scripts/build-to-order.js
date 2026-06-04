@@ -6,6 +6,7 @@
  *   npm run build-to-order -- 3811
  *   npm run build-to-order -- 3811 --vendor americold
  *   npm run build-to-order -- 3811 --json
+ *   npm run build-to-order -- 3811 --no-order-rounding
  */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
@@ -19,7 +20,8 @@ function parseArgs(argv) {
     const vendor = args.includes('--vendor') ? args[args.indexOf('--vendor') + 1] : null;
     const json = args.includes('--json');
     const all = args.includes('--all');
-    return { storeNumber, vendor, json, all };
+    const noOrderRounding = args.includes('--no-order-rounding');
+    return { storeNumber, vendor, json, all, noOrderRounding };
 }
 
 function printHuman(result, title) {
@@ -64,8 +66,12 @@ function printHuman(result, title) {
 }
 
 async function main() {
-    const { storeNumber, vendor, json, all } = parseArgs(process.argv);
-    let result = await calculateBuildToOrders(storeNumber);
+    const { storeNumber, vendor, json, all, noOrderRounding } = parseArgs(process.argv);
+    const orderOpts = noOrderRounding ? { noOrderRounding: true } : {};
+    if (noOrderRounding) {
+        console.log('[build-to-order] Order rounding OFF — raw shortage quantities');
+    }
+    let result = await calculateBuildToOrders(storeNumber, orderOpts);
 
     if (vendor === 'americold') {
         result = { ...result, orderLines: filterAmericoldOrderLines(result).orderLines };

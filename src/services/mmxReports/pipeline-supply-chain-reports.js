@@ -2,6 +2,8 @@ const { GOTO_OPTS } = require('./mmx-browser');
 const { withPageContextRetry } = require('./mmx-context-retry');
 const { setReportStartDate, setReportEndDate } = require('./mmx-rad-date-picker');
 const { resolveReportDate } = require('./util-dates');
+const { getStoreConfig } = require('../storeList');
+const { selectStoreOnPage } = require('../macromatixScraper');
 const log = require('./util-logging');
 
 async function openReportSelectionPage(page, reportNav, navTimeoutMs) {
@@ -293,24 +295,89 @@ async function tryStoreDropdown(page, needle) {
     }, needle);
 }
 
-async function expandStoreTree(page) {
-    await page.evaluate(() => {
-        for (const el of document.querySelectorAll('a, span, label, div, img, td')) {
+function storeTreeHints(storeName, storeNumber) {
+    const cfg = getStoreConfig(storeNumber) || {};
+    const hints = new Set([
+        'tba area',
+        'collins food',
+        'tba market',
+        'area 22',
+        'area 21',
+        'area 1',
+        'area 2',
+    ]);
+    const area = String(cfg.area || '').trim().toLowerCase();
+    if (area) hints.add(area);
+    const name = String(cfg.storeName || storeName || '')
+        .replace(/^\d+\s*/, '')
+        .trim()
+        .toLowerCase();
+    if (name) hints.add(name);
+    return [...hints];
+}
+
+async function expandStoreTree(page, hints = []) {
+    const needles = new Set(hints.map((h) => String(h).toLowerCase()).filter(Boolean));
+    await page.evaluate((list) => {
+        for (const el of document.querySelectorAll('a, span, label, div, img, td, li')) {
             const t = (el.textContent || el.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
-            if (t.includes('tba area') || t.includes('collins food') || t.includes('tba market')) {
-                try {
-                    el.click();
-                } catch (e) {
-                    /* ignore */
+            if (!t || t.length > 80) continue;
+            for (const needle of list) {
+                if (t.includes(needle)) {
+                    try {
+                        el.click();
+                    } catch (e) {
+                        /* ignore */
+                    }
+                    break;
                 }
             }
         }
-    });
+        for (const plus of document.querySelectorAll('.rtPlus')) {
+            try {
+                plus.click();
+            } catch (e) {
+                /* ignore */
+            }
+        }
+    }, [...needles]);
     await page.waitForTimeout(800);
 }
 
-async function tryStoreTree(page, needle) {
-    await expandStoreTree(page);
+async function storeVisibleInTree(page, storeNumber) {
+    const want = String(storeNumber || '').replace(/\D/g, '');
+    if (!want) return false;
+    return page.evaluate((w) => {
+        const re = new RegExp(`(^|\\D)${w}(\\D|$)`);
+        for (const cb of document.querySelectorAll('input[type="checkbox"]')) {
+            const row = cb.closest('tr, div, li, span, label') || cb.parentElement;
+            const text = (row?.textContent || '').replace(/\s+/g, ' ');
+            if (re.test(text)) return true;
+        }
+        return false;
+    }, want);
+}
+
+/** SCM flat reports: store tree loads after dates — expand Area nodes until the store row appears. */
+async function prepareStoreTreeForSelection(page, storeName, storeNumber, timeoutMs = 90000) {
+    const num = String(storeNumber || storeName.match(/\b(\d{4})\b/)?.[1] || '').trim();
+    const hints = storeTreeHints(storeName, num);
+    const started = Date.now();
+
+    while (Date.now() - started < timeoutMs) {
+        if (await storeVisibleInTree(page, num)) return true;
+        await expandStoreTree(page, hints);
+        await page.waitForTimeout(600);
+    }
+
+    log.warn(
+        `Store ${num || storeName} not visible in report tree after ${Math.round(timeoutMs / 1000)}s — trying selection anyway`
+    );
+    return false;
+}
+
+async function tryStoreTree(page, needle, treeHints = []) {
+    await expandStoreTree(page, treeHints);
 
     return page.evaluate((want) => {
         const matchesStore = (text) => {
@@ -687,9 +754,22 @@ async function clearStoreTreeSelections(page) {
 }
 
 async function selectStore(page, storeName, opts = {}) {
-    if (opts.waitMs) await page.waitForTimeout(opts.waitMs);
-
     const storeNumber = String(opts.storeNumber || storeName.match(/\b(\d{4})\b/)?.[1] || '').trim();
+    const treeHints = storeTreeHints(storeName, storeNumber);
+    const settleMs = Number(opts.waitMs ?? process.env.MMX_REPORT_STORE_SETTLE_MS ?? 2500);
+    if (settleMs > 0) await page.waitForTimeout(settleMs);
+
+    await waitForStoreReportDropdownReady(page, storeName, storeNumber, opts.dropdownReadyTimeoutMs || 90000);
+    await prepareStoreTreeForSelection(page, storeName, storeNumber, opts.treeReadyTimeoutMs || 90000);
+
+    if (storeNumber) {
+        const fromCombo = await selectStoreOnPage(page, storeNumber);
+        if (fromCombo) {
+            log.info(`Store selected (RadCombo): ${fromCombo}`);
+            await page.waitForTimeout(500);
+            return;
+        }
+    }
 
     const fromReportDropdown = await tryStoreReportDropdown(page, storeNumber, storeName);
     if (fromReportDropdown) {
@@ -712,12 +792,19 @@ async function selectStore(page, storeName, opts = {}) {
     }
 
     for (const needle of needles) {
-        const fromTree = await tryStoreTree(page, needle);
+        const fromTree = await tryStoreTree(page, needle, treeHints);
         if (fromTree) {
             log.info(`Store selected: ${fromTree}`);
             await page.waitForTimeout(500);
             return;
         }
+    }
+
+    const fromTextbox = await tryStoreReportTextboxes(page, storeNumber, storeName);
+    if (fromTextbox) {
+        log.info(`Store selected (textbox): ${fromTextbox}`);
+        await page.waitForTimeout(500);
+        return;
     }
 
     for (const needle of needles) {
@@ -784,7 +871,6 @@ async function configureAndGenerateReport(page, report, reportNav) {
     if (report.storeName && !report.skipStoreSelection) {
         await selectStore(page, report.storeName, {
             storeNumber: report.storeNumber,
-            waitMs: 1500,
         });
     }
 

@@ -358,14 +358,43 @@ async function storeVisibleInTree(page, storeNumber) {
     }, want);
 }
 
+async function reportHasStoreDropdown(page) {
+    return page.evaluate(
+        () =>
+            Boolean(
+                document.querySelector('input[id*="DropDownListStore"]') ||
+                document.getElementById('ctl00_ph_DropDownListStore')
+            )
+    );
+}
+
+async function reportUsesStoreTree(page) {
+    return page.evaluate(() => {
+        for (const cb of document.querySelectorAll('input[type="checkbox"]')) {
+            const row = cb.closest('tr, div, li, span, label') || cb.parentElement;
+            const text = (row?.textContent || '').replace(/\s+/g, ' ');
+            if (/\b\d{4}\b/.test(text)) return true;
+        }
+        return Boolean(document.querySelector('.RadTreeView, .rtPlus, .rtMinus'));
+    });
+}
+
 /** SCM flat reports: store tree loads after dates — expand Area nodes until the store row appears. */
-async function prepareStoreTreeForSelection(page, storeName, storeNumber, timeoutMs = 90000) {
+async function prepareStoreTreeForSelection(page, storeName, storeNumber, timeoutMs = 45000) {
     const num = String(storeNumber || storeName.match(/\b(\d{4})\b/)?.[1] || '').trim();
     const hints = storeTreeHints(storeName, num);
     const started = Date.now();
+    let lastLog = 0;
 
     while (Date.now() - started < timeoutMs) {
-        if (await storeVisibleInTree(page, num)) return true;
+        if (await storeVisibleInTree(page, num)) {
+            log.info(`Store ${num} visible in report tree`);
+            return true;
+        }
+        if (Date.now() - lastLog >= 5000) {
+            log.info(`Expanding report store tree for ${num || storeName}…`);
+            lastLog = Date.now();
+        }
         await expandStoreTree(page, hints);
         await page.waitForTimeout(600);
     }
@@ -664,10 +693,13 @@ async function tryStoreRadCombo(page, needle) {
     return clicked;
 }
 
-async function waitForStoreReportDropdownReady(page, storeName, storeNumber, timeoutMs = 90000) {
+async function waitForStoreReportDropdownReady(page, storeName, storeNumber, timeoutMs = 20000) {
+    if (!(await reportHasStoreDropdown(page))) return;
+
     const started = Date.now();
     const needles = storeNeedles(storeName || storeNumber);
     const numericNeedles = needles.filter((n) => /^\d+$/.test(n));
+    let lastLog = 0;
 
     while (Date.now() - started < timeoutMs) {
         const ready = await page.evaluate(({ numeric, textual }) => {
@@ -701,6 +733,10 @@ async function waitForStoreReportDropdownReady(page, storeName, storeNumber, tim
         }, { numeric: numericNeedles, textual: needles });
 
         if (ready) return;
+        if (Date.now() - lastLog >= 5000) {
+            log.info(`Waiting for store dropdown (${storeNumber || storeName})…`);
+            lastLog = Date.now();
+        }
         await page.waitForTimeout(1000);
     }
 
@@ -756,18 +792,41 @@ async function clearStoreTreeSelections(page) {
 async function selectStore(page, storeName, opts = {}) {
     const storeNumber = String(opts.storeNumber || storeName.match(/\b(\d{4})\b/)?.[1] || '').trim();
     const treeHints = storeTreeHints(storeName, storeNumber);
+    const needles = storeNeedles(storeName);
     const settleMs = Number(opts.waitMs ?? process.env.MMX_REPORT_STORE_SETTLE_MS ?? 2500);
     if (settleMs > 0) await page.waitForTimeout(settleMs);
 
-    await waitForStoreReportDropdownReady(page, storeName, storeNumber, opts.dropdownReadyTimeoutMs || 90000);
-    await prepareStoreTreeForSelection(page, storeName, storeNumber, opts.treeReadyTimeoutMs || 90000);
+    log.info(`Selecting store for report: ${storeNumber || storeName}`);
 
-    if (storeNumber) {
-        const fromCombo = await selectStoreOnPage(page, storeNumber);
-        if (fromCombo) {
-            log.info(`Store selected (RadCombo): ${fromCombo}`);
-            await page.waitForTimeout(500);
-            return;
+    const [hasTree, hasDropdown] = await Promise.all([
+        reportUsesStoreTree(page),
+        reportHasStoreDropdown(page),
+    ]);
+
+    if (hasDropdown) {
+        await waitForStoreReportDropdownReady(
+            page,
+            storeName,
+            storeNumber,
+            opts.dropdownReadyTimeoutMs || 20000
+        );
+    }
+
+    if (hasTree) {
+        await prepareStoreTreeForSelection(
+            page,
+            storeName,
+            storeNumber,
+            opts.treeReadyTimeoutMs || 45000
+        );
+        await clearStoreTreeSelections(page);
+        for (const needle of needles) {
+            const fromTree = await tryStoreTree(page, needle, treeHints);
+            if (fromTree) {
+                log.info(`Store selected (tree): ${fromTree}`);
+                await page.waitForTimeout(500);
+                return;
+            }
         }
     }
 
@@ -778,10 +837,6 @@ async function selectStore(page, storeName, opts = {}) {
         return;
     }
 
-    await clearStoreTreeSelections(page);
-
-    const needles = storeNeedles(storeName);
-
     for (const needle of needles) {
         const fromDropdown = await tryStoreDropdown(page, needle);
         if (fromDropdown) {
@@ -791,10 +846,10 @@ async function selectStore(page, storeName, opts = {}) {
         }
     }
 
-    for (const needle of needles) {
-        const fromTree = await tryStoreTree(page, needle, treeHints);
-        if (fromTree) {
-            log.info(`Store selected: ${fromTree}`);
+    if (storeNumber) {
+        const fromCombo = await selectStoreOnPage(page, storeNumber);
+        if (fromCombo) {
+            log.info(`Store selected (RadCombo): ${fromCombo}`);
             await page.waitForTimeout(500);
             return;
         }

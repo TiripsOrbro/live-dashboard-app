@@ -328,8 +328,12 @@ function parseCatalogText(text, def) {
             if (inferredSection) {
                 currentSection = inferredSection;
             } else {
+                // e.g. "# oh:10 — not on KIC" must not overwrite Dry/Fridge/Freezer
                 const sectionMatch = trimmed.match(/^#\s*(.+?)\s*[-—]/);
-                if (sectionMatch) currentSection = sectionMatch[1].trim();
+                if (sectionMatch) {
+                    const fromCandidate = inferSectionFromComment(`# ${sectionMatch[1].trim()}`);
+                    if (fromCandidate) currentSection = fromCandidate;
+                }
             }
             continue;
         }

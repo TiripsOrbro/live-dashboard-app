@@ -8,7 +8,8 @@
       "vendorMatch": "americold",
       "orderClass": "DRY",
       "catalogSlug": "americold",
-      "orderClasses": ["DRY"]
+      "orderClasses": ["DRY"],
+      "orderFromCount": true
     },
     {
       "id": "americold-frg",
@@ -16,7 +17,8 @@
       "vendorMatch": "americold",
       "orderClass": "FRG",
       "catalogSlug": "americold",
-      "orderClasses": ["FRG"]
+      "orderClasses": ["FRG"],
+      "orderFromCount": true
     },
     {
       "id": "americold-frz",
@@ -24,7 +26,8 @@
       "vendorMatch": "americold",
       "orderClass": "FRZ",
       "catalogSlug": "americold",
-      "orderClasses": ["FRZ"]
+      "orderClasses": ["FRZ"],
+      "orderFromCount": true
     },
     {
       "id": "bega",

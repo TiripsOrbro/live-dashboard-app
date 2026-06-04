@@ -12,7 +12,11 @@ const {
     melbourneDateKey,
 } = require('./stockCountState');
 const { openMacromatixBrowser, closeBrowserQuietly, selectStoreOnPage } = require('./macromatixScraper');
-const { enterCombinedStockCount, applyKeyItemCount } = require('./mmxReports/mmx-stock-count');
+const {
+    enterCombinedStockCount,
+    applyKeyItemCount,
+    mergeVendorEntriesByLocation,
+} = require('./mmxReports/mmx-stock-count');
 const { downloadReportsForStores } = require('./mmxReportDownloader');
 const { buildOrderLinesByVendorId } = require('./buildToOrderLines');
 const { runVendorOrderEntry } = require('./mmxReports/pipeline-enter-vendor-orders');
@@ -72,6 +76,62 @@ async function buildVendorEntries(storeNumber, toSend, dateKey) {
         });
     }
     return vendorEntries;
+}
+
+/** True when submitted draft has at least one item that goes on Macromatix Key Item Count. */
+function vendorEntriesNeedKeyItemCount(vendorEntries) {
+    return mergeVendorEntriesByLocation(vendorEntries).size > 0;
+}
+
+/**
+ * Submitted counts are manual / manual= only — skip KIC, use counts for scheduled orders.
+ */
+async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options = {}) {
+    for (const row of toSend) {
+        await markMmxSent(storeNumber, row.slug, dateKey);
+    }
+
+    acquireMmxResource(`manual counts → orders (store ${storeNumber})`);
+    let browser;
+    let page;
+    try {
+        ({ browser, page } = await openMacromatixBrowser(options));
+        log.info(
+            `Store ${storeNumber}: manual-only stock count — skipping Key Item Count, filling scheduled orders from app counts`
+        );
+        const cycle = await runStoreBuildToCycle(storeNumber, {
+            ...options,
+            dateKey,
+            page,
+            browser,
+            cleanupReports: options.cleanupReports !== false,
+        });
+        const orders = cycle.orders;
+        if (ordersAllSuccessful(orders)) {
+            await runStoreOrdersCompleteCleanup(storeNumber, dateKey);
+        }
+        const orderFailures = formatOrderFailures(orders);
+        if (orderFailures) {
+            log.warn(`Store ${storeNumber} scheduled order failures: ${orderFailures}`);
+        }
+        await clearCheckpoint(storeNumber);
+        return {
+            success: true,
+            keyItemCountSkipped: true,
+            sessionId: null,
+            storeNumber: String(storeNumber),
+            dateKey,
+            variances: [],
+            redVarianceCount: 0,
+            vendorsSent: toSend.map((row) => row.slug),
+            ordersRan: true,
+            orders,
+            orderFailures: orderFailures || null,
+        };
+    } finally {
+        await closeBrowserQuietly(browser, 'manual counts orders');
+        releaseMmxResource(`manual counts orders finished (store ${storeNumber})`);
+    }
 }
 
 async function resolveToSend(storeNumber, vendorSlug, options = {}) {
@@ -438,6 +498,10 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
 
         const { dateKey, toSend } = await resolveToSend(storeNumber, vendorSlug, options);
         const vendorEntries = await buildVendorEntries(storeNumber, toSend, dateKey);
+
+        if (!vendorEntriesNeedKeyItemCount(vendorEntries)) {
+            return runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options);
+        }
 
         let browser;
         let page;

@@ -25,7 +25,7 @@ Use `location-order` and a trailing **location** on each line to group stock-cou
 | `order=1`, `order=3`, etc. | Fixed build-to from **dashboard count**; fills **Americold Vic** scheduled order, **not** Key Item Count |
 | `oh:13`, `oh:10`, etc. | **On-hand only** — not on travel-path tabs or Key Item Count; build-to = **ISE average × days**; order qty = build-to − **stock-on-hand** − **stock-on-order** (e.g. Americold dry supplies, Schweppes bottles/cans) |
 | `manual` or `m` | Stock-count only (packaging etc.) — no Key Item Count, no auto vendor order |
-| `manual=2`, `manual=1`, etc. | Stock-count with **fixed build-to** (cartons); order qty = build-to − count; fills scheduled orders like `order=N` |
+| `manual=2`, `manual=1`, etc. | Stock-count with **fixed build-to** (cartons); order qty = build-to − count; fills scheduled orders like `order=N`. If the submitted count has **only** `manual` / `manual=` lines (no KIC items), **Send to MMX** skips Key Item Count and runs scheduled orders from your counts. |
 | *(omitted)* | Use built-in rules (7-day salads, 13-day list, default 10-day) |
 
 Unit columns use `N/a` for an unused slot (position is kept for the stock-count UI).

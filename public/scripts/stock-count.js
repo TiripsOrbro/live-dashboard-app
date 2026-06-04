@@ -21,6 +21,7 @@ let vendorCatalogsCache = new Map();
 let statusMessage = '';
 let statusKind = '';
 let saving = false;
+let autoSaveTimer = null;
 let processing = false;
 let processingComplete = false;
 let processingStageLabel = 'Preparing MMX';
@@ -920,77 +921,31 @@ async function saveAllCombinedLocations() {
     return ok;
 }
 
-async function saveVendor() {
-    if (saving) return;
-    if (isCombinedMode()) {
-        const ok = await saveAllCombinedLocations();
-        if (!ok) return;
-        if (isMmxSent()) {
-            window.location.href = dashboardPath();
-            return;
-        }
-        saving = true;
-        setStatus('Saving counts…', '');
-        render();
-        try {
-            const { res, data } = await fetchJson(apiQuery('/api/stock-count/submit', 'combined'), {
-                method: 'POST',
-            });
-            if (!res.ok || !data.success) {
-                throw new Error(data.error || 'Save failed.');
-            }
-            window.location.href = dashboardPath();
-        } catch (error) {
-            setStatus(error.message, 'error');
-            saving = false;
-            render();
-        }
-        return;
-    }
-    if (viewMode === 'recount') {
-        const ok = await saveAllRecountLocations();
-        if (!ok) return;
-        setStatus('Counts saved — send to Macromatix when ready.', 'success');
-        render();
-        return;
-    }
-    if (isMmxSent()) {
-        const ok = await saveCurrentLocation(false, { force: true });
-        if (!ok) return;
-        window.location.href = dashboardPath();
-        return;
-    }
-    const ok = await saveCurrentLocation(false, { force: isSubmitted() });
-    if (!ok && !draft?.locations) return;
-    saving = true;
-    setStatus('Saving counts…', '');
-    render();
-    try {
-        const { res, data } = await fetchJson(apiQuery('/api/stock-count/submit'), { method: 'POST' });
-        if (!res.ok || !data.success) {
-            throw new Error(data.error || 'Save failed.');
-        }
-        window.location.href = dashboardPath();
-    } catch (error) {
-        setStatus(error.message, 'error');
-        saving = false;
-        render();
-    }
-}
-
-function vendorSlugsForRecountLocation(locationName) {
+function vendorSlugsAtLocation(locationName) {
     const cat = getActiveCatalog();
-    if (!cat) return [];
+    if (!cat) return [VENDOR_SLUG];
+    if (!isCombinedMode() && viewMode !== 'recount') return [VENDOR_SLUG];
     const slugs = new Set();
     for (const item of cat.items) {
         if (!item.locations.includes(locationName)) continue;
-        slugs.add(item.sourceVendorSlug || VENDOR_SLUG);
+        slugs.add(itemSourceSlug(item));
     }
     return [...slugs];
 }
 
-async function clearRecountLocationDraft(locationName) {
-    for (const slug of vendorSlugsForRecountLocation(locationName)) {
+function clearLocationInputsDom(locationName) {
+    for (const item of getItemsForLocation(locationName)) {
+        for (const col of item.columns) {
+            const input = document.querySelector(
+                `input[data-item="${CSS.escape(item.key)}"][data-col="${CSS.escape(col.key)}"]`
+            );
+            if (input) input.value = '';
+        }
+    }
+}
+
+async function persistClearLocationDraft(locationName) {
+    for (const slug of vendorSlugsAtLocation(locationName)) {
         const { res, data } = await fetchJson(apiQuery('/api/stock-count/draft', slug), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -999,9 +954,49 @@ async function clearRecountLocationDraft(locationName) {
         if (!res.ok || !data.success) {
             throw new Error(data.error || `Failed to clear counts for ${locationName}.`);
         }
-        recountDrafts[slug] = data;
-        varianceDrafts[slug] = data;
+        if (isCombinedMode()) vendorDrafts[slug] = data;
+        if (viewMode === 'recount') {
+            recountDrafts[slug] = data;
+            varianceDrafts[slug] = data;
+        }
         if (slug === VENDOR_SLUG) draft = data;
+    }
+}
+
+function scheduleAutoSave() {
+    if (viewMode === 'variances' || processing || saving) return;
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => {
+        autoSaveTimer = null;
+        void saveCurrentLocation(false, { force: true });
+    }, 700);
+}
+
+async function clearCurrentLocationPage() {
+    if (saving || processing) return;
+    const cat = getActiveCatalog();
+    if (!cat) return;
+    const locationName = getCurrentLocationName(cat);
+    if (!locationHasData(locationName) && !currentLocationHasFormData()) {
+        setStatus('Nothing to clear on this tab.', '');
+        return;
+    }
+    if (!window.confirm(`Clear all counts on ${locationName}?`)) return;
+    if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = null;
+    }
+    saving = true;
+    setStatus('', '');
+    try {
+        clearLocationInputsDom(locationName);
+        await persistClearLocationDraft(locationName);
+        setStatus(`Cleared ${locationName}.`, 'success');
+    } catch (error) {
+        setStatus(error.message || 'Clear failed.', 'error');
+    } finally {
+        saving = false;
+        render();
     }
 }
 
@@ -1133,6 +1128,16 @@ async function sendToMmx() {
         const { res, data } = await fetchJson(apiQuery('/api/stock-count/send-to-mmx'), { method: 'POST' });
         if (!res.ok || !data.success) {
             throw new Error(data.error || 'Send to Macromatix failed.');
+        }
+        if (data.keyItemCountSkipped) {
+            processingComplete = true;
+            mmxSessionId = '';
+            if (data.orderFailures) {
+                setStatus(`Some scheduled orders could not be filled: ${data.orderFailures}`, 'error');
+            } else {
+                setStatus('Manual counts sent — Key Item Count skipped; scheduled orders updated.', 'success');
+            }
+            return;
         }
         mmxSessionId = data.sessionId || '';
         mmxVariances = Array.isArray(data.variances) ? data.variances : [];
@@ -1523,21 +1528,21 @@ function buildEntryRowHtml(item) {
 function buildStatusNote() {
     if (viewMode === 'recount') {
         const tabName = getActiveCatalog()?.locations?.[currentLocationIndex] || '';
-        return `<div class="stock-count-review-note">All location tabs are shown — update red variance lines (empty tabs need no changes), then save and send to Macromatix again.</div>`;
+        return `<div class="stock-count-review-note">All location tabs are shown — update red variance lines (empty tabs need no changes), then send to Macromatix again.</div>`;
     }
     if (isMmxSent()) {
         return '<div class="stock-count-review-note">Sent to Macromatix — edit counts below and send again if needed.</div>';
     }
     if (isSubmitted()) {
-        return '<div class="stock-count-review-note">Counts saved — edit below anytime, then save again to update.</div>';
+        return '<div class="stock-count-review-note">Counts submitted — edit below anytime; changes save automatically.</div>';
     }
     if (canShowSendToMmx() && queueStatus?.readyToSend?.length) {
         return `<div class="stock-count-review-note">Ready to send: ${escapeHtml(queueStatus.readyToSend.join(', '))}</div>`;
     }
     if (isCombinedMode()) {
-        return '<div class="stock-count-review-note">All vendors for today are on each location tab — walk the store once, save, then send to Macromatix.</div>';
+        return '<div class="stock-count-review-note">All vendors for today are on each location tab — walk the store once, then send to Macromatix.</div>';
     }
-    return '<div class="stock-count-review-note">Use the location tabs to enter counts, then save. You only need to save vendors you are counting today.</div>';
+    return '<div class="stock-count-review-note">Use the location tabs to enter counts (saved as you type). Clear page resets the current tab.</div>';
 }
 
 function buildView() {
@@ -1563,8 +1568,7 @@ function buildView() {
         })
         .join('');
 
-    const saveDisabled = saving;
-    const saveLabel = viewMode === 'recount' ? 'Save' : isMmxSent() ? 'Save changes' : 'Save';
+    const clearDisabled = saving || processing;
     const sendMmxBtn =
         viewMode === 'recount' || canShowSendToMmx()
             ? `<button type="button" class="stock-count-btn stock-count-btn--mmx" id="sc-send-mmx" ${saving ? 'disabled' : ''}>Send to MMX</button>`
@@ -1585,7 +1589,7 @@ function buildView() {
         </div>
         <div class="stock-count-actions">
             <div class="stock-count-actions-main">
-                <button type="button" class="stock-count-btn" id="sc-save" ${saveDisabled ? 'disabled' : ''}>${escapeHtml(saveLabel)}</button>
+                <button type="button" class="stock-count-btn stock-count-btn--secondary" id="sc-clear-page" ${clearDisabled ? 'disabled' : ''}>Clear page</button>
                 <a class="stock-count-btn stock-count-btn--secondary stock-count-btn--link" href="${escapeHtml(dashboardPath())}">Back to dashboard</a>
             </div>
             ${sendMmxBtn}
@@ -1636,6 +1640,10 @@ function bindEvents() {
         btn.addEventListener('click', async () => {
             const idx = Number(btn.getAttribute('data-loc-index'));
             if (!Number.isFinite(idx) || idx === currentLocationIndex) return;
+            if (autoSaveTimer) {
+                clearTimeout(autoSaveTimer);
+                autoSaveTimer = null;
+            }
             await saveCurrentLocation(false, { force: true });
             currentLocationIndex = idx;
             statusMessage = '';
@@ -1643,8 +1651,11 @@ function bindEvents() {
         });
     });
 
-    document.getElementById('sc-save')?.addEventListener('click', () => void saveVendor());
+    document.getElementById('sc-clear-page')?.addEventListener('click', () => void clearCurrentLocationPage());
     document.getElementById('sc-send-mmx')?.addEventListener('click', () => void sendToMmx());
+    app.querySelectorAll('.stock-count-input').forEach((input) => {
+        input.addEventListener('input', scheduleAutoSave);
+    });
     document.getElementById('sc-apply-mmx')?.addEventListener('click', () => void applyMmxCount());
     document.getElementById('sc-recount')?.addEventListener('click', () => void recountMmx());
 }

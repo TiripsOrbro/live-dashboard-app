@@ -5,7 +5,6 @@
 
 #Days     | Code   | Name                                           | Outter| Inner   |Units | Freezer | Fridge  | Dry  | In Use | Packs of X
 # --- Freezer (13 items) ---
-13        | 38009  | TB CHIP NACHO 4.5KG                            | Boxes | N/a     | KGs  | Freezer | no-order | In Use |
 12        | 40109  | FRIES SUPERCRISP 6X2KG                         | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use |
 10        | 37597  | TB CHURROS MINI 72EA                           | Boxes | N/a     | Each | Freezer | N/a     | N/a  | In Use |
 13        | 39520  | TB MEAT BEEF COOKED                            | Boxes | Bags    | KGs  | Freezer | Fridge  | N/a  | In Use |
@@ -18,9 +17,9 @@
 13        | 37891  | TB TORTILLA CORN 6 INCH                        | Boxes | Bags    | Each | Freezer | Fridge  | N/a  | In Use |
 10        | 38240  | TB BEANS BLACK COOKED 12X1KG                   | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use |
 10        | 14701  | GUACAMOLE 6x1.5KG                              | Boxes | Bags    | KGs  | Freezer | Fridge  | N/a  | In Use |
+13        | 39009  | TB CHIP NACHO 4.5KG                            | Boxes | N/a     | KGs  | Freezer | Fridge  | order:FRG | In Use |
 
 # --- Fridge (MMX FRIDGE tab) ---
-13        | 39009  | TB CHIP NACHO 4.5KG                            | Boxes | N/a     | KGs  | N/a     | Fridge  | N/a  | In Use |
 10        | 100457 | SAUCE FIRE 10X1KG                              | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 10        | 37870  | TB SAUCE CHILLI MILD 10X1KG                    | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 10        | 38414  | TB SAUCE ZESTY RANCH 15X1KG                    | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |

@@ -101,6 +101,15 @@ function bestNameMatchScore(gridName, ...candidates) {
     return best;
 }
 
+function catalogLineCodeMatch(catalogCode, lineCode) {
+    const cat = normalizeItemCode(catalogCode);
+    const line = normalizeItemCode(lineCode);
+    if (!cat || !line) return false;
+    if (cat === line) return true;
+    const keys = new Set(allLookupKeys(cat));
+    return allLookupKeys(line).some((k) => keys.has(normalizeItemCode(k)));
+}
+
 function buildToLineMatchScore(catalogName, line) {
     let score = nameMatchScore(catalogName, line.description);
     const desc = String(line.description || '').toUpperCase();
@@ -117,7 +126,14 @@ function buildBuildToEntriesForVendor(vendorCfg, buildToLines, catalogItems, ite
     const entries = [];
     const usedIse = new Set();
 
-    for (const item of catalogItems || []) {
+    const items = [...(catalogItems || [])].sort((a, b) => {
+        if (Boolean(a.skipVendorOrder) !== Boolean(b.skipVendorOrder)) {
+            return a.skipVendorOrder ? 1 : -1;
+        }
+        return 0;
+    });
+
+    for (const item of items) {
         if (vendorCfg && itemMatchesVendorConfig && !itemMatchesVendorConfig(item, vendorCfg)) continue;
         if (item.buildToManual || item.buildToOrderManual || item.skipVendorOrder) continue;
 
@@ -129,7 +145,7 @@ function buildBuildToEntriesForVendor(vendorCfg, buildToLines, catalogItems, ite
             for (const line of buildToLines || []) {
                 const iseKey = String(line.itemCode || '').trim().toUpperCase();
                 if (usedIse.has(iseKey)) continue;
-                if (normalizeItemCode(line.itemCode) !== catalogCode) continue;
+                if (!catalogLineCodeMatch(catalogCode, line.itemCode)) continue;
                 if (line.buildToManual) continue;
                 bestLine = line;
                 bestScore = 100;
@@ -242,6 +258,7 @@ module.exports = {
     normalizeItemName,
     nameMatchScore,
     bestNameMatchScore,
+    catalogLineCodeMatch,
     buildBuildToEntriesForVendor,
     linesFromOrderGridByName,
 };

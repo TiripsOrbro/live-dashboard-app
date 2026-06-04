@@ -249,7 +249,13 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         const onHandRow = onHandHit?.row || null;
         const isePack = ise.packSize || packSizeFromUnit(ise.unit);
 
-        const manualEntry = manualCounts.get(normalizeItemCode(reportItemCode)) || null;
+        let manualEntry = manualCounts.get(normalizeItemCode(reportItemCode)) || null;
+        if (!manualEntry) {
+            for (const key of allLookupKeys(reportItemCode)) {
+                manualEntry = manualCounts.get(normalizeItemCode(key)) || null;
+                if (manualEntry) break;
+            }
+        }
         const onHandFromReport = onHandToCartons(onHandRow, ise.unit, isePack, reportItemCode);
         const onHandFromManual =
             manualEntry && manualEntry.catalogItem

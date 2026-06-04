@@ -4,7 +4,7 @@ const { calculateBuildToOrders, loadManualCountsForStore, manualCountToCartons }
 const { melbourneDateKey } = require('./stockCountState');
 const { getVendorCatalog } = require('./vendorCatalog');
 const { normalizeItemCode } = require('./reportReader');
-const { buildBuildToEntriesForVendor } = require('./orderItemNameMatch');
+const { buildBuildToEntriesForVendor, catalogLineCodeMatch } = require('./orderItemNameMatch');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'vendor-orders.json');
@@ -247,8 +247,17 @@ async function buildOrderLinesByVendorId(storeNumber, options = {}) {
             dateKey,
             { coveredByIse }
         );
+        const vendorCodeSet = vendorCodes;
+        const lineMatchesVendorCatalog = (line) => {
+            const code = normalizeItemCode(line.itemCode);
+            if (vendorCodeSet.has(code)) return true;
+            for (const catCode of vendorCodeSet) {
+                if (catalogLineCodeMatch(catCode, code)) return true;
+            }
+            return false;
+        };
         const allReportEntries = (buildTo.lines || [])
-            .filter((line) => vendorCodes.has(normalizeItemCode(line.itemCode)))
+            .filter((line) => lineMatchesVendorCatalog(line))
             .filter((line) => Number(line.orderQty) > 0)
             .filter((line) => !/\bfinished product\b/i.test(String(line.description || '')))
             .map((line) => ({

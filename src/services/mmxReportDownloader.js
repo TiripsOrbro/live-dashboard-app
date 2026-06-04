@@ -63,8 +63,18 @@ function supplyChainReportsInRun(pipeline, onlyReportIds) {
 }
 
 function useBulkSupplyChainDownload(stores, onlyReportIds, pipeline) {
-    // SCM flat exports include every store — download once (no tree) and split by store column.
-    return supplyChainReportsInRun(pipeline, onlyReportIds).length > 0;
+    if (process.env.MMX_BULK_SCM === '0') return false;
+    const scmReports = supplyChainReportsInRun(pipeline, onlyReportIds);
+    if (!scmReports.length) return false;
+    // Bulk + split only for multi-store runs; single/few stores use per-store SCM (reliable tree/combo).
+    const minStores = Number(process.env.MMX_BULK_SCM_MIN_STORES || 4);
+    if (stores.length < minStores) {
+        log.info(
+            `Per-store SCM download for ${stores.length} store(s) (bulk needs >= ${minStores} or set MMX_BULK_SCM_MIN_STORES=1)`
+        );
+        return false;
+    }
+    return true;
 }
 
 function bulkSupplyChainReports(pipeline, onlyReportIds) {
@@ -77,8 +87,8 @@ function bulkSupplyChainReports(pipeline, onlyReportIds) {
     }));
 }
 
-function scmPerStoreFallbackEnabled(stores) {
-    return stores.length === 1 || process.env.MMX_SCM_FALLBACK_PER_STORE === '1';
+function scmPerStoreFallbackEnabled() {
+    return process.env.MMX_SCM_FALLBACK_PER_STORE !== '0';
 }
 
 async function retryScmReportPerStore(page, pipeline, store, report, runSlug, storeDir) {
@@ -129,7 +139,7 @@ function finalizeStoreResults(results, stores) {
 /**
  * Log into Macromatix and download the three build-to reports for each store in `.storelist`.
  * Full multi-store runs download on-hand + on-order once, then split by store column.
- * Single-store runs use the same bulk SCM download, then split rows into Reports/{store}/.
+ * Runs targeting fewer than MMX_BULK_SCM_MIN_STORES (default 4) use per-store SCM; larger runs bulk + split.
  * Files land in `Reports/{storeNumber}/` with timestamped names.
  */
 async function downloadReportsForStores(options = {}) {
@@ -256,7 +266,7 @@ async function downloadReportsForStores(options = {}) {
                 }
             }
 
-            if (scmPerStoreFallbackEnabled(stores) && bulkSplitMisses.length) {
+            if (scmPerStoreFallbackEnabled() && bulkSplitMisses.length) {
                 for (const { report, storeNum } of bulkSplitMisses) {
                     if (results.stores[storeNum]?.files[report.id]) continue;
                     const store = stores.find((s) => s.storeNumber === storeNum);

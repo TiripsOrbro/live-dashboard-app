@@ -344,6 +344,64 @@ async function expandStoreTree(page, hints = []) {
     await page.waitForTimeout(800);
 }
 
+/** Expand every collapsed node in the RadTreeView (needed before store rows are visible). */
+async function expandFullReportStoreTree(page) {
+    const maxRounds = Number(process.env.MMX_REPORT_TREE_EXPAND_ROUNDS || 30);
+    for (let round = 0; round < maxRounds; round++) {
+        const expanded = await page.evaluate(() => {
+            let count = 0;
+            for (const plus of document.querySelectorAll('.rtPlus')) {
+                try {
+                    plus.click();
+                    count++;
+                } catch (e) {
+                    /* ignore */
+                }
+            }
+            return count;
+        });
+        if (!expanded) break;
+        await page.waitForTimeout(350);
+    }
+}
+
+async function selectMarketRootInTree(page) {
+    return page.evaluate(() => {
+        let best = null;
+        let bestScore = -1;
+        for (const cb of document.querySelectorAll('input[type="checkbox"]')) {
+            const row = cb.closest('tr, div, li, span, label') || cb.parentElement;
+            const text = (row?.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            if (!text) continue;
+            let score = 0;
+            if (text.includes('tba market')) score += 10;
+            if (text.includes('market 1')) score += 8;
+            if (text.includes('collins food')) score += 6;
+            if (/\barea\s*\d+\b/.test(text)) score -= 5;
+            if (/\b\d{4}\b/.test(text)) score -= 10;
+            if (score > bestScore) {
+                bestScore = score;
+                best = { cb, label: text.slice(0, 80) };
+            }
+        }
+        if (best && !best.cb.checked) best.cb.click();
+        return best?.label || null;
+    });
+}
+
+async function prepareBulkScmStoreScope(page) {
+    if (!(await reportUsesStoreTree(page))) return;
+    await expandFullReportStoreTree(page);
+    await clearAllReportTreeCheckboxes(page);
+    const root = await selectMarketRootInTree(page);
+    if (root) {
+        log.info(`Bulk SCM: selected market root "${root}" for all-store export`);
+    } else {
+        log.warn('Bulk SCM: market root not found in tree — export may be area-filtered');
+    }
+    await page.waitForTimeout(Number(process.env.MMX_REPORT_TREE_CLEAR_SETTLE_MS || 500));
+}
+
 async function storeVisibleInTree(page, storeNumber) {
     const want = String(storeNumber || '').replace(/\D/g, '');
     if (!want) return false;
@@ -395,6 +453,7 @@ async function prepareStoreTreeForSelection(page, storeName, storeNumber, timeou
             log.info(`Expanding report store tree for ${num || storeName}…`);
             lastLog = Date.now();
         }
+        await expandFullReportStoreTree(page);
         await expandStoreTree(page, hints);
         await page.waitForTimeout(600);
     }
@@ -829,6 +888,15 @@ async function selectStore(page, storeName, opts = {}) {
 
     log.info(`Selecting store for report: ${storeNumber || storeName}`);
 
+    if (storeNumber) {
+        const fromCombo = await selectStoreOnPage(page, storeNumber);
+        if (fromCombo) {
+            log.info(`Store selected (RadCombo): ${fromCombo}`);
+            await page.waitForTimeout(500);
+            return;
+        }
+    }
+
     const [hasTree, hasDropdown] = await Promise.all([
         reportUsesStoreTree(page),
         reportHasStoreDropdown(page),
@@ -843,29 +911,20 @@ async function selectStore(page, storeName, opts = {}) {
         );
     }
 
-    if (hasTree) {
-        await prepareStoreTreeForSelection(
-            page,
-            storeName,
-            storeNumber,
-            opts.treeReadyTimeoutMs || 45000
-        );
-        await clearStoreTreeSelections(page);
-        for (const needle of needles) {
-            const fromTree = await tryStoreTree(page, needle, treeHints);
-            if (fromTree) {
-                log.info(`Store selected (tree): ${fromTree}`);
-                await page.waitForTimeout(500);
-                return;
-            }
-        }
-    }
-
     const fromReportDropdown = await tryStoreReportDropdown(page, storeNumber, storeName);
     if (fromReportDropdown) {
         log.info(`Store selected (report dropdown): ${fromReportDropdown}`);
         await page.waitForTimeout(500);
         return;
+    }
+
+    for (const needle of needles) {
+        const fromRadCombo = await tryStoreRadCombo(page, needle);
+        if (fromRadCombo) {
+            log.info(`Store selected (combo): ${fromRadCombo}`);
+            await page.waitForTimeout(500);
+            return;
+        }
     }
 
     for (const needle of needles) {
@@ -877,12 +936,19 @@ async function selectStore(page, storeName, opts = {}) {
         }
     }
 
-    if (storeNumber) {
-        const fromCombo = await selectStoreOnPage(page, storeNumber);
-        if (fromCombo) {
-            log.info(`Store selected (RadCombo): ${fromCombo}`);
-            await page.waitForTimeout(500);
-            return;
+    if (hasTree) {
+        const treeTimeoutMs = Number(
+            opts.treeReadyTimeoutMs || process.env.MMX_REPORT_TREE_READY_MS || 90000
+        );
+        await prepareStoreTreeForSelection(page, storeName, storeNumber, treeTimeoutMs);
+        await clearStoreTreeSelections(page);
+        for (const needle of needles) {
+            const fromTree = await tryStoreTree(page, needle, treeHints);
+            if (fromTree) {
+                log.info(`Store selected (tree): ${fromTree}`);
+                await page.waitForTimeout(500);
+                return;
+            }
         }
     }
 
@@ -955,11 +1021,7 @@ async function configureAndGenerateReport(page, report, reportNav) {
     }
 
     if (report.skipStoreSelection) {
-        const hasTree = await reportUsesStoreTree(page);
-        if (hasTree) {
-            await clearAllReportTreeCheckboxes(page);
-            log.info('Cleared report store/area tree filters for bulk export');
-        }
+        await prepareBulkScmStoreScope(page);
     } else if (report.storeName) {
         await selectStore(page, report.storeName, {
             storeNumber: report.storeNumber,

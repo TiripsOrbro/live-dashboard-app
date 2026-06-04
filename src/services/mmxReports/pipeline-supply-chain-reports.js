@@ -1,6 +1,6 @@
 const { GOTO_OPTS } = require('./mmx-browser');
 const { withPageContextRetry } = require('./mmx-context-retry');
-const { setReportStartDate, setReportEndDate } = require('./mmx-rad-date-picker');
+const { setReportStartDate, setReportEndDate, waitForDateFieldSettle } = require('./mmx-rad-date-picker');
 const { resolveReportDate } = require('./util-dates');
 const { getStoreConfig } = require('../storeList');
 const { selectStoreOnPage, assertMacromatixAuthenticated } = require('../macromatixScraper');
@@ -223,12 +223,15 @@ async function setReportFormat(page, formatText) {
         .catch(() => null);
     await page.waitForTimeout(1500);
 
+    const maxAttempts = Math.max(4, Number(process.env.MMX_REPORT_FORMAT_ATTEMPTS || 8));
+    const attemptDelayMs = Number(process.env.MMX_REPORT_FORMAT_RETRY_MS || 2000);
+
     let picked = null;
-    for (let attempt = 1; attempt <= 4; attempt++) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         picked = await pickFormatInPage(page, needles);
         if (picked) break;
-        log.warn(`Format "${formatText}" not ready (attempt ${attempt}/4), waiting…`);
-        await page.waitForTimeout(1500);
+        log.warn(`Format "${formatText}" not ready (attempt ${attempt}/${maxAttempts}), waiting…`);
+        await page.waitForTimeout(attemptDelayMs);
     }
 
     if (!picked) {
@@ -1303,8 +1306,6 @@ async function configureAndGenerateReport(page, report, reportNav) {
     await openReportSelectionPage(page, reportNav, report.navTimeoutMs || 45000);
     await setGroupDropdown(page, report.group || 'Supply Chain');
     await selectReportInList(page, report.reportName);
-    await setReportFormat(page, report.format || 'Excel Data Only');
-    await page.waitForTimeout(1000);
 
     const startDate = resolveReportDate(report.startDate || 'lastWeekMonday', dateOpts(report));
     await setStartDate(page, startDate);
@@ -1313,6 +1314,11 @@ async function configureAndGenerateReport(page, report, reportNav) {
         const endDate = resolveReportDate(report.endDate, dateOpts(report));
         await setEndDate(page, endDate);
     }
+
+    await waitForDateFieldSettle(page);
+
+    await setReportFormat(page, report.format || 'Excel Data Only');
+    await page.waitForTimeout(500);
 
     if (report.scmTreeStoreNumber) {
         await selectScmStoreCheckboxInTree(page, report.scmTreeStoreNumber, report.storeName);

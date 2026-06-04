@@ -162,40 +162,52 @@ async function downloadReports(page, settings) {
 
     await configureDownloadPath(page, getReportDownloadDir(settings));
 
+    const failures = [];
+
     for (const report of reports) {
         if (report.skip) continue;
 
-        if (isSupplyChainReport(report)) {
-            paths[report.id] = await downloadSupplyChainReport(page, report, settings);
-            continue;
-        }
+        try {
+            if (isSupplyChainReport(report)) {
+                paths[report.id] = await downloadSupplyChainReport(page, report, settings);
+                continue;
+            }
 
-        if (isStoreReport(report)) {
-            paths[report.id] = await downloadStoreReport(page, report, settings);
-            continue;
-        }
+            if (isStoreReport(report)) {
+                paths[report.id] = await downloadStoreReport(page, report, settings);
+                continue;
+            }
 
-        if (!report.url || report.url.includes('REPLACE')) {
-            throw new Error(`Report "${report.id || report.label}" URL not configured`);
-        }
+            if (!report.url || report.url.includes('REPLACE')) {
+                throw new Error(`Report "${report.id || report.label}" URL not configured`);
+            }
 
-        log.info(`Downloading: ${report.label || report.id}`);
-        await page.goto(report.url, { ...GOTO_OPTS, timeout: settings.navTimeoutMs });
-        if (report.waitAfterNavigateMs) {
-            await page.waitForTimeout(report.waitAfterNavigateMs);
-        }
+            log.info(`Downloading: ${report.label || report.id}`);
+            await page.goto(report.url, { ...GOTO_OPTS, timeout: settings.navTimeoutMs });
+            if (report.waitAfterNavigateMs) {
+                await page.waitForTimeout(report.waitAfterNavigateMs);
+            }
 
-        await withPageContextRetry(page, `export ${report.id}`, async () => {
-            await clickExportExcelDataOnly(page, report);
-        });
+            await withPageContextRetry(page, `export ${report.id}`, async () => {
+                await clickExportExcelDataOnly(page, report);
+            });
 
-        const downloaded = await waitForReportDownload(getReportDownloadDir(settings), settings.downloadWaitMs);
-        const dest = buildDownloadDest(report, settings, downloaded);
-        if (downloaded !== dest) {
-            fs.renameSync(downloaded, dest);
+            const downloaded = await waitForReportDownload(getReportDownloadDir(settings), settings.downloadWaitMs);
+            const dest = buildDownloadDest(report, settings, downloaded);
+            if (downloaded !== dest) {
+                fs.renameSync(downloaded, dest);
+            }
+            paths[report.id] = dest;
+            log.info(`Saved ${report.id} → ${path.basename(dest)}`);
+        } catch (err) {
+            failures.push({ id: report.id, label: report.label || report.id, error: err.message });
+            log.error(`Report ${report.id} (${report.label || report.id}) failed: ${err.message}`);
         }
-        paths[report.id] = dest;
-        log.info(`Saved ${report.id} → ${path.basename(dest)}`);
+    }
+
+    if (failures.length) {
+        const summary = failures.map((f) => `${f.id}: ${f.error}`).join('; ');
+        log.warn(`Reports incomplete (${Object.keys(paths).length} saved): ${summary}`);
     }
 
     return paths;

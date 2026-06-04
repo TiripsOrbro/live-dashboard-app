@@ -563,4 +563,5 @@ module.exports = {
     setReportDateField,
     parseMacromatixDateTime,
     findStartDatePickerMeta,
+    waitForDateFieldSettle,
 };

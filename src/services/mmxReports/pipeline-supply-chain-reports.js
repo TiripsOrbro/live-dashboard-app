@@ -1020,9 +1020,8 @@ async function configureAndGenerateReport(page, report, reportNav) {
         await setEndDate(page, endDate);
     }
 
-    if (report.skipStoreSelection) {
-        await prepareBulkScmStoreScope(page);
-    } else if (report.storeName) {
+    // SCM flat exports: no store tree or dropdown — full file, filter/split after download.
+    if (!report.skipStoreSelection && report.storeName) {
         await selectStore(page, report.storeName, {
             storeNumber: report.storeNumber,
         });

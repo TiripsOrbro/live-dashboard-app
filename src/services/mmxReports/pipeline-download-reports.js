@@ -88,7 +88,13 @@ async function waitForReportDownload(downloadDir, timeoutMs, preferredExt) {
 }
 
 async function downloadSupplyChainReport(page, report, settings) {
-    log.info(`Downloading: ${report.label || report.id} (${report.reportName})`);
+    const scope =
+        report.storeNumber && report.skipStoreSelection
+            ? ` (no store tree; filter to ${report.storeNumber} after download)`
+            : report.skipStoreSelection
+              ? ' (no store tree; split/filter after download)'
+              : '';
+    log.info(`Downloading: ${report.label || report.id} (${report.reportName})${scope}`);
     await runSupplyChainReport(page, report, settings);
 
     const downloaded = await waitForReportDownload(

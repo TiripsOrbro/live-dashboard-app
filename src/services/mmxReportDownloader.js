@@ -36,13 +36,18 @@ function storeSelectorLabel(store) {
 
 function reportsForStore(pipeline, store) {
     const label = storeSelectorLabel(store);
-    return (pipeline.reports || []).map((report) => ({
-        ...report,
-        storeNumber: store.storeNumber,
-        storeName: label,
-        storeOptional: false,
-        outputBasename: report.outputBasename || DEFAULT_OUTPUT_BASENAMES[report.id] || report.id,
-    }));
+    return (pipeline.reports || []).map((report) => {
+        const scm = isSupplyChainReport(report);
+        return {
+            ...report,
+            storeNumber: store.storeNumber,
+            // SCM flat: no MMX store tree — filter rows after download (same as bulk+split).
+            skipStoreSelection: scm,
+            storeName: scm ? undefined : label,
+            storeOptional: false,
+            outputBasename: report.outputBasename || DEFAULT_OUTPUT_BASENAMES[report.id] || report.id,
+        };
+    });
 }
 
 function buildSettings(pipeline, storeDir) {
@@ -64,17 +69,7 @@ function supplyChainReportsInRun(pipeline, onlyReportIds) {
 
 function useBulkSupplyChainDownload(stores, onlyReportIds, pipeline) {
     if (process.env.MMX_BULK_SCM === '0') return false;
-    const scmReports = supplyChainReportsInRun(pipeline, onlyReportIds);
-    if (!scmReports.length) return false;
-    // Bulk + split only for multi-store runs; single/few stores use per-store SCM (reliable tree/combo).
-    const minStores = Number(process.env.MMX_BULK_SCM_MIN_STORES || 4);
-    if (stores.length < minStores) {
-        log.info(
-            `Per-store SCM download for ${stores.length} store(s) (bulk needs >= ${minStores} or set MMX_BULK_SCM_MIN_STORES=1)`
-        );
-        return false;
-    }
-    return true;
+    return supplyChainReportsInRun(pipeline, onlyReportIds).length > 0;
 }
 
 function bulkSupplyChainReports(pipeline, onlyReportIds) {
@@ -94,8 +89,8 @@ function scmPerStoreFallbackEnabled() {
 async function retryScmReportPerStore(page, pipeline, store, report, runSlug, storeDir) {
     const scmReport = {
         ...report,
-        skipStoreSelection: false,
-        storeName: storeSelectorLabel(store),
+        skipStoreSelection: true,
+        storeName: undefined,
         storeNumber: store.storeNumber,
         outputBasename: report.outputBasename || DEFAULT_OUTPUT_BASENAMES[report.id] || report.id,
     };
@@ -139,7 +134,7 @@ function finalizeStoreResults(results, stores) {
 /**
  * Log into Macromatix and download the three build-to reports for each store in `.storelist`.
  * Full multi-store runs download on-hand + on-order once, then split by store column.
- * Runs targeting fewer than MMX_BULK_SCM_MIN_STORES (default 4) use per-store SCM; larger runs bulk + split.
+ * SCM flat reports skip MMX store tree; scope is applied via bulk split or post-download filter.
  * Files land in `Reports/{storeNumber}/` with timestamped names.
  */
 async function downloadReportsForStores(options = {}) {

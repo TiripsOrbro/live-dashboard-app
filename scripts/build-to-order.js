@@ -7,12 +7,17 @@
  *   npm run build-to-order -- 3811 --vendor americold
  *   npm run build-to-order -- 3811 --json
  *   npm run build-to-order -- 3811 --no-order-rounding
+ *   npm run build-to-order -- 3811 --debug --item 37923
  */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 require('dotenv').config({ path: path.join(__dirname, '../.env.production'), override: true });
 
-const { calculateBuildToOrders, filterAmericoldOrderLines } = require('../src/services/buildToCalculator');
+const { calculateBuildToOrders, filterAmericoldOrderLines, REPORTS_DIR } = require('../src/services/buildToCalculator');
+const { buildOrderLinesByVendorId } = require('../src/services/buildToOrderLines');
+const { resolveStoreReports, parseInventorySpecialEventFile, normalizeItemCode } = require('../src/services/reportReader');
+const { printBuildToDebug } = require('../src/services/buildToDebugFormat');
+const { melbourneDateKey } = require('../src/services/stockCountState');
 
 function parseArgs(argv) {
     const args = argv.slice(2);
@@ -21,7 +26,10 @@ function parseArgs(argv) {
     const json = args.includes('--json');
     const all = args.includes('--all');
     const noOrderRounding = args.includes('--no-order-rounding');
-    return { storeNumber, vendor, json, all, noOrderRounding };
+    const debug = args.includes('--debug');
+    const itemIdx = args.indexOf('--item');
+    const itemCode = itemIdx >= 0 ? normalizeItemCode(args[itemIdx + 1]) : '';
+    return { storeNumber, vendor, json, all, noOrderRounding, debug, itemCode };
 }
 
 function printHuman(result, title) {
@@ -66,7 +74,7 @@ function printHuman(result, title) {
 }
 
 async function main() {
-    const { storeNumber, vendor, json, all, noOrderRounding } = parseArgs(process.argv);
+    const { storeNumber, vendor, json, all, noOrderRounding, debug, itemCode } = parseArgs(process.argv);
     const orderOpts = noOrderRounding ? { noOrderRounding: true } : {};
     if (noOrderRounding) {
         console.log('[build-to-order] Order rounding OFF — raw shortage quantities');
@@ -75,6 +83,39 @@ async function main() {
 
     if (vendor === 'americold') {
         result = { ...result, orderLines: filterAmericoldOrderLines(result).orderLines };
+    }
+
+    if (debug) {
+        const { byVendorId } = await buildOrderLinesByVendorId(storeNumber, {
+            dateKey: result.dateKey || melbourneDateKey(),
+            ...orderOpts,
+        });
+        const files = resolveStoreReports(storeNumber, REPORTS_DIR);
+        let iseItems = null;
+        let iseDayLabels = [];
+        if (files.inventorySpecialEvent) {
+            const parsed = parseInventorySpecialEventFile(files.inventorySpecialEvent);
+            iseItems = parsed.items;
+            iseDayLabels = parsed.dayLabels;
+        }
+        const vendorId =
+            vendor === 'americold'
+                ? ''
+                : vendor && vendor.startsWith('americold-')
+                  ? vendor
+                  : '';
+        printBuildToDebug({
+            storeNumber,
+            buildTo: result,
+            byVendorId,
+            iseFile: files.inventorySpecialEvent,
+            iseItems,
+            iseDayLabels,
+            itemCode,
+            vendorId,
+        });
+        if (json) return;
+        return;
     }
 
     if (json) {

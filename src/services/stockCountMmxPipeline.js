@@ -1,3 +1,4 @@
+const path = require('path');
 const { getStoreConfig } = require('./storeList');
 const { getVendorCatalog } = require('./vendorCatalog');
 const { isCombinedStockCountSlug, vendorSlugsFromPendingLabels } = require('./combinedStockCountCatalog');
@@ -169,20 +170,27 @@ function formatOrderFailures(orderPipelineResult) {
 }
 
 function reportsReadyForStore(storeNumber, reportsDir) {
-    const { resolveStoreReports } = require('./reportReader');
+    const { resolveStoreReports, validateStoreReports } = require('./reportReader');
     const { REPORTS_DIR } = require('./buildToCalculator');
     const files = resolveStoreReports(storeNumber, reportsDir || REPORTS_DIR);
+    const validation = validateStoreReports(storeNumber, files);
     return {
-        ready: Boolean(files.inventorySpecialEvent && files.stockOnHand),
+        ready: validation.valid,
         files,
+        validation,
     };
 }
 
 async function ensureReportsForOrders(storeNumber, options = {}) {
     const { REPORTS_DIR } = require('./buildToCalculator');
     const reportsDir = options.reportsDir || REPORTS_DIR;
-    const { ready, files } = reportsReadyForStore(storeNumber, reportsDir);
+    const { ready, files, validation } = reportsReadyForStore(storeNumber, reportsDir);
     if (ready && !options.forceDownload) return;
+    if (!ready && validation?.issues?.length && !options.forceDownload) {
+        log.info(
+            `Reports need refresh for store ${storeNumber}: ${validation.issues.join('; ')}`
+        );
+    }
 
     const downloadOpts = { storeNumber, reportsDir: options.reportsDir };
     if (options.page) {
@@ -214,10 +222,16 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
 
     const after = reportsReadyForStore(storeNumber, reportsDir);
     if (!after.ready) {
+        const detail = after.validation?.issues?.length
+            ? after.validation.issues.join('; ')
+            : 'inventory-special-event and stock-on-hand required';
         throw new Error(
-            `Report download did not produce inventory-special-event and stock-on-hand in ${after.files.storeDir}`
+            `Report download did not produce valid reports in ${after.files.storeDir}: ${detail}`
         );
     }
+    log.info(
+        `Reports ready for store ${storeNumber}: ISE=${path.basename(after.files.inventorySpecialEvent || '')}, SOH=${path.basename(after.files.stockOnHand || '')}, SOO=${path.basename(after.files.stockOnOrder || '')}`
+    );
 }
 
 /** @deprecated Prefer ensureReportsForOrders */
@@ -271,23 +285,26 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
         let browser;
         let page;
         try {
-            const { resolveStoreReports } = require('./reportReader');
+            const { resolveStoreReports, describeResolvedStoreReports } = require('./reportReader');
             const { REPORTS_DIR } = require('./buildToCalculator');
             const files = resolveStoreReports(storeNumber, options.reportsDir || REPORTS_DIR);
-            const reportsReady = Boolean(files.inventorySpecialEvent && files.stockOnHand);
-            const shouldDownload = !options.skipReportDownload || !reportsReady;
+            const { ready, validation } = reportsReadyForStore(storeNumber, options.reportsDir || REPORTS_DIR);
+            const shouldDownload = !options.skipReportDownload || !ready;
 
             if (shouldDownload) {
                 await ensureReportsForOrders(storeNumber, {
                     ...options,
-                    forceDownload: !options.skipReportDownload,
+                    forceDownload: !options.skipReportDownload || !ready,
                 });
-            } else if (!reportsReady) {
+            } else if (!ready) {
                 log.warn(
                     `Reports incomplete for store ${storeNumber} — using existing data; order quantities may be incomplete`
                 );
             } else {
-                log.info(`Using existing reports in ${files.storeDir} — skipping download`);
+                const names = describeResolvedStoreReports(files);
+                log.info(
+                    `Using reports in ${files.storeDir} — ISE=${names.inventorySpecialEvent}, SOH=${names.stockOnHand}, SOO=${names.stockOnOrder}`
+                );
             }
 
             const orderPack = await buildOrderLinesByVendorId(storeNumber, {

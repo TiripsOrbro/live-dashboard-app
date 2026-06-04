@@ -10,11 +10,11 @@
 13        | 39520  | TB MEAT BEEF COOKED                            | Boxes | Bags    | KGs  | Freezer | Fridge  | N/a  | In Use |
 10        | 39867A | TB MEAT CHICKEN COOKED 10X900G                 | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use |
 10        | 40303  | TB CHICKEN CRISPY 5X1EA                        | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use | 6
-10        | 37925  | TB TORTILLA FLOUR 12INCH 12x12EA               | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
-10        | 37923  | TB TORTILLA FLOUR 10.25INCH 12x12EA            | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
-10        | 37927  | TB TORTILLA FLOUR 6.5INCH 24x12EA              | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
-10        | 37928  | TB FLATBREAD 12x12EA                           | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
-10        | 37891  | TB TORTILLA CORN 6 INCH                        | Boxes | Bags    | Each | Freezer | Fridge  | N/a  | In Use |
+13        | 37925  | TB TORTILLA FLOUR 12INCH 12x12EA               | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
+13        | 37923  | TB TORTILLA FLOUR 10.25INCH 12x12EA            | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
+13        | 37927  | TB TORTILLA FLOUR 6.5INCH 24x12EA              | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
+13        | 37928  | TB FLATBREAD 12x12EA                           | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
+13        | 37891  | TB TORTILLA CORN 6 INCH                        | Boxes | Bags    | Each | Freezer | Fridge  | N/a  | In Use |
 10        | 38240  | TB BEANS BLACK COOKED 12X1KG                   | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use |
 10        | 14701  | GUACAMOLE 6x1.5KG                              | Boxes | Bags    | KGs  | Freezer | Fridge  | N/a  | In Use |
 13        | 39009  | TB CHIP NACHO 4.5KG                            | Boxes | N/a     | KGs  | Freezer | Fridge  | N/a  | In Use |

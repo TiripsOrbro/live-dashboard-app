@@ -44,9 +44,55 @@ function isDataRow(row) {
     return /^\d{3,10}[A-Z]?$/.test(code) || /^[A-Z0-9]{2,12}$/.test(code);
 }
 
-/** Inventory Special Event CSV — usage is in cartons (or report unit). */
-function parseInventorySpecialEvent(filePath) {
-    const { grid } = loadGrid(filePath);
+function iseDateCellLooksLikeDayLabel(cell) {
+    const s = String(cell ?? '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    if (!s) return false;
+    return (
+        /(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)/i.test(s) ||
+        /\d{1,2}-[A-Za-z]{3}-\d{2,4}/.test(s) ||
+        /\d{1,2}\/[A-Za-z]{3}\/[0-9]{2,4}/.test(s)
+    );
+}
+
+/** Day column headers from ISE export (date row under Item Code / Day1…Day7). */
+function parseIseDayLabelsFromGrid(grid) {
+    const fallback = (i) => `Day${i + 1}`;
+    for (let r = 0; r < Math.min(10, grid?.length || 0); r++) {
+        const row = grid[r];
+        if (!row || row.length < 20) continue;
+        if (iseDateCellLooksLikeDayLabel(row[13])) {
+            const labels = [];
+            for (let c = 13; c < 20; c++) {
+                const raw = String(row[c] ?? '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                labels.push(raw || fallback(c - 13));
+            }
+            return labels;
+        }
+        const col10 = String(row[10] ?? '').toLowerCase();
+        if (col10.includes('item') && col10.includes('code')) {
+            const labels = [];
+            for (let c = 13; c < 20; c++) {
+                const raw = String(row[c] ?? '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                labels.push(raw || fallback(c - 13));
+            }
+            if (labels.some((l) => l && !/^day\d$/i.test(l))) return labels;
+        }
+    }
+    const row0 = grid?.[0];
+    if (row0 && /^day\s*1$/i.test(String(row0[13] || ''))) {
+        return row0.slice(13, 20).map((h, i) => String(h || fallback(i)).trim());
+    }
+    return Array.from({ length: 7 }, (_, i) => fallback(i));
+}
+
+function parseInventorySpecialEventFromGrid(grid) {
+    const dayLabels = parseIseDayLabelsFromGrid(grid);
     const items = new Map();
 
     for (const row of grid) {
@@ -57,19 +103,35 @@ function parseInventorySpecialEvent(filePath) {
         const dayValues = row.slice(13, 20).map(num);
         if (!dayValues.some((v) => v > 0)) continue;
 
-        const avgDaily = dayValues.reduce((a, b) => a + b, 0) / dayValues.length;
+        const daySum = dayValues.reduce((a, b) => a + b, 0);
+        const avgDaily = daySum / dayValues.length;
         items.set(itemCode, {
             itemCode,
             description,
             unit,
             packSize: packSizeFromUnit(unit),
+            dayLabels,
             dayValues,
+            daySum,
             avgDaily,
             buildTo10: avgDaily * 10,
         });
     }
 
-    return items;
+    return { items, dayLabels };
+}
+
+/** Inventory Special Event CSV — usage is in cartons (or report unit). */
+function parseInventorySpecialEvent(filePath) {
+    const { grid } = loadGrid(filePath);
+    return parseInventorySpecialEventFromGrid(grid).items;
+}
+
+/** ISE parse with day labels for debug output. */
+function parseInventorySpecialEventFile(filePath) {
+    const { grid } = loadGrid(filePath);
+    const { items, dayLabels } = parseInventorySpecialEventFromGrid(grid);
+    return { items, dayLabels, filePath };
 }
 
 /** SCM Items On Hand (Flat) — filter to one store; qty col 7 in report unit col 6. */
@@ -127,14 +189,100 @@ function parseStockOnOrder(filePath, storeNumber) {
     return items;
 }
 
+/** Macromatix export: YYYYMMDD-HHMM-stock-on-hand.xls (ignore test/recovered copies). */
+const REAL_MMX_REPORT_RE =
+    /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})-(inventory-special-event|stock-on-hand|stock-on-order)\./i;
+const JUNK_REPORT_RE = /^(?:recovered-|test\d*-|t-|debug-)/i;
+
+function isRealMmxReportFilename(name) {
+    const base = path.basename(String(name || ''));
+    if (!base || JUNK_REPORT_RE.test(base)) return false;
+    return REAL_MMX_REPORT_RE.test(base);
+}
+
+function reportTimestampFromFilename(name) {
+    const m = path.basename(String(name || '')).match(REAL_MMX_REPORT_RE);
+    if (!m) return 0;
+    return Number(`${m[1]}${m[2]}${m[3]}${m[4]}${m[5]}`);
+}
+
+/** YYYY-MM-DD from export filename (Melbourne calendar day of download). */
+function reportDateKeyFromFilename(name) {
+    const m = path.basename(String(name || '')).match(REAL_MMX_REPORT_RE);
+    if (!m) return null;
+    return `${m[1]}-${m[2]}-${m[3]}`;
+}
+
 function findLatestReportFile(storeDir, basenameHint) {
     if (!fs.existsSync(storeDir)) return null;
-    const files = fs
+    const hint = String(basenameHint || '').toLowerCase();
+    const candidates = fs
         .readdirSync(storeDir)
-        .filter((f) => f.toLowerCase().includes(basenameHint))
+        .filter((f) => f.toLowerCase().includes(hint))
+        .filter((f) => isRealMmxReportFilename(f))
         .map((f) => path.join(storeDir, f))
-        .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-    return files[0] || null;
+        .sort((a, b) => {
+            const ta = reportTimestampFromFilename(a);
+            const tb = reportTimestampFromFilename(b);
+            if (tb !== ta) return tb - ta;
+            return fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs;
+        });
+    return candidates[0] || null;
+}
+
+function describeResolvedStoreReports(files) {
+    const pick = (p) => (p ? path.basename(p) : '(missing)');
+    return {
+        inventorySpecialEvent: pick(files?.inventorySpecialEvent),
+        stockOnHand: pick(files?.stockOnHand),
+        stockOnOrder: pick(files?.stockOnOrder),
+    };
+}
+
+/**
+ * True when ISE + SOH are real MMX exports from today (Melbourne) with usable SOH rows.
+ */
+function validateStoreReports(storeNumber, files, options = {}) {
+    const issues = [];
+    const { melbourneDateKey } = require('./stockCountState');
+    const today = options.dateKey || melbourneDateKey();
+    const minOnHandRows = Number(options.minOnHandRows) || 10;
+
+    if (!files?.inventorySpecialEvent) {
+        issues.push('missing inventory-special-event');
+    } else if (!isRealMmxReportFilename(files.inventorySpecialEvent)) {
+        issues.push(`ISE is not a Macromatix export (${path.basename(files.inventorySpecialEvent)})`);
+    } else {
+        const iseDay = reportDateKeyFromFilename(files.inventorySpecialEvent);
+        if (iseDay && iseDay !== today) {
+            issues.push(`ISE is from ${iseDay} (today ${today})`);
+        }
+    }
+
+    if (!files?.stockOnHand) {
+        issues.push('missing stock-on-hand');
+    } else if (!isRealMmxReportFilename(files.stockOnHand)) {
+        issues.push(`SOH is not a Macromatix export (${path.basename(files.stockOnHand)})`);
+    } else {
+        const sohDay = reportDateKeyFromFilename(files.stockOnHand);
+        if (sohDay && sohDay !== today) {
+            issues.push(`SOH is from ${sohDay} (today ${today})`);
+        }
+        try {
+            const rows = parseStockOnHand(files.stockOnHand, storeNumber);
+            if (rows.size < minOnHandRows) {
+                issues.push(`SOH only ${rows.size} item row(s) for store ${storeNumber}`);
+            }
+        } catch (err) {
+            issues.push(`SOH unreadable: ${err.message}`);
+        }
+    }
+
+    if (files?.stockOnOrder && !isRealMmxReportFilename(files.stockOnOrder)) {
+        issues.push(`SOO is not a Macromatix export (${path.basename(files.stockOnOrder)})`);
+    }
+
+    return { valid: issues.length === 0, issues, today };
 }
 
 function resolveStoreReports(storeNumber, reportsRoot) {
@@ -427,9 +575,16 @@ module.exports = {
     packSizeFromUnit,
     normalizeItemCode,
     parseInventorySpecialEvent,
+    parseInventorySpecialEventFile,
+    parseIseDayLabelsFromGrid,
     parseStockOnHand,
     parseStockOnOrder,
     findLatestReportFile,
+    isRealMmxReportFilename,
+    reportDateKeyFromFilename,
+    reportTimestampFromFilename,
+    describeResolvedStoreReports,
+    validateStoreReports,
     resolveStoreReports,
     onHandToCartons,
     onOrderToCartons,

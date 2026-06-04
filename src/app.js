@@ -1886,8 +1886,8 @@ app.post('/api/stock-count/send-to-mmx/apply', async (req, res) => {
 
         if (ordersOnly) {
             console.log(`[StockCount] Scheduled orders only — store ${store}`);
-            const skipReportDownload = !/^(0|false|no|off)$/i.test(
-                String(req.body?.skipReportDownload ?? req.query.skipReportDownload ?? 'true')
+            const skipReportDownload = /^(1|true|yes|on)$/i.test(
+                String(req.body?.skipReportDownload ?? req.query.skipReportDownload ?? 'false')
             );
             const result = await runScheduledOrdersOnly(store, { skipReportDownload });
             res.json({ success: true, ...result });
@@ -1916,8 +1916,8 @@ app.post('/api/stock-count/fill-orders', async (req, res) => {
         const store = stockCountStoreFromQuery(req);
         if (!store || !assertStoreAccess(req, res, store)) return;
 
-        const skipReportDownload = !/^(0|false|no|off)$/i.test(
-            String(req.body?.skipReportDownload ?? req.query.skipReportDownload ?? 'true')
+        const skipReportDownload = /^(1|true|yes|on)$/i.test(
+            String(req.body?.skipReportDownload ?? req.query.skipReportDownload ?? 'false')
         );
         console.log(`[StockCount] Fill scheduled orders — store ${store}`);
         const result = await runScheduledOrdersOnly(store, { skipReportDownload });

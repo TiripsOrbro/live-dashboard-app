@@ -13,7 +13,7 @@
       "reportName": "SCM - Items On Hand (Flat)",
       "format": "Excel Data Only",
       "downloadExt": ".xls",
-      "startDate": "today",
+      "startDate": "tomorrow",
       "timeZone": "Australia/Melbourne",
       "generateButtonText": "Generate"
     },
@@ -25,7 +25,7 @@
       "reportName": "SCM - Items On Order (Flat)",
       "format": "Excel Data Only",
       "downloadExt": ".xls",
-      "startDate": "lastWeekMonday",
+      "startDate": "daysAgo:7",
       "endDate": "daysFromNow:14",
       "dateOnly": true,
       "timeZone": "Australia/Melbourne",

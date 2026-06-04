@@ -4,7 +4,7 @@ const { getStoreList, getStoreConfig } = require('./storeList');
 const { openMacromatixBrowser, closeBrowserQuietly } = require('./macromatixScraper');
 const { downloadReports, configureDownloadPath } = require('./mmxReports/pipeline-download-reports');
 const { isSupplyChainReport } = require('./mmxReports/pipeline-supply-chain-reports');
-const { splitSpreadsheetByStoreColumn } = require('./reportReader');
+const { splitSpreadsheetByStoreColumn, resolveStoreReports } = require('./reportReader');
 const { ensureDir, timestampSlug } = require('./mmxReports/util-files');
 const log = require('./mmxReports/util-logging');
 
@@ -75,6 +75,55 @@ function bulkSupplyChainReports(pipeline, onlyReportIds) {
         storeNumber: undefined,
         outputBasename: report.outputBasename || DEFAULT_OUTPUT_BASENAMES[report.id] || report.id,
     }));
+}
+
+function scmPerStoreFallbackEnabled(stores) {
+    return stores.length === 1 || process.env.MMX_SCM_FALLBACK_PER_STORE === '1';
+}
+
+async function retryScmReportPerStore(page, pipeline, store, report, runSlug, storeDir) {
+    const scmReport = {
+        ...report,
+        skipStoreSelection: false,
+        storeName: storeSelectorLabel(store),
+        storeNumber: store.storeNumber,
+        outputBasename: report.outputBasename || DEFAULT_OUTPUT_BASENAMES[report.id] || report.id,
+    };
+    const storePipeline = {
+        reportNavigation: pipeline.reportNavigation,
+        reports: [scmReport],
+    };
+    const settings = buildSettings(storePipeline, storeDir);
+    await configureDownloadPath(page, storeDir);
+    const paths = await downloadReports(page, settings);
+    let dest = paths[report.id];
+    if (!dest) return null;
+
+    const ext = path.extname(dest);
+    const basename = scmReport.outputBasename;
+    const target = path.join(storeDir, `${runSlug}-${basename}${ext}`);
+    if (path.basename(dest) !== path.basename(target)) {
+        if (fs.existsSync(target)) fs.unlinkSync(target);
+        fs.renameSync(dest, target);
+        dest = target;
+    }
+    return dest;
+}
+
+function finalizeStoreResults(results, stores) {
+    for (const store of stores) {
+        const entry = results.stores[store.storeNumber];
+        const files = resolveStoreReports(store.storeNumber, REPORTS_DIR);
+        const ready = Boolean(files.inventorySpecialEvent && files.stockOnHand);
+        if (!ready) {
+            entry.success = false;
+            const missing = [];
+            if (!files.stockOnHand) missing.push('stock-on-hand');
+            if (!files.inventorySpecialEvent) missing.push('inventory-special-event');
+            entry.missingReports = missing;
+            log.error(`Store ${store.storeNumber}: missing ${missing.join(' and ')} in ${files.storeDir}`);
+        }
+    }
 }
 
 /**
@@ -164,6 +213,7 @@ async function downloadReportsForStores(options = {}) {
 
             await configureDownloadPath(page, bulkDir);
             const bulkPaths = await downloadReports(page, bulkSettings);
+            const bulkSplitMisses = [];
 
             for (const report of bulkReports) {
                 const sourcePath = bulkPaths[report.id];
@@ -190,17 +240,48 @@ async function downloadReportsForStores(options = {}) {
 
                 for (const storeNum of storeNumbers) {
                     if (!split.stores[storeNum]) {
-                        const found = (split.storesDetected || []).join(', ') || 'none';
+                        bulkSplitMisses.push({ report, storeNum });
+                        const inFile = (split.storesInFile || []).join(', ') || 'none';
                         const samples = (split.sampleRows || []).map((s) => `  ${s}`).join('\n');
-                        const sohDateHint =
-                            report.id === 'report1' && split.totalRows > 0 && split.totalRows < 300
-                                ? '\n  Hint: Stock On Hand with startDate "tomorrow" often exports ~100 rows with no store column. Set report1 startDate to "today" in config/reports-pipeline.json, re-download, or run: npm run recover-store-reports -- 3808'
+                        const bulkFilterHint =
+                            split.totalRows > 0 && split.totalRows < 300
+                                ? '\n  Hint: Export looks area-filtered (~100 rows). Per-store SCM fallback will run when enabled.'
                                 : '';
                         log.warn(
-                            `${report.label || report.id}: no rows for store ${storeNum} in bulk export (stores in file: ${found})` +
+                            `${report.label || report.id}: no rows for store ${storeNum} in bulk export (stores in file: ${inFile})` +
                                 (samples ? `\n${samples}` : '') +
-                                sohDateHint
+                                bulkFilterHint
                         );
+                    }
+                }
+            }
+
+            if (scmPerStoreFallbackEnabled(stores) && bulkSplitMisses.length) {
+                for (const { report, storeNum } of bulkSplitMisses) {
+                    if (results.stores[storeNum]?.files[report.id]) continue;
+                    const store = stores.find((s) => s.storeNumber === storeNum);
+                    if (!store) continue;
+
+                    log.info(
+                        `Bulk split missed store ${storeNum} — retrying ${report.label || report.id} with per-store selection`
+                    );
+                    const storeDir = path.join(REPORTS_DIR, storeNum);
+                    ensureDir(storeDir);
+                    try {
+                        const dest = await retryScmReportPerStore(
+                            page,
+                            pipeline,
+                            store,
+                            report,
+                            runSlug,
+                            storeDir
+                        );
+                        if (dest) {
+                            results.stores[storeNum].files[report.id] = dest;
+                            log.info(`  store ${storeNum}: per-store SCM → ${path.basename(dest)}`);
+                        }
+                    } catch (err) {
+                        log.error(`Per-store SCM fallback for ${storeNum} ${report.id}:`, err.message);
                     }
                 }
             }
@@ -246,6 +327,7 @@ async function downloadReportsForStores(options = {}) {
         }
     }
 
+    finalizeStoreResults(results, stores);
     return results;
 }
 

@@ -796,16 +796,28 @@ async function selectStoreForStoreReport(page, storeName, opts = {}) {
     throw new Error(`Store: could not select "${storeName}" in report dropdown (tried: ${needles.join(', ')})`);
 }
 
-async function clearStoreTreeSelections(page) {
-    await page.evaluate(() => {
-        for (const cb of document.querySelectorAll('input[type="checkbox"]')) {
-            const row = cb.closest('tr, div, li, span, label') || cb.parentElement;
-            const text = (row?.textContent || '').replace(/\s+/g, ' ').toLowerCase();
-            if (!/\b\d{4}\b/.test(text) && !text.includes('store')) continue;
-            if (cb.checked) cb.click();
+/** Uncheck every report tree checkbox (stores, areas, markets) so bulk SCM is not area-filtered. */
+async function clearAllReportTreeCheckboxes(page) {
+    const cleared = await page.evaluate(() => {
+        let count = 0;
+        const root = document.querySelector('.RadTreeView') || document.body;
+        for (const cb of root.querySelectorAll('input[type="checkbox"]')) {
+            if (cb.checked) {
+                cb.click();
+                count++;
+            }
         }
+        return count;
     });
-    await page.waitForTimeout(300);
+    if (cleared > 0) {
+        log.info(`Cleared ${cleared} report tree checkbox(es) for bulk export`);
+    }
+    const settleMs = Number(process.env.MMX_REPORT_TREE_CLEAR_SETTLE_MS || 500);
+    await page.waitForTimeout(settleMs);
+}
+
+async function clearStoreTreeSelections(page) {
+    await clearAllReportTreeCheckboxes(page);
 }
 
 async function selectStore(page, storeName, opts = {}) {
@@ -942,7 +954,13 @@ async function configureAndGenerateReport(page, report, reportNav) {
         await setEndDate(page, endDate);
     }
 
-    if (report.storeName && !report.skipStoreSelection) {
+    if (report.skipStoreSelection) {
+        const hasTree = await reportUsesStoreTree(page);
+        if (hasTree) {
+            await clearAllReportTreeCheckboxes(page);
+            log.info('Cleared report store/area tree filters for bulk export');
+        }
+    } else if (report.storeName) {
         await selectStore(page, report.storeName, {
             storeNumber: report.storeNumber,
         });

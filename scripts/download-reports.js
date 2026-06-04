@@ -64,7 +64,14 @@ async function main() {
     const result = await downloadReportsForStores(options);
     console.log(JSON.stringify(result, null, 2));
 
-    const failed = Object.values(result.stores).some((s) => !s.success);
+    const failed = Object.values(result.stores || {}).some((s) => !s.success);
+    if (failed) {
+        const details = Object.entries(result.stores || {})
+            .filter(([, s]) => !s.success)
+            .map(([num, s]) => `${num}: ${(s.missingReports || [s.error || 'incomplete']).join(', ')}`)
+            .join('; ');
+        console.error(`[download-reports] Incomplete: ${details}`);
+    }
     process.exit(failed ? 1 : 0);
 }
 

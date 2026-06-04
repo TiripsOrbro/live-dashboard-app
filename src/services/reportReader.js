@@ -274,6 +274,28 @@ function detectStoreColumnIndex(grid, preferredStores = []) {
     return { colIndex, matchCount };
 }
 
+/** All distinct 4-digit store numbers present in the grid (for split diagnostics). */
+function storesPresentInGrid(grid, colIndex = 2) {
+    const detected = detectStoreColumnIndex(grid, []);
+    const col = detected.matchCount > 0 ? detected.colIndex : colIndex;
+    const found = new Set();
+    for (const row of grid) {
+        if (!row?.length) continue;
+        const store = storeNumberFromCell(row[col]);
+        if (store) found.add(store);
+    }
+    if (!found.size) {
+        for (const row of grid) {
+            if (!row?.length) continue;
+            for (let c = 0; c < row.length; c++) {
+                const store = storeNumberFromCell(row[c]);
+                if (store) found.add(store);
+            }
+        }
+    }
+    return [...found].sort();
+}
+
 /** SCM flat exports often include every store — keep only rows for the target store. */
 function filterSpreadsheetByStoreColumn(filePath, storeNumber, colIndex = 2) {
     const want = String(storeNumber || '').trim();
@@ -333,13 +355,21 @@ function splitSpreadsheetByStoreColumn(sourcePath, options = {}) {
     const ext = path.extname(sourcePath) || '.xls';
 
     if (!fs.existsSync(sourcePath)) {
-        return { stores: {}, totalRows: 0, skipped: true, storeColumnIndex: 2, storesDetected: [] };
+        return {
+            stores: {},
+            totalRows: 0,
+            skipped: true,
+            storeColumnIndex: 2,
+            storesDetected: [],
+            storesInFile: [],
+        };
     }
 
     const { grid, sheetName } = loadGrid(sourcePath);
     const detected = detectStoreColumnIndex(grid, storeNumbers);
     const colIndex =
         detected.matchCount > 0 ? detected.colIndex : Number.isFinite(options.colIndex) ? options.colIndex : 2;
+    const storesInFile = storesPresentInGrid(grid, colIndex);
     const byStore = new Map();
 
     for (const row of grid) {
@@ -387,6 +417,7 @@ function splitSpreadsheetByStoreColumn(sourcePath, options = {}) {
         sourcePath,
         storeColumnIndex: colIndex,
         storesDetected: [...byStore.keys()].sort(),
+        storesInFile,
         sampleRows: byStore.size === 0 ? sampleGridRows(grid) : [],
     };
 }
@@ -406,6 +437,7 @@ module.exports = {
     splitSpreadsheetByStoreColumn,
     storeNumberFromCell,
     detectStoreColumnIndex,
+    storesPresentInGrid,
     rowContainsStoreNumber,
     rowsMatchingStores,
     sampleGridRows,

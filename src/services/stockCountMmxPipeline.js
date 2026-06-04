@@ -168,30 +168,65 @@ function formatOrderFailures(orderPipelineResult) {
     return failed.map((f) => `${f.label}: ${f.error || 'failed'}`).join('; ');
 }
 
-/**
- * Pre-build order lines from on-disk reports + dashboard counts, then fill scheduled orders.
- * Report downloads are never run on the same browser session before order entry.
- */
-async function runOrdersAfterApply(storeNumber, dateKey, page) {
-    const orderPack = await buildOrderLinesByVendorId(storeNumber, { dateKey });
-    return runVendorOrdersForStore(page, storeNumber, dateKey, orderPack);
-}
-
-async function ensureReportsOnDisk(storeNumber, options = {}) {
+function reportsReadyForStore(storeNumber, reportsDir) {
     const { resolveStoreReports } = require('./reportReader');
     const { REPORTS_DIR } = require('./buildToCalculator');
-    const files = resolveStoreReports(storeNumber, options.reportsDir || REPORTS_DIR);
-    if (files.inventorySpecialEvent && files.stockOnHand) return;
+    const files = resolveStoreReports(storeNumber, reportsDir || REPORTS_DIR);
+    return {
+        ready: Boolean(files.inventorySpecialEvent && files.stockOnHand),
+        files,
+    };
+}
 
-    log.info(`Reports missing for store ${storeNumber} — downloading in a separate browser pass`);
-    let browser;
-    let page;
-    try {
-        ({ browser, page } = await openMacromatixBrowser(options));
-        await downloadReportsForStores({ storeNumber, page, browser });
-    } finally {
-        await closeBrowserQuietly(browser, 'pre-order report download');
+async function ensureReportsForOrders(storeNumber, options = {}) {
+    const { REPORTS_DIR } = require('./buildToCalculator');
+    const reportsDir = options.reportsDir || REPORTS_DIR;
+    const { ready, files } = reportsReadyForStore(storeNumber, reportsDir);
+    if (ready) return;
+
+    const downloadOpts = { storeNumber, reportsDir: options.reportsDir };
+    if (options.page) {
+        log.info(`Reports missing for store ${storeNumber} — downloading via current MMX session`);
+        await downloadReportsForStores({
+            ...downloadOpts,
+            page: options.page,
+            browser: options.browser || null,
+        });
+    } else {
+        log.info(`Reports missing for store ${storeNumber} — downloading in a separate browser pass`);
+        let browser;
+        let page;
+        try {
+            ({ browser, page } = await openMacromatixBrowser(options));
+            await downloadReportsForStores({ ...downloadOpts, page, browser });
+        } finally {
+            await closeBrowserQuietly(browser, 'pre-order report download');
+        }
     }
+
+    const after = reportsReadyForStore(storeNumber, reportsDir);
+    if (!after.ready) {
+        throw new Error(
+            `Report download did not produce inventory-special-event and stock-on-hand in ${after.files.storeDir}`
+        );
+    }
+}
+
+/** @deprecated Prefer ensureReportsForOrders */
+async function ensureReportsOnDisk(storeNumber, options = {}) {
+    return ensureReportsForOrders(storeNumber, options);
+}
+
+/**
+ * Pre-build order lines from on-disk reports + dashboard counts, then fill scheduled orders.
+ * Downloads missing reports first (reuses the post-apply MMX session when available).
+ */
+async function runOrdersAfterApply(storeNumber, dateKey, mmx = {}) {
+    const page = mmx?.page ?? mmx;
+    const browser = mmx?.browser ?? null;
+    await ensureReportsForOrders(storeNumber, { page, browser, reportsDir: mmx.reportsDir });
+    const orderPack = await buildOrderLinesByVendorId(storeNumber, { dateKey });
+    return runVendorOrdersForStore(page, storeNumber, dateKey, orderPack);
 }
 
 /**
@@ -212,7 +247,7 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
             const shouldDownload = !options.skipReportDownload || !reportsReady;
 
             if (shouldDownload) {
-                await ensureReportsOnDisk(storeNumber, options);
+                await ensureReportsForOrders(storeNumber, options);
             } else if (!reportsReady) {
                 log.warn(
                     `Reports incomplete for store ${storeNumber} — using existing data; order quantities may be incomplete`
@@ -339,7 +374,7 @@ async function applyStockCountSession(storeNumber, sessionId, options = {}) {
                 let page;
                 try {
                     ({ browser, page } = await openMacromatixBrowser(options));
-                    const orders = await runOrdersAfterApply(storeNumber, checkpoint.dateKey, page);
+                    const orders = await runOrdersAfterApply(storeNumber, checkpoint.dateKey, { page, browser });
                     const orderFailures = formatOrderFailures(orders);
                     await setCheckpoint(storeNumber, {
                         stage: 'completed',
@@ -397,7 +432,7 @@ async function applyStockCountSession(storeNumber, sessionId, options = {}) {
 
             if (await shouldRunOrderPipeline(storeNumber, dateKey)) {
                 log.info(`Key Item Count applied for store ${storeNumber} — entering scheduled orders`);
-                orderPipelineResult = await runOrdersAfterApply(storeNumber, dateKey, page);
+                orderPipelineResult = await runOrdersAfterApply(storeNumber, dateKey, { page, browser });
                 if (ordersAllSuccessful(orderPipelineResult)) {
                     await runStoreOrdersCompleteCleanup(storeNumber, dateKey);
                 }

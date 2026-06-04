@@ -8,6 +8,7 @@
  *   npm run download-reports -- --order-day
  *   npm run download-reports -- --order-day --order-date tomorrow
  *   npm run download-reports -- --order-day --dry-run
+ *   npm run download-reports -- --store 3808 --fresh   (delete Reports/3808/* first)
  *
  * Requires:
  *   - SCRAPER_USERNAME / SCRAPER_PASSWORD (or encrypted creds) in .env
@@ -21,6 +22,8 @@ require('../src/loadEnv').loadEnv();
 
 const { downloadReportsForStores } = require('../src/services/mmxReportDownloader');
 const { runOrderDayReportDownload } = require('../src/services/scheduledReportDownload');
+const { clearStoreReportFiles } = require('../src/services/reportReader');
+const { REPORTS_DIR } = require('../src/services/buildToCalculator');
 
 function parseArgs(argv) {
     const args = argv.slice(2);
@@ -30,6 +33,7 @@ function parseArgs(argv) {
     const orderDay = args.includes('--order-day');
     const dryRun = args.includes('--dry-run');
     const force = args.includes('--force');
+    const fresh = args.includes('--fresh');
     for (let i = 0; i < args.length; i++) {
         if (args[i] === '--store' && args[i + 1]) {
             storeNumber = String(args[i + 1]).trim();
@@ -42,11 +46,11 @@ function parseArgs(argv) {
             i++;
         }
     }
-    return { storeNumber, onlyReports, orderDay, orderDate, dryRun, force };
+    return { storeNumber, onlyReports, orderDay, orderDate, dryRun, force, fresh };
 }
 
 async function main() {
-    const { storeNumber, onlyReports, orderDay, orderDate, dryRun, force } = parseArgs(process.argv);
+    const { storeNumber, onlyReports, orderDay, orderDate, dryRun, force, fresh } = parseArgs(process.argv);
 
     if (orderDay) {
         const result = await runOrderDayReportDownload({
@@ -56,6 +60,17 @@ async function main() {
         });
         console.log(JSON.stringify(result, null, 2));
         process.exit(0);
+    }
+
+    if (fresh && !storeNumber) {
+        console.error('[download-reports] --fresh requires --store <number>');
+        process.exit(1);
+    }
+    if (fresh) {
+        const { removed } = clearStoreReportFiles(storeNumber, REPORTS_DIR);
+        console.log(
+            `[download-reports] Cleared ${removed.length} file(s) from Reports/${storeNumber}/ before download`
+        );
     }
 
     const options = storeNumber ? { storeNumber } : {};

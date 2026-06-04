@@ -10,6 +10,7 @@
     "force-sales-scrape": "node scripts/force-sales-scrape.js",
     "test-scrape": "node scripts/test-scrape.js",
     "download-reports": "node scripts/download-reports.js",
+    "refresh-store-build-to": "node scripts/refresh-store-build-to.js",
     "debug-scm-tree": "node scripts/debug-scm-store-tree.js",
     "recover-store-reports": "node scripts/recover-store-reports-from-bulk.js",
     "download-reports-order-day": "node scripts/download-reports.js --order-day",

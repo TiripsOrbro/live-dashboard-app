@@ -295,6 +295,24 @@ function resolveStoreReports(storeNumber, reportsRoot) {
     };
 }
 
+/** Remove all files under Reports/{storeNumber}/ so the next download is the only source. */
+function clearStoreReportFiles(storeNumber, reportsRoot) {
+    const storeDir = path.join(reportsRoot, String(storeNumber));
+    if (!fs.existsSync(storeDir)) {
+        fs.mkdirSync(storeDir, { recursive: true });
+        return { storeDir, removed: [] };
+    }
+    const removed = [];
+    for (const name of fs.readdirSync(storeDir)) {
+        const filePath = path.join(storeDir, name);
+        if (!fs.statSync(filePath).isFile()) continue;
+        fs.unlinkSync(filePath);
+        removed.push(name);
+    }
+    removed.sort();
+    return { storeDir, removed };
+}
+
 function onHandToCartons(onHandRow, iseUnit, isePackSize, itemCode) {
     if (!onHandRow) return 0;
     const qty = onHandRow.quantity;
@@ -586,6 +604,7 @@ module.exports = {
     describeResolvedStoreReports,
     validateStoreReports,
     resolveStoreReports,
+    clearStoreReportFiles,
     onHandToCartons,
     onOrderToCartons,
     filterSpreadsheetByStoreColumn,

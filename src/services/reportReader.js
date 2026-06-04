@@ -312,6 +312,18 @@ function resolveStoreReports(storeNumber, reportsRoot) {
     };
 }
 
+/** Snapshot which MMX dates/files were used (filename day = download day; SOH form date may be tomorrow). */
+function writeStoreReportManifest(storeNumber, reportsRoot, meta = {}) {
+    const storeDir = path.join(reportsRoot, String(storeNumber));
+    if (!fs.existsSync(storeDir)) fs.mkdirSync(storeDir, { recursive: true });
+    const manifest = {
+        writtenAt: new Date().toISOString(),
+        ...meta,
+    };
+    fs.writeFileSync(path.join(storeDir, '.report-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    return manifest;
+}
+
 /** Remove all files under Reports/{storeNumber}/ so the next download is the only source. */
 function clearStoreReportFiles(storeNumber, reportsRoot) {
     const storeDir = path.join(reportsRoot, String(storeNumber));
@@ -622,6 +634,7 @@ module.exports = {
     validateStoreReports,
     resolveStoreReports,
     clearStoreReportFiles,
+    writeStoreReportManifest,
     onHandToCartons,
     onOrderToCartons,
     filterSpreadsheetByStoreColumn,

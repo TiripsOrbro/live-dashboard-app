@@ -50,6 +50,9 @@ async function main() {
         `[refresh] Store ${storeNumber} — clear → download (ISE+SOH+SOO) → ${dryRun ? 'preview' : 'fill MMX'} → clear`
     );
     console.log(`[refresh] SOH startDate: ${sohReport?.startDate || '—'} → ${sohDate}`);
+    console.log(
+        '[refresh] Note: SOH filename uses today\'s download time; MMX form date above is what drives on-hand qty. Stock-count overrides are ignored in this cycle.'
+    );
 
     let browser;
     let page;

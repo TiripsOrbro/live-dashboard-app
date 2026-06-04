@@ -229,9 +229,27 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
             `Report download did not produce valid ISE, SOH, and SOO in ${after.files.storeDir}: ${detail}`
         );
     }
+    const { loadPipelineConfig } = require('./mmxReportDownloader');
+    const { resolveReportDate } = require('./mmxReports/util-dates');
+    const pipeline = loadPipelineConfig();
+    const sohCfg = pipeline.reports.find((r) => r.id === 'report1');
+    const sohStart = sohCfg
+        ? resolveReportDate(sohCfg.startDate || 'tomorrow', {
+              timeZone: sohCfg.timeZone,
+              dateOnly: false,
+          })
+        : '';
     log.info(
-        `Reports ready for store ${storeNumber}: ISE=${path.basename(after.files.inventorySpecialEvent || '')}, SOH=${path.basename(after.files.stockOnHand || '')}, SOO=${path.basename(after.files.stockOnOrder || '')}`
+        `Reports ready for store ${storeNumber}: ISE=${path.basename(after.files.inventorySpecialEvent || '')}, SOH=${path.basename(after.files.stockOnHand || '')} (MMX start ${sohStart || '—'}), SOO=${path.basename(after.files.stockOnOrder || '')}`
     );
+    const { writeStoreReportManifest } = require('./reportReader');
+    writeStoreReportManifest(storeNumber, reportsDir, {
+        storeNumber: String(storeNumber),
+        sohStartDate: sohStart,
+        ise: path.basename(after.files.inventorySpecialEvent || ''),
+        soh: path.basename(after.files.stockOnHand || ''),
+        soo: path.basename(after.files.stockOnOrder || ''),
+    });
 }
 
 /** @deprecated Prefer ensureReportsForOrders */
@@ -289,21 +307,22 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
             );
         }
 
-        const buildTo = await calculateBuildToOrders(storeNumber, {
+        const buildToOpts = {
             reportsDir,
             dateKey,
             noOrderRounding: options.noOrderRounding,
-        });
+            preferReportOnHand: true,
+        };
+        const buildTo = await calculateBuildToOrders(storeNumber, buildToOpts);
         const onOrderLines = (buildTo.lines || []).filter((l) => Number(l.onOrderCartons) > 0);
         log.info(
             `Build-to for store ${storeNumber}: ${buildTo.lines?.length || 0} ISE line(s), ${onOrderLines.length} with on-order deducted`
         );
+        log.info(
+            `On-hand sources: ${buildTo.onHandFromReportCount || 0} from SOH report (${buildTo.reportFiles?.stockOnHand ? path.basename(buildTo.reportFiles.stockOnHand) : 'missing'}), ${buildTo.onHandFromManualCount || 0} from stock-count (ignored in this cycle)`
+        );
 
-        const orderPack = await buildOrderLinesByVendorId(storeNumber, {
-            dateKey,
-            reportsDir,
-            noOrderRounding: options.noOrderRounding,
-        });
+        const orderPack = await buildOrderLinesByVendorId(storeNumber, buildToOpts);
 
         if (options.dryRun) {
             cycleSucceeded = true;

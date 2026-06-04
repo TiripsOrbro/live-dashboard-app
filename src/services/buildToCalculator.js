@@ -269,7 +269,8 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
             manualEntry && manualEntry.catalogItem
                 ? manualCountToCartons({ columns: manualEntry.columns }, manualEntry.catalogItem, isePack)
                 : null;
-        const useReportOnHandOnly = Boolean(catalogRule?.skipStockCount);
+        const useReportOnHandOnly =
+            Boolean(catalogRule?.skipStockCount) || Boolean(options.preferReportOnHand);
         const onHandCartons = useReportOnHandOnly
             ? onHandFromReport
             : onHandFromManual != null
@@ -341,12 +342,17 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         return a.itemCode.localeCompare(b.itemCode);
     });
 
+    const onHandFromReportCount = lines.filter((l) => l.onHandSource === 'report').length;
+    const onHandFromManualCount = lines.filter((l) => l.onHandSource === 'manual-count').length;
+
     return {
         storeNumber: String(storeNumber),
         dateKey,
         files,
         countedItemCodes: [...countedCodes],
         manualCountItems,
+        onHandFromReportCount,
+        onHandFromManualCount,
         lines,
         orderLines: lines.filter((l) => l.orderQty > 0),
         reportFiles: {

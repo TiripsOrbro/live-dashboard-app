@@ -5,8 +5,8 @@
 
 #Days     | Code   | Name                                           | Outter| Inner   |Units | Freezer | Fridge  | Dry  | In Use | Packs of X
 # --- Freezer (13 items) ---
-10        | 38009  | TB CHIP NACHO 4.5KG                            | Boxes | N/a     | KGs  | Freezer | Fridge  | N/a  | In Use |
-13        | 40109  | FRIES SUPERCRISP 6X2KG                         | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use |
+13        | 38009  | TB CHIP NACHO 4.5KG                            | Boxes | N/a     | KGs  | Freezer | Fridge  | N/a  | In Use |
+12        | 40109  | FRIES SUPERCRISP 6X2KG                         | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use |
 10        | 37597  | TB CHURROS MINI 72EA                           | Boxes | N/a     | Each | Freezer | N/a     | N/a  | In Use |
 13        | 39520  | TB MEAT BEEF COOKED                            | Boxes | Bags    | KGs  | Freezer | Fridge  | N/a  | In Use |
 10        | 39867A | TB MEAT CHICKEN COOKED 10X900G                 | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use |
@@ -14,7 +14,7 @@
 13        | 37925  | TB TORTILLA FLOUR 12INCH 12x12EA               | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
 13        | 37923  | TB TORTILLA FLOUR 10.25INCH 12x12EA            | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
 13        | 37927  | TB TORTILLA FLOUR 6.5INCH 24x12EA              | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
-10        | 37928  | TB FLATBREAD 12x12EA                           | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
+13        | 37928  | TB FLATBREAD 12x12EA                           | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
 13        | 37891  | TB TORTILLA CORN 6 INCH                        | Boxes | Bags    | Each | Freezer | Fridge  | N/a  | In Use |
 10        | 38240  | TB BEANS BLACK COOKED 12X1KG                   | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use |
 10        | 14701  | GUACAMOLE 6x1.5KG                              | Boxes | Bags    | KGs  | Freezer | Fridge  | N/a  | In Use |
@@ -41,7 +41,7 @@
 10        | 37915  | TB RICE LONG GRAIN WHITE 10KG                  | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
 10+1      | 39054  | TB SEASONING MEXICAN RECI 10X1                 | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
 10        | TB13735| TB LID POSTMIX 1000EA                          | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
-10        | 607826 | OIL FRYING LIQUID 15KG                         | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
+order=8   | 607826 | OIL FRYING LIQUID 15KG                         | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
 
 # order=X is set manually
 order=2   | 100481 | GLOVE NITRILE MEDIUM 10X100                    | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
@@ -57,14 +57,14 @@ order=1   | 505796 | WIPING CLOTH YELLOW                            | Boxes | N/
 order=0.2 | 505253 | TB BAG MULTIPURPOSE 5000EA                     | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
 
 
-ignore    | 106431 | 260 x 260mm Baking Paper Golden Silidor        | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a    |
-ignore    | 106551 | 4OZ PORTION CUP LID 50EA                       | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a    |
-ignore    | 106251 | PUMP CARAMEL SAUCE MONIN 1EA                   | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a    |
-ignore    | 100358 | BOX CLAMSHELL MINI 10X50EA                     | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a    |
-ignore    | 100480 | GLOVE NITRILE SMALL 10X100                     | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a    |
-ignore    | 39945  | TB BAG NACHO CHIP LARGE 2000EA                 | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a    |
-ignore    | 38469  | PUMP CHOCOLATE SAUCE 1EA                       | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a    |
-ignore    | 38469A | PUMP CHOCOLATE SAUCE 30ML                      | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a    |
-ignore    | 17903  | SAUCE TOMATO SQUEEZE 100x14GM                  | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a    |
-ignore    | 37987  | TB BAG TAKEAWAY BROWN SMALL 1000EA             | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a    |
+ignore    | 106431 | 260 x 260mm Baking Paper Golden Silidor        | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
+ignore    | 106551 | 4OZ PORTION CUP LID 50EA                       | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
+ignore    | 106251 | PUMP CARAMEL SAUCE MONIN 1EA                   | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
+ignore    | 100358 | BOX CLAMSHELL MINI 10X50EA                     | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
+ignore    | 100480 | GLOVE NITRILE SMALL 10X100                     | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
+ignore    | 39945  | TB BAG NACHO CHIP LARGE 2000EA                 | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
+ignore    | 38469  | PUMP CHOCOLATE SAUCE 1EA                       | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
+ignore    | 38469A | PUMP CHOCOLATE SAUCE 30ML                      | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
+ignore    | 17903  | SAUCE TOMATO SQUEEZE 100x14GM                  | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
+ignore    | 37987  | TB BAG TAKEAWAY BROWN SMALL 1000EA             | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
 

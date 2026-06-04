@@ -130,14 +130,11 @@ function finalizeStoreResults(results, stores) {
     for (const store of stores) {
         const entry = results.stores[store.storeNumber];
         const files = resolveStoreReports(store.storeNumber, REPORTS_DIR);
-        const ready = Boolean(files.inventorySpecialEvent && files.stockOnHand);
-        if (!ready) {
+        const validation = require('./reportReader').validateStoreReports(store.storeNumber, files);
+        if (!validation.valid) {
             entry.success = false;
-            const missing = [];
-            if (!files.stockOnHand) missing.push('stock-on-hand');
-            if (!files.inventorySpecialEvent) missing.push('inventory-special-event');
-            entry.missingReports = missing;
-            log.error(`Store ${store.storeNumber}: missing ${missing.join(' and ')} in ${files.storeDir}`);
+            entry.missingReports = validation.issues;
+            log.error(`Store ${store.storeNumber}: ${validation.issues.join('; ')}`);
         }
     }
 }

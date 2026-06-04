@@ -216,15 +216,12 @@ async function loadManualCountsForStore(storeNumber, dateKey = melbourneDateKey(
  * On-hand comes from the Stock On Hand report (refreshed after stock count apply).
  */
 function resolveOnOrderCartons(onOrderReport, itemCode, iseUnit, isePack) {
-    let total = 0;
-    let sampleRow = null;
-    for (const key of allLookupKeys(itemCode)) {
-        const row = onOrderReport.get(normalizeItemCode(key));
-        if (!row) continue;
-        total += onOrderToCartons(row, iseUnit, isePack, key);
-        sampleRow = sampleRow || row;
-    }
-    return { onOrderCartons: total, onOrderRow: sampleRow };
+    const hit = findInReportMap(onOrderReport, itemCode);
+    if (!hit) return { onOrderCartons: 0, onOrderRow: null };
+    return {
+        onOrderCartons: onOrderToCartons(hit.row, iseUnit, isePack, hit.key),
+        onOrderRow: hit.row,
+    };
 }
 
 async function calculateBuildToOrders(storeNumber, options = {}) {
@@ -232,17 +229,19 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
     const dateKey = options.dateKey || melbourneDateKey();
     const files = resolveStoreReports(storeNumber, reportsRoot);
 
-    if (!files.inventorySpecialEvent || !files.stockOnHand) {
+    if (!files.inventorySpecialEvent || !files.stockOnHand || !files.stockOnOrder) {
+        const missing = [];
+        if (!files.inventorySpecialEvent) missing.push('inventory-special-event');
+        if (!files.stockOnHand) missing.push('stock-on-hand');
+        if (!files.stockOnOrder) missing.push('stock-on-order');
         throw new Error(
-            `Missing reports for store ${storeNumber}. Need inventory-special-event and stock-on-hand in ${files.storeDir}`
+            `Missing reports for store ${storeNumber}. Need ${missing.join(', ')} in ${files.storeDir}`
         );
     }
 
     const usage = parseInventorySpecialEvent(files.inventorySpecialEvent);
     const onHandReport = parseStockOnHand(files.stockOnHand, storeNumber);
-    const onOrderReport = files.stockOnOrder
-        ? parseStockOnOrder(files.stockOnOrder, storeNumber)
-        : new Map();
+    const onOrderReport = parseStockOnOrder(files.stockOnOrder, storeNumber);
 
     const countedCodes = allCountedItemCodes();
     const catalogRules = buildCatalogBuildToIndex();

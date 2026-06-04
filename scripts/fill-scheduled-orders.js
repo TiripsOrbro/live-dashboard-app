@@ -7,7 +7,8 @@
  *   npm run fill-orders -- 3811 --dry-run
  *   npm run fill-orders -- 3811 --dry-run --item 40303
  *   npm run fill-orders -- 3811 --dry-run --vendor americold-frz
- *   npm run fill-orders -- 3811 --skip-report-download   (offline only — skip MMX download)
+ *   npm run fill-orders -- 3811 --skip-report-download   (use on-disk ISE+SOH+SOO; still clears after)
+ *   npm run refresh-store-build-to -- 3811   (clear → download 3 reports → fill → clear)
  *   npm run fill-orders -- 3811 --dry-run --no-order-rounding   (raw shortage, no ceil)
  *   npm run fill-orders -- 3811 --dry-run --debug   (ISE dates/usage, build-to, order detail)
  */

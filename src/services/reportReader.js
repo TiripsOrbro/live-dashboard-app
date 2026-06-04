@@ -278,8 +278,25 @@ function validateStoreReports(storeNumber, files, options = {}) {
         }
     }
 
-    if (files?.stockOnOrder && !isRealMmxReportFilename(files.stockOnOrder)) {
+    const minOnOrderRows = Number(options.minOnOrderRows) || 3;
+
+    if (!files?.stockOnOrder) {
+        issues.push('missing stock-on-order');
+    } else if (!isRealMmxReportFilename(files.stockOnOrder)) {
         issues.push(`SOO is not a Macromatix export (${path.basename(files.stockOnOrder)})`);
+    } else {
+        const sooDay = reportDateKeyFromFilename(files.stockOnOrder);
+        if (sooDay && sooDay !== today) {
+            issues.push(`SOO is from ${sooDay} (today ${today})`);
+        }
+        try {
+            const rows = parseStockOnOrder(files.stockOnOrder, storeNumber);
+            if (rows.size < minOnOrderRows) {
+                issues.push(`SOO only ${rows.size} item row(s) for store ${storeNumber}`);
+            }
+        } catch (err) {
+            issues.push(`SOO unreadable: ${err.message}`);
+        }
     }
 
     return { valid: issues.length === 0, issues, today };

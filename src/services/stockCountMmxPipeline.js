@@ -224,9 +224,9 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
     if (!after.ready) {
         const detail = after.validation?.issues?.length
             ? after.validation.issues.join('; ')
-            : 'inventory-special-event and stock-on-hand required';
+            : 'inventory-special-event, stock-on-hand, and stock-on-order required';
         throw new Error(
-            `Report download did not produce valid reports in ${after.files.storeDir}: ${detail}`
+            `Report download did not produce valid ISE, SOH, and SOO in ${after.files.storeDir}: ${detail}`
         );
     }
     log.info(
@@ -240,18 +240,101 @@ async function ensureReportsOnDisk(storeNumber, options = {}) {
 }
 
 /**
- * Pre-build order lines from on-disk reports + dashboard counts, then fill scheduled orders.
- * Downloads missing reports first (reuses the post-apply MMX session when available).
+ * Download ISE + SOH + SOO → build order qty (incl. on-order) → fill MMX → delete report files.
+ * Reuses the post-apply browser session when `page` is provided.
  */
+async function runStoreBuildToCycle(storeNumber, options = {}) {
+    const {
+        clearStoreReportFiles,
+        validateStoreReports,
+        resolveStoreReports,
+        describeResolvedStoreReports,
+    } = require('./reportReader');
+    const { REPORTS_DIR, calculateBuildToOrders } = require('./buildToCalculator');
+    const reportsDir = options.reportsDir || REPORTS_DIR;
+    const dateKey = options.dateKey || melbourneDateKey();
+    const skipDownload = Boolean(options.skipReportDownload);
+    const cleanup = options.cleanupReports !== false;
+    const page = options.page;
+
+    if (!skipDownload) {
+        const { removed } = clearStoreReportFiles(storeNumber, reportsDir);
+        if (removed.length) {
+            log.info(
+                `Build-to cycle: cleared ${removed.length} old report file(s) for store ${storeNumber}`
+            );
+        }
+    }
+
+    try {
+        if (!skipDownload) {
+            await ensureReportsForOrders(storeNumber, {
+                page: options.page,
+                browser: options.browser,
+                reportsDir,
+                forceDownload: true,
+            });
+        } else {
+            const files = resolveStoreReports(storeNumber, reportsDir);
+            const validation = validateStoreReports(storeNumber, files);
+            if (!validation.valid) {
+                throw new Error(
+                    `Cannot fill orders for store ${storeNumber}: ${validation.issues.join('; ')}`
+                );
+            }
+            const names = describeResolvedStoreReports(files);
+            log.info(
+                `Build-to cycle (no download): ISE=${names.inventorySpecialEvent}, SOH=${names.stockOnHand}, SOO=${names.stockOnOrder}`
+            );
+        }
+
+        const buildTo = await calculateBuildToOrders(storeNumber, {
+            reportsDir,
+            dateKey,
+            noOrderRounding: options.noOrderRounding,
+        });
+        const onOrderLines = (buildTo.lines || []).filter((l) => Number(l.onOrderCartons) > 0);
+        log.info(
+            `Build-to for store ${storeNumber}: ${buildTo.lines?.length || 0} ISE line(s), ${onOrderLines.length} with on-order deducted`
+        );
+
+        const orderPack = await buildOrderLinesByVendorId(storeNumber, {
+            dateKey,
+            reportsDir,
+            noOrderRounding: options.noOrderRounding,
+        });
+
+        if (options.dryRun) {
+            return { dryRun: true, dateKey, buildTo, orderPack };
+        }
+        if (!page) {
+            throw new Error('runStoreBuildToCycle requires an active MMX page to fill scheduled orders');
+        }
+
+        const orders = await runVendorOrdersForStore(page, storeNumber, dateKey, orderPack);
+        return { dateKey, buildTo, orderPack, orders };
+    } finally {
+        if (cleanup) {
+            const { removed } = clearStoreReportFiles(storeNumber, reportsDir);
+            log.info(
+                `Build-to cycle: removed ${removed.length} report file(s) from Reports/${storeNumber}/`
+            );
+        }
+    }
+}
+
 async function runOrdersAfterApply(storeNumber, dateKey, mmx = {}) {
     const page = mmx?.page ?? mmx;
-    const browser = mmx?.browser ?? null;
-    await ensureReportsForOrders(storeNumber, { page, browser, reportsDir: mmx.reportsDir });
-    const orderPack = await buildOrderLinesByVendorId(storeNumber, {
+    const result = await runStoreBuildToCycle(storeNumber, {
         dateKey,
+        page,
+        browser: mmx?.browser,
+        reportsDir: mmx.reportsDir,
         noOrderRounding: mmx.noOrderRounding,
+        skipReportDownload: false,
+        cleanupReports: true,
     });
-    return runVendorOrdersForStore(page, storeNumber, dateKey, orderPack);
+    return result.orders;
 }
 
 async function resumeScheduledOrdersInNewBrowser(storeNumber, dateKey, options = {}) {
@@ -275,9 +358,8 @@ function allVendorsMarkedMmxSent(vendorSlugs, sentSlugs) {
 }
 
 /**
- * Open MMX and fill scheduled orders only (skip stock count + optional report download).
- * Downloads reports when skipReportDownload is false and on-disk reports fail validation.
- * With skipReportDownload true, never downloads — uses whatever is in Reports/{store}/.
+ * Full build-to cycle: clear old reports → download ISE/SOH/SOO → fill MMX → delete reports.
+ * Pass skipReportDownload to use on-disk reports only (still requires valid ISE+SOH+SOO).
  */
 async function runScheduledOrdersOnly(storeNumber, options = {}) {
     return withStoreLock(storeNumber, async () => {
@@ -286,42 +368,16 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
         let browser;
         let page;
         try {
-            const { resolveStoreReports, describeResolvedStoreReports } = require('./reportReader');
-            const { REPORTS_DIR } = require('./buildToCalculator');
-            const files = resolveStoreReports(storeNumber, options.reportsDir || REPORTS_DIR);
-            const { ready, validation } = reportsReadyForStore(storeNumber, options.reportsDir || REPORTS_DIR);
-            const skipDownload = Boolean(options.skipReportDownload);
-            const shouldDownload = !skipDownload && !ready;
-
-            if (shouldDownload) {
-                await ensureReportsForOrders(storeNumber, {
-                    ...options,
-                    forceDownload: true,
-                });
-            } else if (!ready) {
-                const detail = validation?.issues?.length
-                    ? validation.issues.join('; ')
-                    : 'missing or stale reports';
-                log.warn(
-                    skipDownload
-                        ? `Reports not validated for store ${storeNumber} (${detail}) — skipReportDownload: using files on disk anyway`
-                        : `Reports incomplete for store ${storeNumber} (${detail}) — order quantities may be wrong`
-                );
-            } else {
-                const names = describeResolvedStoreReports(files);
-                log.info(
-                    `Using reports in ${files.storeDir} — ISE=${names.inventorySpecialEvent}, SOH=${names.stockOnHand}, SOO=${names.stockOnOrder}`
-                );
-            }
-
-            const orderPack = await buildOrderLinesByVendorId(storeNumber, {
-                dateKey,
-                noOrderRounding: options.noOrderRounding,
-            });
-
             ({ browser, page } = await openMacromatixBrowser(options));
-            log.info(`Filling scheduled orders for store ${storeNumber}`);
-            const orders = await runVendorOrdersForStore(page, storeNumber, dateKey, orderPack);
+            log.info(`Build-to cycle for store ${storeNumber} — download 3 reports, fill orders, clear reports`);
+            const cycle = await runStoreBuildToCycle(storeNumber, {
+                ...options,
+                dateKey,
+                page,
+                browser,
+                cleanupReports: options.cleanupReports !== false,
+            });
+            const orders = cycle.orders;
             if (ordersAllSuccessful(orders)) {
                 await runStoreOrdersCompleteCleanup(storeNumber, dateKey);
             }
@@ -336,7 +392,7 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
                 ordersRan: true,
                 orders,
                 orderFailures: orderFailures || null,
-                skippedReportDownload: !shouldDownload,
+                skippedReportDownload: Boolean(options.skipReportDownload),
             };
         } finally {
             await closeBrowserQuietly(browser, 'scheduled orders only');
@@ -582,6 +638,7 @@ module.exports = {
     cancelStockCountSession,
     sendStockCountToMmx,
     runScheduledOrdersOnly,
+    runStoreBuildToCycle,
     ensureReportsForOrders,
     shouldRunOrderPipeline,
 };

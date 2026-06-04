@@ -119,7 +119,7 @@ function buildBuildToEntriesForVendor(vendorCfg, buildToLines, catalogItems, ite
 
     for (const item of catalogItems || []) {
         if (vendorCfg && itemMatchesVendorConfig && !itemMatchesVendorConfig(item, vendorCfg)) continue;
-        if (item.buildToManual || item.buildToOrderManual) continue;
+        if (item.buildToManual || item.buildToOrderManual || item.skipVendorOrder) continue;
 
         const catalogCode = normalizeItemCode(item.itemCode);
         let bestLine = null;
@@ -186,7 +186,7 @@ function linesFromOrderGridByName(grid, buildToEntries) {
         if (entry.orderQty <= 0) continue;
 
         // 1) Prefer exact code/alias match (most reliable, expected in MMX grids).
-        const lookupCodes = allLookupKeys(entry.iseItemCode || entry.catalogItemCode || '');
+        const lookupCodes = allLookupKeys(entry.catalogItemCode || entry.iseItemCode || '');
         let codeRow = null;
         for (const code of lookupCodes) {
             const row = byCode.get(normalizeItemCode(code));

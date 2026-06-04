@@ -49,6 +49,7 @@ function buildCatalogItemIndex() {
                 itemCode: code,
                 name: item.name,
                 mmxOrderClass: item.mmxOrderClass || 'FRZ',
+                skipVendorOrder: Boolean(item.skipVendorOrder),
                 catalogSlug: slug,
             });
         }
@@ -60,6 +61,25 @@ function ceilOrderQty(value) {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return 0;
     return Math.ceil(n);
+}
+
+/** Per-item pack size from vendor config (e.g. iced coffee bottles in cases of 6). */
+function orderRoundStepForItem(vendorCfg, ...itemCodes) {
+    const byItem = vendorCfg?.orderRoundToByItemCode || {};
+    for (const code of itemCodes) {
+        const key = normalizeItemCode(code);
+        if (key && byItem[key] != null) return Number(byItem[key]);
+    }
+    return null;
+}
+
+/** Iced coffee / Bega: round to the nearest full pack, not always up to the next pack. */
+function roundOrderQtyToNearestPack(qty, step) {
+    const n = Number(qty);
+    const pack = Number(step);
+    if (!Number.isFinite(n) || n <= 0 || !Number.isFinite(pack) || pack <= 1) return 0;
+    const rounded = Math.round(n / pack) * pack;
+    return rounded > 0 ? rounded : pack;
 }
 
 /** True when the vendor catalog line defines its own build-to (order=N, days, =N, oh:N). */
@@ -165,24 +185,31 @@ function mergeBuildToEntries(...entrySets) {
     return [...byCode.values()];
 }
 
+/**
+ * Final order quantity for MMX entry.
+ * Default: always round up (ceil). Iced coffee (orderRoundToByItemCode): nearest pack multiple.
+ */
 function roundOrderQtyForVendor(qty, vendorCfg, ...itemCodes) {
-    const byItem = vendorCfg?.orderRoundToByItemCode || {};
-    let step = vendorCfg?.orderRoundTo;
-    for (const code of itemCodes) {
-        const key = normalizeItemCode(code);
-        if (key && byItem[key] != null) {
-            step = byItem[key];
-            break;
-        }
+    const n = Number(qty);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+
+    const itemStep = orderRoundStepForItem(vendorCfg, ...itemCodes);
+    if (Number.isFinite(itemStep) && itemStep > 1) {
+        return roundOrderQtyToNearestPack(n, itemStep);
     }
-    step = Number(step);
-    if (!Number.isFinite(step) || step <= 1 || qty <= 0) return qty;
-    return Math.ceil(qty / step) * step;
+
+    const vendorStep = Number(vendorCfg?.orderRoundTo);
+    if (Number.isFinite(vendorStep) && vendorStep > 1) {
+        return Math.ceil(n / vendorStep) * vendorStep;
+    }
+
+    return Math.ceil(n);
 }
 
 function vendorCatalogCodeSet(catalog, vendorCfg) {
     const set = new Set();
     for (const item of catalog?.items || []) {
+        if (item.skipVendorOrder) continue;
         if (!itemMatchesVendorConfig(item, vendorCfg)) continue;
         const code = normalizeItemCode(item.itemCode);
         if (code) set.add(code);
@@ -246,7 +273,7 @@ async function buildOrderLinesByVendorId(storeNumber, options = {}) {
         const lines = buildToEntries
             .filter((entry) => entry.orderQty > 0)
             .map((entry) => ({
-                itemCode: entry.iseItemCode,
+                itemCode: entry.catalogItemCode || entry.iseItemCode,
                 quantity: entry.orderQty,
                 itemName: entry.catalogName || entry.description,
             }));
@@ -263,4 +290,6 @@ module.exports = {
     buildCatalogItemIndex,
     itemMatchesVendorConfig,
     roundOrderQtyForVendor,
+    roundOrderQtyToNearestPack,
+    orderRoundStepForItem,
 };

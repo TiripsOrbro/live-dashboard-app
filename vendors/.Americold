@@ -5,7 +5,7 @@
 
 #Days     | Code   | Name                                           | Outter| Inner   |Units | Freezer | Fridge  | Dry  | In Use | Packs of X
 # --- Freezer (13 items) ---
-13        | 38009  | TB CHIP NACHO 4.5KG                            | Boxes | N/a     | KGs  | Freezer | Fridge  | N/a  | In Use |
+13        | 38009  | TB CHIP NACHO 4.5KG                            | Boxes | N/a     | KGs  | Freezer | no-order | In Use |
 12        | 40109  | FRIES SUPERCRISP 6X2KG                         | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use |
 10        | 37597  | TB CHURROS MINI 72EA                           | Boxes | N/a     | Each | Freezer | N/a     | N/a  | In Use |
 13        | 39520  | TB MEAT BEEF COOKED                            | Boxes | Bags    | KGs  | Freezer | Fridge  | N/a  | In Use |
@@ -20,6 +20,7 @@
 10        | 14701  | GUACAMOLE 6x1.5KG                              | Boxes | Bags    | KGs  | Freezer | Fridge  | N/a  | In Use |
 
 # --- Fridge (MMX FRIDGE tab) ---
+13        | 39009  | TB CHIP NACHO 4.5KG                            | Boxes | N/a     | KGs  | N/a     | Fridge  | N/a  | In Use |
 10        | 100457 | SAUCE FIRE 10X1KG                              | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 10        | 37870  | TB SAUCE CHILLI MILD 10X1KG                    | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 10        | 38414  | TB SAUCE ZESTY RANCH 15X1KG                    | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
@@ -34,14 +35,10 @@
 10        | 37013  | TB SAUCE PICO DE GALLO 12X500GM                | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 
 # --- Dry (MMX DRY tab) ---
-#10        | 38163  | TB SAUCE CHOCOLATE DA VINCI 2X2LTR             | Boxes | Bottles | KGs  | N/a     | N/a     | Dry  | N/a    |
-#10        | 106191 | SAUCE CARAMEL MONIN 1.8L                       | Boxes | Bottles | KGs  | N/a     | N/a     | Dry  | N/a    |
-#10        | 40037  | SUGAR CINNAMON 5X2.5KG                         | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
 10        | 40062A | TB CINNAMON TWISTS 2 X 5KG                     | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
-10        | 37915  | TB RICE LONG GRAIN WHITE 10KG                  | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
-10+1      | 39054  | TB SEASONING MEXICAN RECI 10X1                 | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
-#10        | TB13735| TB LID POSTMIX 1000EA                          | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
-order=8   | 607826 | OIL FRYING LIQUID 15KG                         | Boxes | N/a     | KGs  | N/a     | N/a     | Dry  | N/a    |
+10        | 37915  | TB RICE LONG GRAIN WHITE 10KG                  | Bags  | N/a     | KGs  | N/a     | N/a     | Dry  | N/a    |
+10+1      | 39054  | TB SEASONING MEXICAN RECI 10X1                 | Bags  | N/a     | KGs  | N/a     | N/a     | Dry  | N/a    |
+order=8   | 607826 | OIL FRYING LIQUID 15KG                         | Boxes | N/a     | KGs  | Dry     | order:FRG | N/a  | N/a    |
 
 # order=X is set manually
 order=2   | 100481 | GLOVE NITRILE MEDIUM 10X100                    | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10

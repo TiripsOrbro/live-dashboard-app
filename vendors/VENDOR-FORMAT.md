@@ -67,6 +67,23 @@ Many items never appear on **stock-on-hand** or **stock-on-order** exports — t
 
 Optional trailing number after locations = **inner units per carton** (e.g. `| Carryover | 10` → 10 packs per carton). Stock count can enter cartons and packs/rolls; order qty uses the combined carton equivalent (e.g. 1 carton + 5 packs with `/10` → 1.5).
 
+Optional **order routing** tokens (not stock-count tabs):
+
+| Token | Meaning |
+|--------|---------|
+| `order:FRG` | Scheduled order goes on **Americold Vic FRG** (count tabs unchanged) |
+| `order:DRY` | Scheduled order on **Americold Vic DRY** |
+| `order:FRZ` | Scheduled order on **Americold Vic FRZ** |
+| `no-order` | Stock count / Key Item Count only — no build-to vendor order line |
+
+Example: count oil on the **Dry** tab but order on the fridge run:
+
+```text
+order=8 | 607826 | OIL FRYING LIQUID 15KG | Boxes | N/a | KGs | Dry | order:FRG
+```
+
+Nacho chips: count **38009** in the freezer (`no-order`), order **39009** on FRG (separate catalog line under Fridge).
+
 ### Examples
 
 ```text

@@ -280,6 +280,19 @@ function sectionToMmxOrderClass(sectionName) {
     return 'FRZ';
 }
 
+/** Optional trailing location token: order:FRG | order:DRY | order:FRZ | no-order */
+function parseLocationPartHints(part) {
+    const raw = String(part || '').trim();
+    const orderClassMatch = raw.match(/^order:(FRG|DRY|FRZ)$/i);
+    if (orderClassMatch) {
+        return { mmxOrderClass: orderClassMatch[1].toUpperCase(), skipVendorOrder: false, isHint: true };
+    }
+    if (/^no-order$/i.test(raw)) {
+        return { skipVendorOrder: true, isHint: true };
+    }
+    return { isHint: false };
+}
+
 function inferSectionFromComment(line) {
     const raw = String(line || '').replace(/^#\s*/, '').trim();
     if (!raw) return '';
@@ -367,12 +380,20 @@ function parseCatalogText(text, def) {
 
         let innerPerCarton = null;
         const locNames = [];
+        let mmxOrderClassOverride = '';
+        let skipVendorOrder = false;
         for (const part of locationParts) {
             if (/^\d+(\.\d+)?$/.test(part)) {
                 innerPerCarton = Number(part);
-            } else {
-                locNames.push(part);
+                continue;
             }
+            const hint = parseLocationPartHints(part);
+            if (hint.isHint) {
+                if (hint.mmxOrderClass) mmxOrderClassOverride = hint.mmxOrderClass;
+                if (hint.skipVendorOrder) skipVendorOrder = true;
+                continue;
+            }
+            locNames.push(part);
         }
 
         let itemLocations = locNames.length ? [...new Set(locNames)] : [...new Set(vendorDefaultLocations)];
@@ -386,7 +407,8 @@ function parseCatalogText(text, def) {
             unitSlots,
             innerPerCarton: innerPerCarton != null && innerPerCarton > 0 ? innerPerCarton : null,
             locations: itemLocations,
-            mmxOrderClass: sectionToMmxOrderClass(currentSection),
+            mmxOrderClass: mmxOrderClassOverride || sectionToMmxOrderClass(currentSection),
+            skipVendorOrder: Boolean(skipVendorOrder),
             buildToDays: buildToManual || buildToOrderManual || buildToFixed != null ? null : buildToDays,
             buildToManual: Boolean(buildToManual),
             buildToOrderManual: Boolean(buildToOrderManual),

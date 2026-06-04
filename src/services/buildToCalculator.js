@@ -34,16 +34,11 @@ const SALAD_BUILD_TO_DAYS = 7;
 const SALAD_NAME_RE =
     /\blettuce\b|\btomato\b|\bonion\b|\bcorriander\b|\bcoriander\b|\bpico de gallo\b|\bsalad\b/i;
 
-/** Beef, tortillas, flatbread, nacho chips, tostadas, fries — 13-day build-to. */
+/** Beef, nacho chips, fries — 13-day build-to when catalog has no day prefix. Tortillas use catalog days (10). */
 const BUILD_TO_13_DAY_ITEM_CODES = new Set(
     [
         '39520', // Beef
-        '37923',
-        '37925',
-        '37927', // Tortillas (10.25 / 12 / 6.5 in)
-        '38620', // Flatbread
         '39009', // Nacho chips
-        '37891', // Tostadas
         '40109', // Fries (Chips)
     ].map(normalizeItemCode)
 );

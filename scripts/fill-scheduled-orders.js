@@ -92,10 +92,20 @@ async function printDryRun(storeNumber, { vendorId, itemCode, noOrderRounding })
         if (!entries.length && !lines.length) continue;
         anyVendor = true;
         console.log(`\n${pack.vendor?.label || id} (${id}):`);
+        const buildToByCode = new Map();
+        for (const bl of buildTo.lines || []) {
+            buildToByCode.set(normalizeItemCode(bl.itemCode), bl);
+        }
         for (const entry of entries) {
+            const code = normalizeItemCode(entry.catalogItemCode || entry.iseItemCode);
+            const bl = buildToByCode.get(code);
+            const calc = bl
+                ? `  calc: avg=${bl.avgDaily} x${bl.buildToDays}d => buildTo=${bl.buildTo}, onHand=${bl.onHandCartons} (${bl.onHandSource}), onOrder=${bl.onOrderCartons} => order=${bl.orderQty}`
+                : '';
             console.log(
-                `  ${entry.catalogItemCode || entry.iseItemCode}\t${entry.orderQty}\t${entry.buildToSource || ''}\t${entry.catalogName || entry.description || ''}`
+                `  ${code}\torder=${entry.orderQty}\t${entry.buildToSource || ''}\t${entry.catalogName || entry.description || ''}`
             );
+            if (calc) console.log(calc);
         }
         for (const line of lines) {
             console.log(`  → MMX qty ${line.quantity}\t${line.itemCode}\t${line.itemName || ''}`);

@@ -62,8 +62,8 @@ function supplyChainReportsInRun(pipeline, onlyReportIds) {
     return reports;
 }
 
-function useBulkSupplyChainDownload(stores, onlyReportIds, pipeline, partialRun) {
-    if (partialRun || stores.length <= 1) return false;
+function useBulkSupplyChainDownload(stores, onlyReportIds, pipeline) {
+    // SCM flat exports include every store — download once (no tree) and split by store column.
     return supplyChainReportsInRun(pipeline, onlyReportIds).length > 0;
 }
 
@@ -80,7 +80,7 @@ function bulkSupplyChainReports(pipeline, onlyReportIds) {
 /**
  * Log into Macromatix and download the three build-to reports for each store in `.storelist`.
  * Full multi-store runs download on-hand + on-order once, then split by store column.
- * Per-store / partial runs download supply-chain reports individually (with post-filter).
+ * Single-store runs use the same bulk SCM download, then split rows into Reports/{store}/.
  * Files land in `Reports/{storeNumber}/` with timestamped names.
  */
 async function downloadReportsForStores(options = {}) {
@@ -125,11 +125,10 @@ async function downloadReportsForStores(options = {}) {
         }
     }
 
-    const partialRun = Boolean(only || onlyNumbers.length);
     const runSlug = timestampSlug();
     const results = { runSlug, reportsDir: REPORTS_DIR, bulkSupplyChain: false, stores: {} };
     const storeNumbers = stores.map((s) => s.storeNumber);
-    const useBulk = useBulkSupplyChainDownload(stores, onlyReportIds, pipeline, partialRun);
+    const useBulk = useBulkSupplyChainDownload(stores, onlyReportIds, pipeline);
 
     for (const store of stores) {
         results.stores[store.storeNumber] = { success: true, files: {} };

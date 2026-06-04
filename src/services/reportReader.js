@@ -183,10 +183,59 @@ function onOrderToCartons(onOrderRow, iseUnit, isePackSize, itemCode) {
 
 /** Extract a 4-digit store number from a cell ("3808" or "3808 Berwick South"). */
 function storeNumberFromCell(value) {
-    const s = String(value ?? '').trim();
+    if (value == null || value === '') return null;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        const n = Math.round(value);
+        if (n >= 1000 && n <= 9999) return String(n);
+    }
+    const s = String(value).trim();
     if (/^\d{4}$/.test(s)) return s;
     const m = s.match(/\b(\d{4})\b/);
     return m ? m[1] : null;
+}
+
+function rowContainsStoreNumber(row, storeNumber) {
+    const want = String(storeNumber || '').trim();
+    if (!want || !row?.length) return false;
+    for (const cell of row) {
+        if (storeNumberFromCell(cell) === want) return true;
+    }
+    const joined = row.map((c) => String(c ?? '')).join(' ');
+    return new RegExp(`(^|\\D)${want}(\\D|$)`).test(joined);
+}
+
+function rowsMatchingStores(grid, storeNumbers) {
+    const byStore = new Map();
+    for (const num of storeNumbers) byStore.set(num, []);
+    for (const row of grid) {
+        if (!row?.length) continue;
+        for (const num of storeNumbers) {
+            if (rowContainsStoreNumber(row, num)) {
+                byStore.get(num).push(row);
+                break;
+            }
+        }
+    }
+    for (const num of storeNumbers) {
+        if (!byStore.get(num)?.length) byStore.delete(num);
+    }
+    return byStore;
+}
+
+function sampleGridRows(grid, limit = 2) {
+    const samples = [];
+    for (const row of grid) {
+        if (!row?.length) continue;
+        const text = row
+            .slice(0, 10)
+            .map((c) => String(c ?? '').trim())
+            .filter(Boolean)
+            .join(' | ');
+        if (!text) continue;
+        samples.push(text.slice(0, 140));
+        if (samples.length >= limit) break;
+    }
+    return samples;
 }
 
 /** Find which column holds store numbers (defaults to col 2 for legacy SCM flat exports). */
@@ -234,7 +283,10 @@ function filterSpreadsheetByStoreColumn(filePath, storeNumber, colIndex = 2) {
     const total = grid.length;
     const detected = detectStoreColumnIndex(grid, [want]);
     const storeCol = detected.matchCount > 0 ? detected.colIndex : colIndex;
-    const filtered = grid.filter((row) => row && storeNumberFromCell(row[storeCol]) === want);
+    let filtered = grid.filter((row) => row && storeNumberFromCell(row[storeCol]) === want);
+    if (!filtered.length) {
+        filtered = (rowsMatchingStores(grid, [want]).get(want) || []).slice();
+    }
     if (!filtered.length) {
         return { kept: 0, total, skipped: true };
     }
@@ -309,6 +361,13 @@ function splitSpreadsheetByStoreColumn(sourcePath, options = {}) {
         }
     }
 
+    if (wantSet && byStore.size === 0 && storeNumbers.length) {
+        const textMatch = rowsMatchingStores(grid, storeNumbers);
+        for (const [store, rows] of textMatch.entries()) {
+            byStore.set(store, rows);
+        }
+    }
+
     const wb = XLSX.readFile(sourcePath, { cellDates: true });
     const stores = {};
 
@@ -328,6 +387,7 @@ function splitSpreadsheetByStoreColumn(sourcePath, options = {}) {
         sourcePath,
         storeColumnIndex: colIndex,
         storesDetected: [...byStore.keys()].sort(),
+        sampleRows: byStore.size === 0 ? sampleGridRows(grid) : [],
     };
 }
 
@@ -346,4 +406,7 @@ module.exports = {
     splitSpreadsheetByStoreColumn,
     storeNumberFromCell,
     detectStoreColumnIndex,
+    rowContainsStoreNumber,
+    rowsMatchingStores,
+    sampleGridRows,
 };

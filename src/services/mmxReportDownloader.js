@@ -191,8 +191,15 @@ async function downloadReportsForStores(options = {}) {
                 for (const storeNum of storeNumbers) {
                     if (!split.stores[storeNum]) {
                         const found = (split.storesDetected || []).join(', ') || 'none';
+                        const samples = (split.sampleRows || []).map((s) => `  ${s}`).join('\n');
+                        const sohDateHint =
+                            report.id === 'report1' && split.totalRows > 0 && split.totalRows < 300
+                                ? '\n  Hint: Stock On Hand with startDate "tomorrow" often exports ~100 rows with no store column. Set report1 startDate to "today" in config/reports-pipeline.json, re-download, or run: npm run recover-store-reports -- 3808'
+                                : '';
                         log.warn(
-                            `${report.label || report.id}: no rows for store ${storeNum} in bulk export (stores in file: ${found})`
+                            `${report.label || report.id}: no rows for store ${storeNum} in bulk export (stores in file: ${found})` +
+                                (samples ? `\n${samples}` : '') +
+                                sohDateHint
                         );
                     }
                 }

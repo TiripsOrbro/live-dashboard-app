@@ -10,6 +10,7 @@
     "force-sales-scrape": "node scripts/force-sales-scrape.js",
     "test-scrape": "node scripts/test-scrape.js",
     "download-reports": "node scripts/download-reports.js",
+    "recover-store-reports": "node scripts/recover-store-reports-from-bulk.js",
     "download-reports-order-day": "node scripts/download-reports.js --order-day",
     "report-download-scheduler": "node scripts/run-report-download-scheduler.js",
     "build-to-order": "node scripts/build-to-order.js",

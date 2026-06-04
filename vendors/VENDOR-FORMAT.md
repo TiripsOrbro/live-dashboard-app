@@ -82,7 +82,7 @@ Example: count oil on the **Dry** tab but order on the fridge run:
 order=8 | 607826 | OIL FRYING LIQUID 15KG | Boxes | N/a | KGs | Dry | order:FRG
 ```
 
-Nacho chips: count **38009** in the freezer (`no-order`), order **39009** on FRG (separate catalog line under Fridge).
+Nacho chips: use catalog code **39009** on the freezer run (FRZ); count on Freezer/Fridge tabs. Alias **38009** in `.item-codes` for legacy KIC rows.
 
 ### Examples
 

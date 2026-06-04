@@ -78,9 +78,66 @@ async function buildVendorEntries(storeNumber, toSend, dateKey) {
     return vendorEntries;
 }
 
-/** True when submitted draft has at least one item that goes on Macromatix Key Item Count. */
+/** Counted lines (qty > 0) that must be entered on Macromatix Key Item Count. */
+function countKeyItemCountLines(vendorEntries) {
+    const byLocation = mergeVendorEntriesByLocation(vendorEntries);
+    let n = 0;
+    for (const items of byLocation.values()) n += items.length;
+    return { locationCount: byLocation.size, lineCount: n };
+}
+
+/** True when submitted draft has at least one counted item that goes on Key Item Count. */
 function vendorEntriesNeedKeyItemCount(vendorEntries) {
-    return mergeVendorEntriesByLocation(vendorEntries).size > 0;
+    return countKeyItemCountLines(vendorEntries).lineCount > 0;
+}
+
+function logStockCountMmxPlan(storeNumber, vendorEntries) {
+    const { locationCount, lineCount } = countKeyItemCountLines(vendorEntries);
+    if (lineCount === 0) {
+        log.info(
+            `Store ${storeNumber}: submitted counts are manual / supplies / oh-only only (${lineCount} Key Item Count lines) — skipping Key Item Count screen`
+        );
+    } else {
+        log.info(
+            `Store ${storeNumber}: ${lineCount} Key Item Count line(s) in ${locationCount} location(s) — opening Key Item Count`
+        );
+    }
+}
+
+/** Read drafts and report whether Send to MMX needs the Key Item Count UI (no browser). */
+async function getStockCountSendPlan(storeNumber, vendorSlug, options = {}) {
+    const dateKey = options.dateKey || melbourneDateKey();
+    const queueStatus = await getStockCountQueueStatus(storeNumber, {
+        dateKey,
+        vendorSlug,
+        pendingVendorLabels: options.pendingVendorLabels,
+    });
+    const submitted = (queueStatus.queue || []).filter((entry) => entry.submittedAt);
+    if (!submitted.length) {
+        return {
+            success: true,
+            storeNumber: String(storeNumber),
+            canSendToMmx: false,
+            needsKeyItemCount: false,
+            manualOnly: false,
+            submittedVendors: [],
+        };
+    }
+    const toSend = submitted.map((entry) => ({ slug: entry.slug }));
+    const vendorEntries = await buildVendorEntries(storeNumber, toSend, dateKey);
+    const { lineCount, locationCount } = countKeyItemCountLines(vendorEntries);
+    const needsKeyItemCount = lineCount > 0;
+    return {
+        success: true,
+        storeNumber: String(storeNumber),
+        dateKey,
+        canSendToMmx: Boolean(queueStatus.canSendToMmx),
+        needsKeyItemCount,
+        manualOnly: !needsKeyItemCount,
+        keyItemCountLineCount: lineCount,
+        keyItemCountLocationCount: locationCount,
+        submittedVendors: submitted.map((e) => e.slug),
+    };
 }
 
 /**
@@ -97,13 +154,21 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
     try {
         ({ browser, page } = await openMacromatixBrowser(options));
         log.info(
-            `Store ${storeNumber}: manual-only stock count — skipping Key Item Count, filling scheduled orders from app counts`
+            `Store ${storeNumber}: manual-only stock count — skipping Key Item Count; downloading ISE, SOH, and SOO, then filling scheduled orders from app counts`
         );
+        await setCheckpoint(storeNumber, {
+            stage: 'downloading-reports',
+            dateKey,
+            vendorSlugs: toSend.map((row) => row.slug),
+            lastError: '',
+        });
         const cycle = await runStoreBuildToCycle(storeNumber, {
             ...options,
             dateKey,
             page,
             browser,
+            skipReportDownload: false,
+            requireAllReports: true,
             cleanupReports: options.cleanupReports !== false,
         });
         const orders = cycle.orders;
@@ -125,6 +190,7 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
             redVarianceCount: 0,
             vendorsSent: toSend.map((row) => row.slug),
             ordersRan: true,
+            reportsDownloaded: true,
             orders,
             orderFailures: orderFailures || null,
         };
@@ -331,7 +397,9 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
     const { REPORTS_DIR, calculateBuildToOrders } = require('./buildToCalculator');
     const reportsDir = options.reportsDir || REPORTS_DIR;
     const dateKey = options.dateKey || melbourneDateKey();
-    const skipDownload = Boolean(options.skipReportDownload);
+    const skipDownload = options.requireAllReports
+        ? false
+        : Boolean(options.skipReportDownload);
     const cleanup = options.cleanupReports !== false;
     const page = options.page;
 
@@ -347,6 +415,11 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
     let cycleSucceeded = false;
     try {
         if (!skipDownload) {
+            if (options.requireAllReports) {
+                log.info(
+                    `Store ${storeNumber}: downloading all build-to reports (ISE, stock-on-hand, stock-on-order)`
+                );
+            }
             await ensureReportsForOrders(storeNumber, {
                 page: options.page,
                 browser: options.browser,
@@ -493,15 +566,16 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
  */
 async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
     return withStoreLock(storeNumber, async () => {
-        acquireMmxResource(`stock count prepare (store ${storeNumber})`);
-        let sessionStarted = false;
-
         const { dateKey, toSend } = await resolveToSend(storeNumber, vendorSlug, options);
         const vendorEntries = await buildVendorEntries(storeNumber, toSend, dateKey);
+        logStockCountMmxPlan(storeNumber, vendorEntries);
 
         if (!vendorEntriesNeedKeyItemCount(vendorEntries)) {
             return runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options);
         }
+
+        acquireMmxResource(`stock count prepare (store ${storeNumber})`);
+        let sessionStarted = false;
 
         let browser;
         let page;
@@ -597,6 +671,7 @@ const PIPELINE_IN_PROGRESS_STAGES = new Set([
     'prepared',
     'applying',
     'applied-orders-pending',
+    'downloading-reports',
     'filling-orders',
 ]);
 
@@ -792,9 +867,11 @@ module.exports = {
     applyStockCountSession,
     cancelStockCountSession,
     sendStockCountToMmx,
+    getStockCountSendPlan,
     getStockCountPipelineStatus,
     runScheduledOrdersOnly,
     runStoreBuildToCycle,
     ensureReportsForOrders,
     shouldRunOrderPipeline,
+    vendorEntriesNeedKeyItemCount,
 };

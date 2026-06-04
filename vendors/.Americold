@@ -42,7 +42,7 @@ oh:10     | 38163  | TB SAUCE CHOCOLATE DA VINCI 3X2LTR             | Boxes | Ba
 10        | 37915  | TB RICE LONG GRAIN WHITE 10KG                  | Bags  | N/a     | KGs  | N/a     | N/a     | Dry  | N/a    |
 10+1      | 39054  | TB SEASONING MEXICAN RECI 10X1                 | Bags  | N/a     | KGs  | N/a     | N/a     | Dry  | N/a    |
 10        | 40037  | SUGAR CINNAMON 5X2.5KG                         | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
-order=8   | 607826 | OIL FRYING LIQUID 15KG                         | Boxes | N/a     | KGs  | Dry     | order:FRG | N/a  | N/a    |
+order=8   | 607826 | OIL FRYING LIQUID 15KG                         | Boxes | N/a     | KGs  | Dry     | order:FRG | N/a  | N/a  |
 
 # oh:10 — not on Key Item Count; build-to = ISE avg × 10; order from SOH + SOO
 oh:10     | 38890  | TB CUP POSTMIX REGULAR 1000EA NEW              | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
@@ -73,14 +73,14 @@ manual=2  | 100482 | GLOVE NITRILE LARGE10X100                      | Boxes | Pa
 manual=2  | 100483 | GLOVE NITRILE XLARGE 10X100                    | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
 manual=1  | 38076  | TOWEL PAPER HAND TORK WHITE 6 ROLLS            | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
 manual=1  | 38078  | TOILET PAPER SMARTONE 12 ROLLS                 | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 12
-manual=1  | 38686  | TOWEL PAPER BLUE AUTOMATIC CENTREFEED 6 ROLLS  | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
 manual=1  | 38464  | FILTER SHEET EVOLUTION LOADED 100EA            | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
 manual=2  | 38542  | BIN LINER 240L H/DUTY 8X25 EA                  | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
 manual=1  | 504245 | SCOURERS SMALL GREEN MAXPAC 30                 | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
 manual=1  | 504372 | WIPING CLOTH BLUE 350EA                        | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
 manual=1  | 505796 | WIPING CLOTH YELLOW                            | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
-manual=0.2 | 505253 | TB BAG MULTIPURPOSE 5000EA                     | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
+manual=0.2| 505253 | TB BAG MULTIPURPOSE 5000EA                     | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
 
+ignore    | 38686  | TOWEL PAPER BLUE AUTOMATIC CENTREFEED 6 ROLLS  | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
 ignore    | 106431 | 260 x 260mm Baking Paper Golden Silidor        | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
 ignore    | 106551 | 4OZ PORTION CUP LID 50EA                       | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
 ignore    | 106251 | PUMP CARAMEL SAUCE MONIN 1EA                   | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |

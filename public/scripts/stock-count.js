@@ -217,29 +217,6 @@ function setStatus(message, kind = '') {
     render();
 }
 
-function showMmxFailurePopup(detailMessage = '') {
-    const prev = document.getElementById('sc-mmx-failure-popup');
-    if (prev) prev.remove();
-    const overlay = document.createElement('div');
-    overlay.id = 'sc-mmx-failure-popup';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(8,10,18,.7);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;';
-    overlay.innerHTML = `
-        <div style="max-width:520px;width:100%;background:#171c2c;border:1px solid rgba(255,255,255,.15);border-radius:16px;padding:20px;color:#eef2ff;box-shadow:0 20px 60px rgba(0,0,0,.4);text-align:center;">
-            <div style="display:flex;justify-content:center;align-items:center;margin-bottom:10px;font-size:30px;line-height:1;" aria-hidden="true">:(</div>
-            <h3 style="margin:6px 0 10px;font-size:22px;line-height:1.2;">I broke</h3>
-            <p style="margin:0 0 10px;font-size:16px;line-height:1.45;">you'll have to try again soon or us the manual build tos.</p>
-            ${detailMessage ? `<p style="margin:0 0 16px;color:#c5ccdf;font-size:13px;line-height:1.4;">${escapeHtml(detailMessage)}</p>` : ''}
-            <button type="button" id="sc-mmx-failure-close" style="background:#f26f4c;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer;">Got it</button>
-        </div>
-    `;
-    document.body.appendChild(overlay);
-    const dismiss = () => overlay.remove();
-    overlay.addEventListener('click', (evt) => {
-        if (evt.target === overlay) dismiss();
-    });
-    document.getElementById('sc-mmx-failure-close')?.addEventListener('click', dismiss);
-}
-
 function getActiveCatalog() {
     if (viewMode === 'recount' && recountCatalog) return recountCatalog;
     return catalog;
@@ -1174,17 +1151,28 @@ async function sendToMmx() {
         }
     } catch (error) {
         setStatus(error.message, 'error');
-        showMmxFailurePopup(error.message);
         render();
         return;
     }
 
     saving = true;
     processing = true;
-    processingStageLabel = 'Preparing MMX';
+    processingStageLabel = 'Checking counts…';
     setStatus('', '');
     render();
     try {
+        const { res: planRes, data: plan } = await fetchJson(apiQuery('/api/stock-count/send-plan'));
+        if (planRes.ok && plan.success && plan.manualOnly) {
+            processingStageLabel = 'Skipping Key Item Count — downloading reports…';
+            render();
+        } else if (planRes.ok && plan.success && plan.needsKeyItemCount) {
+            processingStageLabel = 'Opening Key Item Count in Macromatix…';
+            render();
+        } else {
+            processingStageLabel = 'Downloading reports and placing orders';
+            render();
+        }
+
         const { res, data } = await fetchJson(apiQuery('/api/stock-count/send-to-mmx'), { method: 'POST' });
         if (!res.ok || !data.success) {
             throw new Error(data.error || 'Send to Macromatix failed.');
@@ -1196,7 +1184,10 @@ async function sendToMmx() {
             if (data.orderFailures) {
                 setStatus(`Some scheduled orders could not be filled: ${data.orderFailures}`, 'error');
             } else if (data.keyItemCountSkipped) {
-                setStatus('Manual counts sent — Key Item Count skipped; scheduled orders updated.', 'success');
+                setStatus(
+                    'Manual counts sent — reports downloaded (ISE, on-hand, on-order); scheduled orders updated.',
+                    'success'
+                );
             } else {
                 setStatus('Counts sent — scheduled orders updated in Macromatix.', 'success');
             }
@@ -1227,11 +1218,9 @@ async function sendToMmx() {
                 }
             } catch (recoverError) {
                 setStatus(recoverError.message, 'error');
-                showMmxFailurePopup(recoverError.message);
             }
         } else {
             setStatus(error.message, 'error');
-            showMmxFailurePopup(error.message);
         }
     } finally {
         saving = false;
@@ -1314,7 +1303,6 @@ async function applyMmxCount() {
                 }
             } catch (recoverError) {
                 setStatus(recoverError.message, 'error');
-                showMmxFailurePopup(recoverError.message);
                 saving = false;
                 processing = false;
                 processingComplete = false;
@@ -1323,7 +1311,6 @@ async function applyMmxCount() {
             }
         }
         setStatus(msg, 'error');
-        showMmxFailurePopup(msg);
         saving = false;
         processing = false;
         processingComplete = false;
@@ -1356,7 +1343,6 @@ async function recountMmx() {
         setStatus('', '');
     } catch (error) {
         setStatus(error.message || 'Could not open recount.', 'error');
-        showMmxFailurePopup(error.message || 'Could not open recount.');
     } finally {
         saving = false;
         render();

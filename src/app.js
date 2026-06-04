@@ -77,6 +77,7 @@ const {
     applyStockCountSession,
     cancelStockCountSession,
     runScheduledOrdersOnly,
+    getStockCountSendPlan,
     getStockCountPipelineStatus,
 } = require('./services/stockCountMmxPipeline');
 const {
@@ -1858,6 +1859,21 @@ app.post('/api/stock-count/reopen', async (req, res) => {
         console.error('API: Error reopening stock count:', error);
         const status = /already sent|No stock count draft/i.test(error.message) ? 400 : 500;
         res.status(status).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/stock-count/send-plan', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        const vendorSlug = stockCountVendorFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const plan = await getStockCountSendPlan(store, vendorSlug, {
+            pendingVendorLabels: pendingVendorLabelsForStockCount(req, store),
+        });
+        res.json(plan);
+    } catch (error) {
+        console.error('API: Error reading stock count send plan:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

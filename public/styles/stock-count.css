@@ -1184,6 +1184,9 @@ body.stock-count-page {
 }
 
 .stock-count-progress-shell {
+    --sc-progress-pill: 36%;
+    container-type: inline-size;
+    position: relative;
     width: min(320px, 72vw);
     height: 10px;
     border-radius: 999px;
@@ -1193,11 +1196,15 @@ body.stock-count-page {
 }
 
 .stock-count-progress-bar {
-    width: 42%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: var(--sc-progress-pill);
     height: 100%;
     border-radius: 999px;
     background: linear-gradient(90deg, #7a3eb1, #9b63d6 55%, #7a3eb1);
     animation: stock-count-progress-slide 1.1s ease-in-out infinite;
+    will-change: transform;
 }
 
 .stock-count-processing-card--complete {
@@ -1266,14 +1273,13 @@ body.stock-count-page {
 }
 
 @keyframes stock-count-progress-slide {
-    0% {
-        transform: translateX(-115%);
+    0%,
+    100% {
+        transform: translateX(0);
     }
     50% {
-        transform: translateX(95%);
-    }
-    100% {
-        transform: translateX(-115%);
+        /* Full track: move pill so its trailing edge reaches the shell edge */
+        transform: translateX(calc(100cqi - 100%));
     }
 }
 
@@ -1284,7 +1290,9 @@ body.stock-count-page {
     }
     .stock-count-progress-bar {
         animation: none;
-        transform: translateX(0);
+        position: static;
+        left: auto;
+        transform: none;
         width: 100%;
     }
 }

@@ -1311,11 +1311,9 @@ async function configureAndGenerateReport(page, report, reportNav) {
     const formatText = report.format || 'Excel Data Only';
     const hasEndDate = Boolean(report.endDate);
 
-    // On Hand: dates → format → tree. On Order (start + end): format must be set before date inputs appear.
-    if (hasEndDate) {
-        await setReportFormat(page, formatText);
-        await page.waitForTimeout(500);
-    }
+    // Format before dates — SOH/SOO date inputs are often hidden until format is chosen (especially on Pi/Chromium).
+    await setReportFormat(page, formatText);
+    await page.waitForTimeout(500);
 
     await setStartDate(page, startDate);
 
@@ -1325,11 +1323,6 @@ async function configureAndGenerateReport(page, report, reportNav) {
     }
 
     await waitForDateFieldSettle(page);
-
-    if (!hasEndDate) {
-        await setReportFormat(page, formatText);
-        await page.waitForTimeout(500);
-    }
 
     if (report.scmTreeStoreNumber) {
         await selectScmStoreCheckboxInTree(page, report.scmTreeStoreNumber, report.storeName);

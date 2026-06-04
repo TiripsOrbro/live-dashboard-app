@@ -266,6 +266,7 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
         }
     }
 
+    let cycleSucceeded = false;
     try {
         if (!skipDownload) {
             await ensureReportsForOrders(storeNumber, {
@@ -305,6 +306,7 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
         });
 
         if (options.dryRun) {
+            cycleSucceeded = true;
             return { dryRun: true, dateKey, buildTo, orderPack };
         }
         if (!page) {
@@ -312,12 +314,17 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
         }
 
         const orders = await runVendorOrdersForStore(page, storeNumber, dateKey, orderPack);
+        cycleSucceeded = true;
         return { dateKey, buildTo, orderPack, orders };
     } finally {
-        if (cleanup) {
+        if (cleanup && cycleSucceeded) {
             const { removed } = clearStoreReportFiles(storeNumber, reportsDir);
             log.info(
-                `Build-to cycle: removed ${removed.length} report file(s) from Reports/${storeNumber}/`
+                `Build-to cycle: removed ${removed.length} report file(s) from Reports/${storeNumber}/ after successful run`
+            );
+        } else if (cleanup && !cycleSucceeded) {
+            log.warn(
+                `Build-to cycle failed for store ${storeNumber} — report files left in Reports/${storeNumber}/ for retry`
             );
         }
     }

@@ -32,7 +32,7 @@ function bulkFilesNewestFirst(basenameHint) {
         .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
 }
 
-/** Prefer a bulk export that actually contains rows for the target store(s). */
+/** Prefer a bulk export that contains the target store(s), or a full multi-store SCM flat file. */
 function pickBulkFile(basenameHint, storeNumbers) {
     const files = bulkFilesNewestFirst(basenameHint);
     for (const src of files) {
@@ -41,10 +41,12 @@ function pickBulkFile(basenameHint, storeNumbers) {
         if (detected.matchCount >= 10) return src;
         const textMatch = rowsMatchingStores(grid, storeNumbers);
         for (const store of storeNumbers) {
-            if (textMatch.get(store)?.length) return src;
+            if ((textMatch.get(store) || []).length >= 10) return src;
         }
+        const anyStores = detectStoreColumnIndex(grid, []);
+        if (anyStores.matchCount >= 50 && grid.length >= 200) return src;
     }
-    return files[0] || null;
+    return null;
 }
 
 function main() {
@@ -59,7 +61,9 @@ function main() {
     for (const [basename] of Object.entries(BASENAMES)) {
         const src = pickBulkFile(basename, stores);
         if (!src) {
-            console.warn(`No bulk file matching *${basename}* in ${BULK_DIR}`);
+            console.warn(
+                `No usable *${basename}* bulk export in ${BULK_DIR} (need ~800 rows with store numbers). Run: npm run download-reports -- --store ${stores[0]}`
+            );
             continue;
         }
         const split = splitSpreadsheetByStoreColumn(src, {

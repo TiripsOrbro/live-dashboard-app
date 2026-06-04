@@ -72,7 +72,7 @@ function daysFromNow(n, timeZone = DEFAULT_TZ) {
 }
 
 /**
- * Resolve pipeline date spec: yesterday | tomorrow | lastWeekMonday | daysAgo:N | daysFromNow:N | literal string.
+ * Resolve pipeline date spec: today | yesterday | tomorrow | lastWeekMonday | daysAgo:N | daysFromNow:N | literal string.
  * @param {string} spec
  * @param {{ timeZone?: string, dateOnly?: boolean }} [opts]
  */
@@ -80,6 +80,9 @@ function resolveReportDate(spec, opts = {}) {
     const tz = opts.timeZone || DEFAULT_TZ;
     const fmt = opts.dateOnly ? formatMacromatixDate : formatMacromatixDateTime;
 
+    if (spec === 'today') {
+        return fmt(todayInTimeZone(tz));
+    }
     if (spec === 'yesterday') {
         return fmt(daysAgo(1, tz));
     }

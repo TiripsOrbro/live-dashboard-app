@@ -64,25 +64,66 @@ function ceilOrderQty(value) {
 
 /**
  * Order qty from dashboard stock-count draft + fixed build-to (order=N catalog lines).
+ * When vendorCfg.uncountedBuildTo is set, uncounted non-ignore catalog lines use that
+ * build-to instead of being skipped (counted order=N lines still use their fixed target).
  */
-async function buildOrderManualEntriesFromCounts(storeNumber, vendorCfg, catalog, dateKey) {
+async function buildOrderManualEntriesFromCounts(
+    storeNumber,
+    vendorCfg,
+    catalog,
+    dateKey,
+    options = {}
+) {
     if (!vendorCfg?.orderFromCount || !catalog) return [];
     const counts = await loadManualCountsForStore(storeNumber, dateKey || melbourneDateKey());
+    const coveredByIse = options.coveredByIse || new Set();
+    const uncountedBuildTo = Number(vendorCfg.uncountedBuildTo);
+    const hasUncountedDefault =
+        Number.isFinite(uncountedBuildTo) && uncountedBuildTo > 0;
     const entries = [];
 
     for (const item of catalog.items || []) {
-        if (!item.buildToOrderManual) continue;
+        if (!itemMatchesVendorConfig(item, vendorCfg)) continue;
+        // ignore / manual / oh-only catalog lines
+        if (item.buildToManual && !item.buildToOrderManual) continue;
+
         const code = normalizeItemCode(item.itemCode);
         if (!code) continue;
 
         const countEntry = counts.get(code);
-        const onHandCartons = countEntry
-            ? manualCountToCartons({ columns: countEntry.columns }, item, 1)
-            : 0;
-        const buildTo =
-            item.buildToFixed != null && Number.isFinite(item.buildToFixed) ? item.buildToFixed : 0;
+        let buildTo;
+        let onHandCartons = 0;
+
+        if (item.buildToOrderManual) {
+            onHandCartons = countEntry
+                ? manualCountToCartons({ columns: countEntry.columns }, item, 1)
+                : 0;
+            if (countEntry) {
+                buildTo =
+                    item.buildToFixed != null && Number.isFinite(item.buildToFixed)
+                        ? item.buildToFixed
+                        : 0;
+            } else if (hasUncountedDefault) {
+                buildTo = uncountedBuildTo;
+            } else {
+                buildTo =
+                    item.buildToFixed != null && Number.isFinite(item.buildToFixed)
+                        ? item.buildToFixed
+                        : 0;
+            }
+        } else if (
+            hasUncountedDefault &&
+            !countEntry &&
+            !coveredByIse.has(code) &&
+            item.buildToDays != null
+        ) {
+            buildTo = uncountedBuildTo;
+        } else {
+            continue;
+        }
+
         const orderQty = ceilOrderQty(buildTo - onHandCartons);
-        if (orderQty <= 0 && !countEntry) continue;
+        if (orderQty <= 0 && !countEntry && !hasUncountedDefault) continue;
 
         entries.push({
             catalogName: item.name,
@@ -163,11 +204,17 @@ async function buildOrderLinesByVendorId(storeNumber, options = {}) {
             catalog?.items || [],
             itemMatchesVendorConfig
         );
+        const coveredByIse = new Set(
+            iseEntries
+                .map((entry) => normalizeItemCode(entry.catalogItemCode || entry.iseItemCode))
+                .filter(Boolean)
+        );
         const countEntries = await buildOrderManualEntriesFromCounts(
             storeNumber,
             vendorCfg,
             catalog,
-            dateKey
+            dateKey,
+            { coveredByIse }
         );
         const allReportEntries = (buildTo.lines || [])
             .filter((line) => vendorCodes.has(normalizeItemCode(line.itemCode)))

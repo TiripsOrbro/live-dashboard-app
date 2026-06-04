@@ -8,7 +8,9 @@
       "vendorMatch": "americold",
       "orderClass": "DRY",
       "catalogSlug": "americold",
-      "orderClasses": ["DRY"]
+      "orderClasses": ["DRY"],
+      "orderFromCount": true,
+      "uncountedBuildTo": 10
     },
     {
       "id": "americold-frg",

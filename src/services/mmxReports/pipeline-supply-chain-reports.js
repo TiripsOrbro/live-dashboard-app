@@ -437,6 +437,60 @@ async function reportUsesStoreTree(page) {
     });
 }
 
+/**
+ * SCM Items On Hand / On Order: check one store in the RadTreeView (label > input.rtChk + span.rtIn).
+ * Tree is usually already expanded — no rtPlus expansion loops.
+ */
+async function selectScmStoreCheckboxInTree(page, storeNumber, storeName) {
+    const num = String(storeNumber || '').replace(/\D/g, '').trim();
+    if (!num) throw new Error('SCM store tree: storeNumber is required');
+
+    const waitMs = Number(process.env.MMX_SCM_TREE_WAIT_MS || 12000);
+    const started = Date.now();
+    while (Date.now() - started < waitMs) {
+        if (await storeVisibleInTree(page, num)) break;
+        await page.waitForTimeout(400);
+    }
+
+    await clearAllReportTreeCheckboxes(page);
+
+    const picked = await page.evaluate((w) => {
+        const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(`(^|\\D)${escaped}(\\D|$)`);
+        const tryCheck = (cb, text) => {
+            const host = cb.closest('.rtMid') || cb.closest('.rtLI') || cb.closest('label') || cb;
+            host.scrollIntoView?.({ block: 'center' });
+            if (!cb.checked) cb.click();
+            return text;
+        };
+
+        for (const label of document.querySelectorAll('label')) {
+            const rtIn = label.querySelector('.rtIn');
+            const cb = label.querySelector('input.rtChk, input[type="checkbox"]');
+            if (!cb || !rtIn) continue;
+            const text = (rtIn.textContent || '').replace(/\s+/g, ' ').trim();
+            if (!re.test(text)) continue;
+            return tryCheck(cb, text);
+        }
+        for (const cb of document.querySelectorAll('input.rtChk, input[type="checkbox"]')) {
+            const label = cb.closest('label');
+            const rtIn = label?.querySelector('.rtIn');
+            const text = (rtIn?.textContent || label?.textContent || '').replace(/\s+/g, ' ').trim();
+            if (!re.test(text)) continue;
+            return tryCheck(cb, text);
+        }
+        return null;
+    }, num);
+
+    if (!picked) {
+        throw new Error(
+            `SCM store tree: could not check store ${num}${storeName ? ` (${storeName})` : ''} — is the Stores tree visible?`
+        );
+    }
+    log.info(`SCM store tree: checked "${picked}"`);
+    await page.waitForTimeout(Number(process.env.MMX_SCM_TREE_SELECT_SETTLE_MS || 600));
+}
+
 /** SCM flat reports: store tree loads after dates — expand Area nodes until the store row appears. */
 async function prepareStoreTreeForSelection(page, storeName, storeNumber, timeoutMs = 45000) {
     const num = String(storeNumber || storeName.match(/\b(\d{4})\b/)?.[1] || '').trim();
@@ -1020,8 +1074,9 @@ async function configureAndGenerateReport(page, report, reportNav) {
         await setEndDate(page, endDate);
     }
 
-    // SCM flat exports: no store tree or dropdown — full file, filter/split after download.
-    if (!report.skipStoreSelection && report.storeName) {
+    if (report.scmTreeStoreNumber) {
+        await selectScmStoreCheckboxInTree(page, report.scmTreeStoreNumber, report.storeName);
+    } else if (!report.skipStoreSelection && report.storeName) {
         await selectStore(page, report.storeName, {
             storeNumber: report.storeNumber,
         });

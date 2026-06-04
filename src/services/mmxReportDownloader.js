@@ -41,9 +41,10 @@ function reportsForStore(pipeline, store) {
         return {
             ...report,
             storeNumber: store.storeNumber,
-            // SCM flat: no MMX store tree — filter rows after download (same as bulk+split).
-            skipStoreSelection: scm,
-            storeName: scm ? undefined : label,
+            storeName: label,
+            // SCM: check the store row in RadTreeView (input.rtChk / span.rtIn) before Generate.
+            scmTreeStoreNumber: scm ? store.storeNumber : undefined,
+            skipStoreSelection: !scm,
             storeOptional: false,
             outputBasename: report.outputBasename || DEFAULT_OUTPUT_BASENAMES[report.id] || report.id,
         };
@@ -69,7 +70,15 @@ function supplyChainReportsInRun(pipeline, onlyReportIds) {
 
 function useBulkSupplyChainDownload(stores, onlyReportIds, pipeline) {
     if (process.env.MMX_BULK_SCM === '0') return false;
-    return supplyChainReportsInRun(pipeline, onlyReportIds).length > 0;
+    const scmReports = supplyChainReportsInRun(pipeline, onlyReportIds);
+    if (!scmReports.length) return false;
+    // Single/few stores: check RadTreeView checkbox per store (not bulk split).
+    const minStores = Number(process.env.MMX_BULK_SCM_MIN_STORES || 2);
+    if (stores.length < minStores) {
+        log.info(`SCM per-store tree selection for ${stores.length} store(s)`);
+        return false;
+    }
+    return true;
 }
 
 function bulkSupplyChainReports(pipeline, onlyReportIds) {
@@ -87,10 +96,12 @@ function scmPerStoreFallbackEnabled() {
 }
 
 async function retryScmReportPerStore(page, pipeline, store, report, runSlug, storeDir) {
+    const label = storeSelectorLabel(store);
     const scmReport = {
         ...report,
-        skipStoreSelection: true,
-        storeName: undefined,
+        skipStoreSelection: false,
+        scmTreeStoreNumber: store.storeNumber,
+        storeName: label,
         storeNumber: store.storeNumber,
         outputBasename: report.outputBasename || DEFAULT_OUTPUT_BASENAMES[report.id] || report.id,
     };

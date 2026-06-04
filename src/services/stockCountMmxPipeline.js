@@ -229,6 +229,26 @@ async function runOrdersAfterApply(storeNumber, dateKey, mmx = {}) {
     return runVendorOrdersForStore(page, storeNumber, dateKey, orderPack);
 }
 
+async function resumeScheduledOrdersInNewBrowser(storeNumber, dateKey, options = {}) {
+    acquireMmxResource(`resume scheduled orders (store ${storeNumber})`);
+    let browser;
+    let page;
+    try {
+        ({ browser, page } = await openMacromatixBrowser(options));
+        const orders = await runOrdersAfterApply(storeNumber, dateKey, { page, browser });
+        const orderFailures = formatOrderFailures(orders);
+        return { orders, orderFailures };
+    } finally {
+        await closeBrowserQuietly(browser, 'resume scheduled orders');
+        releaseMmxResource(`resume scheduled orders finished (store ${storeNumber})`);
+    }
+}
+
+function allVendorsMarkedMmxSent(vendorSlugs, sentSlugs) {
+    const sent = new Set(sentSlugs || []);
+    return vendorSlugs.length > 0 && vendorSlugs.every((slug) => sent.has(slug));
+}
+
 /**
  * Open MMX and fill scheduled orders only (skip stock count + optional report download).
  * Downloads reports first when missing or when skipReportDownload is false.
@@ -367,43 +387,66 @@ async function applyStockCountSession(storeNumber, sessionId, options = {}) {
         let session = getSession(storeNumber, sessionId);
         const checkpoint = await getCheckpoint(storeNumber);
         if (!session) {
-            if (checkpoint?.stage === 'applied-orders-pending' && checkpoint.dateKey) {
-                log.info(`Resuming pending scheduled orders for store ${storeNumber} from checkpoint`);
-                acquireMmxResource(`resume scheduled orders (store ${storeNumber})`);
-                let browser;
-                let page;
-                try {
-                    ({ browser, page } = await openMacromatixBrowser(options));
-                    const orders = await runOrdersAfterApply(storeNumber, checkpoint.dateKey, { page, browser });
-                    const orderFailures = formatOrderFailures(orders);
-                    await setCheckpoint(storeNumber, {
-                        stage: 'completed',
-                        resumedFromCheckpoint: true,
-                        ordersCompletedAt: new Date().toISOString(),
-                        lastError: orderFailures,
-                    });
-                    await clearCheckpoint(storeNumber);
-                    return {
-                        success: true,
-                        resumed: true,
-                        storeNumber: String(storeNumber),
-                        dateKey: checkpoint.dateKey,
-                        vendorsSent: checkpoint.vendorSlugs || [],
-                        ordersRan: true,
-                        orders,
-                        orderFailures: orderFailures || null,
-                    };
-                } finally {
-                    await closeBrowserQuietly(browser, 'checkpoint resume orders');
-                    releaseMmxResource(`resume scheduled orders finished (store ${storeNumber})`);
-                }
+            const dateKey = checkpoint?.dateKey || melbourneDateKey();
+            const vendorSlugs =
+                checkpoint?.vendorSlugs?.length > 0
+                    ? checkpoint.vendorSlugs
+                    : await getSubmittedVendorSlugs(storeNumber, dateKey);
+            const sentSlugs = await getMmxSentVendorSlugs(storeNumber, dateKey);
+
+            if (checkpoint?.stage === 'applied-orders-pending' && dateKey) {
+                log.info(
+                    `Store ${storeNumber}: MMX session ended — resuming scheduled orders (count already applied)`
+                );
+                const { orders, orderFailures } = await resumeScheduledOrdersInNewBrowser(
+                    storeNumber,
+                    dateKey,
+                    options
+                );
+                await setCheckpoint(storeNumber, {
+                    stage: 'completed',
+                    resumedFromCheckpoint: true,
+                    dateKey,
+                    vendorSlugs,
+                    ordersCompletedAt: new Date().toISOString(),
+                    lastError: orderFailures,
+                });
+                await clearCheckpoint(storeNumber);
+                return {
+                    success: true,
+                    resumed: true,
+                    alreadyApplied: true,
+                    storeNumber: String(storeNumber),
+                    dateKey,
+                    vendorsSent: vendorSlugs,
+                    ordersRan: true,
+                    orders,
+                    orderFailures: orderFailures || null,
+                };
             }
+
+            if (allVendorsMarkedMmxSent(vendorSlugs, sentSlugs)) {
+                log.info(
+                    `Store ${storeNumber}: count already applied in Macromatix — no further apply needed`
+                );
+                return {
+                    success: true,
+                    alreadyApplied: true,
+                    ordersRan: false,
+                    storeNumber: String(storeNumber),
+                    dateKey,
+                    vendorsSent: vendorSlugs,
+                    orderFailures: null,
+                };
+            }
+
             throw new Error('Macromatix count session expired or not found. Send to MMX again.');
         }
 
         const { page, browser, dateKey, vendorSlugs } = session;
         let orderPipelineResult = null;
         let appliedInMmx = false;
+        let countAlreadyApplied = false;
 
         try {
             await setCheckpoint(storeNumber, {
@@ -414,8 +457,9 @@ async function applyStockCountSession(storeNumber, sessionId, options = {}) {
                 lastError: '',
             });
             const { loadMmxStockCountConfig } = require('./mmxReports/mmx-stock-count');
-            await applyKeyItemCount(page, loadMmxStockCountConfig());
-            appliedInMmx = true;
+            const applyResult = await applyKeyItemCount(page, loadMmxStockCountConfig());
+            appliedInMmx = applyResult.applied || applyResult.alreadyApplied;
+            countAlreadyApplied = Boolean(applyResult.alreadyApplied);
 
             for (const slug of vendorSlugs) {
                 await markMmxSent(storeNumber, slug, dateKey);
@@ -470,6 +514,7 @@ async function applyStockCountSession(storeNumber, sessionId, options = {}) {
             sessionId,
             dateKey,
             vendorsSent: vendorSlugs,
+            alreadyApplied: countAlreadyApplied,
             ordersRan: Boolean(orderPipelineResult),
             orders: orderPipelineResult,
             orderFailures: orderFailures || null,

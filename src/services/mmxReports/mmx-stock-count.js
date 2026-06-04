@@ -1090,6 +1090,20 @@ async function scrapeConfirmCountVariances(page) {
     });
 }
 
+async function isStockCountConfirmScreen(page, cfg) {
+    const applyId = cfg.applyButtonId || DEFAULT_CONFIG.applyButtonId;
+    return page.evaluate((btnId) => {
+        const apply = document.getElementById(btnId);
+        if (apply && apply.offsetParent !== null) return true;
+        const text = (document.body?.innerText || '').replace(/\s+/g, ' ');
+        return /confirm\s+count/i.test(text) || /variance\s+value/i.test(text);
+    }, applyId);
+}
+
+/**
+ * Click Apply on the confirm screen when enabled.
+ * @returns {{ applied: boolean, alreadyApplied: boolean }}
+ */
 async function applyKeyItemCount(page, cfg) {
     const applyId = cfg.applyButtonId;
     if (!applyId) throw new Error('Apply button id not configured.');
@@ -1100,12 +1114,18 @@ async function applyKeyItemCount(page, cfg) {
     if (enabled) {
         log.info(`Applying Key Item Count via #${applyId}`);
         await clickButtonById(page, applyId);
-        return true;
+        return { applied: true, alreadyApplied: false };
     }
     if (await clickButtonByValue(page, 'Apply')) {
         log.info('Applying Key Item Count via Apply button');
-        return true;
+        return { applied: true, alreadyApplied: false };
     }
+
+    if (!(await isStockCountConfirmScreen(page, cfg))) {
+        log.info('Key Item Count already applied in Macromatix — nothing to apply on this screen');
+        return { applied: false, alreadyApplied: true };
+    }
+
     throw new Error('Apply button not enabled on confirm count screen.');
 }
 
@@ -1264,6 +1284,7 @@ module.exports = {
     scrapeConfirmCountVariances,
     clickContinueFromFilledTab,
     applyKeyItemCount,
+    isStockCountConfirmScreen,
     normalizeItemCode,
     MMX_COUNT_SLOT_LABELS,
     catalogColumnMappings,

@@ -1906,7 +1906,9 @@ app.post('/api/stock-count/send-to-mmx/apply', async (req, res) => {
         res.json({ success: true, ...result });
     } catch (error) {
         console.error('API: Error applying stock count in MMX:', error);
-        const status = /session expired|not found|Apply button|Missing reports/i.test(error.message) ? 400 : 500;
+        const status = /session expired|not found|Apply button|Missing reports|already applied/i.test(error.message)
+            ? 400
+            : 500;
         res.status(status).json({ success: false, error: error.message });
     }
 });

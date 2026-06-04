@@ -1178,7 +1178,16 @@ async function applyMmxCount() {
             body: JSON.stringify({ sessionId: mmxSessionId }),
         });
         if (!res.ok || !data.success) {
-            throw new Error(data.error || 'Apply failed.');
+            const msg = data.error || 'Apply failed.';
+            if (/already applied|nothing to apply|session expired/i.test(msg)) {
+                mmxSessionId = '';
+                processing = false;
+                processingComplete = true;
+                setStatus('', '');
+                render();
+                return;
+            }
+            throw new Error(msg);
         }
         mmxSessionId = '';
         processing = false;
@@ -1190,8 +1199,17 @@ async function applyMmxCount() {
         }
         render();
     } catch (error) {
-        setStatus(error.message, 'error');
-        showMmxFailurePopup(error.message);
+        const msg = error.message || '';
+        if (/already applied|nothing to apply/i.test(msg)) {
+            mmxSessionId = '';
+            processing = false;
+            processingComplete = true;
+            setStatus('', '');
+            render();
+            return;
+        }
+        setStatus(msg, 'error');
+        showMmxFailurePopup(msg);
         saving = false;
         processing = false;
         processingComplete = false;

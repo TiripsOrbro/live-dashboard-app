@@ -178,7 +178,8 @@ async function downloadReportsForStores(options = {}) {
                 });
 
                 log.info(
-                    `${report.label || report.id}: split ${split.totalRows} row(s) → ${Object.keys(split.stores).length} store file(s)`
+                    `${report.label || report.id}: split ${split.totalRows} row(s) → ${Object.keys(split.stores).length} store file(s)` +
+                        (split.storeColumnIndex != null ? ` (store column ${split.storeColumnIndex})` : '')
                 );
 
                 for (const [storeNum, info] of Object.entries(split.stores)) {
@@ -189,7 +190,10 @@ async function downloadReportsForStores(options = {}) {
 
                 for (const storeNum of storeNumbers) {
                     if (!split.stores[storeNum]) {
-                        log.warn(`${report.label || report.id}: no rows for store ${storeNum} in bulk export`);
+                        const found = (split.storesDetected || []).join(', ') || 'none';
+                        log.warn(
+                            `${report.label || report.id}: no rows for store ${storeNum} in bulk export (stores in file: ${found})`
+                        );
                     }
                 }
             }

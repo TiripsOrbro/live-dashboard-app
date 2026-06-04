@@ -78,9 +78,13 @@ function parseStockOnHand(filePath, storeNumber) {
     const want = String(storeNumber || '').trim();
     const items = new Map();
 
+    const detected = detectStoreColumnIndex(grid, [want]);
+    const storeCol = detected.matchCount > 0 ? detected.colIndex : 2;
+    const itemCol = storeCol === 2 ? 4 : storeCol + 2;
+
     for (const row of grid) {
-        if (!row || String(row[2] || '').trim() !== want) continue;
-        const itemCode = normalizeItemCode(row[4]);
+        if (!row || storeNumberFromCell(row[storeCol]) !== want) continue;
+        const itemCode = normalizeItemCode(row[itemCol] ?? row[4]);
         if (!itemCode) continue;
         items.set(itemCode, {
             itemCode,
@@ -99,8 +103,11 @@ function parseStockOnOrder(filePath, storeNumber) {
     const want = String(storeNumber || '').trim();
     const items = new Map();
 
+    const detected = detectStoreColumnIndex(grid, [want]);
+    const storeCol = detected.matchCount > 0 ? detected.colIndex : 2;
+
     for (const row of grid) {
-        if (!row || String(row[2] || '').trim() !== want) continue;
+        if (!row || storeNumberFromCell(row[storeCol]) !== want) continue;
         const itemCode = normalizeItemCode(row[7]);
         if (!itemCode) continue;
 
@@ -174,14 +181,60 @@ function onOrderToCartons(onOrderRow, iseUnit, isePackSize, itemCode) {
     return onHandToCartons(onOrderRow, iseUnit, isePackSize, itemCode || onOrderRow?.itemCode);
 }
 
-/** SCM flat exports often include every store — keep only rows for the target store (col 2 = store #). */
+/** Extract a 4-digit store number from a cell ("3808" or "3808 Berwick South"). */
+function storeNumberFromCell(value) {
+    const s = String(value ?? '').trim();
+    if (/^\d{4}$/.test(s)) return s;
+    const m = s.match(/\b(\d{4})\b/);
+    return m ? m[1] : null;
+}
+
+/** Find which column holds store numbers (defaults to col 2 for legacy SCM flat exports). */
+function detectStoreColumnIndex(grid, preferredStores = []) {
+    const want = new Set(preferredStores.map((s) => String(s).trim()).filter(Boolean));
+    const scores = new Map();
+
+    for (const row of grid) {
+        if (!row?.length) continue;
+        for (let c = 0; c < row.length; c++) {
+            const num = storeNumberFromCell(row[c]);
+            if (!num) continue;
+            if (want.size && !want.has(num)) continue;
+            scores.set(c, (scores.get(c) || 0) + 1);
+        }
+    }
+
+    if (scores.size === 0 && want.size) {
+        for (const row of grid) {
+            if (!row?.length) continue;
+            for (let c = 0; c < row.length; c++) {
+                const num = storeNumberFromCell(row[c]);
+                if (num) scores.set(c, (scores.get(c) || 0) + 1);
+            }
+        }
+    }
+
+    let colIndex = 2;
+    let matchCount = 0;
+    for (const [c, n] of scores) {
+        if (n > matchCount) {
+            matchCount = n;
+            colIndex = c;
+        }
+    }
+    return { colIndex, matchCount };
+}
+
+/** SCM flat exports often include every store — keep only rows for the target store. */
 function filterSpreadsheetByStoreColumn(filePath, storeNumber, colIndex = 2) {
     const want = String(storeNumber || '').trim();
     if (!want || !fs.existsSync(filePath)) return { kept: 0, total: 0 };
 
     const { grid, sheetName } = loadGrid(filePath);
     const total = grid.length;
-    const filtered = grid.filter((row) => row && String(row[colIndex] || '').trim() === want);
+    const detected = detectStoreColumnIndex(grid, [want]);
+    const storeCol = detected.matchCount > 0 ? detected.colIndex : colIndex;
+    const filtered = grid.filter((row) => row && storeNumberFromCell(row[storeCol]) === want);
     if (!filtered.length) {
         return { kept: 0, total, skipped: true };
     }
@@ -199,8 +252,27 @@ function filterSpreadsheetByStoreColumn(filePath, storeNumber, colIndex = 2) {
  * Split a multi-store SCM flat export into per-store files under Reports/{storeNumber}/.
  * Returns { stores: { [storeNumber]: { path, kept } }, totalRows }.
  */
+function assignRowToStoreMap(byStore, row, wantSet) {
+    if (wantSet) {
+        for (let c = 0; c < (row?.length || 0); c++) {
+            const store = storeNumberFromCell(row[c]);
+            if (!store || !wantSet.has(store)) continue;
+            if (!byStore.has(store)) byStore.set(store, []);
+            byStore.get(store).push(row);
+            return;
+        }
+        return;
+    }
+    for (let c = 0; c < (row?.length || 0); c++) {
+        const store = storeNumberFromCell(row[c]);
+        if (!store) continue;
+        if (!byStore.has(store)) byStore.set(store, []);
+        byStore.get(store).push(row);
+        return;
+    }
+}
+
 function splitSpreadsheetByStoreColumn(sourcePath, options = {}) {
-    const colIndex = options.colIndex ?? 2;
     const storeNumbers = (options.storeNumbers || []).map((s) => String(s).trim()).filter(Boolean);
     const wantSet = storeNumbers.length ? new Set(storeNumbers) : null;
     const runSlug = String(options.runSlug || '').trim();
@@ -209,18 +281,32 @@ function splitSpreadsheetByStoreColumn(sourcePath, options = {}) {
     const ext = path.extname(sourcePath) || '.xls';
 
     if (!fs.existsSync(sourcePath)) {
-        return { stores: {}, totalRows: 0, skipped: true };
+        return { stores: {}, totalRows: 0, skipped: true, storeColumnIndex: 2, storesDetected: [] };
     }
 
     const { grid, sheetName } = loadGrid(sourcePath);
+    const detected = detectStoreColumnIndex(grid, storeNumbers);
+    const colIndex =
+        detected.matchCount > 0 ? detected.colIndex : Number.isFinite(options.colIndex) ? options.colIndex : 2;
     const byStore = new Map();
 
     for (const row of grid) {
-        const store = String(row?.[colIndex] ?? '').trim();
-        if (!store || !/^\d{4}$/.test(store)) continue;
+        if (!row?.length) continue;
+        const store = storeNumberFromCell(row[colIndex]);
+        if (!store) {
+            assignRowToStoreMap(byStore, row, wantSet);
+            continue;
+        }
         if (wantSet && !wantSet.has(store)) continue;
         if (!byStore.has(store)) byStore.set(store, []);
         byStore.get(store).push(row);
+    }
+
+    if (wantSet && byStore.size === 0) {
+        for (const row of grid) {
+            if (!row?.length) continue;
+            assignRowToStoreMap(byStore, row, wantSet);
+        }
     }
 
     const wb = XLSX.readFile(sourcePath, { cellDates: true });
@@ -236,7 +322,13 @@ function splitSpreadsheetByStoreColumn(sourcePath, options = {}) {
         stores[store] = { path: dest, kept: rows.length };
     }
 
-    return { stores, totalRows: grid.length, sourcePath };
+    return {
+        stores,
+        totalRows: grid.length,
+        sourcePath,
+        storeColumnIndex: colIndex,
+        storesDetected: [...byStore.keys()].sort(),
+    };
 }
 
 module.exports = {
@@ -252,4 +344,6 @@ module.exports = {
     onOrderToCartons,
     filterSpreadsheetByStoreColumn,
     splitSpreadsheetByStoreColumn,
+    storeNumberFromCell,
+    detectStoreColumnIndex,
 };

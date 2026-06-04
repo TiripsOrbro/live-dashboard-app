@@ -747,10 +747,29 @@ async function waitForStoreReportDropdownReady(page, storeName, storeNumber, tim
 
 /** Store Reports → Inventory Special Event uses DropDownListStore (RadCombo). */
 async function selectStoreForStoreReport(page, storeName, opts = {}) {
-    if (opts.waitMs) await page.waitForTimeout(opts.waitMs);
-
     const storeNumber = String(opts.storeNumber || storeName.match(/\b(\d{4})\b/)?.[1] || '').trim();
-    await waitForStoreReportDropdownReady(page, storeName, storeNumber, opts.dropdownReadyTimeoutMs || 90000);
+    const settleMs = Number(opts.waitMs ?? process.env.MMX_REPORT_STORE_SETTLE_MS ?? 2000);
+    if (settleMs > 0) await page.waitForTimeout(settleMs);
+
+    log.info(`Selecting store for store report: ${storeNumber || storeName}`);
+
+    if (storeNumber) {
+        const fromCombo = await selectStoreOnPage(page, storeNumber);
+        if (fromCombo) {
+            log.info(`Store selected (RadCombo): ${fromCombo}`);
+            await page.waitForTimeout(500);
+            return;
+        }
+    }
+
+    if (await reportHasStoreDropdown(page)) {
+        await waitForStoreReportDropdownReady(
+            page,
+            storeName,
+            storeNumber,
+            opts.dropdownReadyTimeoutMs || 20000
+        );
+    }
 
     const fromDropdown = await tryStoreReportDropdown(page, storeNumber, storeName);
     if (fromDropdown) {

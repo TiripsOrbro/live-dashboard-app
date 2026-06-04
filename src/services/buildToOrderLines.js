@@ -6,6 +6,8 @@ const {
     manualCountToCartons,
     finalizeOrderQty,
     orderRoundingDisabled,
+    ensureBuildToReportContext,
+    onOrderCartonsForCatalogItem,
 } = require('./buildToCalculator');
 const { melbourneDateKey } = require('./stockCountState');
 const { getVendorCatalog } = require('./vendorCatalog');
@@ -107,6 +109,7 @@ async function buildOrderManualEntriesFromCounts(
 ) {
     if (!vendorCfg?.orderFromCount || !catalog) return [];
     const counts = await loadManualCountsForStore(storeNumber, dateKey || melbourneDateKey());
+    const reportCtx = ensureBuildToReportContext(storeNumber, options);
     const coveredByIse = options.coveredByIse || new Set();
     const uncountedBuildTo = Number(vendorCfg.uncountedBuildTo);
     const hasUncountedDefault =
@@ -145,7 +148,11 @@ async function buildOrderManualEntriesFromCounts(
             continue;
         }
 
-        const orderQty = finalizeOrderQty(buildTo - onHandCartons, options);
+        const onOrderCartons =
+            item.buildToOrderManual && reportCtx
+                ? onOrderCartonsForCatalogItem(code, item, reportCtx)
+                : 0;
+        const orderQty = finalizeOrderQty(buildTo - onHandCartons - onOrderCartons, options);
         if (orderQty <= 0 && !countEntry) continue;
 
         entries.push({
@@ -156,6 +163,7 @@ async function buildOrderManualEntriesFromCounts(
             iseItemCode: code,
             matchScore: 100,
             buildToSource: hasBuildToRule ? 'count-manual' : 'count-default',
+            onOrderCartons,
         });
     }
 

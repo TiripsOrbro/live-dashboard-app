@@ -224,6 +224,62 @@ function resolveOnOrderCartons(onOrderReport, itemCode, iseUnit, isePack) {
     };
 }
 
+function findIseUsageForItemCode(itemCode, usage) {
+    if (!usage) return null;
+    const target = normalizeItemCode(itemCode);
+    for (const key of allLookupKeys(itemCode)) {
+        if (usage.has(key)) return usage.get(key);
+    }
+    for (const [reportItemCode, ise] of usage.entries()) {
+        const canon = canonicalItemCode(reportItemCode) || normalizeItemCode(reportItemCode);
+        if (canon === target) return ise;
+        for (const key of allLookupKeys(reportItemCode)) {
+            if (normalizeItemCode(key) === target) return ise;
+        }
+    }
+    return null;
+}
+
+/** Lazy-load SOO (+ ISE for units) for count-driven order lines (manual=, order=). */
+function ensureBuildToReportContext(storeNumber, options = {}) {
+    if (options._buildToReportCtx !== undefined) return options._buildToReportCtx;
+    try {
+        const files = resolveStoreReports(storeNumber, options.reportsDir || REPORTS_DIR);
+        if (!files.stockOnOrder) {
+            options._buildToReportCtx = null;
+            return null;
+        }
+        options._buildToReportCtx = {
+            onOrderReport: parseStockOnOrder(files.stockOnOrder, storeNumber),
+            usage: files.inventorySpecialEvent
+                ? parseInventorySpecialEvent(files.inventorySpecialEvent)
+                : null,
+        };
+    } catch {
+        options._buildToReportCtx = null;
+    }
+    return options._buildToReportCtx;
+}
+
+/** On-order cartons from stock-on-order report (same rules as ISE build-to lines). */
+function onOrderCartonsForCatalogItem(itemCode, catalogItem, ctx) {
+    if (!ctx?.onOrderReport) return 0;
+    const ise = findIseUsageForItemCode(itemCode, ctx.usage);
+    const iseUnit = ise?.unit || '';
+    let isePack = ise?.packSize || packSizeFromUnit(iseUnit);
+    if (!Number.isFinite(isePack) || isePack <= 0) {
+        const inner = Number(catalogItem?.innerPerCarton);
+        isePack = Number.isFinite(inner) && inner > 0 ? inner : 0;
+    }
+    const keys = [...new Set([...allLookupKeys(itemCode), normalizeItemCode(itemCode)].filter(Boolean))];
+    for (const key of keys) {
+        const { onOrderCartons } = resolveOnOrderCartons(ctx.onOrderReport, key, iseUnit, isePack);
+        if (onOrderCartons > 0) return onOrderCartons;
+    }
+    return resolveOnOrderCartons(ctx.onOrderReport, normalizeItemCode(itemCode), iseUnit, isePack)
+        .onOrderCartons;
+}
+
 async function calculateBuildToOrders(storeNumber, options = {}) {
     const reportsRoot = options.reportsDir || REPORTS_DIR;
     const dateKey = options.dateKey || melbourneDateKey();
@@ -387,6 +443,8 @@ module.exports = {
     catalogRuleForItem,
     buildToDaysForItem,
     buildToTarget,
+    ensureBuildToReportContext,
+    onOrderCartonsForCatalogItem,
     BUILD_TO_13_DAY_ITEM_CODES,
     DEFAULT_BUILD_TO_DAYS,
     EXTENDED_BUILD_TO_DAYS,

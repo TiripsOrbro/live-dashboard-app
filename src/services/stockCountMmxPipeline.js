@@ -182,18 +182,26 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
     const { REPORTS_DIR } = require('./buildToCalculator');
     const reportsDir = options.reportsDir || REPORTS_DIR;
     const { ready, files } = reportsReadyForStore(storeNumber, reportsDir);
-    if (ready) return;
+    if (ready && !options.forceDownload) return;
 
     const downloadOpts = { storeNumber, reportsDir: options.reportsDir };
     if (options.page) {
-        log.info(`Reports missing for store ${storeNumber} — downloading via current MMX session`);
+        log.info(
+            options.forceDownload
+                ? `Re-downloading reports for store ${storeNumber} (current MMX session)`
+                : `Reports missing for store ${storeNumber} — downloading via current MMX session`
+        );
         await downloadReportsForStores({
             ...downloadOpts,
             page: options.page,
             browser: options.browser || null,
         });
     } else {
-        log.info(`Reports missing for store ${storeNumber} — downloading in a separate browser pass`);
+        log.info(
+            options.forceDownload
+                ? `Re-downloading reports for store ${storeNumber}`
+                : `Reports missing for store ${storeNumber} — downloading in a separate browser pass`
+        );
         let browser;
         let page;
         try {
@@ -267,7 +275,10 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
             const shouldDownload = !options.skipReportDownload || !reportsReady;
 
             if (shouldDownload) {
-                await ensureReportsForOrders(storeNumber, options);
+                await ensureReportsForOrders(storeNumber, {
+                    ...options,
+                    forceDownload: !options.skipReportDownload,
+                });
             } else if (!reportsReady) {
                 log.warn(
                     `Reports incomplete for store ${storeNumber} — using existing data; order quantities may be incomplete`
@@ -541,5 +552,6 @@ module.exports = {
     cancelStockCountSession,
     sendStockCountToMmx,
     runScheduledOrdersOnly,
+    ensureReportsForOrders,
     shouldRunOrderPipeline,
 };

@@ -16,6 +16,8 @@
     "report-download-scheduler": "node scripts/run-report-download-scheduler.js",
     "build-to-order": "node scripts/build-to-order.js",
     "verify-mmx-count": "node scripts/verify-mmx-key-item-count.js",
+    "verify-mmx-session": "node scripts/verify-mmx-session.js",
+    "diagnose-mmx-env": "node scripts/diagnose-mmx-env.js",
     "fill-orders": "node scripts/fill-scheduled-orders.js",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:restart": "pm2 restart dashboard",

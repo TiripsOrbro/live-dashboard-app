@@ -1344,6 +1344,37 @@ async function fillInputValue(page, selector, value) {
 
 const LOGIN_GOTO_OPTS = { waitUntil: 'domcontentloaded', timeout: 45000 };
 
+async function readMacromatixLoginError(page) {
+    return page
+        .evaluate(() => {
+            const el = document.querySelector(
+                '.validation-summary-errors, #FailureText, .failureNotification, span[style*="color: red"]'
+            );
+            return el ? String(el.textContent || '').trim() : '';
+        })
+        .catch(() => '');
+}
+
+/** True when the page is the Macromatix logon form (not an authenticated screen). */
+async function isMacromatixLoginPage(page) {
+    const url = page.url();
+    if (/MMS_Logon\.aspx/i.test(url)) return true;
+    return Boolean(await page.$('#Login_UserName'));
+}
+
+/**
+ * Throw if the browser was sent back to the logon page (bad credentials or expired session).
+ */
+async function assertMacromatixAuthenticated(page, context = 'Macromatix') {
+    if (!(await isMacromatixLoginPage(page))) return;
+    const loginError = await readMacromatixLoginError(page);
+    const hint =
+        'Check SCRAPER_USERNAME / SCRAPER_PASSWORD (or SCRAPER_CREDENTIALS_ENCRYPTED) in .env.production on the server.';
+    throw new Error(
+        `${context}: not logged in${loginError ? ` — ${loginError}` : ''}. ${hint}`
+    );
+}
+
 /** Log in on a fresh page (each isolated context needs its own session). */
 async function loginPage(page, username, password) {
     console.log('[Macromatix] Navigating to login...');
@@ -1355,9 +1386,23 @@ async function loginPage(page, username, password) {
     const loginButton = await page.$('input[type="submit"]');
     if (!loginButton) throw new Error('Login button not found');
     await Promise.all([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }),
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {}),
         loginButton.click(),
     ]);
+    await page
+        .waitForFunction(
+            () =>
+                !/MMS_Logon\.aspx/i.test(location.pathname) &&
+                !document.querySelector('#Login_UserName'),
+            { timeout: 20000 }
+        )
+        .catch(() => {});
+    if (await isMacromatixLoginPage(page)) {
+        const loginError = await readMacromatixLoginError(page);
+        throw new Error(
+            loginError || 'Macromatix login failed. Check SCRAPER_USERNAME and SCRAPER_PASSWORD in .env.production.'
+        );
+    }
     console.log('[Macromatix] Logged in');
 }
 
@@ -1412,7 +1457,7 @@ async function verifyMacromatixLogin(username, password) {
     }
 }
 
-/** Resolve MMX credentials: per-dashboard-user file, else global env. */
+/** Resolve MMX credentials for browser automation (reports, stock count, scraper). */
 function resolveMacromatixCredentials(options = {}) {
     if (options.username != null && options.password != null) {
         return {
@@ -1420,11 +1465,24 @@ function resolveMacromatixCredentials(options = {}) {
             password: String(options.password || ''),
         };
     }
+    const usePerUser = /^(1|true|yes|on)$/i.test(
+        String(process.env.MMX_USE_PER_USER_CREDENTIALS ?? '').trim()
+    );
     const dashUser = String(options.dashboardUsername || '').trim();
-    if (dashUser) {
+    if (usePerUser && dashUser) {
         const { readMmxCredentialsForUser } = require('./mmxUserCredentials');
         const stored = readMmxCredentialsForUser(dashUser);
-        if (stored?.username && stored?.password) return stored;
+        if (stored?.username && stored?.password) {
+            console.log(`[Macromatix] Using per-user credentials for dashboard user "${dashUser}"`);
+            return stored;
+        }
+    } else if (dashUser) {
+        const { hasMmxCredentialsForUser } = require('./mmxUserCredentials');
+        if (hasMmxCredentialsForUser(dashUser)) {
+            console.log(
+                `[Macromatix] Ignoring per-user credentials for "${dashUser}" — using global SCRAPER_* (set MMX_USE_PER_USER_CREDENTIALS=1 to opt in)`
+            );
+        }
     }
     return getMacromatixCredentials();
 }
@@ -1721,6 +1779,8 @@ module.exports.openMacromatixBrowser = openMacromatixBrowser;
 module.exports.verifyMacromatixLogin = verifyMacromatixLogin;
 module.exports.resolveMacromatixCredentials = resolveMacromatixCredentials;
 module.exports.loginPage = loginPage;
+module.exports.assertMacromatixAuthenticated = assertMacromatixAuthenticated;
+module.exports.isMacromatixLoginPage = isMacromatixLoginPage;
 module.exports.closeBrowserQuietly = closeBrowserQuietly;
 module.exports.probePendingOrdersForStores = probePendingOrdersForStores;
 module.exports.selectStoreOnPage = selectStoreOnPage;

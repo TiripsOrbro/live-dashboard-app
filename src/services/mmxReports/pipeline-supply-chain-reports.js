@@ -3,13 +3,14 @@ const { withPageContextRetry } = require('./mmx-context-retry');
 const { setReportStartDate, setReportEndDate } = require('./mmx-rad-date-picker');
 const { resolveReportDate } = require('./util-dates');
 const { getStoreConfig } = require('../storeList');
-const { selectStoreOnPage } = require('../macromatixScraper');
+const { selectStoreOnPage, assertMacromatixAuthenticated } = require('../macromatixScraper');
 const log = require('./util-logging');
 
 async function openReportSelectionPage(page, reportNav, navTimeoutMs) {
     log.info(`Opening Report Selection: ${reportNav.url}`);
     await page.goto(reportNav.url, { ...GOTO_OPTS, timeout: navTimeoutMs });
     await page.waitForTimeout(reportNav.waitAfterNavigateMs || 2000);
+    await assertMacromatixAuthenticated(page, 'Report Selection');
 }
 
 async function setGroupDropdown(page, groupName) {

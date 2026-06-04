@@ -18,6 +18,10 @@ process.env.SCRAPER_HEADLESS = 'true';
     const u = Boolean(String(process.env.SCRAPER_USERNAME || '').trim());
     const p = Boolean(String(process.env.SCRAPER_PASSWORD || '').trim());
     console.log(`[Env] Macromatix: SCRAPER_USERNAME ${u ? 'set' : 'MISSING'}, SCRAPER_PASSWORD ${p ? 'set' : 'MISSING'}`);
+    const perUser = /^(1|true|yes|on)$/i.test(String(process.env.MMX_USE_PER_USER_CREDENTIALS ?? '').trim());
+    console.log(
+        `[Env] Macromatix automation: ${perUser ? 'per-user files when present' : 'global SCRAPER_* only (data/mmx-users/ ignored)'}`
+    );
 })();
 
 const scrapeData = require('./services/scraper');
@@ -1859,10 +1863,8 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
         if (!store || !assertStoreAccess(req, res, store)) return;
 
         console.log(`[StockCount] Send to MMX (prepare) — store ${store} vendor ${vendorSlug}`);
-        const actor = req.dashboardUser || getRequestUser(req);
         const result = await prepareStockCountForMmx(store, vendorSlug, {
             pendingVendorLabels: pendingVendorLabelsForStockCount(req, store),
-            dashboardUsername: actor?.username || '',
         });
         res.json({ success: true, ...result });
     } catch (error) {
@@ -1899,10 +1901,7 @@ app.post('/api/stock-count/send-to-mmx/apply', async (req, res) => {
         }
 
         console.log(`[StockCount] Apply MMX count — store ${store} session ${sessionId}`);
-        const actor = req.dashboardUser || getRequestUser(req);
-        const result = await applyStockCountSession(store, sessionId, {
-            dashboardUsername: actor?.username || '',
-        });
+        const result = await applyStockCountSession(store, sessionId, {});
         res.json({ success: true, ...result });
     } catch (error) {
         console.error('API: Error applying stock count in MMX:', error);

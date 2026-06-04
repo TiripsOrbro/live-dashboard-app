@@ -402,18 +402,35 @@ async function prepareBulkScmStoreScope(page) {
     await page.waitForTimeout(Number(process.env.MMX_REPORT_TREE_CLEAR_SETTLE_MS || 500));
 }
 
+function storeVisibleInTreeDocument(storeNumber) {
+    const want = String(storeNumber || '').replace(/\D/g, '');
+    if (!want) return false;
+    const re = new RegExp(`(^|\\D)${want}(\\D|$)`);
+    for (const rtIn of document.querySelectorAll('.rtIn')) {
+        const text = (rtIn.textContent || '').replace(/\s+/g, ' ');
+        if (re.test(text)) return true;
+    }
+    for (const cb of document.querySelectorAll('input[type="checkbox"]')) {
+        const row = cb.closest('tr, div, li, span, label') || cb.parentElement;
+        const text = (row?.textContent || '').replace(/\s+/g, ' ');
+        if (re.test(text)) return true;
+    }
+    return false;
+}
+
 async function storeVisibleInTree(page, storeNumber) {
     const want = String(storeNumber || '').replace(/\D/g, '');
     if (!want) return false;
-    return page.evaluate((w) => {
-        const re = new RegExp(`(^|\\D)${w}(\\D|$)`);
-        for (const cb of document.querySelectorAll('input[type="checkbox"]')) {
-            const row = cb.closest('tr, div, li, span, label') || cb.parentElement;
-            const text = (row?.textContent || '').replace(/\s+/g, ' ');
-            if (re.test(text)) return true;
+    if (await page.mainFrame().evaluate(storeVisibleInTreeDocument, want)) return true;
+    for (const frame of page.frames()) {
+        if (frame === page.mainFrame()) continue;
+        try {
+            if (await frame.evaluate(storeVisibleInTreeDocument, want)) return true;
+        } catch (e) {
+            /* ignore */
         }
-        return false;
-    }, want);
+    }
+    return false;
 }
 
 async function reportHasStoreDropdown(page) {
@@ -437,24 +454,133 @@ async function reportUsesStoreTree(page) {
     });
 }
 
-/**
- * SCM Items On Hand / On Order: check one store in the RadTreeView (label > input.rtChk + span.rtIn).
- * Tree is usually already expanded — no rtPlus expansion loops.
- */
-async function selectScmStoreCheckboxInTree(page, storeNumber, storeName) {
-    const num = String(storeNumber || '').replace(/\D/g, '').trim();
-    if (!num) throw new Error('SCM store tree: storeNumber is required');
+function collectScmStoreTreeSnapshot() {
+    const labels = [];
+    const seen = new Set();
+    const add = (text, checked) => {
+        const t = String(text || '').replace(/\s+/g, ' ').trim();
+        if (!t || seen.has(t)) return;
+        seen.add(t);
+        labels.push({ text: t, checked: Boolean(checked) });
+    };
 
-    const waitMs = Number(process.env.MMX_SCM_TREE_WAIT_MS || 12000);
-    const started = Date.now();
-    while (Date.now() - started < waitMs) {
-        if (await storeVisibleInTree(page, num)) break;
-        await page.waitForTimeout(400);
+    for (const label of document.querySelectorAll('label')) {
+        const rtIn = label.querySelector('.rtIn');
+        const cb = label.querySelector('input.rtChk, input[type="checkbox"]');
+        if (rtIn) add(rtIn.textContent, cb?.checked);
+    }
+    for (const mid of document.querySelectorAll('.rtMid')) {
+        const rtIn = mid.querySelector('.rtIn');
+        const cb = mid.querySelector('input.rtChk, input[type="checkbox"]');
+        if (rtIn) add(rtIn.textContent, cb?.checked);
     }
 
-    await clearAllReportTreeCheckboxes(page);
+    return {
+        labels,
+        rtPlus: document.querySelectorAll('.rtPlus').length,
+        rtMinus: document.querySelectorAll('.rtMinus').length,
+        hasRadTree: Boolean(document.querySelector('.RadTreeView')),
+    };
+}
 
-    const picked = await page.evaluate((w) => {
+/** Snapshot store rows in the SCM RadTreeView (for debug logging). */
+async function listScmStoreTreeLabels(page) {
+    const collect = (frame) => frame.evaluate(collectScmStoreTreeSnapshot);
+
+    let best = await collect(page.mainFrame());
+    for (const frame of page.frames()) {
+        if (frame === page.mainFrame()) continue;
+        try {
+            const snap = await collect(frame);
+            if (snap.labels.length > best.labels.length) best = snap;
+        } catch (e) {
+            /* cross-origin frame */
+        }
+    }
+    return best;
+}
+
+async function waitForScmStoreTreeAfterDates(page) {
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 25000 }).catch(() => {});
+    const settleMs = Number(process.env.MMX_SCM_TREE_AFTER_DATE_MS || 5000);
+    await page.waitForTimeout(settleMs);
+}
+
+async function expandAreaNodeInTree(page, areaNeedle) {
+    const area = String(areaNeedle || 'area 22').trim().toLowerCase();
+    if (!area) return;
+    await page.evaluate((needle) => {
+        for (const mid of document.querySelectorAll('.rtMid')) {
+            const text = (mid.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            if (!text.includes(needle)) continue;
+            const sp = mid.querySelector('.rtSp') || mid.querySelector('.rtPlus, .rtMinus');
+            if (sp) {
+                try {
+                    sp.click();
+                } catch (e) {
+                    /* ignore */
+                }
+            }
+            const rtIn = mid.querySelector('.rtIn');
+            if (rtIn) {
+                try {
+                    rtIn.click();
+                } catch (e) {
+                    /* ignore */
+                }
+            }
+            break;
+        }
+    }, area);
+    await page.waitForTimeout(800);
+}
+
+async function waitUntilStoreVisibleInTree(page, storeNumber, timeoutMs) {
+    const num = String(storeNumber || '').replace(/\D/g, '').trim();
+    const cfg = getStoreConfig(num) || {};
+    const areaNeedle = String(cfg.area || 'area 22').trim();
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+        if (await storeVisibleInTree(page, num)) return true;
+        await expandAllRtSpNodes(page);
+        await expandFullReportStoreTree(page);
+        await expandAreaNodeInTree(page, areaNeedle);
+        await page.waitForTimeout(500);
+    }
+    return storeVisibleInTree(page, num);
+}
+
+/** Uncheck only store rows (4-digit .rtIn), not parent area/market nodes. */
+async function clearStoreCheckboxesInTree(page) {
+    const cleared = await page.evaluate(() => {
+        let count = 0;
+        const uncheck = (cb, text) => {
+            if (!cb?.checked || !/\b\d{4}\b/.test(text)) return;
+            cb.click();
+            count++;
+        };
+        for (const label of document.querySelectorAll('label')) {
+            const rtIn = label.querySelector('.rtIn');
+            const cb = label.querySelector('input.rtChk, input[type="checkbox"]');
+            if (!rtIn || !cb) continue;
+            uncheck(cb, (rtIn.textContent || '').replace(/\s+/g, ' ').trim());
+        }
+        for (const mid of document.querySelectorAll('.rtMid')) {
+            const rtIn = mid.querySelector('.rtIn');
+            const cb = mid.querySelector('input.rtChk, input[type="checkbox"]');
+            if (!rtIn || !cb) continue;
+            uncheck(cb, (rtIn.textContent || '').replace(/\s+/g, ' ').trim());
+        }
+        return count;
+    });
+    if (cleared > 0) {
+        log.info(`SCM store tree: cleared ${cleared} checked store row(s)`);
+    }
+    await page.waitForTimeout(300);
+}
+
+async function checkStoreCheckboxInTreeFrame(frame, storeNumber) {
+    return frame.evaluate((w) => {
         const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const re = new RegExp(`(^|\\D)${escaped}(\\D|$)`);
         const tryCheck = (cb, text) => {
@@ -464,6 +590,14 @@ async function selectScmStoreCheckboxInTree(page, storeNumber, storeName) {
             return text;
         };
 
+        for (const mid of document.querySelectorAll('.rtMid')) {
+            const rtIn = mid.querySelector('.rtIn');
+            const cb = mid.querySelector('input.rtChk, input[type="checkbox"]');
+            if (!cb || !rtIn) continue;
+            const text = (rtIn.textContent || '').replace(/\s+/g, ' ').trim();
+            if (!re.test(text)) continue;
+            return tryCheck(cb, text);
+        }
         for (const label of document.querySelectorAll('label')) {
             const rtIn = label.querySelector('.rtIn');
             const cb = label.querySelector('input.rtChk, input[type="checkbox"]');
@@ -480,9 +614,59 @@ async function selectScmStoreCheckboxInTree(page, storeNumber, storeName) {
             return tryCheck(cb, text);
         }
         return null;
-    }, num);
+    }, storeNumber);
+}
 
+async function checkStoreCheckboxInTree(page, storeNumber) {
+    let picked = await checkStoreCheckboxInTreeFrame(page.mainFrame(), storeNumber);
+    if (picked) return picked;
+    for (const frame of page.frames()) {
+        if (frame === page.mainFrame()) continue;
+        try {
+            picked = await checkStoreCheckboxInTreeFrame(frame, storeNumber);
+            if (picked) return picked;
+        } catch (e) {
+            /* ignore */
+        }
+    }
+    return null;
+}
+
+/**
+ * SCM Items On Hand / On Order: check one store in the RadTreeView (label > input.rtChk + span.rtIn).
+ */
+async function selectScmStoreCheckboxInTree(page, storeNumber, storeName) {
+    const num = String(storeNumber || '').replace(/\D/g, '').trim();
+    if (!num) throw new Error('SCM store tree: storeNumber is required');
+
+    await waitForScmStoreTreeAfterDates(page);
+
+    // Parent nodes (All / Market / Area) often stay checked and hide other stores — clear first.
+    await clearScmTreeSelectedValuesLink(page);
+    await clearAllReportTreeCheckboxes(page);
+    await expandAllRtSpNodes(page);
+    await expandAreaNodeInTree(page, String(getStoreConfig(num)?.area || 'area 22'));
+    await page.waitForTimeout(Number(process.env.MMX_SCM_TREE_AFTER_CLEAR_MS || 2000));
+
+    const waitMs = Number(process.env.MMX_SCM_TREE_WAIT_MS || 30000);
+    const visible = await waitUntilStoreVisibleInTree(page, num, waitMs);
+    if (!visible) {
+        log.warn(`SCM store tree: store ${num} not visible after ${Math.round(waitMs / 1000)}s — trying checkbox anyway`);
+    }
+
+    await clearStoreCheckboxesInTree(page);
+
+    const picked = await checkStoreCheckboxInTree(page, num);
     if (!picked) {
+        const snap = await listScmStoreTreeLabels(page);
+        const sample = snap.labels
+            .slice(0, 15)
+            .map((r) => `${r.checked ? '[x]' : '[ ]'} ${r.text}`)
+            .join('; ');
+        log.warn(
+            `SCM store tree snapshot: ${snap.labels.length} label(s), rtPlus=${snap.rtPlus}, rtMinus=${snap.rtMinus}, radTree=${snap.hasRadTree}`
+        );
+        if (sample) log.warn(`SCM store tree sample: ${sample}`);
         throw new Error(
             `SCM store tree: could not check store ${num}${storeName ? ` (${storeName})` : ''} — is the Stores tree visible?`
         );
@@ -911,22 +1095,77 @@ async function selectStoreForStoreReport(page, storeName, opts = {}) {
 
 /** Uncheck every report tree checkbox (stores, areas, markets) so bulk SCM is not area-filtered. */
 async function clearAllReportTreeCheckboxes(page) {
-    const cleared = await page.evaluate(() => {
-        let count = 0;
-        const root = document.querySelector('.RadTreeView') || document.body;
-        for (const cb of root.querySelectorAll('input[type="checkbox"]')) {
-            if (cb.checked) {
-                cb.click();
-                count++;
+    let total = 0;
+    for (let pass = 0; pass < 12; pass++) {
+        const cleared = await page.evaluate(() => {
+            let count = 0;
+            const root = document.querySelector('.RadTreeView') || document.body;
+            for (const cb of root.querySelectorAll('input[type="checkbox"]')) {
+                if (cb.checked) {
+                    cb.click();
+                    count++;
+                }
             }
-        }
-        return count;
-    });
-    if (cleared > 0) {
-        log.info(`Cleared ${cleared} report tree checkbox(es) for bulk export`);
+            return count;
+        });
+        total += cleared;
+        if (!cleared) break;
+        await page.waitForTimeout(250);
+    }
+    if (total > 0) {
+        log.info(`Cleared ${total} report tree checkbox(es)`);
     }
     const settleMs = Number(process.env.MMX_REPORT_TREE_CLEAR_SETTLE_MS || 500);
     await page.waitForTimeout(settleMs);
+}
+
+async function expandAllRtSpNodes(page) {
+    const maxRounds = Number(process.env.MMX_REPORT_TREE_EXPAND_ROUNDS || 20);
+    for (let round = 0; round < maxRounds; round++) {
+        const clicked = await page.evaluate(() => {
+            let count = 0;
+            for (const mid of document.querySelectorAll('.rtMid')) {
+                const text = (mid.textContent || '').replace(/\s+/g, ' ').trim();
+                if (/\b\d{4}\b/.test(text)) continue;
+                const sp = mid.querySelector('.rtSp') || mid.querySelector('.rtPlus');
+                if (sp) {
+                    try {
+                        sp.click();
+                        count++;
+                    } catch (e) {
+                        /* ignore */
+                    }
+                }
+            }
+            for (const plus of document.querySelectorAll('.rtPlus')) {
+                try {
+                    plus.click();
+                    count++;
+                } catch (e) {
+                    /* ignore */
+                }
+            }
+            return count;
+        });
+        if (!clicked) break;
+        await page.waitForTimeout(350);
+    }
+}
+
+async function clearScmTreeSelectedValuesLink(page) {
+    await page.evaluate(() => {
+        for (const el of document.querySelectorAll('a, span, button')) {
+            const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+            if (/selected values/i.test(t)) {
+                try {
+                    el.click();
+                } catch (e) {
+                    /* ignore */
+                }
+            }
+        }
+    });
+    await page.waitForTimeout(500);
 }
 
 async function clearStoreTreeSelections(page) {
@@ -1114,6 +1353,9 @@ module.exports = {
     setEndDate,
     selectStore,
     selectStoreForStoreReport,
+    selectScmStoreCheckboxInTree,
+    listScmStoreTreeLabels,
+    waitForScmStoreTreeAfterDates,
     clickGenerate,
     configureAndGenerateReport,
     runSupplyChainReport,

@@ -10,8 +10,7 @@
  *   npm run fill-orders -- 3811 --skip-report-download   (use files already in Reports/)
  */
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
-require('dotenv').config({ path: path.join(__dirname, '../.env.production'), override: true });
+require('../src/loadEnv').loadEnv();
 
 const { runScheduledOrdersOnly, ensureReportsForOrders } = require('../src/services/stockCountMmxPipeline');
 const { buildOrderLinesByVendorId } = require('../src/services/buildToOrderLines');

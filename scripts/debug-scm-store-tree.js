@@ -8,8 +8,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
-require('dotenv').config({ path: path.join(__dirname, '../.env.production'), override: true });
+require('../src/loadEnv').loadEnv();
 
 const { openMacromatixBrowser, closeBrowserQuietly } = require('../src/services/macromatixScraper');
 const { loadPipelineConfig } = require('../src/services/mmxReportDownloader');

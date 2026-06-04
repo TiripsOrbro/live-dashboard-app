@@ -34,11 +34,11 @@ function loadEnvFile(name) {
     return out;
 }
 
-// .env.production overrides .env (same precedence as src/app.js).
+// AshDash / PM2: .env.production only — put Macromatix creds and Pi settings there, not in .env.
 const env = {
-    ...loadEnvFile('.env'),
     ...loadEnvFile('.env.production'),
     NODE_ENV: 'production',
+    DASHBOARD_ENV: 'production',
 };
 
 module.exports = {

@@ -62,8 +62,8 @@ function main() {
     const baseEnv = parseEnvFile('.env');
     const prodEnv = parseEnvFile('.env.production');
 
-    require('dotenv').config({ path: path.join(ROOT, '.env') });
-    require('dotenv').config({ path: path.join(ROOT, '.env.production'), override: true });
+    const { loadEnv } = require('../src/loadEnv');
+    const loadResult = loadEnv({ root: ROOT });
 
     const {
         resolveMacromatixCredentials,
@@ -79,7 +79,12 @@ function main() {
 
     const enc = Boolean(String(process.env.SCRAPER_CREDENTIALS_ENCRYPTED || '').trim());
     const out = {
-        note: '.env.production overrides .env for the same variable name.',
+        loadMode: loadResult.mode,
+        loadedFiles: loadResult.loaded,
+        note:
+            loadResult.mode === 'production-only'
+                ? 'DASHBOARD_ENV=production — only .env.production is loaded.'
+                : '.env.production overrides .env for the same variable name.',
         files: {
             '.env': {
                 exists: baseEnv.exists,

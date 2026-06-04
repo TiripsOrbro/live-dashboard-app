@@ -2,9 +2,8 @@ const express = require('express');
 const crypto = require('crypto');
 const fs = require('fs').promises;
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
-/* Production wins over base .env (dotenv does not override by default, so empty SCRAPER_* in .env would block .env.production). */
-require('dotenv').config({ path: path.join(__dirname, '../.env.production'), override: true });
+const { loadEnv } = require('./loadEnv');
+loadEnv();
 /* Force background scraping to stay headless for sales + upselling. */
 process.env.SCRAPER_HEADLESS = 'true';
 

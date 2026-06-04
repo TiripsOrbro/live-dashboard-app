@@ -17,8 +17,7 @@
  * Output: Reports/{storeNumber}/ e.g. Reports/3811/20260530-1430-stock-on-hand.xls
  */
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../.env') });
-require('dotenv').config({ path: path.join(__dirname, '../.env.production'), override: true });
+require('../src/loadEnv').loadEnv();
 
 const { downloadReportsForStores } = require('../src/services/mmxReportDownloader');
 const { runOrderDayReportDownload } = require('../src/services/scheduledReportDownload');

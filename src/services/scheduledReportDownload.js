@@ -2,6 +2,7 @@ const { getStoreList } = require('./storeList');
 const { openMacromatixBrowser, closeBrowserQuietly, probePendingOrdersForStores } = require('./macromatixScraper');
 const { downloadReportsForStores } = require('./mmxReportDownloader');
 const { hasScheduledRunToday, markScheduledRun } = require('./reportDownloadScheduleState');
+const { waitUntilMmxResourceIdle, isMmxResourceBusy } = require('./mmxResourceGate');
 
 const TIME_ZONE = process.env.REPORT_DOWNLOAD_TIME_ZONE || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
 
@@ -112,6 +113,17 @@ async function runOrderDayReportDownload(options = {}) {
     const stores = getStoreList();
     if (!stores.length) {
         throw new Error('No stores in .storelist');
+    }
+
+    await waitUntilMmxResourceIdle();
+    if (isMmxResourceBusy()) {
+        console.log('[ReportDownload] Skipped — MMX stock count / order entry in progress');
+        return {
+            skipped: true,
+            reason: 'mmx-busy',
+            runDateKey,
+            orderDateKey,
+        };
     }
 
     let browser;

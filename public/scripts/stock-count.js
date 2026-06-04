@@ -1167,7 +1167,7 @@ async function applyMmxCount() {
     if (!mmxSessionId || saving) return;
     saving = true;
     processing = true;
-    processingStageLabel = 'Applying Count & Building Orders';
+    processingStageLabel = 'Placing scheduled orders';
     processingComplete = false;
     setStatus('', '');
     render();
@@ -1183,6 +1183,11 @@ async function applyMmxCount() {
         mmxSessionId = '';
         processing = false;
         processingComplete = true;
+        if (data.orderFailures) {
+            setStatus(`Some scheduled orders could not be filled: ${data.orderFailures}`, 'error');
+        } else {
+            setStatus('', '');
+        }
         render();
     } catch (error) {
         setStatus(error.message, 'error');

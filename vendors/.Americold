@@ -10,7 +10,7 @@
 10        | 37597  | TB CHURROS MINI 72EA                           | Boxes | N/a     | Each | Freezer | N/a     | N/a  | In Use |
 13        | 39520  | TB MEAT BEEF COOKED                            | Boxes | Bags    | KGs  | Freezer | Fridge  | N/a  | In Use |
 10        | 39867A | TB MEAT CHICKEN COOKED 10X900G                 | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use |
-10        | 40303  | TB CHICKEN CRISPY 5X1EA                        | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
+10        | 40303  | TB CHICKEN CRISPY 5X1EA                        | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use | 6
 13        | 37925  | TB TORTILLA FLOUR 12INCH 12x12EA               | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
 13        | 37923  | TB TORTILLA FLOUR 10.25INCH 12x12EA            | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
 13        | 37927  | TB TORTILLA FLOUR 6.5INCH 24x12EA              | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
@@ -34,14 +34,14 @@
 10        | 37013  | TB SAUCE PICO DE GALLO 12X500GM                | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 
 # --- Dry (MMX DRY tab) ---
-10        | 38163  | TB SAUCE CHOCOLATE DA VINCI 2X2LTR             | Boxes | Bottles | KGs  | N/a     | N/a     | Dry  | N/a    |
-10        | 106191 | SAUCE CARAMEL MONIN 1.8L                       | Boxes | Bottles | KGs  | N/a     | N/a     | Dry  | N/a    |
-10        | 40037  | SUGAR CINNAMON 5X2.5KG                         | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
+#10        | 38163  | TB SAUCE CHOCOLATE DA VINCI 2X2LTR             | Boxes | Bottles | KGs  | N/a     | N/a     | Dry  | N/a    |
+#10        | 106191 | SAUCE CARAMEL MONIN 1.8L                       | Boxes | Bottles | KGs  | N/a     | N/a     | Dry  | N/a    |
+#10        | 40037  | SUGAR CINNAMON 5X2.5KG                         | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
 10        | 40062A | TB CINNAMON TWISTS 2 X 5KG                     | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
 10        | 37915  | TB RICE LONG GRAIN WHITE 10KG                  | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
 10+1      | 39054  | TB SEASONING MEXICAN RECI 10X1                 | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
-10        | TB13735| TB LID POSTMIX 1000EA                          | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
-order=8   | 607826 | OIL FRYING LIQUID 15KG                         | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
+#10        | TB13735| TB LID POSTMIX 1000EA                          | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
+order=8   | 607826 | OIL FRYING LIQUID 15KG                         | Boxes | N/a     | KGs  | N/a     | N/a     | Dry  | N/a    |
 
 # order=X is set manually
 order=2   | 100481 | GLOVE NITRILE MEDIUM 10X100                    | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10

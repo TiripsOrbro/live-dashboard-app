@@ -62,10 +62,21 @@ function ceilOrderQty(value) {
     return Math.ceil(n);
 }
 
+/** True when the vendor catalog line defines its own build-to (order=N, days, =N, oh:N). */
+function catalogItemHasBuildToRule(item) {
+    if (item.buildToManual && !item.buildToOrderManual) return false;
+    if (item.buildToOrderManual) {
+        return item.buildToFixed != null && Number.isFinite(item.buildToFixed);
+    }
+    if (item.buildToFixed != null && Number.isFinite(item.buildToFixed)) return true;
+    if (item.buildToDays != null && Number.isFinite(item.buildToDays)) return true;
+    return false;
+}
+
 /**
  * Order qty from dashboard stock-count draft + fixed build-to (order=N catalog lines).
- * When vendorCfg.uncountedBuildTo is set, uncounted non-ignore catalog lines use that
- * build-to instead of being skipped (counted order=N lines still use their fixed target).
+ * When vendorCfg.uncountedBuildTo is set, uncounted catalog lines with no build-to rule
+ * use that default; lines with order=N / days / =N keep their configured targets.
  */
 async function buildOrderManualEntriesFromCounts(
     storeNumber,
@@ -91,6 +102,7 @@ async function buildOrderManualEntriesFromCounts(
         if (!code) continue;
 
         const countEntry = counts.get(code);
+        const hasBuildToRule = catalogItemHasBuildToRule(item);
         let buildTo;
         let onHandCartons = 0;
 
@@ -98,24 +110,15 @@ async function buildOrderManualEntriesFromCounts(
             onHandCartons = countEntry
                 ? manualCountToCartons({ columns: countEntry.columns }, item, 1)
                 : 0;
-            if (countEntry) {
-                buildTo =
-                    item.buildToFixed != null && Number.isFinite(item.buildToFixed)
-                        ? item.buildToFixed
-                        : 0;
-            } else if (hasUncountedDefault) {
-                buildTo = uncountedBuildTo;
-            } else {
-                buildTo =
-                    item.buildToFixed != null && Number.isFinite(item.buildToFixed)
-                        ? item.buildToFixed
-                        : 0;
-            }
+            buildTo =
+                item.buildToFixed != null && Number.isFinite(item.buildToFixed)
+                    ? item.buildToFixed
+                    : 0;
         } else if (
             hasUncountedDefault &&
             !countEntry &&
-            !coveredByIse.has(code) &&
-            item.buildToDays != null
+            !hasBuildToRule &&
+            !coveredByIse.has(code)
         ) {
             buildTo = uncountedBuildTo;
         } else {
@@ -123,7 +126,7 @@ async function buildOrderManualEntriesFromCounts(
         }
 
         const orderQty = ceilOrderQty(buildTo - onHandCartons);
-        if (orderQty <= 0 && !countEntry && !hasUncountedDefault) continue;
+        if (orderQty <= 0 && !countEntry) continue;
 
         entries.push({
             catalogName: item.name,
@@ -132,7 +135,7 @@ async function buildOrderManualEntriesFromCounts(
             orderQty,
             iseItemCode: code,
             matchScore: 100,
-            buildToSource: 'count-manual',
+            buildToSource: hasBuildToRule ? 'count-manual' : 'count-default',
         });
     }
 
@@ -151,7 +154,8 @@ function mergeBuildToEntries(...entrySets) {
                 existing &&
                 (existing.buildToSource === 'catalog-manual' ||
                     existing.buildToManual ||
-                    existing.buildToSource === 'count-manual')
+                    existing.buildToSource === 'count-manual' ||
+                    existing.buildToSource === 'count-default')
             ) {
                 continue;
             }

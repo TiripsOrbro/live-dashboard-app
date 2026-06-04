@@ -112,16 +112,26 @@ async function resolveToSend(storeNumber, vendorSlug, options = {}) {
     return { dateKey, toSend };
 }
 
-async function runVendorOrdersForStore(page, storeNumber, dateKey) {
+async function runVendorOrdersForStore(page, storeNumber, dateKey, orderPack = null) {
     const storeCfg = getStoreConfig(storeNumber) || { storeNumber, storeName: storeNumber };
     const storeLabel = storeSelectorLabel(storeCfg);
 
-    const { byVendorId, vendorOrdersCfg, buildTo } = await buildOrderLinesByVendorId(storeNumber, {
-        dateKey,
-    });
+    const pack =
+        orderPack ||
+        (await buildOrderLinesByVendorId(storeNumber, {
+            dateKey,
+        }));
+    const { byVendorId, vendorOrdersCfg, buildTo } = pack;
 
     const selectStore = async (p, num) => {
-        const picked = await selectStoreOnPage(p, num);
+        await p.waitForTimeout(800);
+        let picked = await selectStoreOnPage(p, num);
+        if (!picked && storeLabel && storeLabel !== String(num)) {
+            log.info(`Store combo miss for ${num} — trying label "${storeLabel}"`);
+            const { selectStore: selectStoreByLabel } = require('./mmxReports/pipeline-supply-chain-reports');
+            await selectStoreByLabel(p, storeLabel, { storeNumber: num, waitMs: 500 });
+            picked = await selectStoreOnPage(p, num);
+        }
         if (!picked) throw new Error(`Could not select store ${num} in Macromatix`);
     };
 
@@ -138,6 +148,7 @@ async function runVendorOrdersForStore(page, storeNumber, dateKey) {
         orderLinesByVendorId: byVendorId,
     };
 
+    log.info(`Store ${storeNumber}: scheduled order entry only — no report downloads or other MMX tasks`);
     const orderPipelineResult = await runVendorOrderEntry(page, settings, { continueOnError: true });
     orderPipelineResult.buildToSummary = {
         orderLineCount: buildTo.orderLines.length,
@@ -151,13 +162,36 @@ function ordersAllSuccessful(orderPipelineResult) {
     return Array.isArray(processed) && processed.length > 0 && processed.every((p) => p && p.ok);
 }
 
-async function runOrdersAfterApply(storeNumber, dateKey, page, browser) {
-    await downloadReportsForStores({
-        storeNumber,
-        page,
-        browser,
-    });
-    return runVendorOrdersForStore(page, storeNumber, dateKey);
+function formatOrderFailures(orderPipelineResult) {
+    const failed = (orderPipelineResult?.processed || []).filter((p) => p && !p.ok);
+    if (!failed.length) return '';
+    return failed.map((f) => `${f.label}: ${f.error || 'failed'}`).join('; ');
+}
+
+/**
+ * Pre-build order lines from on-disk reports + dashboard counts, then fill scheduled orders.
+ * Report downloads are never run on the same browser session before order entry.
+ */
+async function runOrdersAfterApply(storeNumber, dateKey, page) {
+    const orderPack = await buildOrderLinesByVendorId(storeNumber, { dateKey });
+    return runVendorOrdersForStore(page, storeNumber, dateKey, orderPack);
+}
+
+async function ensureReportsOnDisk(storeNumber, options = {}) {
+    const { resolveStoreReports } = require('./reportReader');
+    const { REPORTS_DIR } = require('./buildToCalculator');
+    const files = resolveStoreReports(storeNumber, options.reportsDir || REPORTS_DIR);
+    if (files.inventorySpecialEvent && files.stockOnHand) return;
+
+    log.info(`Reports missing for store ${storeNumber} — downloading in a separate browser pass`);
+    let browser;
+    let page;
+    try {
+        ({ browser, page } = await openMacromatixBrowser(options));
+        await downloadReportsForStores({ storeNumber, page, browser });
+    } finally {
+        await closeBrowserQuietly(browser, 'pre-order report download');
+    }
 }
 
 /**
@@ -171,8 +205,6 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
         let browser;
         let page;
         try {
-            ({ browser, page } = await openMacromatixBrowser(options));
-
             const { resolveStoreReports } = require('./reportReader');
             const { REPORTS_DIR } = require('./buildToCalculator');
             const files = resolveStoreReports(storeNumber, options.reportsDir || REPORTS_DIR);
@@ -180,18 +212,26 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
             const shouldDownload = !options.skipReportDownload || !reportsReady;
 
             if (shouldDownload) {
-                if (options.skipReportDownload && !reportsReady) {
-                    log.info(`Reports incomplete for store ${storeNumber} — downloading before order entry`);
-                }
-                await downloadReportsForStores({ storeNumber, page, browser });
+                await ensureReportsOnDisk(storeNumber, options);
+            } else if (!reportsReady) {
+                log.warn(
+                    `Reports incomplete for store ${storeNumber} — using existing data; order quantities may be incomplete`
+                );
             } else {
                 log.info(`Using existing reports in ${files.storeDir} — skipping download`);
             }
 
+            const orderPack = await buildOrderLinesByVendorId(storeNumber, { dateKey });
+
+            ({ browser, page } = await openMacromatixBrowser(options));
             log.info(`Filling scheduled orders for store ${storeNumber}`);
-            const orders = await runVendorOrdersForStore(page, storeNumber, dateKey);
+            const orders = await runVendorOrdersForStore(page, storeNumber, dateKey, orderPack);
             if (ordersAllSuccessful(orders)) {
                 await runStoreOrdersCompleteCleanup(storeNumber, dateKey);
+            }
+            const orderFailures = formatOrderFailures(orders);
+            if (orderFailures) {
+                log.warn(`Store ${storeNumber} scheduled order failures: ${orderFailures}`);
             }
             return {
                 success: true,
@@ -199,6 +239,7 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
                 dateKey,
                 ordersRan: true,
                 orders,
+                orderFailures: orderFailures || null,
                 skippedReportDownload: !shouldDownload,
             };
         } finally {
@@ -293,16 +334,18 @@ async function applyStockCountSession(storeNumber, sessionId, options = {}) {
         if (!session) {
             if (checkpoint?.stage === 'applied-orders-pending' && checkpoint.dateKey) {
                 log.info(`Resuming pending scheduled orders for store ${storeNumber} from checkpoint`);
+                acquireMmxResource(`resume scheduled orders (store ${storeNumber})`);
                 let browser;
                 let page;
                 try {
                     ({ browser, page } = await openMacromatixBrowser(options));
-                    const orders = await runOrdersAfterApply(storeNumber, checkpoint.dateKey, page, browser);
+                    const orders = await runOrdersAfterApply(storeNumber, checkpoint.dateKey, page);
+                    const orderFailures = formatOrderFailures(orders);
                     await setCheckpoint(storeNumber, {
                         stage: 'completed',
                         resumedFromCheckpoint: true,
                         ordersCompletedAt: new Date().toISOString(),
-                        lastError: '',
+                        lastError: orderFailures,
                     });
                     await clearCheckpoint(storeNumber);
                     return {
@@ -313,9 +356,11 @@ async function applyStockCountSession(storeNumber, sessionId, options = {}) {
                         vendorsSent: checkpoint.vendorSlugs || [],
                         ordersRan: true,
                         orders,
+                        orderFailures: orderFailures || null,
                     };
                 } finally {
                     await closeBrowserQuietly(browser, 'checkpoint resume orders');
+                    releaseMmxResource(`resume scheduled orders finished (store ${storeNumber})`);
                 }
             }
             throw new Error('Macromatix count session expired or not found. Send to MMX again.');
@@ -351,10 +396,14 @@ async function applyStockCountSession(storeNumber, sessionId, options = {}) {
             });
 
             if (await shouldRunOrderPipeline(storeNumber, dateKey)) {
-                log.info(`Key Item Count applied for store ${storeNumber} — downloading reports + entering orders`);
-                orderPipelineResult = await runOrdersAfterApply(storeNumber, dateKey, page, browser);
+                log.info(`Key Item Count applied for store ${storeNumber} — entering scheduled orders`);
+                orderPipelineResult = await runOrdersAfterApply(storeNumber, dateKey, page);
                 if (ordersAllSuccessful(orderPipelineResult)) {
                     await runStoreOrdersCompleteCleanup(storeNumber, dateKey);
+                }
+                const orderFailures = formatOrderFailures(orderPipelineResult);
+                if (orderFailures) {
+                    log.warn(`Store ${storeNumber} scheduled order failures: ${orderFailures}`);
                 }
                 await setCheckpoint(storeNumber, {
                     stage: 'completed',
@@ -362,7 +411,7 @@ async function applyStockCountSession(storeNumber, sessionId, options = {}) {
                     sessionId,
                     vendorSlugs,
                     ordersCompletedAt: new Date().toISOString(),
-                    lastError: '',
+                    lastError: orderFailures,
                 });
             }
             await clearCheckpoint(storeNumber);
@@ -379,6 +428,7 @@ async function applyStockCountSession(storeNumber, sessionId, options = {}) {
             await destroySession(session, 'applied');
         }
 
+        const orderFailures = formatOrderFailures(orderPipelineResult);
         return {
             success: true,
             storeNumber: String(storeNumber),
@@ -387,6 +437,7 @@ async function applyStockCountSession(storeNumber, sessionId, options = {}) {
             vendorsSent: vendorSlugs,
             ordersRan: Boolean(orderPipelineResult),
             orders: orderPipelineResult,
+            orderFailures: orderFailures || null,
         };
     });
 }

@@ -29,6 +29,7 @@ const { isMmxResourceBusy } = require('./services/mmxResourceGate');
 const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./services/storeList');
 const {
     TEST_STORE_SLUG,
+    TEST_STORE_NAME,
     isTestStore,
     normalizeStoreKey,
     buildTestStoreSalesSlice,
@@ -199,7 +200,11 @@ const {
     setDailyItemMultiplier,
     clearStoreDailyMultipliers,
 } = require('./services/mic/micStore');
-const { buildAdminOverviewPayload } = require('./services/mic/adminOverview');
+const {
+    buildAdminOverviewPayload,
+    computeStoreSalesToday,
+    ADMIN_ROTATE_AREAS,
+} = require('./services/mic/adminOverview');
 const {
     setAccountGateCookie,
     clearAccountGateCookie,
@@ -1139,6 +1144,7 @@ function storeHours(storeNumber) {
     return {
         openHour: cfg ? cfg.openHour : DEFAULT_OPEN_HOUR,
         closeHour: cfg ? cfg.closeHour : DEFAULT_CLOSE_HOUR,
+        timeZone: cfg?.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne',
     };
 }
 
@@ -1176,6 +1182,11 @@ function storeSliceFromPayload(payload, requestedStore) {
               storeName: store.storeName || store.storeNumber || '',
               openHour: Number.isFinite(store.openHour) ? store.openHour : storeHours(store.storeNumber).openHour,
               closeHour: Number.isFinite(store.closeHour) ? store.closeHour : storeHours(store.storeNumber).closeHour,
+              timeZone:
+                  store.timeZone ||
+                  storeHours(store.storeNumber).timeZone ||
+                  process.env.DASHBOARD_TIME_ZONE ||
+                  'Australia/Melbourne',
               postCloseRetainHours: POST_CLOSE_RETAIN_HOURS,
               ...(store.error ? { storeError: store.error } : {}),
           }
@@ -1217,6 +1228,27 @@ function areaMatchTokens(value) {
         set.add(normalizeAreaKey(code));
     }
     return set;
+}
+
+function resolveAreaFromAdminList(areaParam) {
+    for (const name of ADMIN_ROTATE_AREAS) {
+        const wanted = areaMatchTokens(areaParam);
+        const areaTokens = areaMatchTokens(name);
+        for (const token of wanted) {
+            if (areaTokens.has(token)) return { name, key: normalizeAreaKey(name) };
+        }
+    }
+    return null;
+}
+
+function areaParamMatchesStore(areaParam, store) {
+    const wanted = areaMatchTokens(areaParam);
+    const storeTokens = areaMatchTokens(store.areaKey);
+    areaMatchTokens(store.area).forEach((t) => storeTokens.add(t));
+    for (const token of wanted) {
+        if (storeTokens.has(token)) return true;
+    }
+    return false;
 }
 
 function areaNameFromStore(store) {
@@ -1431,6 +1463,18 @@ app.get('/stores', (req, res) => {
 
 app.get('/admin/overview', requireAdminPage, (req, res) => {
     res.sendFile(path.join(PUBLIC_ROOT, 'admin-overview.html'));
+});
+
+// Admin per-store dashboard — tabs to switch stores (see public/scripts/admin-store-tabs.js).
+app.get(/^\/admin\/teststore\/?$/i, requireAdminPage, (req, res) => {
+    if (!assertStoreAccess(req, res, TEST_STORE_SLUG)) return;
+    res.sendFile(path.join(PUBLIC_ROOT, 'index.html'));
+});
+
+app.get(/^\/admin\/(\d{3,6})\/?$/i, requireAdminPage, (req, res) => {
+    const storeNumber = (req.path.match(/^\/admin\/(\d{3,6})\/?$/i) || [])[1];
+    if (!assertStoreAccess(req, res, storeNumber)) return;
+    res.sendFile(path.join(PUBLIC_ROOT, 'index.html'));
 });
 
 // Kiosk wall dashboard — /kiosk/3811 (no back button; entry cookie kiosk).
@@ -2232,6 +2276,9 @@ app.get('/api/admin/overview', async (req, res) => {
             storeName: s.storeName,
             area: areaNameFromStore(s),
             areaKey: normalizeAreaKey(areaNameFromStore(s)),
+            timeZone: s.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne',
+            openHour: s.openHour,
+            closeHour: s.closeHour,
         }));
         stores = filterStoresForUser(user, stores);
         const areas = buildAreaGroups(stores);
@@ -2370,27 +2417,31 @@ app.get('/api/area-dashboard', async (req, res) => {
             areaKey: normalizeAreaKey(areaNameFromStore(s)),
             timeZone: s.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne',
         }));
-        const areaStoresCfg = storesCfg.filter(
-            (s) => {
-                const wanted = areaMatchTokens(areaParam);
-                const storeTokens = areaMatchTokens(s.areaKey);
-                areaMatchTokens(s.area).forEach((t) => storeTokens.add(t));
-                for (const token of wanted) {
-                    if (storeTokens.has(token)) return true;
-                }
-                return false;
-            }
-        );
-        if (!areaStoresCfg.length) {
-            return res.status(404).json({ success: false, error: `Unknown area: ${areaParam}` });
-        }
         const user = req.dashboardUser || getRequestUser(req);
+        const adminUser = isAdminUser(user);
+
+        let areaStoresCfg = storesCfg.filter((s) => areaParamMatchesStore(areaParam, s));
+        let areaMeta = areaStoresCfg.length
+            ? { name: areaStoresCfg[0].area, key: areaStoresCfg[0].areaKey }
+            : null;
+
+        if (!areaStoresCfg.length) {
+            if (!adminUser) {
+                return res.status(404).json({ success: false, error: `Unknown area: ${areaParam}` });
+            }
+            const resolved = resolveAreaFromAdminList(areaParam);
+            if (!resolved) {
+                return res.status(404).json({ success: false, error: `Unknown area: ${areaParam}` });
+            }
+            areaMeta = resolved;
+        }
+
         const allowedStores = filterStoresForUser(
             user,
             areaStoresCfg.map((s) => ({ storeNumber: s.storeNumber, storeName: s.storeName }))
         ).map((s) => String(s.storeNumber));
         const filteredCfg = areaStoresCfg.filter((s) => allowedStores.includes(String(s.storeNumber)));
-        if (!filteredCfg.length) return sendForbidden(req, res);
+        if (!filteredCfg.length && !adminUser) return sendForbidden(req, res);
 
         let payload;
         try {
@@ -2474,11 +2525,42 @@ app.get('/api/area-dashboard', async (req, res) => {
             }
         }
 
+        let storeSales = stores
+            .map((s) => ({
+                storeNumber: s.storeNumber,
+                storeName: s.storeName,
+                ...computeStoreSalesToday(s),
+            }))
+            .sort(
+                (a, b) =>
+                    b.actual - a.actual ||
+                    String(a.storeNumber).localeCompare(String(b.storeNumber), undefined, { numeric: true })
+            );
+
+        if (!storeSales.length && adminUser && areaMeta) {
+            storeSales = [
+                {
+                    storeNumber: TEST_STORE_SLUG,
+                    storeName: TEST_STORE_NAME,
+                    testStore: true,
+                    actual: 0,
+                    forecast: 0,
+                    trackClass: 'cell-green',
+                },
+            ];
+        }
+
+        const areaSalesTotal = storeSales.reduce((sum, s) => sum + (Number(s.actual) || 0), 0);
+
         res.json({
             success: true,
-            area: areaStoresCfg[0].area,
-            areaKey: areaStoresCfg[0].areaKey,
+            area: areaMeta.name,
+            areaKey: areaMeta.key,
+            isAdmin: adminUser,
+            areas: adminUser ? ADMIN_ROTATE_AREAS : [areaMeta.name],
             timestamp: payload.timestamp,
+            areaSalesTotal: Math.round(areaSalesTotal),
+            storeSales,
             stores: stores.map((s) => ({
                 storeNumber: s.storeNumber,
                 storeName: s.storeName,

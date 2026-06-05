@@ -38,7 +38,9 @@
     </script>
     <script src="/scripts/welcome-overlay.js"></script>
     <!-- Main App Container -->
-    <div id="app">Loading dashboard...</div>
+    <div id="app" class="app-boot-loading" aria-busy="true">
+        <p class="app-boot-loading__message">Loading dashboard…</p>
+    </div>
 
     <!-- Popup Container -->
     <div class="popup">
@@ -65,6 +67,8 @@
     <script src="/scripts/popup-content.js"></script>
     <script src="/scripts/upselling-podium.js"></script>
     <script src="/scripts/nav-back.js"></script>
+    <script src="/scripts/stock-count-notify.js"></script>
+    <script src="/scripts/admin-store-tabs.js"></script>
     <script src="/scripts/dashboard.js"></script>
 </body>
 </html>

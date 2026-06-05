@@ -7,9 +7,14 @@ const {
     MIC_VOC_PLACEHOLDER,
 } = require('./micStore');
 const { loadPointsMapForParsing } = require('../upselling/pointsFile');
-const { computeDaySalesPresentation } = require('../salesProgress');
+const {
+    RAW_BASE_HOUR,
+    trimHourlyToTradingWindow,
+    computeDaySalesPresentation,
+} = require('../salesProgress');
 const { buildStockCountTileState } = require('../stockCountTileState');
-const { DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../storeList');
+const { DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR, getStoreConfig } = require('../storeList');
+const { TIME_ZONE } = require('../upselling/upsellingConfig');
 
 /** Same areas as store picker — always rotate through these even with no stores/data. */
 const ADMIN_ROTATE_AREAS = ['Area 1', 'Area 2', 'Area 21', 'Area 22'];
@@ -46,23 +51,60 @@ function emptyAreaSalesToday() {
 }
 
 function mergeAreaHourly(areaStores) {
-    let hours = 0;
-    for (const store of areaStores || []) {
-        const a = Array.isArray(store.actual) ? store.actual : [];
-        const f = Array.isArray(store.forecast) ? store.forecast : [];
-        hours = Math.max(hours, a.length, f.length);
-    }
+    const areaOpen = DEFAULT_OPEN_HOUR;
+    const areaClose = DEFAULT_CLOSE_HOUR;
+    const hours = Math.max(0, areaClose - areaOpen);
     const actual = new Array(hours).fill(0);
     const forecast = new Array(hours).fill(0);
     for (const store of areaStores || []) {
-        const a = Array.isArray(store.actual) ? store.actual : [];
-        const f = Array.isArray(store.forecast) ? store.forecast : [];
-        for (let i = 0; i < hours; i++) {
-            actual[i] += Number(a[i]) || 0;
-            forecast[i] += Number(f[i]) || 0;
+        const open = Number.isFinite(store.openHour) ? Math.trunc(store.openHour) : areaOpen;
+        const close = Number.isFinite(store.closeHour) ? Math.trunc(store.closeHour) : areaClose;
+        const rawA = Array.isArray(store.actual) ? store.actual : [];
+        const rawF = Array.isArray(store.forecast) ? store.forecast : [];
+        for (let localHour = areaOpen; localHour < areaClose; localHour++) {
+            if (localHour < open || localHour >= close) continue;
+            const rawIdx = localHour - RAW_BASE_HOUR;
+            const outIdx = localHour - areaOpen;
+            actual[outIdx] += Number(rawA[rawIdx]) || 0;
+            forecast[outIdx] += Number(rawF[rawIdx]) || 0;
         }
     }
     return { actual, forecast, hours };
+}
+
+function resolveStoreTimeZone(store) {
+    const explicit = String(store?.timeZone || '').trim();
+    if (explicit) return explicit;
+    const cfg = getStoreConfig(store?.storeNumber);
+    return cfg?.timeZone || TIME_ZONE;
+}
+
+function computeStoreSalesToday(store) {
+    const openHour = Number.isFinite(store.openHour) ? store.openHour : DEFAULT_OPEN_HOUR;
+    const closeHour = Number.isFinite(store.closeHour) ? store.closeHour : DEFAULT_CLOSE_HOUR;
+    const timeZone = resolveStoreTimeZone(store);
+    const trimmed = trimHourlyToTradingWindow(store.actual, store.forecast, openHour, closeHour);
+    const { actual, forecast } = trimmed;
+    let actualTotal = 0;
+    let forecastTotal = 0;
+    for (let i = 0; i < actual.length; i++) {
+        actualTotal += Number(actual[i]) || 0;
+        forecastTotal += Number(forecast[i]) || 0;
+    }
+    const progress = computeDaySalesPresentation({
+        actual,
+        forecast,
+        openHour,
+        closeHour,
+        timeZone,
+    });
+    return {
+        actual: Math.round(actualTotal),
+        forecast: Math.round(forecastTotal),
+        trackClass: progress.paceClass || 'cell-green',
+        progress,
+        sssgPercent: store.sssgPercent != null ? store.sssgPercent : null,
+    };
 }
 
 function computeAreaSalesToday(areaStores) {
@@ -124,15 +166,29 @@ function buildAdminOverviewPayload(salesPayload, areaGroups) {
             return {
                 storeNumber: cfg.storeNumber,
                 storeName: cfg.storeName,
+                openHour: cfg.openHour,
+                closeHour: cfg.closeHour,
+                timeZone: resolveStoreTimeZone(cfg),
+                sssgPercent: live.sssgPercent != null ? live.sssgPercent : null,
                 actual: Array.isArray(live.actual) ? live.actual : [],
                 forecast: Array.isArray(live.forecast) ? live.forecast : [],
             };
         });
         const hasStores = configs.length > 0;
+        const storeSales = hasStores
+            ? areaStores
+                  .map((s) => ({
+                      storeNumber: s.storeNumber,
+                      storeName: s.storeName,
+                      ...computeStoreSalesToday(s),
+                  }))
+                  .sort((a, b) => b.actual - a.actual || String(a.storeNumber).localeCompare(String(b.storeNumber)))
+            : [];
         return {
             name: group.name,
             areaKey: group.key || normalizeAreaKey(group.name),
             salesToday: hasStores ? computeAreaSalesToday(areaStores) : emptyAreaSalesToday(),
+            storeSales,
             stockCount: buildAreaStockCountTileState(areaStores, liveByNum),
         };
     });
@@ -165,6 +221,7 @@ module.exports = {
     ADMIN_ROTATE_AREAS,
     buildAdminOverviewPayload,
     computeAreaSalesToday,
+    computeStoreSalesToday,
     mergeAreaHourly,
     ensureAllAreaGroups,
 };

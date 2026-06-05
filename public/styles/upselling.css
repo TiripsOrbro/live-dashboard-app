@@ -1,20 +1,24 @@
-/* Fixed to viewport bottom — full width bars; dashboard gets padding so grid is not covered */
+/* Fixed to viewport bottom — scales with window via --podium-* vars (see upselling-podium.js) */
 #upsell-podium {
     position: fixed;
     left: 50%;
     bottom: max(4px, env(safe-area-inset-bottom, 0px));
     transform: translateX(-50%);
     z-index: 8000;
-    width: min(99vw, 1680px);
-    max-width: min(99vw, 1680px);
+    width: min(calc(100vw - 16px), 1680px);
+    max-width: min(calc(100vw - 16px), 1680px);
     box-sizing: border-box;
     pointer-events: none;
     font-family: inherit;
+    --podium-chart-h: min(28vh, 300px);
+    --podium-gap: clamp(4px, 0.55vw, 16px);
+    --podium-pad-x: clamp(6px, 1.2vw, 20px);
+    --podium-scale: 1;
 }
 
 @media (min-width: 901px) {
     .dashboard.dashboard--upsell-podium {
-        padding-bottom: min(42vh, 400px);
+        padding-bottom: var(--podium-dashboard-pad, min(38vh, 380px));
     }
 }
 
@@ -26,7 +30,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: max-content;
+    width: 100%;
     max-width: 100%;
     margin: 0 auto;
     background: transparent;
@@ -86,29 +90,23 @@
 }
 
 .upsell-podium__cols {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-evenly;
-    gap: clamp(36px, 6.5vw, 96px);
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    align-items: start;
+    gap: var(--podium-gap);
     width: 100%;
     max-width: 100%;
-    padding: 0 clamp(8px, 1.5vw, 24px);
+    padding: 0 var(--podium-pad-x);
     box-sizing: border-box;
 }
 
-/* Column width follows labels; bar thickness is fixed on .upsell-podium__bar-slot */
 .upsell-podium__col {
     display: flex;
     flex-direction: column;
     align-items: center;
-    flex: 0 0 auto;
-    width: max-content;
-    max-width: clamp(120px, 14vw, 180px);
+    min-width: 0;
+    width: 100%;
     text-align: center;
-}
-
-.upsell-podium__col--place-1 {
-    max-width: clamp(140px, 16vw, 220px);
 }
 
 /* Missing rank (e.g. no 7th yet) — same footprint, invisible labels */
@@ -123,72 +121,71 @@
     visibility: hidden;
 }
 
-/* Shared chart height — bars grow up from a common baseline; width steps toward #1 */
+/* Shared chart height — bar heights are % of slot so the podium scales with the window */
 .upsell-podium__bar-slot {
     display: flex;
     align-items: flex-end;
     justify-content: center;
     box-sizing: border-box;
-    height: min(34vh, 320px);
-    margin: 0 auto clamp(6px, 1vh, 12px);
+    height: var(--podium-chart-h);
+    margin: 0 auto clamp(4px, 0.8vh, 10px);
 }
 
-/* Edges (#7, #6) thinnest → centre (#1) thickest (~2× prior widths) */
 .upsell-podium__col--place-7 .upsell-podium__bar-slot,
 .upsell-podium__col--place-6 .upsell-podium__bar-slot {
-    width: clamp(68px, 8vw, 100px);
+    width: 70%;
 }
 
 .upsell-podium__col--place-5 .upsell-podium__bar-slot,
 .upsell-podium__col--place-4 .upsell-podium__bar-slot {
-    width: clamp(84px, 10vw, 124px);
+    width: 80%;
 }
 
 .upsell-podium__col--place-3 .upsell-podium__bar-slot,
 .upsell-podium__col--place-2 .upsell-podium__bar-slot {
-    width: clamp(100px, 12vw, 148px);
+    width: 90%;
 }
 
 .upsell-podium__col--place-1 .upsell-podium__bar-slot {
-    width: clamp(128px, 16vw, 200px);
+    width: 96%;
 }
 
 .upsell-podium__bar {
-    border-radius: 10px 10px 4px 4px;
+    border-radius: clamp(6px, 0.6vw, 10px) clamp(6px, 0.6vw, 10px) clamp(3px, 0.3vw, 4px)
+        clamp(3px, 0.3vw, 4px);
     background: linear-gradient(180deg, #e8c547 0%, #b8941f 100%);
     width: 100%;
-    min-height: 28px;
+    min-height: clamp(18px, 3vh, 28px);
 }
 
-/* Bar heights: podium steps 7 → 5 → 3 → 1 → 2 → 4 → 6 */
 .upsell-podium__bar--place-7 {
-    height: clamp(62px, 10vh, 118px);
+    height: 45%;
 }
 
 .upsell-podium__col--place-5 .upsell-podium__bar {
-    height: clamp(72px, 12vh, 130px);
+    height: 50%;
 }
 
 .upsell-podium__col--place-4 .upsell-podium__bar {
-    height: clamp(88px, 15vh, 155px);
+    height: 60%;
 }
 
 .upsell-podium__col--place-2 .upsell-podium__bar {
-    height: clamp(108px, 19vh, 185px);
+    height: 71%;
 }
 
 .upsell-podium__col--place-3 .upsell-podium__bar {
-    height: clamp(96px, 16vh, 165px);
+    height: 63%;
 }
 
 .upsell-podium__bar--place-6 {
-    height: clamp(80px, 13vh, 142px);
+    height: 55%;
 }
 
 .upsell-podium__bar--first {
-    height: clamp(140px, 26vh, 260px);
+    height: 100%;
     background: linear-gradient(180deg, #ffe566 0%, #f0c830 38%, #d4a82a 100%);
-    box-shadow: 0 6px 18px rgba(201, 162, 39, 0.35);
+    box-shadow: 0 4px 12px rgba(201, 162, 39, 0.28);
 }
 
 .upsell-podium__place {
@@ -233,7 +230,7 @@
 }
 
 .upsell-podium__name {
-    font-size: clamp(0.72rem, 1.35vw, 0.95rem);
+    font-size: clamp(0.62rem, calc(0.55rem + 0.55vw), 0.95rem);
     font-weight: 600;
     line-height: 1.2;
     color: #2d1b3d;
@@ -241,6 +238,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     text-align: center;
+    max-width: 100%;
 }
 
 .upsell-podium__name-anchor .upsell-podium__name {
@@ -250,7 +248,7 @@
 
 .upsell-podium__col--place-1 .upsell-podium__name,
 .upsell-podium__col--place-1 .upsell-podium__name-anchor .upsell-podium__name {
-    font-size: clamp(0.88rem, 1.7vw, 1.15rem);
+    font-size: clamp(0.72rem, calc(0.65rem + 0.7vw), 1.15rem);
     font-weight: 700;
 }
 

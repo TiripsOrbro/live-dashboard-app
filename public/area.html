@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="/styles/dashboard.css">
     <link rel="stylesheet" href="/styles/page-transition.css">
     <link rel="stylesheet" href="/styles/nav-back.css">
+    <link rel="stylesheet" href="/styles/mic.css">
     <style>
         /* Scroll: inherit dashboard.css (.dashboard max-height 100% + overflow-y on desktop; page scroll on mobile). */
         body.area-dashboard-page .area-grid-section .dashboard-grid {
@@ -62,6 +63,24 @@
             outline: 2px solid color-mix(in srgb, var(--tb-purple-light) 55%, var(--charcoal));
             outline-offset: -2px;
         }
+        .area-dashboard-layout {
+            display: grid;
+            grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+            gap: 16px;
+            align-items: start;
+        }
+        .area-store-panel {
+            position: sticky;
+            top: 12px;
+        }
+        @media (max-width: 900px) {
+            .area-dashboard-layout {
+                grid-template-columns: 1fr;
+            }
+            .area-store-panel {
+                position: static;
+            }
+        }
         @media (max-width: 900px) {
             .area-grid-section .dashboard-grid {
                 grid-template-columns: minmax(120px, 0.9fr) repeat(var(--grid-hours, 12), minmax(88px, 1fr));
@@ -79,7 +98,7 @@
                 <div class="dashboard-title">
                     <h1 id="title">AREA DASHBOARD</h1>
                     <p class="subtitle">Real-time area totals (timezone-adjusted)</p>
-                    <p class="store-label" id="area-label"></p>
+                    <nav class="admin-area-tabs area-page-tabs" id="area-tabs" aria-label="Select area"></nav>
                 </div>
                 <div class="top-info">
                     <div class="top-info-group">
@@ -95,7 +114,10 @@
 
             <div class="sales-status" id="status-banner" hidden></div>
 
-            <div class="area-grid-stack" id="area-grids"></div>
+            <div class="area-dashboard-layout">
+                <aside class="area-store-panel" id="area-store-panel" aria-label="Stores in area"></aside>
+                <div class="area-grid-stack" id="area-grids"></div>
+            </div>
             <div class="dashboard-grid-footer">
                 <div class="dashboard-grid-footer-ledger">
                     <div class="dashboard-grid-footer-lead">
@@ -118,9 +140,13 @@
         </div>
     </div>
     <script src="/scripts/page-transition.js"></script>
+    <script src="/scripts/store-snap-row.js"></script>
     <script src="/scripts/nav-back.js"></script>
     <script>
-        DashboardNavBack?.mountBackButton(document.getElementById('area-nav-back'), { fallback: '/stores' });
+        DashboardNavBack?.mountBackButton(document.getElementById('area-nav-back'), {
+            fallback: '/stores',
+            alwaysFallback: true,
+        });
     </script>
     <script>DashboardPageTransition.initEnterFade();</script>
     <script src="/scripts/area-dashboard.js"></script>

@@ -4,8 +4,8 @@ const path = require('path');
 const { TIME_ZONE } = require('../upselling/upsellingConfig');
 const { loadPointsMap, normalizeLabel } = require('../upselling/pointsFile');
 const { buildStockCountTileState } = require('../stockCountTileState');
-const { computeDaySalesPresentation } = require('../salesProgress');
-const { DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../storeList');
+const { trimHourlyToTradingWindow, computeDaySalesPresentation } = require('../salesProgress');
+const { DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR, getStoreConfig } = require('../storeList');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..', '..');
 const MIC_DATA_DIR = path.join(PROJECT_ROOT, 'data', 'mic');
@@ -249,22 +249,26 @@ function pointsForColumnFromMap(byLabel, colName) {
 }
 
 function computeSalesToday(storeSlice = {}) {
-    const actualHourly = Array.isArray(storeSlice.actual) ? storeSlice.actual : [];
-    const forecastHourly = Array.isArray(storeSlice.forecast) ? storeSlice.forecast : [];
-    const hours = Math.max(actualHourly.length, forecastHourly.length);
     const openHour = Number.isFinite(storeSlice.openHour) ? storeSlice.openHour : DEFAULT_OPEN_HOUR;
     const closeHour = Number.isFinite(storeSlice.closeHour) ? storeSlice.closeHour : DEFAULT_CLOSE_HOUR;
+    const trimmed = trimHourlyToTradingWindow(storeSlice.actual, storeSlice.forecast, openHour, closeHour);
+    const { actual: actualHourly, forecast: forecastHourly } = trimmed;
+    const hours = Math.max(actualHourly.length, forecastHourly.length);
     let actualTotal = 0;
     let forecastTotal = 0;
     for (let i = 0; i < hours; i++) {
         actualTotal += Number(actualHourly[i]) || 0;
         forecastTotal += Number(forecastHourly[i]) || 0;
     }
+    const cfg = getStoreConfig(storeSlice.storeNumber);
+    const timeZone =
+        String(storeSlice.timeZone || '').trim() || cfg?.timeZone || TIME_ZONE;
     const progress = computeDaySalesPresentation({
         actual: actualHourly,
         forecast: forecastHourly,
         openHour,
         closeHour,
+        timeZone,
     });
     return {
         actual: Math.round(actualTotal),

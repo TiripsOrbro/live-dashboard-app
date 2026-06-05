@@ -23,7 +23,6 @@ let statusKind = '';
 let saving = false;
 let autoSaveTimer = null;
 let processing = false;
-let processingComplete = false;
 let processingStageLabel = 'Preparing MMX';
 
 function dashboardPath() {
@@ -1066,8 +1065,11 @@ async function saveAndSubmitVendor() {
 }
 
 function finishMmxOrdersSuccess(data) {
-    processingComplete = true;
+    processing = false;
     mmxSessionId = '';
+    window.StockCountNotify?.notifyOrdersReady?.(STORE_NUMBER, VENDOR_SLUG, {
+        partial: Boolean(data?.orderFailures),
+    });
     if (data?.orderFailures) {
         setStatus(`Some scheduled orders could not be filled: ${data.orderFailures}`, 'error');
     } else {
@@ -1158,7 +1160,10 @@ async function sendToMmx() {
     saving = true;
     processing = true;
     processingStageLabel = 'Checking counts…';
-    setStatus('', '');
+    void window.StockCountNotify?.requestPermission?.();
+    window.StockCountNotify?.setWatch?.(STORE_NUMBER, VENDOR_SLUG);
+    window.StockCountNotify?.startPolling?.(STORE_NUMBER);
+    setStatus('Sending to Macromatix — you can leave this page; we will notify you when ready.', '');
     render();
     try {
         const { res: planRes, data: plan } = await fetchJson(apiQuery('/api/stock-count/send-plan'));
@@ -1179,8 +1184,11 @@ async function sendToMmx() {
         }
         if (data.keyItemCountSkipped || data.autoApplied) {
             preparedAutoApplied = true;
-            processingComplete = true;
+            processing = false;
             mmxSessionId = '';
+            window.StockCountNotify?.notifyOrdersReady?.(STORE_NUMBER, VENDOR_SLUG, {
+                partial: Boolean(data.orderFailures),
+            });
             if (data.orderFailures) {
                 setStatus(`Some scheduled orders could not be filled: ${data.orderFailures}`, 'error');
             } else if (data.keyItemCountSkipped) {
@@ -1207,7 +1215,9 @@ async function sendToMmx() {
             recountCatalog = null;
         }
         viewMode = 'variances';
-        setStatus('', '');
+        processing = false;
+        window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
+        setStatus('Review variances below, then confirm to place scheduled orders.', '');
     } catch (error) {
         if (shouldRecoverApplyError(error.message)) {
             try {
@@ -1217,9 +1227,13 @@ async function sendToMmx() {
                     return;
                 }
             } catch (recoverError) {
+                window.StockCountNotify?.clearWatch?.(STORE_NUMBER);
+                window.StockCountNotify?.stopPolling?.();
                 setStatus(recoverError.message, 'error');
             }
         } else {
+            window.StockCountNotify?.clearWatch?.(STORE_NUMBER);
+            window.StockCountNotify?.stopPolling?.();
             setStatus(error.message, 'error');
         }
     } finally {
@@ -1233,7 +1247,7 @@ async function sendToMmx() {
             await applyMmxCount();
             return;
         }
-        if (!processingComplete) {
+        if (!preparedAutoApplied && processing) {
             processing = false;
         }
         render();
@@ -1245,8 +1259,7 @@ async function applyMmxCount() {
     saving = true;
     processing = true;
     processingStageLabel = 'Placing scheduled orders';
-    processingComplete = false;
-    setStatus('', '');
+    setStatus('Placing scheduled orders in Macromatix…', '');
     render();
     try {
         const { res, data } = await fetchJson(apiQuery('/api/stock-count/send-to-mmx/apply'), {
@@ -1259,8 +1272,8 @@ async function applyMmxCount() {
             if (/already applied|nothing to apply/i.test(msg)) {
                 mmxSessionId = '';
                 processing = false;
-                processingComplete = true;
-                setStatus('', '');
+                window.StockCountNotify?.notifyOrdersReady?.(STORE_NUMBER, VENDOR_SLUG);
+                setStatus('Counts sent — scheduled orders updated in Macromatix.', 'success');
                 render();
                 return;
             }
@@ -1276,11 +1289,13 @@ async function applyMmxCount() {
         }
         mmxSessionId = '';
         processing = false;
-        processingComplete = true;
+        window.StockCountNotify?.notifyOrdersReady?.(STORE_NUMBER, VENDOR_SLUG, {
+            partial: Boolean(data.orderFailures),
+        });
         if (data.orderFailures) {
             setStatus(`Some scheduled orders could not be filled: ${data.orderFailures}`, 'error');
         } else {
-            setStatus('', '');
+            setStatus('Counts sent — scheduled orders updated in Macromatix.', 'success');
         }
         render();
     } catch (error) {
@@ -1288,8 +1303,8 @@ async function applyMmxCount() {
         if (/already applied|nothing to apply/i.test(msg)) {
             mmxSessionId = '';
             processing = false;
-            processingComplete = true;
-            setStatus('', '');
+            window.StockCountNotify?.notifyOrdersReady?.(STORE_NUMBER, VENDOR_SLUG);
+            setStatus('Counts sent — scheduled orders updated in Macromatix.', 'success');
             render();
             return;
         }
@@ -1305,18 +1320,18 @@ async function applyMmxCount() {
                 setStatus(recoverError.message, 'error');
                 saving = false;
                 processing = false;
-                processingComplete = false;
                 render();
                 return;
             }
         }
         setStatus(msg, 'error');
+        window.StockCountNotify?.clearWatch?.(STORE_NUMBER);
+        window.StockCountNotify?.stopPolling?.();
         saving = false;
         processing = false;
-        processingComplete = false;
         render();
     } finally {
-        if (processingComplete) saving = false;
+        if (!processing) saving = false;
     }
 }
 
@@ -1419,29 +1434,15 @@ function formatQtyWithUnit(value, unitLabel) {
     return unitLabel ? `${qty} ${unitLabel}` : qty;
 }
 
-function buildProcessingOverlay() {
-    if (processingComplete) {
-        return `
-        <div class="stock-count-processing" role="dialog" aria-labelledby="sc-complete-title">
-            <div class="stock-count-processing-card stock-count-processing-card--complete">
-                <p class="stock-count-processing-label stock-count-processing-label--complete" id="sc-complete-title">Orders are ready to be reviewed in MMX</p>
-                <a class="stock-count-btn stock-count-btn--mmx stock-count-processing-return" href="${escapeHtml(dashboardPath())}">Return to dashboard</a>
+function buildProcessingBanner() {
+    if (!processing) return '';
+    return `
+        <div class="stock-count-processing-banner" role="status" aria-live="polite">
+            <p class="stock-count-processing-banner-label">${escapeHtml(processingStageLabel)}</p>
+            <div class="stock-count-progress-shell" aria-hidden="true">
+                <div class="stock-count-progress-bar"></div>
             </div>
         </div>`;
-    }
-    if (!processing) return '';
-    const markSvg = window.TbaBrandMark?.svg('sc-processing-mark') || '';
-    return `
-        <div class="stock-count-processing" role="progressbar" aria-label="Processing" aria-busy="true">
-            <div class="stock-count-processing-card">
-                <div class="stock-count-processing-mark">${markSvg}</div>
-                <p class="stock-count-processing-label">${escapeHtml(processingStageLabel)}</p>
-                <div class="stock-count-progress-shell" aria-hidden="true">
-                    <div class="stock-count-progress-bar"></div>
-                </div>
-            </div>
-        </div>
-    `;
 }
 
 const VARIANCE_TABLE_HEADERS = [
@@ -1708,8 +1709,8 @@ function render() {
                 </div>
             </header>
             ${statusHtml}
+            ${buildProcessingBanner()}
             ${viewMode === 'variances' ? buildVarianceView() : buildView()}
-            ${buildProcessingOverlay()}
         </div>
     `;
 
@@ -1791,6 +1792,7 @@ async function init() {
     document.documentElement.classList.add('stock-count-page');
     document.body.classList.add('stock-count-page');
     setupStockCountScrollbars();
+    window.StockCountNotify?.initPipelineWatcher?.(STORE_NUMBER);
     if (!STORE_NUMBER || !VENDOR_SLUG) {
         app.textContent = 'Invalid stock count URL.';
         return;

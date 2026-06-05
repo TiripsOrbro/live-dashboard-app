@@ -83,7 +83,7 @@ function renderStoreTiles(stores) {
             const tileClass = isTest ? 'store-tile store-tile--test' : 'store-tile';
             const label = isTest ? 'Test Store' : number;
             return `
-                <a class="${tileClass}" href="/${number}">
+                <a class="${tileClass}" href="/admin/${number}">
                     <span class="store-tile-number">${label}</span>
                     ${name ? `<span class="store-tile-name">${name}</span>` : ''}
                     ${hours ? `<span class="store-tile-hours">${hours}</span>` : ''}

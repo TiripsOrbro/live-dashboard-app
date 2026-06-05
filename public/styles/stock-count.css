@@ -1183,6 +1183,30 @@ body.stock-count-page {
     color: var(--tb-purple, #702082);
 }
 
+.stock-count-processing-banner {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    background: color-mix(in srgb, var(--tb-purple, #702082) 8%, #fff);
+    border: 1px solid color-mix(in srgb, var(--tb-purple, #702082) 28%, #c8c0bc);
+    border-radius: 4px;
+}
+
+.stock-count-processing-banner-label {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--tb-purple, #702082);
+}
+
+.stock-count-processing-banner .stock-count-progress-shell {
+    width: 100%;
+    max-width: none;
+}
+
 .stock-count-progress-shell {
     --sc-progress-pill: 36%;
     container-type: inline-size;

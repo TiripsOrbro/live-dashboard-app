@@ -2,7 +2,8 @@ const areaPathMatch = window.location.pathname.match(/\/area\/([a-z0-9-]+)\/?$/i
 const areaCodeMatch = window.location.pathname.match(/\/(a\d+)\/?$/i);
 const areaKey = (areaPathMatch ? areaPathMatch[1] : areaCodeMatch ? areaCodeMatch[1].toUpperCase() : '') || '';
 const titleEl = document.getElementById('title');
-const areaLabelEl = document.getElementById('area-label');
+const areaTabsEl = document.getElementById('area-tabs');
+const areaStorePanel = document.getElementById('area-store-panel');
 const areaGrids = document.getElementById('area-grids');
 const ordersList = document.getElementById('orders-list');
 const auditsList = document.getElementById('audits-list');
@@ -10,6 +11,78 @@ const timeEl = document.getElementById('time-display');
 const updatedEl = document.getElementById('last-updated');
 const statusBanner = document.getElementById('status-banner');
 let latestDashboards = [];
+let latestAreaKey = areaKey;
+
+let areaList = ['Area 1', 'Area 2', 'Area 21', 'Area 22'];
+let isAdminView = false;
+
+function areaCodeFromName(name) {
+    const m = String(name || '').match(/(\d+)/);
+    return m ? `A${Number(m[1])}` : '';
+}
+
+function areaPathFromName(name) {
+    const code = areaCodeFromName(name);
+    return code ? `/${code}` : `/area/${encodeURIComponent(String(name).toLowerCase().replace(/\s+/g, '-'))}`;
+}
+
+function normalizeAreaMatchKey(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+}
+
+function renderAreaTabs(currentAreaName) {
+    if (!areaTabsEl) return;
+    if (!isAdminView) {
+        areaTabsEl.hidden = true;
+        areaTabsEl.innerHTML = '';
+        return;
+    }
+    areaTabsEl.hidden = false;
+    const currentKey = normalizeAreaMatchKey(currentAreaName || latestAreaKey);
+    const parts = [];
+    areaList.forEach((name, idx) => {
+        const key = normalizeAreaMatchKey(name);
+        const active =
+            key === currentKey ||
+            normalizeAreaMatchKey(areaCodeFromName(name)) === normalizeAreaMatchKey(latestAreaKey);
+        const href = areaPathFromName(name);
+        if (active) {
+            parts.push(
+                `<span class="admin-area-tab is-active" role="tab" aria-selected="true">${name}</span>`
+            );
+        } else {
+            parts.push(`<a class="admin-area-tab" role="tab" href="${href}">${name}</a>`);
+        }
+        if (idx < areaList.length - 1) {
+            parts.push('<span class="admin-area-tab-pipe" aria-hidden="true"> |</span>');
+        }
+    });
+    areaTabsEl.innerHTML = parts.join('');
+}
+
+function renderStorePanel(data) {
+    if (!areaStorePanel) return;
+    const stores = Array.isArray(data.storeSales) ? data.storeSales : [];
+    const total = Number(data.areaSalesTotal) || stores.reduce((s, r) => s + (Number(r.actual) || 0), 0);
+    const snapOptions = data.isAdmin ? { storeBasePath: '/admin' } : {};
+    const rows =
+        window.StoreSnapRow?.renderStoreSnapList?.(stores, fmtCurrency, undefined, snapOptions) ||
+        '<p class="mic-store-lead-empty">No stores in this area.</p>';
+
+    areaStorePanel.innerHTML = `
+        <article class="mic-tile mic-tile--store-leaderboard" style="min-height: 100%;">
+            <div class="mic-store-lead">
+                <div class="mic-store-lead-label">${data.area || 'Area'} sales today</div>
+                <div class="mic-store-lead-value">${fmtCurrency(total)}</div>
+            </div>
+            <div class="mic-store-lead-list" role="list">${rows}</div>
+        </article>
+    `;
+}
 
 function fmtHour(hour) {
     const h = (((Math.trunc(hour) % 24) + 24) % 24);
@@ -244,7 +317,11 @@ async function loadArea() {
     if (!data.success) throw new Error(data.error || 'Failed to load area dashboard');
 
     titleEl.textContent = 'SALES DASHBOARD';
-    if (areaLabelEl) areaLabelEl.textContent = `${data.area} Area`;
+    latestAreaKey = data.areaKey || areaKey;
+    isAdminView = Boolean(data.isAdmin);
+    if (Array.isArray(data.areas) && data.areas.length) areaList = data.areas;
+    renderAreaTabs(data.area);
+    renderStorePanel(data);
     if (updatedEl) {
         updatedEl.textContent = new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }

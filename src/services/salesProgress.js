@@ -1,5 +1,23 @@
 const { TIME_ZONE } = require('./upselling/upsellingConfig');
 
+/** Macromatix hourly arrays: index 0 = 5AM local. */
+const RAW_BASE_HOUR = 5;
+
+function trimHourlyToTradingWindow(actual, forecast, openHour, closeHour) {
+    const open = Number.isFinite(openHour) ? Math.trunc(openHour) : 10;
+    const close = Number.isFinite(closeHour) && closeHour > open ? Math.trunc(closeHour) : open + 12;
+    const a = Array.isArray(actual) ? actual : [];
+    const f = Array.isArray(forecast) ? forecast : [];
+    const sliceStart = Math.max(0, open - RAW_BASE_HOUR);
+    const sliceEnd = Math.max(sliceStart, close - RAW_BASE_HOUR);
+    return {
+        actual: a.slice(sliceStart, sliceEnd),
+        forecast: f.slice(sliceStart, sliceEnd),
+        openHour: open,
+        closeHour: close,
+    };
+}
+
 function zoneHourMinuteSecond(timeZone = TIME_ZONE, d = new Date()) {
     const parts = new Intl.DateTimeFormat('en-AU', {
         timeZone: String(timeZone || TIME_ZONE),
@@ -40,11 +58,11 @@ function getPaceClass(actual, forecast, elapsedProgress) {
     return 'cell-red';
 }
 
-function getCurrentHourProgress(openHour, hourCount) {
+function getCurrentHourProgress(openHour, hourCount, timeZone = TIME_ZONE) {
     const startHour = Number(openHour) || 10;
     const tradeEndHourExclusive = startHour + hourCount;
     const gridColoursEndHourExclusive = tradeEndHourExclusive + 1;
-    const { hour, minute, second } = zoneHourMinuteSecond();
+    const { hour, minute, second } = zoneHourMinuteSecond(timeZone);
 
     if (hour < startHour || hour >= gridColoursEndHourExclusive) {
         return { hourIndex: -1, progress: 0 };
@@ -57,8 +75,8 @@ function getCurrentHourProgress(openHour, hourCount) {
     return { hourIndex, progress };
 }
 
-function getWallClockPeriodProgress(startHour, endHourExclusive) {
-    const { hour, minute, second } = zoneHourMinuteSecond();
+function getWallClockPeriodProgress(startHour, endHourExclusive, timeZone = TIME_ZONE) {
+    const { hour, minute, second } = zoneHourMinuteSecond(timeZone);
     const nowHourFloat = hour + minute / 60 + second / 3600;
     if (nowHourFloat <= startHour) return 0;
     if (nowHourFloat >= endHourExclusive) return 1;
@@ -99,6 +117,7 @@ function computeDaySalesPresentation(options = {}) {
     const forecasts = Array.isArray(options.forecast) ? options.forecast : [];
     const openHour = Number.isFinite(options.openHour) ? Math.trunc(options.openHour) : 10;
     const closeHour = Number.isFinite(options.closeHour) ? Math.trunc(options.closeHour) : 22;
+    const timeZone = String(options.timeZone || TIME_ZONE).trim() || TIME_ZONE;
     const hourCount = Math.max(actuals.length, forecasts.length);
 
     if (!hourCount) {
@@ -112,12 +131,12 @@ function computeDaySalesPresentation(options = {}) {
 
     const startIdx = 0;
     const endExclusive = hourCount;
-    const hourProgress = getCurrentHourProgress(openHour, hourCount);
+    const hourProgress = getCurrentHourProgress(openHour, hourCount, timeZone);
     const totalForecast = sumHourSlice(forecasts, startIdx, endExclusive);
     const totalActual = sumHourSlice(actuals, startIdx, endExclusive);
-    const { hour, minute, second } = zoneHourMinuteSecond();
+    const { hour, minute, second } = zoneHourMinuteSecond(timeZone);
     const nowHourFloat = hour + minute / 60 + second / 3600;
-    const wallPct = Math.round(getWallClockPeriodProgress(openHour, closeHour) * 1000) / 10;
+    const wallPct = Math.round(getWallClockPeriodProgress(openHour, closeHour, timeZone) * 1000) / 10;
 
     if (nowHourFloat < openHour) {
         return {
@@ -167,6 +186,8 @@ function computeDaySalesPresentation(options = {}) {
 }
 
 module.exports = {
+    RAW_BASE_HOUR,
+    trimHourlyToTradingWindow,
     computeDaySalesPresentation,
     getActualCellClass,
     getPaceClass,

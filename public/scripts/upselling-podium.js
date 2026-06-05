@@ -23,6 +23,42 @@
     let enabled = false;
     let lastPayload = null;
     let revealCycleActive = false;
+    let resizeObserver = null;
+
+    /** Scale chart height, gaps, and dashboard padding from viewport size. */
+    function syncPodiumScale() {
+        const root = document.getElementById('upsell-podium');
+        if (!root || root.hasAttribute('hidden')) return;
+
+        const vw = window.innerWidth || 1200;
+        const vh = window.innerHeight || 800;
+        const widthScale = Math.min(1, Math.max(0.55, vw / 1280));
+        const heightScale = Math.min(1, Math.max(0.5, vh / 900));
+        const scale = Math.min(widthScale, heightScale);
+
+        const chartH = Math.round(Math.min(vh * (0.22 + 0.08 * scale), 320 * scale + 80));
+        const padBottom = Math.round(chartH + vh * 0.12 + 48);
+        const gap = Math.max(4, Math.round(Math.min(vw * 0.0055, 16) * scale));
+        const padX = Math.max(4, Math.round(Math.min(vw * 0.012, 20)));
+
+        root.style.setProperty('--podium-scale', String(scale));
+        root.style.setProperty('--podium-chart-h', `${chartH}px`);
+        root.style.setProperty('--podium-gap', `${gap}px`);
+        root.style.setProperty('--podium-pad-x', `${padX}px`);
+        document.documentElement.style.setProperty('--podium-dashboard-pad', `${padBottom}px`);
+    }
+
+    function bindPodiumResize() {
+        if (resizeObserver) return;
+        const root = ensurePodiumEl();
+        resizeObserver = new ResizeObserver(() => syncPodiumScale());
+        resizeObserver.observe(root);
+        if (root.querySelector('.upsell-podium__cols')) {
+            resizeObserver.observe(root.querySelector('.upsell-podium__cols'));
+        }
+        window.addEventListener('resize', syncPodiumScale, { passive: true });
+        window.addEventListener('orientationchange', syncPodiumScale, { passive: true });
+    }
 
     function apiUrl() {
         const params = new URLSearchParams();
@@ -237,6 +273,9 @@
         if (updated) {
             updated.textContent = formatUpdated(data.lastSyncAt);
         }
+
+        bindPodiumResize();
+        syncPodiumScale();
     }
 
     function escapeHtml(text) {
@@ -282,6 +321,7 @@
     function onLayoutChange() {
         const root = document.getElementById('upsell-podium');
         if (root) mountPodiumEl(root);
+        syncPodiumScale();
 
         const portrait = document.body.classList.contains('dashboard--portrait');
         if (portrait) {
@@ -302,6 +342,7 @@
     function init(nextStore) {
         storeNumber = String(nextStore || '').trim();
         ensurePodiumEl();
+        bindPodiumResize();
         refresh().then(() => startPoll());
     }
 
@@ -309,6 +350,7 @@
         init,
         refresh,
         onLayoutChange,
+        syncPodiumScale,
         stopPoll,
         stopRevealCycle,
     };

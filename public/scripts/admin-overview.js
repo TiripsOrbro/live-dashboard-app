@@ -1,8 +1,6 @@
 const app = document.getElementById('app');
 const REFRESH_MS = 2 * 60 * 1000;
 const TIME_ZONE = 'Australia/Melbourne';
-const MULTIPLIER_NOTHING_LABEL = 'Nothing Yet...';
-
 const VOC_PLACEHOLDER = { count: 30, osatPercent: 83, accuracyPercent: 90 };
 const SMG_REPORTING_URL = 'https://reporting.smg.com/Index.aspx';
 
@@ -16,7 +14,6 @@ const CURRENT_PROMO = {
 let overviewData = null;
 let areaIndex = 0;
 let rotateTimer = null;
-let pickerOpen = false;
 
 function formatVocDisplay(voc = {}) {
     if (voc.placeholder) {
@@ -63,7 +60,20 @@ function currentVoc() {
     return list[areaIndex % list.length];
 }
 
+function formatAreaSssg(area) {
+    const stores = Array.isArray(area?.storeSales) ? area.storeSales : [];
+    const values = stores
+        .map((s) => s.sssgPercent)
+        .filter((v) => v != null && !Number.isNaN(Number(v)))
+        .map((v) => Number(v));
+    if (!values.length) return null;
+    const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+    return Math.round(avg * 10) / 10;
+}
+
 function renderShell() {
+    document.documentElement.classList.add('admin-overview-page');
+    document.body.classList.add('admin-overview-page');
     app.innerHTML = `
         <div class="mic-page">
             <header class="mic-header">
@@ -80,94 +90,162 @@ function renderShell() {
                     </div>
                 </div>
             </header>
-            <div class="mic-grid" id="admin-grid"></div>
-        </div>
-        <div id="admin-item-picker" class="mic-item-picker" hidden>
-            <div class="mic-item-picker-panel admin-picker-panel">
-                <h2>Add item multiplier (3× today)</h2>
-                <div class="admin-picker-scope">
-                    <label><input type="radio" name="scope" value="all" checked> All stores</label>
-                    <label><input type="radio" name="scope" value="pick"> Selected stores</label>
-                </div>
-                <div id="admin-store-checkboxes" class="admin-store-checkboxes" hidden></div>
-                <div class="mic-item-list" id="admin-item-list"></div>
-            </div>
+            <div class="mic-grid mic-grid--admin" id="admin-grid"></div>
         </div>
     `;
     window.DashboardNavBack?.mountBackButton(document.getElementById('admin-overview-back'), {
         fallback: '/admin',
+        alwaysFallback: true,
     });
     document.getElementById('admin-view-accounts-btn')?.addEventListener('click', () => {
         window.DashboardAccount?.openViewAccountsModal?.({ isAdmin: true });
     });
 }
 
-function renderAreaHeading(areaName, { live = false } = {}) {
-    const text = areaName || 'Area';
-    const liveAttr = live ? ' aria-live="polite"' : '';
-    return `<div class="admin-tile-area"${liveAttr}>${text}</div>`;
+function areaRowCells(areas) {
+    const last = areas.length - 1;
+    const parts = [];
+    areas.forEach((a, idx) => {
+        const active = idx === areaIndex % areas.length;
+        parts.push(
+            `<button type="button" class="admin-area-text-tab${active ? ' is-active' : ''}" role="tab" aria-selected="${active}" data-area-index="${idx}">${a.name}</button>`
+        );
+        if (idx < last) {
+            parts.push('<span class="admin-area-text-pipe" aria-hidden="true"> |</span>');
+        }
+    });
+    return parts.join('');
 }
 
-function renderMultiplierBody(rules) {
-    if (!rules?.length) {
-        const label = overviewData?.multiplierNothingLabel || MULTIPLIER_NOTHING_LABEL;
-        return `<div class="mic-tile-main">${label}</div>
-                <div class="mic-tile-sub">No multipliers set for today</div>`;
-    }
-    return rules
-        .map((rule) => {
-            const stores =
-                rule.stores?.includes('*') || rule.stores?.[0] === '*'
-                    ? 'All stores'
-                    : (rule.stores || []).join(', ');
-            const pts = (Number(rule.basePoints) || 0) * (Number(rule.multiplier) || 3);
-            return `<div class="mic-tile-sub"><strong>${rule.itemLabel}</strong> — ${rule.multiplier}× (${pts} pts) · ${stores}</div>`;
-        })
-        .join('');
-}
-
-function renderSalesTile(area, areaName) {
-    const sales = area?.salesToday || { actual: 0, forecast: 0, hours: 0 };
-    const prog = sales.progress || {
-        phase: 'empty',
-        timeFillPercent: 0,
-        outcomeClass: 'cell-green',
-        paceClass: 'cell-green',
-    };
-    const sp = window.SalesProgress;
-    const borderColor = sp?.paceBorderMap?.[prog.outcomeClass] || 'var(--blank-border)';
-    const showLive = prog.phase === 'during' || prog.phase === 'after';
-    const fillPct = prog.phase === 'after' ? 100 : Number(prog.timeFillPercent) || 0;
-    const layers =
-        showLive && sp?.buildLiveProgressLayersHtml
-            ? sp.buildLiveProgressLayersHtml(fillPct, prog.outcomeClass, prog.paceClass)
-            : '';
-    const liveClass = showLive ? ' mic-tile--sales-live' : '';
-    const amounts = `${formatMoney(sales.actual)} / ${formatMoney(sales.forecast)}`;
-
+function renderAreaSalesTotal(sales) {
+    const actual = Number(sales?.actual) || 0;
+    const forecast = Number(sales?.forecast) || 0;
+    const progress = sales?.progress || {};
+    const paceClass = progress.paceClass || 'cell-green';
+    const timeFill = window.SalesProgress?.paceFillPercentFromProgress?.(progress) ?? 0;
+    const layers = window.SalesProgress?.buildPaceStripHtml?.(timeFill, paceClass) || '';
     return `
-        <a class="mic-tile mic-tile--link mic-tile--area-header${liveClass}" href="/stores" style="border: var(--cell-border) ${borderColor};">
-            ${layers}
-            ${renderAreaHeading(areaName, { live: true })}
-            <div class="mic-tile-sales-content">
-                <div class="mic-tile-body">
-                    <div class="mic-tile-label">Actual vs Forecast</div>
-                    <div class="mic-tile-main mic-tile-main--sales">${amounts}</div>
-                    <div class="mic-tile-sub">Today so far</div>
-                </div>
-                <div class="mic-tile-foot">Go to store select →</div>
-            </div>
-        </a>
+        <div class="mic-store-lead-sales-stack">
+            <div class="mic-store-lead-total-amount">${formatMoney(actual)} / ${formatMoney(forecast)}</div>
+            <div class="mic-store-lead-pace-band">${layers}</div>
+        </div>
     `;
 }
 
-function renderSssgTile(areaName) {
+function renderAreaTextSelector({ live = false } = {}) {
+    const areas = overviewData?.areas || [];
+    if (!areas.length) return '';
+    const liveAttr = live ? ' aria-live="polite"' : '';
     return `
-        <article class="mic-tile mic-tile--sssg mic-tile--future mic-tile--area-header">
-            ${renderAreaHeading(areaName)}
+        <div class="admin-area-text-track" role="tablist"${liveAttr} data-area-count="${areas.length}">
+            <div class="admin-area-text-row">${areaRowCells(areas)}</div>
+        </div>`;
+}
+
+function setActiveAreaTab(track, index) {
+    track.querySelectorAll('.admin-area-text-tab').forEach((tab, idx) => {
+        const active = idx === index;
+        tab.classList.toggle('is-active', active);
+        tab.setAttribute('aria-selected', String(active));
+    });
+}
+
+function applyAreaHighlight() {
+    const track = document.querySelector('.admin-area-text-track');
+    const areas = overviewData?.areas || [];
+    if (!track || !areas.length) return;
+    setActiveAreaTab(track, areaIndex % areas.length);
+}
+
+function updateAreaStoresTile(area) {
+    const tile = document.querySelector('.mic-tile--pos-area-stores');
+    if (!tile) return false;
+
+    const sales = area?.salesToday || { actual: 0, forecast: 0 };
+    const salesEl = tile.querySelector('.mic-store-lead-sales');
+    if (salesEl) salesEl.innerHTML = renderAreaSalesTotal(sales);
+
+    const listEl = tile.querySelector('.mic-store-lead-list');
+    const stores = Array.isArray(area?.storeSales) ? area.storeSales : [];
+    const rows =
+        window.StoreSnapRow?.renderStoreSnapList?.(stores, formatMoney, undefined, {
+            storeBasePath: '/admin',
+        }) || '<p class="mic-store-lead-empty">No stores in this area yet.</p>';
+    if (listEl) listEl.innerHTML = rows;
+
+    const track = tile.querySelector('.admin-area-text-track');
+    if (track) setActiveAreaTab(track, areaIndex % Math.max(overviewData?.areas?.length || 1, 1));
+    return true;
+}
+
+function updateVocTile(vocRaw = {}) {
+    const tile = document.querySelector('.mic-tile--pos-voc');
+    if (!tile) return;
+    const voc = formatVocDisplay(vocRaw);
+    const countEl = tile.querySelector('.mic-voc-count');
+    if (countEl) countEl.textContent = voc.count;
+    const metrics = tile.querySelectorAll('.mic-voc-metric');
+    if (metrics[0]) metrics[0].textContent = `OSAT ${voc.osat == null ? '—' : `${voc.osat}%`}`;
+    if (metrics[1]) metrics[1].textContent = `Acc ${voc.acc == null ? '—' : `${voc.acc}%`}`;
+}
+
+function updateSssgTile(area) {
+    const tile = document.querySelector('.mic-tile--pos-sssg');
+    if (!tile) return;
+    const sssg = formatAreaSssg(area);
+    const valueEl = tile.querySelector('.mic-sssg-value');
+    const subEl = tile.querySelector('.mic-tile-sub');
+    if (valueEl) valueEl.textContent = sssg == null ? '—' : `${sssg}%`;
+    if (subEl) {
+        subEl.textContent =
+            sssg == null ? 'Pipeline coming soon' : `${area?.name || 'Area'} average`;
+    }
+    tile.classList.toggle('mic-tile--future', sssg == null);
+}
+
+function replaceStockCountTile(stock) {
+    const tile = document.querySelector('.mic-tile--pos-stock');
+    if (!tile) return;
+    tile.outerHTML = renderStockCountTile(stock);
+}
+
+function updateAreaTiles(area) {
+    if (!document.querySelector('.mic-tile--pos-area-stores')) return false;
+    updateAreaStoresTile(area);
+    updateVocTile(currentVoc() || {});
+    updateSssgTile(area);
+    replaceStockCountTile(area?.stockCount);
+    return true;
+}
+
+function bindAreaTextSelector() {
+    const grid = document.getElementById('admin-grid');
+    if (!grid) return;
+    grid.querySelectorAll('.admin-area-text-tab').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const idx = Number(btn.dataset.areaIndex);
+            if (!Number.isFinite(idx)) return;
+            areaIndex = idx;
+            updateAreaTiles(currentArea());
+            applyAreaHighlight();
+            stopRotation();
+        });
+    });
+}
+
+function renderSssgTile(area) {
+    const sssg = formatAreaSssg(area);
+    const futureClass = sssg == null ? ' mic-tile--future' : '';
+    return `
+        <article class="mic-tile mic-tile--sssg${futureClass} mic-tile--pos-sssg">
             <div class="mic-tile-body">
                 <div class="mic-tile-label">SSSG %</div>
-                <div class="mic-tile-sub">Pipeline coming soon</div>
+                <div class="mic-sssg-value">${sssg == null ? '—' : `${sssg}%`}</div>
+                <div class="mic-tile-sub">${
+                    sssg == null ? 'Pipeline coming soon' : `${area?.name || 'Area'} average`
+                }</div>
             </div>
         </article>
     `;
@@ -176,7 +254,7 @@ function renderSssgTile(areaName) {
 function renderPromoTile() {
     return `
         <a
-            class="mic-tile mic-tile--link mic-tile--promo"
+            class="mic-tile mic-tile--link mic-tile--promo mic-tile--pos-promo"
             href="${CURRENT_PROMO.pdfUrl}"
             target="_blank"
             rel="noopener noreferrer"
@@ -191,6 +269,25 @@ function renderPromoTile() {
                 <span class="mic-tile-foot mic-promo-foot">tap to view FRROP</span>
             </div>
         </a>
+    `;
+}
+
+function renderAreaStoresTile(area) {
+    const sales = area?.salesToday || { actual: 0, forecast: 0 };
+    const stores = Array.isArray(area?.storeSales) ? area.storeSales : [];
+    const rows =
+        window.StoreSnapRow?.renderStoreSnapList?.(stores, formatMoney, undefined, {
+            storeBasePath: '/admin',
+        }) || '<p class="mic-store-lead-empty">No stores in this area yet.</p>';
+
+    return `
+        <article class="mic-tile mic-tile--store-leaderboard mic-tile--pos-area-stores">
+            <div class="mic-store-lead mic-store-lead--purple">
+                ${renderAreaTextSelector({ live: true })}
+                <div class="mic-store-lead-sales">${renderAreaSalesTotal(sales)}</div>
+            </div>
+            <div class="mic-store-lead-list" role="list">${rows}</div>
+        </article>
     `;
 }
 
@@ -214,7 +311,7 @@ function renderStockCountTile(stock) {
           ? 'Stock counts due in area'
           : '';
     return `
-        <${tag} class="${classes}"${hrefAttr}${clickable ? '' : ' aria-disabled="true"'}>
+        <${tag} class="${classes} mic-tile--pos-stock"${hrefAttr}${clickable ? '' : ' aria-disabled="true"'}>
             <div class="mic-tile-body">
                 <div class="mic-tile-label">Stock count</div>
                 <div class="mic-tile-main">${active ? 'Orders to place' : 'All clear'}</div>
@@ -231,21 +328,17 @@ function renderTiles() {
     const area = currentArea();
     const vocRaw = currentVoc() || {};
     const voc = formatVocDisplay(vocRaw);
-    const rules = overviewData.activeMultipliers || [];
-
-    const areaName = area?.name;
 
     grid.innerHTML = `
-        ${renderSalesTile(area, areaName)}
+        ${renderAreaStoresTile(area)}
 
         <a
-            class="mic-tile mic-tile--link mic-tile--voc mic-tile--area-header"
+            class="mic-tile mic-tile--link mic-tile--voc mic-tile--pos-voc"
             href="${SMG_REPORTING_URL}"
             target="_blank"
             rel="noopener noreferrer"
             aria-label="VOC — open SMG reporting"
         >
-            ${renderAreaHeading(areaName)}
             <div class="mic-tile-body">
                 <div class="mic-tile-label">VOC</div>
                 <div class="mic-voc-grid">
@@ -259,30 +352,26 @@ function renderTiles() {
             </div>
         </a>
 
-        ${renderSssgTile(areaName)}
-
-        <article class="mic-tile mic-tile--multiplier" id="admin-multiplier-tile">
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">Daily item multipliers</div>
-                ${renderMultiplierBody(rules)}
-            </div>
-            <div class="mic-tile-foot">${rules.length ? 'Tap to add another' : 'Tap to add'}</div>
-        </article>
+        ${renderSssgTile(area)}
 
         ${renderPromoTile()}
 
         ${renderStockCountTile(area?.stockCount)}
     `;
 
-    const multiplierTile = document.getElementById('admin-multiplier-tile');
-    if (multiplierTile) {
-        multiplierTile.style.cursor = 'pointer';
-        multiplierTile.addEventListener('click', openAdminPicker);
+    bindAreaTextSelector();
+    applyAreaHighlight();
+}
+
+function stopRotation() {
+    if (rotateTimer) {
+        clearInterval(rotateTimer);
+        rotateTimer = null;
     }
 }
 
 function startRotation() {
-    if (rotateTimer) clearInterval(rotateTimer);
+    stopRotation();
     const areas = overviewData?.areas || [];
     if (!areas.length) return;
     areaIndex = areaIndex % areas.length;
@@ -291,81 +380,9 @@ function startRotation() {
         const list = overviewData?.areas || [];
         if (!list.length) return;
         areaIndex = (areaIndex + 1) % list.length;
-        renderTiles();
+        if (!updateAreaTiles(currentArea())) renderTiles();
+        else applyAreaHighlight();
     }, ms);
-}
-
-async function loadStoresForPicker() {
-    const res = await fetch('/api/stores', { credentials: 'same-origin' });
-    const data = await res.json();
-    return data.stores || [];
-}
-
-function openAdminPicker() {
-    if (pickerOpen) return;
-    pickerOpen = true;
-    const picker = document.getElementById('admin-item-picker');
-    const list = document.getElementById('admin-item-list');
-    picker.hidden = false;
-
-    list.innerHTML = (overviewData?.items || [])
-        .map(
-            (item) => `
-        <button type="button" class="mic-item-option" data-item="${encodeURIComponent(item.label)}">
-            ${item.label}
-            <span class="mic-item-option-points">${item.basePoints} pts normally</span>
-        </button>`
-        )
-        .join('');
-
-    loadStoresForPicker().then((stores) => {
-        const box = document.getElementById('admin-store-checkboxes');
-        box.innerHTML = stores
-            .map(
-                (s) =>
-                    `<label><input type="checkbox" value="${s.storeNumber}"> ${s.storeNumber} ${s.storeName || ''}</label>`
-            )
-            .join('');
-    });
-
-    document.querySelectorAll('input[name="scope"]').forEach((radio) => {
-        radio.addEventListener('change', () => {
-            const pick = document.querySelector('input[name="scope"]:checked')?.value === 'pick';
-            document.getElementById('admin-store-checkboxes').hidden = !pick;
-        });
-    });
-
-    list.querySelectorAll('.mic-item-option').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-            const itemLabel = decodeURIComponent(btn.dataset.item || '');
-            const scopeAll = document.querySelector('input[name="scope"]:checked')?.value === 'all';
-            let body = { itemLabel, allStores: scopeAll };
-            if (!scopeAll) {
-                const stores = [...document.querySelectorAll('#admin-store-checkboxes input:checked')].map(
-                    (el) => el.value
-                );
-                if (!stores.length) {
-                    alert('Select at least one store.');
-                    return;
-                }
-                body.stores = stores;
-            }
-            const res = await fetch('/api/mic/daily-item-multiplier', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify(body),
-            });
-            const data = await res.json();
-            if (!data.success) {
-                alert(data.error || 'Failed to add multiplier');
-                return;
-            }
-            picker.hidden = true;
-            pickerOpen = false;
-            await loadOverview();
-        });
-    });
 }
 
 async function loadOverview() {

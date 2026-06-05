@@ -528,6 +528,7 @@
     <script>
         DashboardNavBack?.mountBackButton(document.getElementById('stores-nav-back'), {
             fallback: '/admin/overview',
+            alwaysFallback: true,
         });
         DashboardPageTransition.installStoreLinkFade(document);
         DashboardPageTransition.initStoresEnterFade();

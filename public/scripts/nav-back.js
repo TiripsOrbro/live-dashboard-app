@@ -16,20 +16,26 @@
         btn.innerHTML = ARROW_SVG;
         host.replaceChildren(btn);
         btn.addEventListener('click', () => {
+            const dest = String(fallback).trim() || '/login';
+            const alwaysFallback = Boolean(options.alwaysFallback);
             const fadeToStores = Boolean(options.fadeToStores);
-            const storesDest =
-                fadeToStores || fallback === '/stores'
-                    ? String(options.fallback || '/stores').trim() || '/stores'
-                    : '';
-            if (storesDest && window.DashboardPageTransition?.navigateBackToStores) {
-                window.DashboardPageTransition.navigateBackToStores(storesDest);
+            const useFade =
+                Boolean(options.fade) || fadeToStores || dest === '/stores' || dest === '/admin/overview';
+
+            if (alwaysFallback || useFade) {
+                if (useFade && window.DashboardPageTransition?.navigateBackToStores) {
+                    window.DashboardPageTransition.navigateBackToStores(dest);
+                    return;
+                }
+                window.location.href = dest;
                 return;
             }
+
             if (window.history.length > 1) {
                 window.history.back();
                 return;
             }
-            window.location.href = fallback;
+            window.location.href = dest;
         });
     }
 

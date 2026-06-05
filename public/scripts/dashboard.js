@@ -3,9 +3,11 @@
 ----------------------------------------------------------- */
 const app = document.getElementById('app');
 
-/** Store id from URL (/3811, /kiosk/3811, /nologin/3811, or /teststore). */
+/** Store id from URL (/admin/3811, /3811, /kiosk/3811, /nologin/3811, or /teststore). */
+const IS_ADMIN_STORE_DASHBOARD = /^\/admin\/(teststore|\d{3,6})\/?$/i.test(window.location.pathname);
 const STORE_NUMBER =
     (
+        window.location.pathname.match(/^\/admin\/(teststore|\d{3,6})\/?$/i) ||
         window.location.pathname.match(/\/(?:nologin|kiosk)\/(\d{3,6})\/?$/i) ||
         window.location.pathname.match(/^\/(teststore|\d{3,6})\/?$/i) ||
         []
@@ -1208,7 +1210,7 @@ function buildLiveProgressLayersHtml(timeFillPercent, outcomeClass, paceClass) {
     </div>`;
 }
 
-function buildHourlyDataCell({ index, hourProgress, forecast, actual, displayValue }) {
+function buildHourlyDataCell({ index, hourProgress, forecast, actual, displayValue, portraitPastLive = false }) {
     const isFuture = index > hourProgress.hourIndex;
     if (isFuture) {
         return `<div class="grid-cell">${formatCurrency(displayValue)}</div>`;
@@ -1220,6 +1222,12 @@ function buildHourlyDataCell({ index, hourProgress, forecast, actual, displayVal
 
     if (!isCurrentHour) {
         const cellClass = getActualCellClass(an, fn);
+        if (portraitPastLive && cellClass) {
+            const paceClass = fn > 0 ? getPaceClass(an, fn, 1) : 'cell-green';
+            const layers = buildLiveProgressLayersHtml(100, cellClass, paceClass);
+            const outcomeBorder = paceBorderMap[cellClass] || 'var(--blank-border)';
+            return `<div class="grid-cell grid-cell--live-hour" style="border: var(--cell-border) ${outcomeBorder};">${layers}<span class="grid-cell-live-value">${formatCurrency(displayValue)}</span></div>`;
+        }
         return `<div class="grid-cell${cellClass ? ` ${cellClass}` : ''}">${formatCurrency(displayValue)}</div>`;
     }
 
@@ -1427,7 +1435,16 @@ function getDayPartPresentation(forecasts, actuals, startIdx, endExclusive, wall
 
     if (nowHourFloat >= wallEndHourExclusive) {
         const finalClass = totalForecast > 0 ? getActualCellClass(totalActual, totalForecast) : 'cell-green';
-        return { phase: 'after', cellClass: finalClass, inlineStyle: '', liveLayersHtml: '', outcomeBorderColor: '' };
+        const paceClass =
+            totalForecast > 0 ? getPaceClass(totalActual, totalForecast, 1) : 'cell-green';
+        const liveLayersHtml = buildLiveProgressLayersHtml(100, finalClass, paceClass);
+        return {
+            phase: 'after',
+            cellClass: finalClass,
+            inlineStyle: '',
+            liveLayersHtml,
+            outcomeBorderColor: paceBorderMap[finalClass] || 'var(--blank-border)',
+        };
     }
 
     let paceClass = 'cell-green';
@@ -1680,6 +1697,7 @@ function buildPortraitHourRows() {
                     forecast: forecasts[index],
                     actual: actuals[index],
                     displayValue: forecasts[index],
+                    portraitPastLive: true,
                 })
             );
             const actualCell = portraitCellClass(
@@ -1689,6 +1707,7 @@ function buildPortraitHourRows() {
                     forecast: forecasts[index],
                     actual: actuals[index],
                     displayValue: actuals[index],
+                    portraitPastLive: true,
                 })
             );
             return `
@@ -1701,18 +1720,52 @@ function buildPortraitHourRows() {
 }
 
 function portraitSummaryItemStatusClass(pres, actual, forecast) {
+    if (pres?.liveLayersHtml) return '';
     if (pres?.phase === 'before' || pres?.phase === 'during') return '';
     if (pres?.phase === 'after' && pres.cellClass) return pres.cellClass;
     if (Number(forecast) > 0) return getActualCellClass(actual, forecast);
     return 'cell-green';
 }
 
+function getDayTotalPresentation(forecasts, actuals) {
+    const dayForecast = sumHourSlice(forecasts, 0, times.length);
+    const dayActual = sumHourSlice(actuals, 0, times.length);
+    const wallStart = LUNCH_WALL_START;
+    const wallEnd = tradingEndHourExclusive();
+    const { hour, minute, second } = melbourneHourMinuteSecond();
+    const nowHourFloat = hour + minute / 60 + second / 3600;
+    const mainClass = dayForecast > 0 ? getActualCellClass(dayActual, dayForecast) : 'cell-green';
+
+    if (nowHourFloat < wallStart) {
+        return { phase: 'before', cellClass: '', liveLayersHtml: '', outcomeBorderColor: '' };
+    }
+
+    const hourProgress = getCurrentHourProgress();
+    const expectedSoFar = getPeriodExpectedSoFarSlice(forecasts, 0, times.length, hourProgress);
+    const actualSoFar = getPeriodActualSoFarSlice(actuals, 0, times.length, hourProgress);
+    const elapsed = dayForecast > 0 ? expectedSoFar / dayForecast : 0;
+    const paceClass =
+        dayForecast <= 0 ? 'cell-green' : expectedSoFar <= 0 ? 'cell-green' : getPaceClass(actualSoFar, dayForecast, elapsed);
+
+    const wallPct = Math.round(getWallClockPeriodProgress(wallStart, wallEnd) * 1000) / 10;
+    const fillPct = nowHourFloat >= wallEnd ? 100 : wallPct;
+    const phase = nowHourFloat >= wallEnd ? 'after' : 'during';
+    const liveLayersHtml = buildLiveProgressLayersHtml(fillPct, mainClass, paceClass);
+
+    return {
+        phase,
+        cellClass: phase === 'after' ? mainClass : '',
+        liveLayersHtml,
+        outcomeBorderColor: paceBorderMap[mainClass] || 'var(--blank-border)',
+    };
+}
+
 function buildPortraitSummaryItem(label, actual, forecast, pres = null, extraClass = '') {
+    const liveHtml = pres?.liveLayersHtml || '';
     const statusClass = portraitSummaryItemStatusClass(pres, actual, forecast);
     const borderStyle = pres?.outcomeBorderColor
-        ? ` style="border-color: ${pres.outcomeBorderColor}"`
+        ? ` style="border: var(--cell-border) ${pres.outcomeBorderColor}"`
         : '';
-    const liveHtml = pres?.liveLayersHtml || '';
     return `
         <div class="portrait-summary-item ${extraClass}">
             <div class="portrait-summary-item-label">${label}</div>
@@ -1748,12 +1801,7 @@ function buildPortraitMealRows(forecasts, actuals) {
         DINNER_WALL_START,
         dinnerWallEnd
     );
-    const dayPres = {
-        phase: 'after',
-        cellClass: dayForecast > 0 ? getActualCellClass(dayActual, dayForecast) : 'cell-green',
-        liveLayersHtml: '',
-        outcomeBorderColor: '',
-    };
+    const dayPres = getDayTotalPresentation(forecasts, actuals);
 
     return `
         <div class="portrait-summary-box" role="region" aria-label="Lunch, dinner and day totals">
@@ -2090,19 +2138,32 @@ function updateGrid() {
    First paint — dashboard layout, header, empty grid, popup mount point
 ----------------------------------------------------------- */
 function renderDashboard() {
+    app.classList.remove('app-boot-loading');
+    app.removeAttribute('aria-busy');
     app.innerHTML = `
         <div id="rotate-hint" class="rotate-hint" hidden aria-hidden="true">
             <div class="rotate-hint-card">
                 <div class="rotate-hint-icon" aria-hidden="true">↻</div>
                 <h2>Rotate to landscape</h2>
                 <p>The sales grid is built for a wide view. Turn your phone sideways for the best layout.</p>
-                <a class="rotate-hint-back" href="/">← All stores</a>
+                <a class="rotate-hint-back" href="${IS_ADMIN_STORE_DASHBOARD ? '/admin/overview' : '/'}">← ${
+                    IS_ADMIN_STORE_DASHBOARD ? 'Admin overview' : 'All stores'
+                }</a>
             </div>
         </div>
-        <div class="dashboard">
+        <div class="dashboard${IS_ADMIN_STORE_DASHBOARD ? ' dashboard--admin-store' : ''}">
+            ${
+                IS_ADMIN_STORE_DASHBOARD
+                    ? '<div class="nav-back-host" id="admin-store-nav-back"></div>'
+                    : ''
+            }
             <div class="dashboard-portrait-chrome" hidden>
                 ${buildPortraitTabsHtml()}
             </div>
+            ${
+                IS_ADMIN_STORE_DASHBOARD
+                    ? ''
+                    : `
             <div class="dashboard-header">
                 <div class="dashboard-title">
                     <div class="dashboard-title-desktop">
@@ -2122,7 +2183,16 @@ function renderDashboard() {
                         <span id="last-updated" class="top-info-value">--:--</span>
                     </div>
                 </div>
-            </div>
+            </div>`
+            }
+            ${
+                IS_ADMIN_STORE_DASHBOARD
+                    ? `
+            <span id="time-display" class="dashboard-admin-clock-sink" hidden aria-hidden="true">${formatTime(new Date())}</span>
+            <span id="last-updated" class="dashboard-admin-clock-sink" hidden aria-hidden="true">--:--</span>
+            <p id="store-label" class="store-label" hidden aria-hidden="true"></p>`
+                    : ''
+            }
 
             <div id="sales-status" class="sales-status" role="status" aria-live="polite" hidden></div>
             <div id="audit-schedule-status" class="audit-schedule-status" role="alert" aria-live="assertive" hidden></div>
@@ -2174,16 +2244,28 @@ function renderDashboard() {
             /^\/\d{3,6}\/?$/i.test(window.location.pathname) ||
             /^\/teststore\/?$/i.test(window.location.pathname));
     if (STORE_NUMBER && window.DashboardNavBack) {
-        if (isMicStoreEntry) {
+        if (IS_ADMIN_STORE_DASHBOARD) {
+            window.DashboardNavBack.mountBackButton(document.getElementById('admin-store-nav-back'), {
+                fallback: '/admin/overview',
+                alwaysFallback: true,
+            });
+        } else if (isMicStoreEntry) {
             window.DashboardNavBack.mountBackButton(document.getElementById('dashboard-nav-back'), {
                 fallback: `/${STORE_NUMBER}/mic`,
+                alwaysFallback: true,
             });
         } else if (!isKioskEntry) {
             window.DashboardNavBack.mountBackButton(document.getElementById('dashboard-nav-back'), {
                 fallback: '/stores',
+                alwaysFallback: true,
                 fadeToStores: true,
             });
         }
+    }
+
+    if (IS_ADMIN_STORE_DASHBOARD) {
+        document.body.classList.add('dashboard-page--admin-store');
+        window.AdminStoreTabs?.mount?.(STORE_NUMBER);
     }
 }
 
@@ -2265,9 +2347,16 @@ function applyDashboardScale() {
     const viewW = window.visualViewport?.width ?? window.innerWidth;
     const viewH = getMobileLayoutHeight();
     const dash = document.querySelector('.dashboard');
+    const isAdminStore = document.body.classList.contains('dashboard-page--admin-store');
+    const chromeOffset = isAdminStore ? 110 : 0;
+    const layoutH = Math.max(320, viewH - chromeOffset);
 
     if (portrait) {
-        document.documentElement.style.setProperty('--dashboard-scale', '1');
+        const portraitScale = Math.min(viewW / 400, layoutH / 820, 1);
+        document.documentElement.style.setProperty(
+            '--dashboard-scale',
+            String(Math.max(0.72, portraitScale))
+        );
         if (dash) {
             dash.style.zoom = '';
             dash.style.width = '';
@@ -2278,8 +2367,8 @@ function applyDashboardScale() {
         return;
     }
 
-    const ratio = mobile ? viewW / 1920 : Math.min(viewW / 1920, viewH / 1080);
-    const minScale = mobile ? 0.28 : 0.72;
+    const ratio = Math.min(viewW / 1920, layoutH / 1080);
+    const minScale = mobile ? 0.28 : 0.55;
     const scale = Math.max(minScale, Math.min(ratio, 1));
 
     if (mobile) {
@@ -2352,12 +2441,16 @@ function initMobileLandscape() {
     syncDashboardLayoutMode();
     lastPortraitLayout = isPortraitMobileView();
     applyDashboardScale();
-    await initTradingHours();
-    await applyUserPreferences();
     renderDashboard();
+    await initTradingHours();
+    showGridSkeleton();
+    await applyUserPreferences();
     initPopupTestButton();
     initMobileLandscape();
     await loadAuditSchedule();
     await loadAuditState();
+    if (STORE_NUMBER) {
+        window.StockCountNotify?.initPipelineWatcher?.(STORE_NUMBER);
+    }
     startSyncedUpdates();
 })();

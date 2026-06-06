@@ -153,13 +153,12 @@ async function readLastYearForecastGrid(page) {
 }
 
 /**
- * Scrape Last Year 15-minute slots for one store.
+ * Change store on an already-authenticated SPA session and read the LY grid.
  */
-async function scrapeSssgLastYearForStore(page, storeNumber, credentials) {
+async function scrapeSssgLastYearStoreInSession(page, storeNumber) {
     const target = String(storeNumber || '').trim();
     await page.goto(CHANGE_STORE_URL, SPA_GOTO_OPTS);
-    await page.waitForTimeout(1000);
-    await ensureSpaAuthenticated(page, credentials);
+    await page.waitForTimeout(800);
     await selectStoreOnSpa(page, target);
 
     const rawRows = await readLastYearForecastGrid(page);
@@ -173,7 +172,17 @@ async function scrapeSssgLastYearForStore(page, storeNumber, credentials) {
 }
 
 /**
- * Loop all stores: Change Store → Select → Forecasting → read LY grid.
+ * Scrape Last Year 15-minute slots for one store (standalone — includes SPA auth).
+ */
+async function scrapeSssgLastYearForStore(page, storeNumber, credentials) {
+    await page.goto(CHANGE_STORE_URL, SPA_GOTO_OPTS);
+    await page.waitForTimeout(1000);
+    await ensureSpaAuthenticated(page, credentials);
+    return scrapeSssgLastYearStoreInSession(page, storeNumber);
+}
+
+/**
+ * One SPA session: Change Store → Select → Forecasting → read LY grid for every store.
  */
 async function scrapeSssgLastYearAllStores(page, stores, options = {}) {
     const credentials = options.credentials || getMacromatixScraper().resolveMacromatixCredentials();
@@ -187,7 +196,7 @@ async function scrapeSssgLastYearAllStores(page, stores, options = {}) {
 
         try {
             console.log(`[SSSG] Scraping Last Year grid for store ${storeNumber}...`);
-            const result = await scrapeSssgLastYearForStore(page, storeNumber, credentials);
+            const result = await scrapeSssgLastYearStoreInSession(page, storeNumber);
             results.push(result);
             console.log(
                 `[SSSG] Store ${storeNumber}: ${result.slots.length} quarter-hour slots from ${result.rawRowCount} raw rows`
@@ -210,6 +219,7 @@ module.exports = {
     listStoresOnChangeStorePage,
     selectStoreOnSpa,
     readLastYearForecastGrid,
+    scrapeSssgLastYearStoreInSession,
     scrapeSssgLastYearForStore,
     scrapeSssgLastYearAllStores,
 };

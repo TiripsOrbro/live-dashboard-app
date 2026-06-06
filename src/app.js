@@ -214,6 +214,22 @@ const {
     ADMIN_ROTATE_AREAS,
 } = require('./services/mic/adminOverview');
 const {
+    getContext: getDfscContext,
+    createSession: createDfscSession,
+    getSessionById: getDfscSessionById,
+    updateSession: updateDfscSession,
+    reopenSession: reopenDfscSession,
+    submitSession: submitDfscSession,
+    validateSessionSection,
+    getAuditById: getDfscAuditById,
+    listOpenAudits: listDfscOpenAudits,
+    deleteOpenAudit: deleteDfscOpenAudit,
+    listInspectionHistory: listDfscInspectionHistory,
+} = require('./services/dfsc/dfscStore');
+const { buildDfscReportPdf, buildReportFilename } = require('./services/dfsc/dfscReport');
+const { buildCoreReportPdf } = require('./services/dfsc/dfscCoreReport');
+const { buildAdminDfscStatus } = require('./services/dfsc/dfscAdmin');
+const {
     setAccountGateCookie,
     clearAccountGateCookie,
     resolveCreateAccountParent,
@@ -1600,6 +1616,21 @@ app.get(/^\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)\/?$/i, (req, res) => 
     sendStockCountPage(req, res, storeNumber);
 });
 
+function sendDfscPage(req, res, storeNumber) {
+    if (!assertStoreAccess(req, res, storeNumber)) return;
+    res.sendFile(path.join(__dirname, '../public', 'dfsc.html'));
+}
+
+app.get(/^\/(teststore|\d{3,6})\/dfsc\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/dfsc\/?$/i) || [])[1]);
+    sendDfscPage(req, res, storeNumber);
+});
+
+app.get(/^\/(teststore|\d{3,6})\/dfsc\/audit\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/dfsc\/audit\/?$/i) || [])[1]);
+    sendDfscPage(req, res, storeNumber);
+});
+
 app.get('/api/me', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     res.json({ success: true, ...userProfileForClient(user) });
@@ -2325,6 +2356,251 @@ app.delete('/api/mic/daily-item-multiplier/:id', (req, res) => {
         }
         res.json({ success: true });
     } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/dfsc/context', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        res.json({ success: true, ...getDfscContext(store) });
+    } catch (error) {
+        console.error('API: Error loading DFSC context:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/dfsc/open', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        res.json({ success: true, openAudits: listDfscOpenAudits(store) });
+    } catch (error) {
+        console.error('API: Error listing open DFSC audits:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/dfsc/history', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const limit = Number(req.query.limit) || 50;
+        res.json({ success: true, history: listDfscInspectionHistory(store, { limit }) });
+    } catch (error) {
+        console.error('API: Error loading DFSC inspection history:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.delete('/api/dfsc/session', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        const result = deleteDfscOpenAudit(store, sessionId);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, deletedId: result.deletedId, openAudits: listDfscOpenAudits(store) });
+    } catch (error) {
+        console.error('API: Error deleting open DFSC audit:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/dfsc/start', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const result = createDfscSession(store, {
+            name: req.body?.name,
+            shift: req.body?.shift,
+            startSignatureDataUrl: req.body?.startSignatureDataUrl,
+            forceNew: Boolean(req.body?.forceNew),
+        });
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session, resumed: result.resumed });
+    } catch (error) {
+        console.error('API: Error starting DFSC:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/dfsc/session', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        const session = getDfscSessionById(store, sessionId, req.query.dateKey);
+        if (!session) {
+            res.status(404).json({ success: false, error: 'Session not found.' });
+            return;
+        }
+        res.json({ success: true, session });
+    } catch (error) {
+        console.error('API: Error loading DFSC session:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/dfsc/report.pdf', async (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        const session = getDfscSessionById(store, sessionId, req.query.dateKey);
+        if (!session) {
+            res.status(404).json({ success: false, error: 'Session not found.' });
+            return;
+        }
+        if (session.status !== 'completed') {
+            res.status(400).json({ success: false, error: 'PDF is only available for completed inspections.' });
+            return;
+        }
+        const pdfBuffer = await buildDfscReportPdf(session);
+        const filename = buildReportFilename(session);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('API: Error generating DFSC PDF:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/dfsc/core-report.pdf', async (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const { buffer, filename } = await buildCoreReportPdf(store);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(buffer);
+    } catch (error) {
+        console.error('API: Error generating DFSC CORE report:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/dfsc/reopen', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        const result = reopenDfscSession(store, sessionId, req.body?.dateKey || req.query.dateKey);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session, nonCompliant: result.nonCompliant });
+    } catch (error) {
+        console.error('API: Error reopening DFSC session:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/dfsc/session', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        const result = updateDfscSession(store, sessionId, {
+            answers: req.body?.answers,
+            sectionSkips: req.body?.sectionSkips,
+            actions: req.body?.actions,
+            notes: req.body?.notes,
+            signOff: req.body?.signOff,
+            dateKey: req.body?.dateKey,
+        });
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session, nonCompliant: result.nonCompliant });
+    } catch (error) {
+        console.error('API: Error saving DFSC session:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/dfsc/session/validate-section', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        const sectionId = String(req.body?.sectionId || '').trim();
+        if (!store || !sessionId || !sectionId || !assertStoreAccess(req, res, store)) return;
+        const result = validateSessionSection(store, sessionId, sectionId);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('API: Error validating DFSC section:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/dfsc/submit', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        const result = submitDfscSession(store, sessionId, req.body?.signOff || {});
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session });
+    } catch (error) {
+        console.error('API: Error submitting DFSC:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/admin/dfsc/status', (req, res) => {
+    try {
+        const user = req.dashboardUser || getRequestUser(req);
+        if (!isAdminUser(user)) {
+            res.status(403).json({ success: false, error: 'Admin only.' });
+            return;
+        }
+        const dateKey = String(req.query.date || '').trim() || undefined;
+        let stores = getStoreList().map((s) => ({
+            storeNumber: s.storeNumber,
+            storeName: s.storeName,
+            area: areaNameFromStore(s),
+            areaKey: normalizeAreaKey(areaNameFromStore(s)),
+        }));
+        stores = filterStoresForUser(user, stores);
+        res.json({ success: true, ...buildAdminDfscStatus(dateKey, stores) });
+    } catch (error) {
+        console.error('API: Error loading admin DFSC status:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/admin/dfsc/audit/:sessionId', (req, res) => {
+    try {
+        const user = req.dashboardUser || getRequestUser(req);
+        if (!isAdminUser(user)) {
+            res.status(403).json({ success: false, error: 'Admin only.' });
+            return;
+        }
+        const session = getDfscAuditById(req.params.sessionId);
+        if (!session) {
+            res.status(404).json({ success: false, error: 'Audit not found.' });
+            return;
+        }
+        res.json({ success: true, session });
+    } catch (error) {
+        console.error('API: Error loading DFSC audit:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });

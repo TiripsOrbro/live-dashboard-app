@@ -1679,8 +1679,8 @@ function portraitCellClass(html, extra = '') {
 function buildPortraitHeaderRow() {
     return `
         <div class="grid-cell header-cell portrait-header portrait-header--time">Time</div>
-        <div class="grid-cell header-cell portrait-header portrait-header--forecast">Forecast</div>
         <div class="grid-cell header-cell portrait-header portrait-header--actual">Actual</div>
+        <div class="grid-cell header-cell portrait-header portrait-header--forecast">Forecast</div>
     `;
 }
 
@@ -1712,8 +1712,8 @@ function buildPortraitHourRows() {
             );
             return `
                 <div class="grid-label portrait-hour-label">${time}</div>
-                ${forecastCell}
                 ${actualCell}
+                ${forecastCell}
             `;
         })
         .join('');

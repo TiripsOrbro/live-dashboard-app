@@ -14,9 +14,12 @@ const CURRENT_PROMO = {
 };
 
 const DEFAULT_AREA = 'Area 22';
+const MARKET_LABEL = 'Market 1';
 
 let overviewData = null;
+let dfscStatus = null;
 let areaIndex = 0;
+let marketViewActive = false;
 let lastSalesUpdatedAt = null;
 let overviewLoadInFlight = false;
 
@@ -79,6 +82,65 @@ function currentArea() {
     const areas = overviewData?.areas || [];
     if (!areas.length) return null;
     return areas[areaIndex % areas.length];
+}
+
+function buildMarketAggregate(areas) {
+    const list = areas || [];
+    const storeSales = sortStoresByNumber(list.flatMap((a) => a.storeSales || []));
+    let actual = 0;
+    let forecast = 0;
+    for (const area of list) {
+        const st = area.salesToday || {};
+        actual += Number(st.actual) || 0;
+        forecast += Number(st.forecast) || 0;
+    }
+    const ratio = forecast > 0 ? actual / forecast : 1;
+    let paceClass = 'cell-green';
+    if (ratio < 0.85) paceClass = 'cell-red';
+    else if (ratio < 0.95) paceClass = 'cell-yellow';
+    const progress = { paceClass, timeFillPercent: Math.min(100, Math.round(ratio * 100)) };
+    const wtdValues = list
+        .map((a) => a.sssgWtdPercent)
+        .filter((v) => v != null && !Number.isNaN(Number(v)))
+        .map((v) => Number(v));
+    const wtdAvg = wtdValues.length
+        ? Math.round((wtdValues.reduce((s, v) => s + v, 0) / wtdValues.length) * 10) / 10
+        : null;
+    return {
+        name: MARKET_LABEL,
+        areaKey: 'market-1',
+        salesToday: { actual, forecast, progress },
+        storeSales,
+        sssgTodayPercent: formatAreaSssgFromStores({ storeSales }),
+        sssgWtdPercent: wtdAvg,
+    };
+}
+
+function currentDisplayArea() {
+    const areas = overviewData?.areas || [];
+    if (!areas.length) return null;
+    if (marketViewActive) return buildMarketAggregate(areas);
+    return currentArea();
+}
+
+function ordersForDisplay() {
+    const all = overviewData?.storesNeedingOrders || [];
+    if (marketViewActive) return all;
+    const area = currentArea();
+    if (!area) return [];
+    const inArea = new Set(
+        (area.storeSales || []).map((s) => String(s.storeNumber).trim()).filter(Boolean)
+    );
+    if (!inArea.size) {
+        const key = area.areaKey;
+        const name = area.name;
+        return all.filter(
+            (s) =>
+                (key && s.areaKey === key) ||
+                (name && s.areaName === name)
+        );
+    }
+    return all.filter((s) => inArea.has(String(s.storeNumber).trim()));
 }
 
 function currentVoc() {
@@ -210,7 +272,7 @@ function areaRowCells(areas) {
     const last = areas.length - 1;
     const parts = [];
     areas.forEach((a, idx) => {
-        const active = idx === areaIndex % areas.length;
+        const active = !marketViewActive && idx === areaIndex % areas.length;
         parts.push(
             `<button type="button" class="admin-area-text-tab${active ? ' is-active' : ''}" role="tab" aria-selected="${active}" data-area-index="${idx}">${a.name}</button>`
         );
@@ -240,15 +302,20 @@ function renderAreaTextSelector({ live = false } = {}) {
     const areas = overviewData?.areas || [];
     if (!areas.length) return '';
     const liveAttr = live ? ' aria-live="polite"' : '';
+    const marketDimClass = marketViewActive ? '' : ' is-dimmed';
+    const areaDimClass = marketViewActive ? ' is-dimmed' : '';
     return `
         <div class="admin-area-text-track" role="tablist"${liveAttr} data-area-count="${areas.length}">
-            <div class="admin-area-text-row">${areaRowCells(areas)}</div>
+            <div class="admin-market-text-row${marketDimClass}">
+                <button type="button" class="admin-market-text-tab${marketViewActive ? ' is-active' : ''}" role="tab" aria-selected="${marketViewActive}" data-view="market">${MARKET_LABEL}</button>
+            </div>
+            <div class="admin-area-text-row${areaDimClass}">${areaRowCells(areas)}</div>
         </div>`;
 }
 
 function setActiveAreaTab(track, index) {
     track.querySelectorAll('.admin-area-text-tab').forEach((tab, idx) => {
-        const active = idx === index;
+        const active = !marketViewActive && idx === index;
         tab.classList.toggle('is-active', active);
         tab.setAttribute('aria-selected', String(active));
     });
@@ -258,20 +325,27 @@ function applyAreaHighlight() {
     const track = document.querySelector('.admin-area-text-track');
     const areas = overviewData?.areas || [];
     if (!track || !areas.length) return;
+    const marketTab = track.querySelector('.admin-market-text-tab');
+    if (marketTab) {
+        marketTab.classList.toggle('is-active', marketViewActive);
+        marketTab.setAttribute('aria-selected', String(marketViewActive));
+    }
+    track.querySelector('.admin-market-text-row')?.classList.toggle('is-dimmed', !marketViewActive);
+    track.querySelector('.admin-area-text-row')?.classList.toggle('is-dimmed', marketViewActive);
     setActiveAreaTab(track, areaIndex % areas.length);
 }
 
-function updateAreaStoresTile(area) {
+function updateAreaStoresTile(displayArea) {
     const tile = document.querySelector('.mic-tile--pos-area-stores');
     if (!tile) return false;
 
-    const sales = area?.salesToday || { actual: 0, forecast: 0 };
+    const sales = displayArea?.salesToday || { actual: 0, forecast: 0 };
     const salesEl = tile.querySelector('.mic-store-lead-sales');
     if (salesEl) salesEl.innerHTML = renderAreaSalesTotal(sales);
 
     const listEl = tile.querySelector('.mic-store-lead-list');
     const rows =
-        window.StoreSnapRow?.renderStoreSnapList?.(sortStoresByNumber(area?.storeSales), formatMoney, undefined, {
+        window.StoreSnapRow?.renderStoreSnapList?.(sortStoresByNumber(displayArea?.storeSales), formatMoney, undefined, {
             storeBasePath: '/admin',
         }) || '<p class="mic-store-lead-empty">No stores in this area yet.</p>';
     if (listEl) listEl.innerHTML = rows;
@@ -316,27 +390,38 @@ function replaceOrdersToPlaceTile(stores) {
     tile.outerHTML = renderOrdersToPlaceTile(stores);
 }
 
-function updateAreaTiles(area) {
+function updateAreaTiles() {
     if (!document.querySelector('.mic-tile--pos-area-stores')) return false;
-    updateAreaStoresTile(area);
-    updateVocTile(currentVoc() || {});
-    updateSssgTile(area);
-    replaceOrdersToPlaceTile(overviewData?.storesNeedingOrders || []);
+    const displayArea = currentDisplayArea();
+    updateAreaStoresTile(displayArea);
+    if (!marketViewActive) updateVocTile(currentVoc() || {});
+    updateSssgTile(displayArea);
+    updateDfscTile();
+    replaceOrdersToPlaceTile(ordersForDisplay());
+    applyAreaHighlight();
     return true;
 }
 
 function bindAreaTextSelector() {
     const grid = document.getElementById('admin-grid');
     if (!grid) return;
+    grid.querySelectorAll('.admin-market-text-tab').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            marketViewActive = true;
+            updateAreaTiles();
+        });
+    });
     grid.querySelectorAll('.admin-area-text-tab').forEach((btn) => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
             const idx = Number(btn.dataset.areaIndex);
             if (!Number.isFinite(idx)) return;
+            marketViewActive = false;
             areaIndex = idx;
-            updateAreaTiles(currentArea());
-            applyAreaHighlight();
+            updateAreaTiles();
         });
     });
 }
@@ -345,12 +430,61 @@ function renderSssgTile(area) {
     return renderSssgTileBody(area).html;
 }
 
+function dfscStoresForArea(area) {
+    const stores = dfscStatus?.stores || [];
+    if (!area) return [];
+    const inArea = new Set(
+        (area.storeSales || []).map((s) => String(s.storeNumber).trim()).filter(Boolean)
+    );
+    if (inArea.size) {
+        return stores.filter((s) => inArea.has(String(s.storeNumber).trim()));
+    }
+    const key = area.areaKey || area.key;
+    const name = String(area.name || '').trim();
+    return stores.filter((s) => {
+        const storeArea = String(s.area || '').trim();
+        if (name && storeArea === name) return true;
+        if (key && String(s.areaKey || '').trim() === String(key).trim()) return true;
+        return false;
+    });
+}
+
+function dfscSubtextForDisplay() {
+    if (marketViewActive) return 'Select an area for DFSC';
+    if (!dfscStatus?.stores) return 'Loading…';
+    const area = currentArea();
+    const rows = dfscStoresForArea(area);
+    if (!rows.length) return 'No stores in this area';
+    const amDone = rows.filter((r) => r.amCompleted).length;
+    const pmDone = rows.filter((r) => r.pmCompleted).length;
+    const inProgress = rows.filter((r) => r.inProgress).length;
+    let text = `AM ${amDone}/${rows.length} · PM ${pmDone}/${rows.length}`;
+    if (inProgress) text += ` · ${inProgress} in progress`;
+    return text;
+}
+
+function updateDfscTile() {
+    const tile = document.querySelector('.mic-tile--pos-dfsc .mic-tile-sub');
+    if (tile) tile.textContent = dfscSubtextForDisplay();
+}
+
 function renderAdminLabelTile({ label, posClass, sub = 'Coming soon' }) {
     return `
         <article class="mic-tile ${posClass}">
             <div class="mic-tile-body">
                 <div class="mic-tile-label">${escapeHtml(label)}</div>
                 <div class="mic-tile-sub">${escapeHtml(sub)}</div>
+            </div>
+        </article>
+    `;
+}
+
+function renderDfscAdminTile() {
+    return `
+        <article class="mic-tile mic-tile--pos-dfsc">
+            <div class="mic-tile-body">
+                <div class="mic-tile-label">DFSC</div>
+                <div class="mic-tile-sub">${escapeHtml(dfscSubtextForDisplay())}</div>
             </div>
         </article>
     `;
@@ -420,12 +554,12 @@ function renderOrdersToPlaceTile(stores) {
 function renderTiles() {
     const grid = document.getElementById('admin-grid');
     if (!grid || !overviewData) return;
-    const area = currentArea();
-    const vocRaw = currentVoc() || {};
+    const displayArea = currentDisplayArea();
+    const vocRaw = marketViewActive ? {} : currentVoc() || {};
     const voc = formatVocDisplay(vocRaw);
 
     grid.innerHTML = `
-        ${renderAreaStoresTile(area)}
+        ${renderAreaStoresTile(displayArea)}
 
         <a
             class="mic-tile mic-tile--link mic-tile--voc mic-tile--pos-voc"
@@ -443,20 +577,33 @@ function renderTiles() {
                         <div class="mic-voc-metric">Acc ${voc.acc == null ? '—' : `${voc.acc}%`}</div>
                     </div>
                 </div>
-                <div class="mic-tile-sub">Pipeline coming soon</div>
+                <div class="mic-tile-sub">${marketViewActive ? 'Select an area for VOC' : 'Pipeline coming soon'}</div>
             </div>
         </a>
 
-        ${renderSssgTile(area)}
+        ${renderSssgTile(displayArea)}
 
-        ${renderAdminLabelTile({ label: 'DFSC', posClass: 'mic-tile--pos-dfsc' })}
+        ${renderDfscAdminTile()}
         ${renderAdminLabelTile({ label: 'Daily count', posClass: 'mic-tile--pos-daily-count' })}
         ${renderAdminLabelTile({ label: 'Square One', posClass: 'mic-tile--pos-square-one' })}
-        ${renderOrdersToPlaceTile(overviewData?.storesNeedingOrders || [])}
+        ${renderOrdersToPlaceTile(ordersForDisplay())}
     `;
 
     bindAreaTextSelector();
     applyAreaHighlight();
+}
+
+async function loadDfscStatus() {
+    try {
+        const res = await fetch('/api/admin/dfsc/status', { credentials: 'same-origin' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            dfscStatus = data;
+            updateDfscTile();
+        }
+    } catch {
+        /* ignore */
+    }
 }
 
 async function loadOverview() {
@@ -472,9 +619,11 @@ async function loadOverview() {
         if (data.salesUpdatedAt) lastSalesUpdatedAt = data.salesUpdatedAt;
         overviewData = data;
         const areas = data.areas || [];
-        if (areas.length) areaIndex = defaultAreaIndex(areas);
+        const isFirstLoad = !document.getElementById('admin-grid');
+        if (areas.length && isFirstLoad) areaIndex = defaultAreaIndex(areas);
         if (!document.getElementById('admin-grid')) renderShell();
         renderTiles();
+        loadDfscStatus();
     } finally {
         overviewLoadInFlight = false;
     }

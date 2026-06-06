@@ -8,9 +8,17 @@ const MULTIPLIER_NOTHING_LABEL = 'Nothing Yet...';
 
 let micData = null;
 let pickerOpen = false;
+let pickerEscHandler = null;
 
 const VOC_PLACEHOLDER = { count: 30, osatPercent: 83, accuracyPercent: 90 };
 const SMG_REPORTING_URL = 'https://reporting.smg.com/Index.aspx';
+
+const CURRENT_PROMO = {
+    label: 'Current Promo',
+    name: 'Nacho Cheese Dip Burrito',
+    imageUrl: '/images/promos/let-it-drip-banner.png',
+    pdfUrl: '/documents/promos/let-it-drip-frrop.pdf',
+};
 
 function formatVocDisplay(voc = {}) {
     if (voc.placeholder) {
@@ -32,6 +40,14 @@ function formatMoney(value) {
     return `$${n.toLocaleString('en-AU')}`;
 }
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 function formatTime(date) {
     return date.toLocaleTimeString('en-AU', {
         hour: 'numeric',
@@ -46,14 +62,52 @@ function applyDashboardScale() {
     document.documentElement.style.setProperty('--dashboard-scale', String(scale));
 }
 
+function formatSssgDisplay(value) {
+    if (value == null || Number.isNaN(Number(value))) {
+        return { text: '—', toneClass: 'mic-sssg--na' };
+    }
+    const n = Number(value);
+    const sign = n > 0 ? '+' : '';
+    const toneClass = n > 0 ? 'mic-sssg--up' : n < 0 ? 'mic-sssg--down' : 'mic-sssg--na';
+    return { text: `${sign}${n}%`, toneClass };
+}
+
+function renderPromoBanner() {
+    return `
+        <a
+            class="admin-promo-banner"
+            href="${CURRENT_PROMO.pdfUrl}"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="${CURRENT_PROMO.label}: ${CURRENT_PROMO.name}. Tap to view FRROP."
+        >
+            <span class="admin-promo-banner-bg" aria-hidden="true">
+                <img src="${CURRENT_PROMO.imageUrl}" alt="">
+            </span>
+            <span class="admin-promo-banner-content">
+                <span class="admin-promo-banner-text">
+                    <span class="admin-promo-banner-label">${CURRENT_PROMO.label}</span>
+                    <span class="admin-promo-banner-name">${CURRENT_PROMO.name}</span>
+                </span>
+                <span class="admin-promo-banner-cta">View FRROP</span>
+            </span>
+        </a>
+    `;
+}
+
 function renderShell() {
+    document.documentElement.classList.add('mic-overview-page');
+    document.body.classList.add('mic-overview-page');
     app.innerHTML = `
-        <div class="mic-page" id="mic-page">
-            <header class="mic-header">
-                <div>
-                    <h1>MIC OVERVIEW</h1>
-                    <p class="subtitle" id="mic-store-label">Store ${STORE_NUMBER}</p>
+        <div class="mic-page mic-page--admin" id="mic-page">
+            <header class="mic-header mic-header--admin">
+                <div class="mic-header-brand">
+                    <div>
+                        <h1>MIC OVERVIEW</h1>
+                        <p class="subtitle" id="mic-store-label">Store ${STORE_NUMBER}</p>
+                    </div>
                 </div>
+                ${renderPromoBanner()}
                 <div class="mic-header-actions">
                     <div class="mic-clock">
                         <span class="mic-clock-label">Current time</span>
@@ -61,7 +115,7 @@ function renderShell() {
                     </div>
                 </div>
             </header>
-            <div class="mic-grid" id="mic-grid"></div>
+            <div class="mic-grid mic-grid--admin" id="mic-grid"></div>
         </div>
         ${window.MicSettings?.renderCog?.() || ''}
         <div id="mic-item-picker" class="mic-item-picker" hidden>
@@ -76,113 +130,203 @@ function renderShell() {
     `;
 }
 
-function renderStockCountTile(stock) {
-    const sc = stock || {};
-    const active = Boolean(sc.active);
-    const clickable = Boolean(sc.clickable && sc.href);
-    const tag = clickable ? 'a' : 'article';
-    const hrefAttr = clickable ? ` href="${sc.href}"` : '';
-    const classes = [
-        'mic-tile',
-        'mic-tile--stock-count',
-        active ? 'mic-tile--stock-active' : 'mic-tile--stock-idle',
-        clickable ? 'mic-tile--link' : '',
-    ]
-        .filter(Boolean)
-        .join(' ');
-    const foot = clickable
-        ? 'Open stock count →'
-        : active
-          ? 'Orders to place today'
-          : '';
+function renderSalesStack(sales) {
+    const actual = Number(sales?.actual) || 0;
+    const forecast = Number(sales?.forecast) || 0;
+    const progress = sales?.progress || {};
+    const paceClass = progress.paceClass || 'cell-green';
+    const timeFill = window.SalesProgress?.paceFillPercentFromProgress?.(progress) ?? 0;
+    const layers = window.SalesProgress?.buildPaceStripHtml?.(timeFill, paceClass) || '';
+    const amounts =
+        sales?.hours > 0
+            ? `${formatMoney(actual)} / ${formatMoney(forecast)}`
+            : 'Waiting for sales data';
     return `
-        <${tag} class="${classes}"${hrefAttr}${clickable ? '' : ' aria-disabled="true"'}>
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">Stock count</div>
-                <div class="mic-tile-main">${active ? 'Orders to place' : 'All clear'}</div>
-                <div class="mic-tile-sub">${sc.message || ''}</div>
-            </div>
-            ${foot ? `<div class="mic-tile-foot">${foot}</div>` : ''}
-        </${tag}>
+        <div class="mic-store-lead-sales-stack">
+            <div class="mic-store-lead-total-amount">${amounts}</div>
+            <div class="mic-store-lead-pace-band">${layers}</div>
+        </div>
     `;
 }
 
-const CURRENT_PROMO = {
-    label: 'Current Promo',
-    name: 'Nacho Cheese Dip Burrito',
-    imageUrl: '/images/promos/let-it-drip-banner.png',
-    pdfUrl: '/documents/promos/let-it-drip-frrop.pdf',
-};
+function renderMultiplierBlock(data) {
+    const rules =
+        data?.dailyItemMultipliers || (data?.dailyItemMultiplier ? [data.dailyItemMultiplier] : []);
+    const hasRules = rules.length > 0;
+    const rule = hasRules ? rules[0] : null;
+    const pts = rule
+        ? (Number(rule.basePoints) || 0) * (Number(rule.multiplier) || 3)
+        : 0;
+    const soldCount = rule?.soldCount;
+    const soldHtml = hasRules
+        ? `<div class="mic-multiplier-pick-sold"><span class="mic-multiplier-pick-sold-num">${soldCount == null ? '—' : soldCount}</span><span class="mic-multiplier-pick-sold-label">sold today</span></div>`
+        : '';
 
-function renderSssgTile(sales = {}) {
-    const sssg = sales.sssgPercent;
-    const hasValue = sssg != null && Number.isFinite(Number(sssg));
-    const futureClass = hasValue ? '' : ' mic-tile--future';
     return `
-        <article class="mic-tile mic-tile--sssg${futureClass}">
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">SSSG %</div>
-                <div class="mic-sssg-value">${hasValue ? `${sssg}%` : '—'}</div>
-                <div class="mic-tile-sub">${hasValue ? 'Same store sales growth' : 'Pipeline coming soon'}</div>
+        <button type="button" class="mic-multiplier-pick${hasRules ? ' mic-multiplier-pick--active' : ''}" id="mic-multiplier-tile">
+            <span class="mic-multiplier-pick-kicker">Daily item multipliers</span>
+            <span class="mic-multiplier-pick-body">
+                ${
+                    hasRules
+                        ? `<span class="mic-multiplier-pick-item">${escapeHtml(rule.itemLabel)}</span>
+                           <span class="mic-multiplier-pick-badge">${rule.multiplier}× · ${pts} pts</span>
+                           ${soldHtml}`
+                        : `<span class="mic-multiplier-pick-idle">${escapeHtml(micData?.multiplierNothingLabel || MULTIPLIER_NOTHING_LABEL)}</span>
+                           <span class="mic-multiplier-pick-hint">Tap to choose today's 3× item</span>`
+                }
+            </span>
+            <span class="mic-multiplier-pick-action">${hasRules ? 'Tap to change' : 'Tap to choose'}</span>
+        </button>
+    `;
+}
+
+function isMicMobileView() {
+    return window.matchMedia('(max-width: 900px)').matches;
+}
+
+let lastMicMobileLayout = null;
+
+function syncMicLayoutMode() {
+    const mobile = isMicMobileView();
+    document.body.classList.toggle('mic-overview--mobile', mobile);
+    if (lastMicMobileLayout !== null && lastMicMobileLayout !== mobile && micData) {
+        renderTiles(micData);
+    }
+    lastMicMobileLayout = mobile;
+    return mobile;
+}
+
+function renderMiniDashboard(sales) {
+    const mobile = isMicMobileView();
+    if (mobile) {
+        const totalsHtml = window.MicMiniDashboard?.renderMobileMealTotals?.(sales) || '';
+        return `
+            <div class="mic-mini-dashboard mic-mini-dashboard--mobile">
+                ${totalsHtml}
+                <a class="mic-store-lead-dashboard-link mic-store-lead-dashboard-link--plain mic-meal-dashboard-link" href="/${escapeHtml(STORE_NUMBER)}">View full dashboard →</a>
+            </div>
+        `;
+    }
+    const gridHtml = window.MicMiniDashboard?.renderPortraitGrid?.(sales) || '';
+    return `
+        <div class="mic-mini-dashboard">
+            <div class="dashboard-grid dashboard-grid--portrait" role="region" aria-label="Today's sales by hour">
+                ${gridHtml}
+            </div>
+        </div>
+    `;
+}
+
+function refreshMiniDashboard() {
+    if (!micData?.salesToday) return;
+    const host = document.querySelector('.mic-mini-dashboard');
+    if (!host) return;
+    host.outerHTML = renderMiniDashboard(micData.salesToday);
+}
+
+function renderStoreSalesTile(data) {
+    const sales = data?.salesToday || { actual: 0, forecast: 0 };
+    const storeName = escapeHtml(data?.storeName || STORE_NUMBER);
+    const storeLabel = data?.storeName && data.storeName !== STORE_NUMBER
+        ? `${storeName} · ${escapeHtml(STORE_NUMBER)}`
+        : storeName;
+    return `
+        <article class="mic-tile mic-tile--store-leaderboard mic-tile--pos-store-sales">
+            <div class="mic-store-lead mic-store-lead--purple">
+                <div class="mic-store-lead-store-label">${storeLabel}</div>
+                <div class="mic-store-lead-sales">${renderSalesStack(sales)}</div>
+            </div>
+            <div class="mic-store-lead-list mic-store-lead-list--dashboard">
+                ${renderMiniDashboard(sales)}
+                ${isMicMobileView() ? '' : `<a class="mic-store-lead-dashboard-link mic-store-lead-dashboard-link--plain" href="/${escapeHtml(STORE_NUMBER)}">Open full dashboard →</a>`}
+                ${renderMultiplierBlock(data)}
             </div>
         </article>
     `;
 }
 
-function renderPromoTile() {
+function renderSssgTile(sales = {}) {
+    const today = formatSssgDisplay(sales.sssgPercent);
+    const wtd = formatSssgDisplay(sales.sssgWtdPercent);
+    const hasData = today.text !== '—' || wtd.text !== '—';
+    const futureClass = hasData ? '' : ' mic-tile--future';
+    return `
+        <article class="mic-tile mic-tile--sssg${futureClass} mic-tile--pos-sssg">
+            <div class="mic-tile-body">
+                <div class="mic-tile-label">Today SSSG</div>
+                <div class="mic-sssg-value ${today.toneClass}">${escapeHtml(today.text)}</div>
+                <div class="mic-sssg-wtd ${wtd.toneClass}">WTD ${escapeHtml(wtd.text)}</div>
+            </div>
+        </article>
+    `;
+}
+
+function renderAdminLabelTile({ label, posClass, sub = 'Coming soon' }) {
+    return `
+        <article class="mic-tile ${posClass}">
+            <div class="mic-tile-body">
+                <div class="mic-tile-label">${escapeHtml(label)}</div>
+                <div class="mic-tile-sub">${escapeHtml(sub)}</div>
+            </div>
+        </article>
+    `;
+}
+
+function renderDfscTile(data) {
+    const dfsc = data?.dfsc || {};
+    const href = dfsc.href || `/${STORE_NUMBER}/dfsc`;
+    const sub = dfsc.subtext || 'AM pending · PM pending';
+    const tone = dfsc.inProgress ? 'mic-tile--orders-active' : dfsc.amCompleted && dfsc.pmCompleted ? 'mic-tile--stock-idle' : 'mic-tile--orders-idle';
     return `
         <a
-            class="mic-tile mic-tile--link mic-tile--promo"
-            href="${CURRENT_PROMO.pdfUrl}"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="${CURRENT_PROMO.label}: ${CURRENT_PROMO.name}. Tap to view FRROP."
+            class="mic-tile mic-tile--link ${tone} mic-tile--pos-dfsc"
+            href="${escapeHtml(href)}"
+            aria-label="Daily Food Safety Check"
         >
-            <div class="mic-promo-media" aria-hidden="true">
-                <img src="${CURRENT_PROMO.imageUrl}" alt="">
-                <p class="mic-promo-name">${CURRENT_PROMO.name}</p>
-            </div>
-            <div class="mic-promo-idle">
-                <span class="mic-tile-label">${CURRENT_PROMO.label}</span>
-                <span class="mic-tile-foot mic-promo-foot">tap to view FRROP</span>
+            <div class="mic-tile-body">
+                <div class="mic-tile-label">DFSC</div>
+                <div class="mic-tile-sub">${escapeHtml(sub)}</div>
             </div>
         </a>
     `;
 }
 
-function renderSalesTile(sales) {
-    const prog = sales?.progress || {
-        phase: 'empty',
-        timeFillPercent: 0,
-        outcomeClass: 'cell-green',
-        paceClass: 'cell-green',
-    };
-    const sp = window.SalesProgress;
-    const borderColor =
-        sp?.paceBorderMap?.[prog.outcomeClass] || 'var(--blank-border)';
-    const showLive = prog.phase === 'during' || prog.phase === 'after';
-    const fillPct = prog.phase === 'after' ? 100 : Number(prog.timeFillPercent) || 0;
-    const layers =
-        showLive && sp?.buildLiveProgressLayersHtml
-            ? sp.buildLiveProgressLayersHtml(fillPct, prog.outcomeClass, prog.paceClass)
-            : '';
-    const liveClass = showLive ? ' mic-tile--sales-live' : '';
-    const amounts =
-        sales?.hours > 0
-            ? `${formatMoney(sales.actual)} / ${formatMoney(sales.forecast)}`
-            : 'Waiting for sales data';
+function ordersStoreDetail(entry) {
+    const count = Number(entry?.pendingCount) || 0;
+    if (count > 0) {
+        return `${count} vendor${count === 1 ? '' : 's'} to count`;
+    }
+    return entry?.message || 'Open stock count';
+}
+
+function renderOrdersToPlaceTile(data) {
+    const sc = data?.stockCount || {};
+    const active = Boolean(sc.active);
+    const tone = active ? 'mic-tile--orders-active' : 'mic-tile--orders-idle';
+    const rows = active
+        ? `
+            <li class="mic-orders-store-item" role="listitem">
+                <a
+                    class="mic-orders-store-link"
+                    href="${escapeHtml(sc.href || `/${STORE_NUMBER}`)}"
+                    aria-label="${escapeHtml(`${data?.storeName || STORE_NUMBER} — ${ordersStoreDetail(sc)}`)}"
+                >
+                    <span class="mic-orders-store-title">
+                        <span class="mic-orders-store-name">${escapeHtml(data?.storeName || STORE_NUMBER)}</span>
+                        <span class="mic-orders-store-num">${escapeHtml(STORE_NUMBER)}</span>
+                    </span>
+                    <span class="mic-orders-store-detail">${escapeHtml(ordersStoreDetail(sc))}</span>
+                </a>
+            </li>`
+        : '<li class="mic-orders-store-empty">All orders are placed for today</li>';
 
     return `
-        <a class="mic-tile mic-tile--link${liveClass}" href="/${STORE_NUMBER}" style="border: var(--cell-border) ${borderColor};">
-            ${layers}
-            <div class="mic-tile-sales-content">
-                <div class="mic-tile-body">
-                    <div class="mic-tile-label">Actual vs Forecast</div>
-                    <div class="mic-tile-main mic-tile-main--sales">${amounts}</div>
-                </div>
-                <div class="mic-tile-foot">Go to dashboard →</div>
+        <article class="mic-tile mic-tile--orders-to-place ${tone} mic-tile--pos-orders">
+            <div class="mic-tile-body mic-tile-body--orders">
+                <div class="mic-tile-label">Orders to place</div>
+                <ul class="mic-orders-store-list" role="list">${rows}</ul>
             </div>
-        </a>
+        </article>
     `;
 }
 
@@ -191,13 +335,12 @@ function renderTiles(data) {
     if (!grid) return;
     const sales = data?.salesToday || { actual: 0, forecast: 0 };
     const voc = formatVocDisplay(data?.voc || {});
-    const rules = data?.dailyItemMultipliers || (data?.dailyItemMultiplier ? [data.dailyItemMultiplier] : []);
 
     grid.innerHTML = `
-        ${renderSalesTile(sales)}
+        ${renderStoreSalesTile(data)}
 
         <a
-            class="mic-tile mic-tile--link mic-tile--voc"
+            class="mic-tile mic-tile--link mic-tile--voc mic-tile--pos-voc"
             href="${SMG_REPORTING_URL}"
             target="_blank"
             rel="noopener noreferrer"
@@ -218,35 +361,20 @@ function renderTiles(data) {
 
         ${renderSssgTile(sales)}
 
-        <article class="mic-tile mic-tile--multiplier" id="mic-multiplier-tile">
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">Daily item multipliers</div>
-                ${
-                    rules.length
-                        ? rules
-                              .map((rule) => {
-                                  const pts =
-                                      (Number(rule.basePoints) || 0) * (Number(rule.multiplier) || 3);
-                                  return `<div class="mic-tile-sub"><strong>${rule.itemLabel}</strong> — ${rule.multiplier}× (${pts} pts)</div>`;
-                              })
-                              .join('')
-                        : `<div class="mic-tile-main">${micData?.multiplierNothingLabel || MULTIPLIER_NOTHING_LABEL}</div>
-                           <div class="mic-tile-sub">No item selected for 3× points today</div>`
-                }
-            </div>
-            <div class="mic-tile-foot">${rules.length ? 'Tap to change' : 'Tap to choose'}</div>
-        </article>
-
-        ${renderPromoTile()}
-
-        ${renderStockCountTile(data?.stockCount)}
+        ${renderDfscTile(data)}
+        ${renderAdminLabelTile({ label: 'Daily count', posClass: 'mic-tile--pos-daily-count' })}
+        ${renderAdminLabelTile({ label: 'Square One', posClass: 'mic-tile--pos-square-one' })}
+        ${renderOrdersToPlaceTile(data)}
     `;
 
     const multiplierTile = document.getElementById('mic-multiplier-tile');
     if (multiplierTile) {
-        multiplierTile.style.cursor = 'pointer';
         multiplierTile.addEventListener('click', openItemPicker);
     }
+}
+
+function pickerItems() {
+    return (micData?.items || []).filter((item) => !/\bbox\b/i.test(String(item?.label || '')));
 }
 
 function openItemPicker() {
@@ -255,7 +383,7 @@ function openItemPicker() {
     const picker = document.getElementById('mic-item-picker');
     const list = document.getElementById('mic-item-list');
     if (!picker || !list) return;
-    const items = micData?.items || [];
+    const items = pickerItems();
     const nothingOption = `
         <button type="button" class="mic-item-option mic-item-option--none" data-clear="true">
             Nothing
@@ -267,7 +395,7 @@ function openItemPicker() {
               .map(
                   (item) => `
             <button type="button" class="mic-item-option" data-item="${encodeURIComponent(item.label)}">
-                ${item.label}
+                ${escapeHtml(item.label)}
                 <span class="mic-item-option-points">${item.basePoints} pts normally</span>
             </button>
         `
@@ -286,11 +414,22 @@ function openItemPicker() {
             closeItemPicker();
         });
     });
+    pickerEscHandler = (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeItemPicker();
+        }
+    };
+    document.addEventListener('keydown', pickerEscHandler);
 }
 
 function closeItemPicker() {
     const picker = document.getElementById('mic-item-picker');
     if (!picker) return;
+    if (pickerEscHandler) {
+        document.removeEventListener('keydown', pickerEscHandler);
+        pickerEscHandler = null;
+    }
     picker.classList.add('is-closing');
     window.setTimeout(() => {
         picker.hidden = true;
@@ -327,6 +466,49 @@ async function clearDailyMultiplier() {
     await loadMicData();
 }
 
+async function enrichMicSalesHourly(data) {
+    const sales = data?.salesToday || {};
+    const resolved = window.MicMiniDashboard?.resolveHourly?.(sales);
+    if (resolved?.forecasts?.length || resolved?.actuals?.length) {
+        if (!sales.actualHourly?.length && !sales.forecastHourly?.length) {
+            data.salesToday = {
+                ...sales,
+                actualHourly: resolved.actuals,
+                forecastHourly: resolved.forecasts,
+                hours: Math.max(resolved.actuals.length, resolved.forecasts.length) || sales.hours,
+            };
+        }
+        return data;
+    }
+
+    try {
+        const res = await fetch(`/api/sales?store=${encodeURIComponent(STORE_NUMBER)}`, {
+            credentials: 'same-origin',
+        });
+        const slice = await res.json();
+        if (!res.ok || !slice.success) return data;
+        const trim = window.MicMiniDashboard?.trimHourlyToTradingWindow;
+        const trimmed = trim
+            ? trim(slice.actual, slice.forecast, slice.openHour ?? sales.openHour, slice.closeHour ?? sales.closeHour)
+            : { actual: [], forecast: [] };
+        if (!trimmed.actual.length && !trimmed.forecast.length) return data;
+        data.salesToday = {
+            ...sales,
+            openHour: slice.openHour ?? sales.openHour,
+            closeHour: slice.closeHour ?? sales.closeHour,
+            timeZone: slice.timeZone ?? sales.timeZone,
+            rawActual: slice.actual,
+            rawForecast: slice.forecast,
+            actualHourly: trimmed.actual,
+            forecastHourly: trimmed.forecast,
+            hours: Math.max(trimmed.actual.length, trimmed.forecast.length) || sales.hours,
+        };
+    } catch {
+        /* keep totals-only payload */
+    }
+    return data;
+}
+
 async function loadMicData() {
     const res = await fetch(`/api/mic?store=${encodeURIComponent(STORE_NUMBER)}`, {
         credentials: 'same-origin',
@@ -336,10 +518,15 @@ async function loadMicData() {
         app.textContent = data.error || 'Could not load MIC overview.';
         return;
     }
-    micData = data;
+    micData = await enrichMicSalesHourly(data);
     const label = document.getElementById('mic-store-label');
-    if (label) label.textContent = `Store ${STORE_NUMBER}`;
-    renderTiles(data);
+    if (label) {
+        label.textContent = micData.storeName
+            ? `${micData.storeName} · ${STORE_NUMBER}`
+            : `Store ${STORE_NUMBER}`;
+    }
+    if (!document.getElementById('mic-grid')) renderShell();
+    renderTiles(micData);
 }
 
 function init() {
@@ -349,6 +536,7 @@ function init() {
     }
     applyDashboardScale();
     renderShell();
+    syncMicLayoutMode();
     window.MicSettings?.bind?.({
         getViewAccountsOptions: () => ({ storeNumber: STORE_NUMBER }),
     });
@@ -358,8 +546,12 @@ function init() {
         const clock = document.getElementById('mic-clock');
         if (clock) clock.textContent = formatTime(new Date());
     }, 1000);
+    window.setInterval(refreshMiniDashboard, 60 * 1000);
     window.setInterval(loadMicData, REFRESH_MS);
-    window.addEventListener('resize', applyDashboardScale);
+    window.addEventListener('resize', () => {
+        applyDashboardScale();
+        syncMicLayoutMode();
+    });
 }
 
 init();

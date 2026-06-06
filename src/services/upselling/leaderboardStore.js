@@ -6,6 +6,7 @@ const {
     TIME_ZONE,
 } = require('./upsellingConfig');
 const { getDayShiftEmployeeMultiplier } = require('./storeUpsellingConfig');
+const { normalizeLabel } = require('./pointsFile');
 
 const LEADERBOARD_RETENTION_DAYS = Math.max(
     1,
@@ -367,6 +368,8 @@ function loadScores(storeNumber) {
         storeNumber: store,
         lastSyncAt: raw.lastSyncAt || null,
         dayShiftEmployeeMultiplier: resolveDayShiftEmployeeMultiplier(store, raw.dayShiftEmployeeMultiplier),
+        itemQtyByDay:
+            raw.itemQtyByDay && typeof raw.itemQtyByDay === 'object' ? raw.itemQtyByDay : {},
         rows,
         source: fs.existsSync(file) ? path.basename(file) : null,
     };
@@ -393,6 +396,13 @@ function saveScores(storeNumber, rows = [], meta = {}) {
             ? normalizeDayShiftEmployeeMultiplier(meta.dayShiftEmployeeMultiplier)
             : resolveDayShiftEmployeeMultiplier(store, existing.dayShiftEmployeeMultiplier);
     if (dayShift) payload.dayShiftEmployeeMultiplier = dayShift;
+    const itemQtyByDay =
+        meta.itemQtyByDay && typeof meta.itemQtyByDay === 'object'
+            ? meta.itemQtyByDay
+            : existing.itemQtyByDay;
+    if (itemQtyByDay && typeof itemQtyByDay === 'object' && Object.keys(itemQtyByDay).length) {
+        payload.itemQtyByDay = itemQtyByDay;
+    }
     writeJsonFile(file, payload);
     return normalized;
 }
@@ -530,6 +540,14 @@ function mergeSyncScores(storeNumber, byDay = [], options = {}) {
     let mergedRows = [...byKey.values()].filter(Boolean);
     mergedRows = pruneRowsToRetentionDays(mergedRows);
 
+    let itemQtyByDay = { ...(existing.itemQtyByDay || {}) };
+    if (options.itemQtyByDay && typeof options.itemQtyByDay === 'object') {
+        for (const [day, qtyMap] of Object.entries(options.itemQtyByDay)) {
+            if (!isDayField(day) || !qtyMap || typeof qtyMap !== 'object') continue;
+            itemQtyByDay[day] = qtyMap;
+        }
+    }
+
     if (replaceDays.size || incoming.length) {
         const refreshed = replaceDays.size ? [...replaceDays].join(', ') : 'all incoming days';
         console.log(
@@ -538,10 +556,27 @@ function mergeSyncScores(storeNumber, byDay = [], options = {}) {
     }
 
     if (mergedRows.length || fs.existsSync(scoresPath(store))) {
-        saveScores(store, mergedRows, { lastSyncAt: new Date().toISOString() });
+        saveScores(store, mergedRows, {
+            lastSyncAt: new Date().toISOString(),
+            itemQtyByDay,
+        });
     }
 
     return aggregateLeaderboard(store);
+}
+
+function soldCountForItemLabel(itemQtyByDay, day, itemLabel) {
+    const qtyMap = itemQtyByDay?.[day];
+    if (!qtyMap || typeof qtyMap !== 'object') return null;
+    const key = normalizeLabel(itemLabel);
+    let total = 0;
+    let matched = false;
+    for (const [col, qty] of Object.entries(qtyMap)) {
+        if (normalizeLabel(col) !== key) continue;
+        matched = true;
+        total += Number(qty) || 0;
+    }
+    return matched ? total : null;
 }
 
 module.exports = {
@@ -559,6 +594,7 @@ module.exports = {
     resolveLeaderboardDayFilter,
     resolveLeaderboardPeriod,
     mergeSyncScores,
+    soldCountForItemLabel,
     effectivePoints,
     scoredPoints,
     migrateLegacyStore,

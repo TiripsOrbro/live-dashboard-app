@@ -3,6 +3,9 @@
  * When PODIUM_ALWAYS_VISIBLE is false: reveals every 5 minutes, hides after ~45s.
  */
 (function upsellingPodiumModule(global) {
+    /** Set false to hide the upsell leaderboard on store dashboards while WIP. */
+    const PODIUM_UI_ENABLED = false;
+
     /** Keep leaderboard on screen (no auto-hide). Set false to restore rotate in/out. */
     const PODIUM_ALWAYS_VISIBLE = true;
 
@@ -65,6 +68,20 @@
         if (storeNumber) params.set('store', storeNumber);
         const qs = params.toString();
         return qs ? `${API_BASE}?${qs}` : API_BASE;
+    }
+
+    function hidePodiumUi() {
+        stopPoll();
+        stopRevealCycle({ hide: true });
+        enabled = false;
+        lastPayload = null;
+        setDashboardPodiumLayout(false);
+        document.documentElement.style.removeProperty('--podium-dashboard-pad');
+        const root = document.getElementById('upsell-podium');
+        if (root) {
+            root.classList.remove('upsell-podium--revealed', 'upsell-podium--persistent');
+            root.setAttribute('hidden', '');
+        }
     }
 
     function mountPodiumEl(el) {
@@ -287,6 +304,10 @@
     }
 
     async function refresh() {
+        if (!PODIUM_UI_ENABLED) {
+            hidePodiumUi();
+            return;
+        }
         if (!storeNumber) return;
         try {
             const res = await fetch(apiUrl(), { credentials: 'same-origin' });
@@ -319,6 +340,10 @@
     }
 
     function onLayoutChange() {
+        if (!PODIUM_UI_ENABLED) {
+            hidePodiumUi();
+            return;
+        }
         const root = document.getElementById('upsell-podium');
         if (root) mountPodiumEl(root);
         syncPodiumScale();
@@ -340,6 +365,10 @@
     }
 
     function init(nextStore) {
+        if (!PODIUM_UI_ENABLED) {
+            hidePodiumUi();
+            return;
+        }
         storeNumber = String(nextStore || '').trim();
         ensurePodiumEl();
         bindPodiumResize();

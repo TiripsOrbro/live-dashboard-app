@@ -27,6 +27,28 @@ const { getDailyItemMultipliers } = require('../mic/micStore');
 // Guardrail: item quantities in Upsell by Cashier should be small counts, not long ID-like numbers.
 const MAX_REASONABLE_ITEM_QTY = Number(process.env.UPSELL_MAX_ITEM_QTY || 500);
 
+function normalizeLeaderboardStoreNumber(value) {
+    return String(value || '')
+        .trim()
+        .replace(/[^0-9]/g, '');
+}
+
+function aggregateItemQtyForStore(parsed, storeNumber, syncDay) {
+    const want = normalizeLeaderboardStoreNumber(storeNumber);
+    const day = String(syncDay || melbourneTodayIso()).trim() || melbourneTodayIso();
+    const totals = {};
+    for (const row of parsed.cashiers || []) {
+        if (String(row.day || '').trim() !== day) continue;
+        if (normalizeLeaderboardStoreNumber(row.store) !== want) continue;
+        for (const [item, qty] of Object.entries(row.qtyByColumn || {})) {
+            const n = Number(qty) || 0;
+            if (!n || Math.abs(n) > MAX_REASONABLE_ITEM_QTY) continue;
+            totals[item] = (totals[item] || 0) + n;
+        }
+    }
+    return totals;
+}
+
 function scoreCashierRow(qtyByColumn, byLabel, options = {}) {
     const micRules = options.micRules || [];
     let mmxPoints = 0;
@@ -328,8 +350,11 @@ function processParsedReport(parsed, storeNumber, extra = {}) {
         syncDay: extra.syncDay || null,
         ...extra,
     });
+    const syncDay = String(extra.syncDay || melbourneTodayIso()).trim() || melbourneTodayIso();
+    const itemQty = aggregateItemQtyForStore(parsed, storeNumber, syncDay);
     const { rows: savedRows } = mergeSyncScores(storeNumber, byDay, {
         replaceDays: extra.syncDay ? [extra.syncDay] : undefined,
+        itemQtyByDay: Object.keys(itemQty).length ? { [syncDay]: itemQty } : undefined,
     });
     return { parsed, ranked: savedRows.length ? savedRows : ranked, byDay };
 }

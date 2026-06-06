@@ -3,7 +3,12 @@ const fs = require('fs');
 const path = require('path');
 const { TIME_ZONE } = require('../upselling/upsellingConfig');
 const { loadPointsMap, normalizeLabel } = require('../upselling/pointsFile');
+const { getCachedSssgLy } = require('../macromatixScraper');
+const { computeStoreWtdSssgPercent, getStoreDateKey } = require('../sssg/sssgWeeklyLedger');
 const { buildStockCountTileState } = require('../stockCountTileState');
+const { buildDaySummary, storeDateKey: dfscStoreDateKey, listOpenAudits } = require('../dfsc/dfscStore');
+const { formatStoreTileSubtext } = require('../dfsc/dfscAdmin');
+const { loadScores, soldCountForItemLabel } = require('../upselling/leaderboardStore');
 const { trimHourlyToTradingWindow, computeDaySalesPresentation } = require('../salesProgress');
 const { DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR, getStoreConfig } = require('../storeList');
 
@@ -248,6 +253,34 @@ function pointsForColumnFromMap(byLabel, colName) {
     return pointsForColumn(byLabel, colName);
 }
 
+function resolveStoreTimeZone(store = {}) {
+    const explicit = String(store.timeZone || '').trim();
+    if (explicit) return explicit;
+    const cfg = getStoreConfig(store.storeNumber);
+    return cfg?.timeZone || TIME_ZONE;
+}
+
+function buildStoreForSssgWtd(storeNumber, storeSlice = {}) {
+    const store = String(storeNumber || '').trim();
+    const cfg = getStoreConfig(store) || {};
+    return {
+        storeNumber: store,
+        storeName: cfg.storeName || storeSlice.storeName,
+        openHour: storeSlice.openHour ?? cfg.openHour,
+        closeHour: storeSlice.closeHour ?? cfg.closeHour,
+        timeZone: resolveStoreTimeZone({ ...cfg, ...storeSlice, storeNumber: store }),
+        actual: Array.isArray(storeSlice.actual) ? storeSlice.actual : [],
+        forecast: Array.isArray(storeSlice.forecast) ? storeSlice.forecast : [],
+    };
+}
+
+function computeMicSssgWtd(storeNumber, storeSlice = {}) {
+    const storeForWtd = buildStoreForSssgWtd(storeNumber, storeSlice);
+    const day = getStoreDateKey(storeForWtd);
+    const slots = getCachedSssgLy(storeForWtd.storeNumber, day);
+    return computeStoreWtdSssgPercent(storeForWtd, slots);
+}
+
 function computeSalesToday(storeSlice = {}) {
     const openHour = Number.isFinite(storeSlice.openHour) ? storeSlice.openHour : DEFAULT_OPEN_HOUR;
     const closeHour = Number.isFinite(storeSlice.closeHour) ? storeSlice.closeHour : DEFAULT_CLOSE_HOUR;
@@ -276,6 +309,9 @@ function computeSalesToday(storeSlice = {}) {
         hours,
         openHour,
         closeHour,
+        timeZone,
+        actualHourly,
+        forecastHourly,
         progress,
         sssgPercent: storeSlice.sssgPercent != null ? storeSlice.sssgPercent : null,
     };
@@ -285,20 +321,53 @@ function buildMicPayload(storeNumber, storeSlice = {}) {
     const store = String(storeNumber || '').trim();
     const day = melbourneTodayIso();
     const dailyItemMultipliers = getDailyItemMultipliers(store, day);
+    const cfg = getStoreConfig(store) || {};
+    const salesToday = computeSalesToday(storeSlice);
+    const sssgWtdPercent = computeMicSssgWtd(store, storeSlice);
+    const itemQtyByDay = loadScores(store).itemQtyByDay || {};
+    const multipliersWithSold = dailyItemMultipliers.map((rule) => ({
+        ...rule,
+        soldCount: soldCountForItemLabel(itemQtyByDay, day, rule.itemLabel),
+    }));
+    const dfscDateKey = dfscStoreDateKey(store);
+    const dfscDay = buildDaySummary(store, dfscDateKey);
+    const openAuditCount = listOpenAudits(store).length;
+    const dfscSubtext = formatStoreTileSubtext(
+        {
+            amCompleted: dfscDay.amCompleted,
+            pmCompleted: dfscDay.pmCompleted,
+        },
+        dfscDay.inProgress,
+        openAuditCount
+    );
     return {
         storeNumber: store,
+        storeName: String(cfg.storeName || storeSlice.storeName || store).trim(),
         day,
-        salesToday: computeSalesToday(storeSlice),
+        salesToday: {
+            ...salesToday,
+            sssgWtdPercent,
+            rawActual: Array.isArray(storeSlice.actual) ? storeSlice.actual : [],
+            rawForecast: Array.isArray(storeSlice.forecast) ? storeSlice.forecast : [],
+        },
         voc: {
             ...MIC_VOC_PLACEHOLDER,
             placeholder: true,
         },
-        dailyItemMultiplier: dailyItemMultipliers[0] || null,
-        dailyItemMultipliers,
+        dailyItemMultiplier: multipliersWithSold[0] || null,
+        dailyItemMultipliers: multipliersWithSold,
         items: listUpsellItems(store),
         defaultMultiplier: DEFAULT_ITEM_MULTIPLIER,
         multiplierNothingLabel: MULTIPLIER_NOTHING_LABEL,
         stockCount: buildStockCountTileState(store, storeSlice),
+        dfsc: {
+            href: `/${store}/dfsc`,
+            subtext: dfscSubtext,
+            amCompleted: dfscDay.amCompleted,
+            pmCompleted: dfscDay.pmCompleted,
+            inProgress: Boolean(dfscDay.inProgress),
+            openAuditCount,
+        },
     };
 }
 
@@ -350,6 +419,9 @@ module.exports = {
     clearStoreDailyMultipliers,
     computeSalesToday,
     buildMicPayload,
+    computeMicSssgWtd,
+    buildStoreForSssgWtd,
+    resolveStoreTimeZone,
     normalizeStoresList,
     ruleAppliesToStore,
 };

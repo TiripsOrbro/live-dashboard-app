@@ -153,11 +153,13 @@ function buildStoresNeedingOrders(liveByNum, areaGroups) {
             seen.add(storeNumber);
             const live = liveByNum.get(storeNumber) || {};
             const tile = buildStockCountTileState(storeNumber, live);
-            if (!tile.active || !tile.href) continue;
+            if (!tile.active) continue;
             entries.push({
                 storeNumber,
                 storeName: String(cfg.storeName || storeNumber).trim(),
-                href: tile.href,
+                areaKey: group.key || normalizeAreaKey(group.name),
+                areaName: group.name,
+                href: tile.href || `/admin/${storeNumber}`,
                 pendingCount: tile.pendingCount,
                 message: tile.message,
             });

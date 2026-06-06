@@ -189,6 +189,9 @@ function sumStoreWtdTotals(storeNumber, weekStart, todayPartial, todayKey) {
     } else if (todayPartial) {
         actualTotal += Number(todayPartial.actualTotal) || 0;
         lyTotal += Number(todayPartial.lyTotal) || 0;
+    } else if (todayEntry) {
+        actualTotal += Number(todayEntry.actualTotal) || 0;
+        lyTotal += Number(todayEntry.lyTotal) || 0;
     }
 
     return { actualTotal, lyTotal };

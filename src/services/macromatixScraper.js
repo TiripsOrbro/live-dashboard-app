@@ -653,6 +653,25 @@ function getConfiguredStoreNumbers() {
         .filter(Boolean);
 }
 
+/**
+ * Single-store Macromatix accounts must pick a store after each login, then logout before the next store.
+ * Set SCRAPER_SINGLE_STORE_LOGIN=0 to restore the legacy multi-store dropdown flow on one session.
+ */
+function useSingleStoreLoginMode() {
+    const raw = process.env.SCRAPER_SINGLE_STORE_LOGIN;
+    if (raw === undefined || raw === '') return true;
+    return !/^(0|false|no|off)$/i.test(String(raw).trim());
+}
+
+function getScraperConcurrency(storeCount) {
+    const singleStore = useSingleStoreLoginMode();
+    const fallback = singleStore ? 4 : 3;
+    const requestedConc = Number(process.env.SCRAPER_CONCURRENCY);
+    const maxConc =
+        Number.isFinite(requestedConc) && requestedConc > 0 ? Math.floor(requestedConc) : fallback;
+    return Math.max(1, Math.min(maxConc, storeCount));
+}
+
 /** Pull a 3–6 digit store number out of an option label like "3811 Chirnside Park". */
 function storeNumberFromLabel(label) {
     const m = String(label || '').match(/\b(\d{3,6})\b/);
@@ -1014,7 +1033,7 @@ async function scrapePendingVendors(page, opts = {}) {
     await page.goto(SCHEDULED_ORDERS_URL, GOTO_OPTS);
     await page.waitForTimeout(700);
 
-    if (opts.storeNumber) {
+    if (opts.storeNumber && !opts.skipStoreSelect) {
         const picked = await selectStoreOnPage(page, opts.storeNumber);
         if (picked) {
             console.log('[Macromatix] Scheduled orders store selected:', picked);
@@ -1208,16 +1227,18 @@ async function probePendingOrdersForStores(page, stores, options = {}) {
 /**
  * Scrape one store on an already-logged-in page: select the store on the labour scheduler, enter Day view,
  * read actual/forecast, then read pending vendors from scheduled orders for that same store.
+ * When skipStoreSelect is true (single-store login mode), the session is already bound to that store.
  */
-async function scrapeStoreData(page, store, ctx) {
+async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
     const { todayKey, testScheduledOrdersPick, pickYmd, skipScheduledPersistence } = ctx;
+    const skipStoreSelect = Boolean(scrapeOpts.skipStoreSelect);
     const storeNumber = String(store.storeNumber || '').trim();
     const label = storeNumber || '(default)';
 
     await page.goto(LABOUR_URL, GOTO_OPTS);
     await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
 
-    if (storeNumber) {
+    if (storeNumber && !skipStoreSelect) {
         const picked = await selectStoreOnPage(page, storeNumber);
         if (picked) {
             console.log(`[Macromatix] Labour scheduler store selected: ${picked}`);
@@ -1256,6 +1277,7 @@ async function scrapeStoreData(page, store, ctx) {
             const pendingResult = await scrapePendingVendors(page, {
                 storeNumber,
                 pickYmd: testScheduledOrdersPick ? pickYmd : null,
+                skipStoreSelect,
             });
             pendingVendors = pendingResult.vendors;
             console.log(`[Macromatix] Store ${label} pending vendors:`, pendingVendors.join(', ') || '(none)');
@@ -1363,8 +1385,116 @@ async function readMacromatixLoginError(page) {
 /** True when the page is the Macromatix logon form (not an authenticated screen). */
 async function isMacromatixLoginPage(page) {
     const url = page.url();
-    if (/MMS_Logon\.aspx/i.test(url)) return true;
+    if (await page.$('#ddlStoreSelection, select[name="ddlStoreSelection"]')) return false;
+    if (/MMS_Logon\.aspx/i.test(url)) {
+        if (/mode=SelectStore/i.test(url)) return false;
+        return Boolean(await page.$('#Login_UserName'));
+    }
     return Boolean(await page.$('#Login_UserName'));
+}
+
+/**
+ * Post-login `#ddlStoreSelection` dropdown (single-store Macromatix accounts).
+ * Returns selected option text, or null if the control is missing / no match.
+ */
+async function selectStoreOnLoginDropdown(page, storeNumber) {
+    const want = String(storeNumber || '').replace(/[^0-9]/g, '');
+    if (!want) return null;
+
+    const selHandle = await page.$('#ddlStoreSelection, select[name="ddlStoreSelection"]');
+    if (!selHandle) return null;
+
+    const result = await page.evaluate((w) => {
+        const sel = document.querySelector('#ddlStoreSelection, select[name="ddlStoreSelection"]');
+        if (!sel) return null;
+        const re = new RegExp(`(^|\\D)${w}(\\D|$)`);
+        for (const opt of sel.options) {
+            const text = (opt.textContent || '').replace(/\s+/g, ' ').trim();
+            if (!text || /^select store$/i.test(text)) continue;
+            if (re.test(text)) {
+                const changed = sel.value !== opt.value;
+                sel.value = opt.value;
+                if (changed) {
+                    sel.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                return { text, value: opt.value, changed };
+            }
+        }
+        return null;
+    }, want);
+
+    if (!result) return null;
+
+    const clicked = await page.evaluate(() => {
+        const storeBtn = document.querySelector('#btStoreSelection, input[name="btStoreSelection"]');
+        if (storeBtn) {
+            storeBtn.click();
+            return storeBtn.value || 'btStoreSelection';
+        }
+        for (const el of document.querySelectorAll('input[type="submit"], input[type="button"], button, a')) {
+            const t = (el.value || el.textContent || '').replace(/\s+/g, ' ').trim();
+            if (/^(go|continue|ok|select|submit|log\s*on|login)$/i.test(t)) {
+                el.click();
+                return t;
+            }
+        }
+        return null;
+    });
+
+    await Promise.race([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {}),
+        page.waitForFunction(
+            () => !/mode=SelectStore/i.test(location.href || ''),
+            { timeout: 20000 }
+        ).catch(() => {}),
+        page.waitForTimeout(clicked ? 5000 : 1500),
+    ]);
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(400);
+
+    const stillOnPicker = /mode=SelectStore/i.test(page.url()) || (await page.$('#ddlStoreSelection'));
+    if (stillOnPicker) {
+        throw new Error(`Store ${want} selection did not leave the login picker (still on SelectStore)`);
+    }
+
+    console.log(
+        `[Macromatix] Login store dropdown: ${result.text}${clicked ? ` (clicked ${clicked})` : ''}`
+    );
+    return result.text;
+}
+
+/** Confirm the labour scheduler (or similar) shows the expected store number. */
+async function verifyLabourStoreContext(page, storeNumber) {
+    const want = String(storeNumber || '').replace(/[^0-9]/g, '');
+    if (!want) return false;
+
+    const LABOUR_URL =
+        'https://tacobellau.macromatix.net/MMS_Stores_LabourScheduler.aspx?MenuCustomItemID=249';
+    await page.goto(LABOUR_URL, GOTO_OPTS);
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(1200);
+
+    const comboId = await findStoreComboId(page);
+    if (!comboId) return false;
+    const text = await getStoreComboText(page, comboId);
+    return new RegExp(`(^|\\D)${want}(\\D|$)`).test(text || '');
+}
+
+/** Read every store on the post-login `#ddlStoreSelection` dropdown. */
+async function listStoresOnLoginDropdown(page) {
+    return page.evaluate(() => {
+        const sel = document.querySelector('#ddlStoreSelection, select[name="ddlStoreSelection"]');
+        if (!sel) return [];
+        const out = [];
+        for (const opt of sel.options) {
+            const text = (opt.textContent || '').replace(/\s+/g, ' ').trim();
+            if (!text || /^select store$/i.test(text)) continue;
+            const m = text.match(/\b(\d{3,6})\b/);
+            if (!m) continue;
+            out.push({ storeNumber: m[1], storeName: text, optionValue: opt.value });
+        }
+        return out;
+    });
 }
 
 /**
@@ -1396,9 +1526,14 @@ async function loginPage(page, username, password) {
     ]);
     await page
         .waitForFunction(
-            () =>
-                !/MMS_Logon\.aspx/i.test(location.pathname) &&
-                !document.querySelector('#Login_UserName'),
+            () => {
+                if (document.querySelector('#ddlStoreSelection, select[name="ddlStoreSelection"]')) return true;
+                if (/mode=SelectStore/i.test(location.search || '')) return true;
+                return (
+                    !/MMS_Logon\.aspx/i.test(location.pathname) &&
+                    !document.querySelector('#Login_UserName')
+                );
+            },
             { timeout: 20000 }
         )
         .catch(() => {});
@@ -1409,6 +1544,214 @@ async function loginPage(page, username, password) {
         );
     }
     console.log('[Macromatix] Logged in');
+}
+
+const LOGOUT_URL_CANDIDATES = [
+    `${BASE_URL}MMS_Logon.aspx?SignOut=1`,
+    `${BASE_URL}MMS_Logon.aspx?logout=1`,
+    `${BASE_URL}MMS_Logon.aspx`,
+];
+
+/** End the Macromatix session so the next store can log in fresh (single-store accounts). */
+async function logoutPage(page) {
+    const clicked = await page
+        .evaluate(() => {
+            for (const el of document.querySelectorAll('a, input[type="submit"], button, span')) {
+                const t = (el.textContent || el.value || '').trim();
+                if (/^(log\s*off|logout|sign\s*out)$/i.test(t)) {
+                    el.click();
+                    return t;
+                }
+            }
+            return null;
+        })
+        .catch(() => null);
+
+    if (clicked) {
+        console.log(`[Macromatix] Logged out via "${clicked}"`);
+        await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(600);
+    } else {
+        for (const url of LOGOUT_URL_CANDIDATES) {
+            try {
+                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+            } catch {
+                /* try next */
+            }
+            if (await isMacromatixLoginPage(page)) {
+                console.log('[Macromatix] Logged out via URL');
+                break;
+            }
+        }
+    }
+
+    try {
+        const client = await page.createCDPSession();
+        await client.send('Network.clearBrowserCookies');
+    } catch {
+        /* ignore */
+    }
+}
+
+/**
+ * Post-login store picker for single-store Macromatix accounts — SPA Change Store first, ASP.NET fallback.
+ */
+async function selectStoreAfterLogin(page, storeNumber, credentials) {
+    const target = String(storeNumber || '').trim();
+    if (!target) throw new Error('Store number required after login');
+
+    const pickedLogin = await selectStoreOnLoginDropdown(page, target);
+    if (pickedLogin) {
+        console.log(`[Macromatix] Post-login store selected (login dropdown): ${target}`);
+        return pickedLogin;
+    }
+
+    const {
+        CHANGE_STORE_URL,
+        ensureSpaAuthenticated,
+        listStoresOnChangeStorePage,
+        selectStoreOnSpa,
+    } = require('./sssg/sssgScraper');
+
+    let listed = await listStoresOnChangeStorePage(page);
+    if (listed.length) {
+        await selectStoreOnSpa(page, target);
+        console.log(`[Macromatix] Post-login store selected (SPA picker): ${target}`);
+        return target;
+    }
+
+    const pickedOnPage = await selectStoreOnPage(page, target);
+    if (pickedOnPage) {
+        console.log(`[Macromatix] Post-login store selected (ASP.NET picker): ${pickedOnPage}`);
+        await waitForStoreSelectionPostback(page);
+        return pickedOnPage;
+    }
+
+    await page.goto(CHANGE_STORE_URL, { waitUntil: 'load', timeout: 60000 });
+    await page.waitForTimeout(1200);
+    await ensureSpaAuthenticated(page, credentials);
+
+    listed = await listStoresOnChangeStorePage(page);
+    if (listed.length) {
+        await selectStoreOnSpa(page, target);
+        console.log(`[Macromatix] Post-login store selected (SPA): ${target}`);
+        return target;
+    }
+
+    const picked = await selectStoreOnPage(page, target);
+    if (picked) {
+        console.log(`[Macromatix] Post-login store selected (ASP.NET): ${picked}`);
+        await waitForStoreSelectionPostback(page);
+        return picked;
+    }
+
+    throw new Error(`Could not select store ${target} on post-login picker`);
+}
+
+/** Attach SSSG percent to a scrape result when LY slots are available. */
+function attachSssgToResult(result, todayKey) {
+    if (!result || result.error) return result;
+    try {
+        const { computeSssgPercent } = require('./sssg/sssgCalc');
+        const { getCachedSssgLy } = require('./sssg/sssgCache');
+        const cfg = getStoreConfig(result.storeNumber);
+        const timeZone = cfg?.timeZone || DASHBOARD_TIME_ZONE;
+        const slots = getCachedSssgLy(result.storeNumber, todayKey);
+        result.sssgPercent = computeSssgPercent({
+            slots,
+            actual: result.actual,
+            forecast: result.forecast,
+            openHour: result.openHour,
+            closeHour: result.closeHour,
+            timeZone,
+        });
+        if (result.sssgPercent != null) {
+            console.log(`[Macromatix] Store ${result.storeNumber} SSSG: ${result.sssgPercent}%`);
+        }
+    } catch (err) {
+        console.warn(`[Macromatix] Store ${result.storeNumber} SSSG compute failed:`, err.message);
+    }
+    return result;
+}
+
+/**
+ * One isolated login session: pick store → sales + vendors → logout.
+ * SSSG Last Year is scraped in one shared SPA pass after all stores (see runBatchSssgLyScrape).
+ */
+async function scrapeSingleStoreSession(page, store, ctx, credentials) {
+    const storeNumber = String(store.storeNumber || '').trim();
+
+    await selectStoreAfterLogin(page, storeNumber, credentials);
+
+    const onCorrectStore = await verifyLabourStoreContext(page, storeNumber);
+    if (!onCorrectStore) {
+        throw new Error(
+            `Labour scheduler is not showing store ${storeNumber} after login store selection`
+        );
+    }
+
+    const result = await scrapeStoreData(page, store, ctx, { skipStoreSelect: true });
+    await logoutPage(page);
+    return result;
+}
+
+/** One login → loop Change Store in SPA for all stores needing LY → logout. */
+async function runBatchSssgLyScrape(browser, stores, todayKey, credentials) {
+    const {
+        needsSssgLyScrape,
+        hasSssgLyCachedToday,
+        setCachedSssgLy,
+        loadSssgLyFromDisk,
+    } = require('./sssg/sssgCache');
+    const { scrapeSssgLastYearAllStores } = require('./sssg/sssgScraper');
+
+    for (const store of stores) {
+        loadSssgLyFromDisk(store.storeNumber, todayKey);
+    }
+
+    if (!needsSssgLyScrape(stores, todayKey)) return;
+
+    const storesNeedingLy = stores.filter((s) => !hasSssgLyCachedToday(s.storeNumber, todayKey));
+    if (!storesNeedingLy.length) return;
+
+    console.log(
+        `[Macromatix] Batch SSSG Last Year scrape for ${storesNeedingLy.length} store(s) in one SPA session...`
+    );
+
+    let context;
+    let lyPage;
+    try {
+        context = await createIsolatedContext(browser);
+        lyPage = await context.newPage();
+        await lyPage.setViewport({ width: 1280, height: 720 });
+        await applyResourceBlocking(lyPage);
+        await loginPage(lyPage, credentials.username, credentials.password);
+        await selectStoreOnLoginDropdown(lyPage, storesNeedingLy[0].storeNumber);
+
+        const lyResults = await scrapeSssgLastYearAllStores(lyPage, storesNeedingLy, { credentials });
+        for (const r of lyResults) {
+            if (r.slots?.length) {
+                setCachedSssgLy(r.storeNumber, todayKey, r.slots);
+            }
+        }
+    } catch (err) {
+        console.warn('[Macromatix] Batch SSSG LY scrape failed:', err.message);
+    } finally {
+        if (lyPage) {
+            try {
+                await logoutPage(lyPage);
+            } catch {
+                /* ignore */
+            }
+        }
+        if (context) {
+            try {
+                await context.close();
+            } catch {
+                /* ignore */
+            }
+        }
+    }
 }
 
 /**
@@ -1573,21 +1916,25 @@ async function scrapeMacromatix(options = {}) {
             options.onBrowser(browser);
         }
 
-        const page = await browser.newPage();
-        await page.setViewport({ width: 1280, height: 720 });
-        await applyResourceBlocking(page);
+        const singleStoreLogin = useSingleStoreLoginMode();
+        const credentials = { username, password };
 
-        await loginPage(page, username, password);
-
-        // `.storelist` is the master list of stores to scrape. If it's empty (not yet configured),
-        // fall back to enumerating every store the account can access.
+        // `.storelist` is the master list of stores to scrape.
         let stores = getStoreList();
         if (stores.length) {
             console.log(
                 `[Macromatix] Store list (.storelist) — ${stores.length}:`,
                 stores.map((s) => s.storeNumber).join(', ')
             );
+        } else if (singleStoreLogin) {
+            throw new Error(
+                'Single-store login mode requires .storelist (or DASHBOARD_STORE_NUMBERS). The scraper account only sees one store per session.'
+            );
         } else {
+            const page = await browser.newPage();
+            await page.setViewport({ width: 1280, height: 720 });
+            await applyResourceBlocking(page);
+            await loginPage(page, username, password);
             console.log('[Macromatix] No .storelist configured — enumerating accessible stores...');
             await page.goto(LABOUR_URL, GOTO_OPTS);
             await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
@@ -1601,6 +1948,7 @@ async function scrapeMacromatix(options = {}) {
                 console.log('[Macromatix] No store selector found — scraping the account default store only');
                 stores = [{ storeNumber: onlyStore, storeName: '' }];
             }
+            await page.close().catch(() => {});
         }
 
         if (onlyStore) {
@@ -1640,119 +1988,119 @@ async function scrapeMacromatix(options = {}) {
 
         const ctx = { todayKey, testScheduledOrdersPick, pickYmd, skipScheduledPersistence };
         const results = new Array(stores.length);
-
-        // Shared queue: workers pull the next store index until exhausted. `nextIndex++` is
-        // synchronous (no await between read+increment) so it's atomic on Node's single thread.
         let nextIndex = 0;
         const takeNext = () => (nextIndex < stores.length ? nextIndex++ : -1);
+        const concurrency = getScraperConcurrency(stores.length);
 
-        const scrapeWithPage = async (workerPage) => {
-            for (;;) {
-                const i = takeNext();
-                if (i < 0) break;
-                const store = stores[i];
-                const label = store.storeNumber || '(default)';
-                try {
-                    results[i] = await scrapeStoreData(workerPage, store, ctx);
-                } catch (storeErr) {
-                    console.error(`[Macromatix] Store ${label} scrape failed:`, storeErr.message);
-                    results[i] = buildErrorResult(store, storeErr, todayKey);
-                }
-            }
-        };
+        if (singleStoreLogin) {
+            console.log(
+                `[Macromatix] Single-store login mode — ${stores.length} store(s), concurrency ${concurrency} (login → select → scrape → logout per store)`
+            );
 
-        const requestedConc = Number(process.env.SCRAPER_CONCURRENCY);
-        const maxConc = Number.isFinite(requestedConc) && requestedConc > 0 ? Math.floor(requestedConc) : 3;
-        const concurrency = Math.max(1, Math.min(maxConc, stores.length));
-
-        if (concurrency <= 1) {
-            await scrapeWithPage(page);
-        } else {
-            console.log(`[Macromatix] Scraping ${stores.length} store(s) with concurrency ${concurrency}`);
-            // Worker 0 reuses the already-logged-in main page; extra workers get their own
-            // isolated context + session so each store's server-side entity selection is independent.
-            const extraContexts = [];
-            const workers = [scrapeWithPage(page)];
-            for (let w = 1; w < concurrency; w++) {
-                const context = await createIsolatedContext(browser);
-                extraContexts.push(context);
-                workers.push(
-                    (async () => {
-                        const wp = await context.newPage();
-                        await wp.setViewport({ width: 1280, height: 720 });
-                        await applyResourceBlocking(wp);
-                        try {
-                            await loginPage(wp, username, password);
-                            await scrapeWithPage(wp);
-                        } catch (workerErr) {
-                            console.error(`[Macromatix] Worker ${w} failed:`, workerErr.message);
+            const runSingleStoreWorker = async (workerId) => {
+                for (;;) {
+                    const i = takeNext();
+                    if (i < 0) break;
+                    const store = stores[i];
+                    const label = store.storeNumber || '(default)';
+                    let context;
+                    try {
+                        context = await createIsolatedContext(browser);
+                        const workerPage = await context.newPage();
+                        await workerPage.setViewport({ width: 1280, height: 720 });
+                        await applyResourceBlocking(workerPage);
+                        await loginPage(workerPage, username, password);
+                        results[i] = await scrapeSingleStoreSession(workerPage, store, ctx, credentials);
+                    } catch (storeErr) {
+                        console.error(
+                            `[Macromatix] Worker ${workerId} store ${label} failed:`,
+                            storeErr.message
+                        );
+                        results[i] = buildErrorResult(store, storeErr, todayKey);
+                    } finally {
+                        if (context) {
+                            try {
+                                await context.close();
+                            } catch {
+                                /* ignore */
+                            }
                         }
-                    })()
-                );
+                    }
+                }
+            };
+
+            const workers = [];
+            for (let w = 0; w < concurrency; w++) {
+                workers.push(runSingleStoreWorker(w));
             }
             await Promise.all(workers);
-            for (const context of extraContexts) {
-                try {
-                    await context.close();
-                } catch {
-                    /* ignore */
+
+            await runBatchSssgLyScrape(browser, stores, todayKey, credentials);
+            for (const result of results) {
+                attachSssgToResult(result, todayKey);
+            }
+        } else {
+            const page = await browser.newPage();
+            await page.setViewport({ width: 1280, height: 720 });
+            await applyResourceBlocking(page);
+            await loginPage(page, username, password);
+
+            const scrapeWithPage = async (workerPage) => {
+                for (;;) {
+                    const i = takeNext();
+                    if (i < 0) break;
+                    const store = stores[i];
+                    const label = store.storeNumber || '(default)';
+                    try {
+                        results[i] = await scrapeStoreData(workerPage, store, ctx);
+                    } catch (storeErr) {
+                        console.error(`[Macromatix] Store ${label} scrape failed:`, storeErr.message);
+                        results[i] = buildErrorResult(store, storeErr, todayKey);
+                    }
                 }
-            }
-        }
+            };
 
-        try {
-            const { scrapeSssgLastYearAllStores } = require('./sssg/sssgScraper');
-            const { computeSssgPercent } = require('./sssg/sssgCalc');
-            const {
-                needsSssgLyScrape,
-                hasSssgLyCachedToday,
-                getCachedSssgLy,
-                setCachedSssgLy,
-                loadSssgLyFromDisk,
-            } = require('./sssg/sssgCache');
-
-            for (const store of stores) {
-                loadSssgLyFromDisk(store.storeNumber, todayKey);
-            }
-
-            if (needsSssgLyScrape(stores, todayKey)) {
-                const storesNeedingLy = stores.filter(
-                    (s) => !hasSssgLyCachedToday(s.storeNumber, todayKey)
-                );
-                console.log(
-                    `[Macromatix] Running once-daily SSSG Last Year scrape for ${storesNeedingLy.length} store(s)...`
-                );
-                const lyResults = await scrapeSssgLastYearAllStores(page, storesNeedingLy, {
-                    credentials: { username, password },
-                });
-                for (const r of lyResults) {
-                    if (r.slots?.length) {
-                        setCachedSssgLy(r.storeNumber, todayKey, r.slots);
+            if (concurrency <= 1) {
+                await scrapeWithPage(page);
+            } else {
+                console.log(`[Macromatix] Scraping ${stores.length} store(s) with concurrency ${concurrency}`);
+                const extraContexts = [];
+                const workers = [scrapeWithPage(page)];
+                for (let w = 1; w < concurrency; w++) {
+                    const context = await createIsolatedContext(browser);
+                    extraContexts.push(context);
+                    workers.push(
+                        (async () => {
+                            const wp = await context.newPage();
+                            await wp.setViewport({ width: 1280, height: 720 });
+                            await applyResourceBlocking(wp);
+                            try {
+                                await loginPage(wp, username, password);
+                                await scrapeWithPage(wp);
+                            } catch (workerErr) {
+                                console.error(`[Macromatix] Worker ${w} failed:`, workerErr.message);
+                            }
+                        })()
+                    );
+                }
+                await Promise.all(workers);
+                for (const context of extraContexts) {
+                    try {
+                        await context.close();
+                    } catch {
+                        /* ignore */
                     }
                 }
             }
 
-            for (const result of results) {
-                if (!result || result.error) continue;
-                const cfg = getStoreConfig(result.storeNumber);
-                const timeZone = cfg?.timeZone || DASHBOARD_TIME_ZONE;
-                const slots = getCachedSssgLy(result.storeNumber, todayKey);
-                result.sssgPercent = computeSssgPercent({
-                    slots,
-                    actual: result.actual,
-                    forecast: result.forecast,
-                    openHour: result.openHour,
-                    closeHour: result.closeHour,
-                    timeZone,
-                });
-                if (result.sssgPercent != null) {
-                    console.log(
-                        `[Macromatix] Store ${result.storeNumber} SSSG: ${result.sssgPercent}%`
-                    );
+            try {
+                await runBatchSssgLyScrape(browser, stores, todayKey, credentials);
+                for (const result of results) {
+                    attachSssgToResult(result, todayKey);
                 }
+            } catch (sssgErr) {
+                console.warn('[Macromatix] SSSG scrape/compute failed:', sssgErr.message);
             }
-        } catch (sssgErr) {
-            console.warn('[Macromatix] SSSG scrape/compute failed:', sssgErr.message);
         }
 
         await closeBrowserQuietly(browser, 'normal completion');
@@ -1839,6 +2187,11 @@ module.exports.openMacromatixBrowser = openMacromatixBrowser;
 module.exports.verifyMacromatixLogin = verifyMacromatixLogin;
 module.exports.resolveMacromatixCredentials = resolveMacromatixCredentials;
 module.exports.loginPage = loginPage;
+module.exports.logoutPage = logoutPage;
+module.exports.selectStoreAfterLogin = selectStoreAfterLogin;
+module.exports.selectStoreOnLoginDropdown = selectStoreOnLoginDropdown;
+module.exports.listStoresOnLoginDropdown = listStoresOnLoginDropdown;
+module.exports.useSingleStoreLoginMode = useSingleStoreLoginMode;
 module.exports.assertMacromatixAuthenticated = assertMacromatixAuthenticated;
 module.exports.isMacromatixLoginPage = isMacromatixLoginPage;
 module.exports.closeBrowserQuietly = closeBrowserQuietly;

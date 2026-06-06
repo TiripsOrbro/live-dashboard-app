@@ -22,3 +22,7 @@ data/webauthn/
 data/mmx-users/
 data/account-audit.log
 data/sales-snapshots/
+data/sssg-lastyear/
+data/sssg/grid-debug.json
+data/sssg-weekly/*.json
+!data/sssg-weekly/import-template.json

@@ -142,6 +142,11 @@ function clearStoreScrapeCaches(storeNumber) {
     lastKnownPendingVendorsByStore.delete(key);
     scheduledOrdersEmptyCheckByStore.delete(key);
     scheduledOrdersCompleteByStore.delete(key);
+    try {
+        require('./sssg/sssgCache').clearSssgLyCache(storeNumber);
+    } catch {
+        /* ignore */
+    }
 }
 
 function resetScheduledOrdersForNewDay(storeNumber) {
@@ -1695,6 +1700,61 @@ async function scrapeMacromatix(options = {}) {
             }
         }
 
+        try {
+            const { scrapeSssgLastYearAllStores } = require('./sssg/sssgScraper');
+            const { computeSssgPercent } = require('./sssg/sssgCalc');
+            const {
+                needsSssgLyScrape,
+                hasSssgLyCachedToday,
+                getCachedSssgLy,
+                setCachedSssgLy,
+                loadSssgLyFromDisk,
+            } = require('./sssg/sssgCache');
+
+            for (const store of stores) {
+                loadSssgLyFromDisk(store.storeNumber, todayKey);
+            }
+
+            if (needsSssgLyScrape(stores, todayKey)) {
+                const storesNeedingLy = stores.filter(
+                    (s) => !hasSssgLyCachedToday(s.storeNumber, todayKey)
+                );
+                console.log(
+                    `[Macromatix] Running once-daily SSSG Last Year scrape for ${storesNeedingLy.length} store(s)...`
+                );
+                const lyResults = await scrapeSssgLastYearAllStores(page, storesNeedingLy, {
+                    credentials: { username, password },
+                });
+                for (const r of lyResults) {
+                    if (r.slots?.length) {
+                        setCachedSssgLy(r.storeNumber, todayKey, r.slots);
+                    }
+                }
+            }
+
+            for (const result of results) {
+                if (!result || result.error) continue;
+                const cfg = getStoreConfig(result.storeNumber);
+                const timeZone = cfg?.timeZone || DASHBOARD_TIME_ZONE;
+                const slots = getCachedSssgLy(result.storeNumber, todayKey);
+                result.sssgPercent = computeSssgPercent({
+                    slots,
+                    actual: result.actual,
+                    forecast: result.forecast,
+                    openHour: result.openHour,
+                    closeHour: result.closeHour,
+                    timeZone,
+                });
+                if (result.sssgPercent != null) {
+                    console.log(
+                        `[Macromatix] Store ${result.storeNumber} SSSG: ${result.sssgPercent}%`
+                    );
+                }
+            }
+        } catch (sssgErr) {
+            console.warn('[Macromatix] SSSG scrape/compute failed:', sssgErr.message);
+        }
+
         await closeBrowserQuietly(browser, 'normal completion');
         browser = null;
 
@@ -1789,3 +1849,17 @@ module.exports.onStoreOrdersComplete = onStoreOrdersComplete;
 module.exports.isScheduledOrdersCompleteToday = isScheduledOrdersCompleteToday;
 module.exports.clearStoreScrapeCaches = clearStoreScrapeCaches;
 module.exports.resetScheduledOrdersForNewDay = resetScheduledOrdersForNewDay;
+module.exports.resetSssgForNewDay = (storeNumber) => {
+    try {
+        require('./sssg/sssgCache').resetSssgForNewDay(storeNumber);
+    } catch {
+        /* ignore */
+    }
+};
+module.exports.getCachedSssgLy = (storeNumber, dateKey) => {
+    try {
+        return require('./sssg/sssgCache').getCachedSssgLy(storeNumber, dateKey);
+    } catch {
+        return null;
+    }
+};

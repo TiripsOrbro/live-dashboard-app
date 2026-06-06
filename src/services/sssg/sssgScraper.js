@@ -1,0 +1,215 @@
+const { parseLastYearGridRows } = require('./sssgGridParser');
+
+function getMacromatixScraper() {
+    return require('../macromatixScraper');
+}
+
+const MMX_SPA_BASE = 'https://m-tacobellau.macromatix.net/';
+const CHANGE_STORE_URL = `${MMX_SPA_BASE}#/Administration/ChangeStore?metric=sales`;
+const FORECASTING_URL = `${MMX_SPA_BASE}#/Forecasting/Edit?metric=sales`;
+
+const SPA_GOTO_OPTS = { waitUntil: 'load', timeout: 60000 };
+const GRID_WAIT_MS = 20000;
+
+function parseMoneyText(text) {
+    const raw = String(text || '').replace(/[^0-9.-]/g, '').trim();
+    const value = parseFloat(raw);
+    return Number.isFinite(value) ? value : NaN;
+}
+
+/**
+ * Navigate to the Angular SPA; fall back to SPA login if ASP.NET session cookies are not shared.
+ */
+async function ensureSpaAuthenticated(page, credentials) {
+    await page.goto(CHANGE_STORE_URL, SPA_GOTO_OPTS);
+    await page.waitForTimeout(1500);
+
+    const onLogin = await page.evaluate(() => {
+        const hasPin = document.querySelector('input[type="password"], #Login_Password, [ng-click*="Login"]');
+        const hasUser = document.querySelector('#Login_UserName, input[name="UserName"], input[type="email"]');
+        return Boolean(hasPin && hasUser);
+    });
+
+    if (onLogin && credentials?.username && credentials?.password) {
+        console.log('[SSSG] SPA login required — signing in...');
+        await getMacromatixScraper().loginPage(page, credentials.username, credentials.password);
+        await page.goto(CHANGE_STORE_URL, SPA_GOTO_OPTS);
+        await page.waitForTimeout(1500);
+    }
+
+    await page.waitForFunction(
+        () => {
+            const body = (document.body?.innerText || '').toLowerCase();
+            return body.includes('change store') || body.includes('store number') || document.querySelector('table');
+        },
+        { timeout: GRID_WAIT_MS }
+    ).catch(() => {});
+}
+
+/**
+ * List stores visible on the Change Store page.
+ */
+async function listStoresOnChangeStorePage(page) {
+    return page.evaluate(() => {
+        const stores = [];
+        const rows = [...document.querySelectorAll('tr')];
+        for (const row of rows) {
+            const cells = [...row.querySelectorAll('td')];
+            if (cells.length < 2) continue;
+            const numText = (cells[0]?.textContent || '').replace(/\D/g, '');
+            if (!/^\d{3,6}$/.test(numText)) continue;
+            const nameText = (cells[1]?.textContent || '').replace(/\s+/g, ' ').trim();
+            stores.push({ storeNumber: numText, storeName: nameText });
+        }
+        return stores;
+    });
+}
+
+/**
+ * Click Select for the given store on the Change Store page.
+ */
+async function selectStoreOnSpa(page, storeNumber) {
+    const target = String(storeNumber || '').trim();
+    const clicked = await page.evaluate((num) => {
+        const rows = [...document.querySelectorAll('tr')];
+        for (const row of rows) {
+            const text = (row.textContent || '').replace(/\s+/g, ' ');
+            if (!new RegExp(`\\b${num}\\b`).test(text)) continue;
+
+            const selectEl = [...row.querySelectorAll('button, a, input, span')].find((el) =>
+                /^select$/i.test((el.textContent || el.value || '').trim())
+            );
+            if (selectEl) {
+                selectEl.click();
+                return true;
+            }
+        }
+        return false;
+    }, target);
+
+    if (!clicked) {
+        throw new Error(`Select button not found for store ${target}`);
+    }
+
+    await page.waitForTimeout(2000);
+    await page.waitForFunction(
+        (num) => (document.body?.innerText || '').includes(num),
+        { timeout: 15000 },
+        target
+    ).catch(() => {});
+}
+
+/**
+ * Read all Last Year cells from the Forecasting grid.
+ */
+async function readLastYearForecastGrid(page) {
+    await page.goto(FORECASTING_URL, SPA_GOTO_OPTS);
+
+    await page.waitForFunction(
+        () => document.querySelector('[id^="mx-forecast-grid-Sales-directive-list-lastyear-"]'),
+        { timeout: GRID_WAIT_MS }
+    );
+
+    await page.waitForTimeout(1000);
+
+    const rawRows = await page.evaluate(() => {
+        const spans = [
+            ...document.querySelectorAll('[id^="mx-forecast-grid-Sales-directive-list-lastyear-"]'),
+        ];
+
+        function rowLabelFor(span) {
+            const row = span.closest('tr') || span.closest('[role="row"]') || span.parentElement?.parentElement;
+            if (!row) return '';
+
+            const cells = [...row.querySelectorAll('td, th')];
+            for (const cell of cells) {
+                const text = (cell.textContent || '').replace(/\s+/g, ' ').trim();
+                if (/\d{1,2}(:\d{2})?/.test(text) && !/\$/.test(text)) {
+                    return text;
+                }
+            }
+
+            const firstCell = cells[0];
+            return firstCell ? (firstCell.textContent || '').replace(/\s+/g, ' ').trim() : '';
+        }
+
+        return spans.map((span) => {
+            const match = span.id.match(/lastyear-(\d+)$/);
+            const rowIndex = match ? parseInt(match[1], 10) : -1;
+            const labelText = rowLabelFor(span);
+            const valueText = (span.textContent || '').trim();
+            const value = parseFloat(valueText.replace(/[^0-9.-]/g, ''));
+            return {
+                rowIndex,
+                labelText,
+                valueText,
+                value: Number.isFinite(value) ? value : NaN,
+                id: span.id,
+            };
+        });
+    });
+
+    return rawRows.filter((r) => Number.isFinite(r.value));
+}
+
+/**
+ * Scrape Last Year 15-minute slots for one store.
+ */
+async function scrapeSssgLastYearForStore(page, storeNumber, credentials) {
+    const target = String(storeNumber || '').trim();
+    await page.goto(CHANGE_STORE_URL, SPA_GOTO_OPTS);
+    await page.waitForTimeout(1000);
+    await ensureSpaAuthenticated(page, credentials);
+    await selectStoreOnSpa(page, target);
+
+    const rawRows = await readLastYearForecastGrid(page);
+    const slots = parseLastYearGridRows(rawRows);
+
+    if (!slots.length) {
+        throw new Error(`No Last Year quarter-hour slots parsed for store ${target} (${rawRows.length} raw rows)`);
+    }
+
+    return { storeNumber: target, slots, rawRowCount: rawRows.length };
+}
+
+/**
+ * Loop all stores: Change Store → Select → Forecasting → read LY grid.
+ */
+async function scrapeSssgLastYearAllStores(page, stores, options = {}) {
+    const credentials = options.credentials || getMacromatixScraper().resolveMacromatixCredentials();
+    const results = [];
+
+    await ensureSpaAuthenticated(page, credentials);
+
+    for (const store of stores || []) {
+        const storeNumber = String(store.storeNumber || '').trim();
+        if (!storeNumber) continue;
+
+        try {
+            console.log(`[SSSG] Scraping Last Year grid for store ${storeNumber}...`);
+            const result = await scrapeSssgLastYearForStore(page, storeNumber, credentials);
+            results.push(result);
+            console.log(
+                `[SSSG] Store ${storeNumber}: ${result.slots.length} quarter-hour slots from ${result.rawRowCount} raw rows`
+            );
+        } catch (err) {
+            console.warn(`[SSSG] Store ${storeNumber} LY scrape failed:`, err.message);
+            results.push({ storeNumber, slots: [], error: err.message });
+        }
+    }
+
+    return results;
+}
+
+module.exports = {
+    MMX_SPA_BASE,
+    CHANGE_STORE_URL,
+    FORECASTING_URL,
+    parseMoneyText,
+    ensureSpaAuthenticated,
+    listStoresOnChangeStorePage,
+    selectStoreOnSpa,
+    readLastYearForecastGrid,
+    scrapeSssgLastYearForStore,
+    scrapeSssgLastYearAllStores,
+};

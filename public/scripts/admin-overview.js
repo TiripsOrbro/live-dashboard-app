@@ -1,5 +1,7 @@
 const app = document.getElementById('app');
 const REFRESH_MS = 2 * 60 * 1000;
+/** Poll for new scrape data between full refreshes (matches background scraper cadence). */
+const SCRAPE_POLL_MS = 15 * 1000;
 const TIME_ZONE = 'Australia/Melbourne';
 const VOC_PLACEHOLDER = { count: 30, osatPercent: 83, accuracyPercent: 90 };
 const SMG_REPORTING_URL = 'https://reporting.smg.com/Index.aspx';
@@ -7,13 +9,16 @@ const SMG_REPORTING_URL = 'https://reporting.smg.com/Index.aspx';
 const CURRENT_PROMO = {
     label: 'Current Promo',
     name: 'Nacho Cheese Dip Burrito',
-    imageUrl: '/images/promos/nacho-cheese-dip-burrito.png',
+    imageUrl: '/images/promos/let-it-drip-banner.png',
     pdfUrl: '/documents/promos/let-it-drip-frrop.pdf',
 };
 
+const DEFAULT_AREA = 'Area 22';
+
 let overviewData = null;
 let areaIndex = 0;
-let rotateTimer = null;
+let lastSalesUpdatedAt = null;
+let overviewLoadInFlight = false;
 
 function formatVocDisplay(voc = {}) {
     if (voc.placeholder) {
@@ -34,6 +39,21 @@ function formatMoney(value) {
     return `$${(Number(value) || 0).toLocaleString('en-AU')}`;
 }
 
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+/** Market snapshot always lists stores 3806, 3808, 3811, 3901… regardless of API order. */
+function sortStoresByNumber(stores) {
+    return [...(stores || [])].sort((a, b) =>
+        String(a.storeNumber).localeCompare(String(b.storeNumber), undefined, { numeric: true })
+    );
+}
+
 function formatTime(date) {
     return date.toLocaleTimeString('en-AU', {
         hour: 'numeric',
@@ -48,6 +68,13 @@ function applyDashboardScale() {
     document.documentElement.style.setProperty('--dashboard-scale', String(scale));
 }
 
+function defaultAreaIndex(areas) {
+    const list = areas || [];
+    if (!list.length) return 0;
+    const idx = list.findIndex((a) => String(a?.name || '').trim() === DEFAULT_AREA);
+    return idx >= 0 ? idx : 0;
+}
+
 function currentArea() {
     const areas = overviewData?.areas || [];
     if (!areas.length) return null;
@@ -60,7 +87,20 @@ function currentVoc() {
     return list[areaIndex % list.length];
 }
 
-function formatAreaSssg(area) {
+function areaSssgToday(area) {
+    const v = area?.sssgTodayPercent;
+    if (v == null || Number.isNaN(Number(v))) {
+        return formatAreaSssgFromStores(area);
+    }
+    return Number(v);
+}
+
+function areaSssgWtd(area) {
+    const v = area?.sssgWtdPercent;
+    return v == null || Number.isNaN(Number(v)) ? null : Number(v);
+}
+
+function formatAreaSssgFromStores(area) {
     const stores = Array.isArray(area?.storeSales) ? area.storeSales : [];
     const values = stores
         .map((s) => s.sssgPercent)
@@ -71,17 +111,71 @@ function formatAreaSssg(area) {
     return Math.round(avg * 10) / 10;
 }
 
+function formatSssgDisplay(value) {
+    if (value == null || Number.isNaN(Number(value))) {
+        return { text: '—', toneClass: 'mic-sssg--na' };
+    }
+    const n = Number(value);
+    const sign = n > 0 ? '+' : '';
+    const toneClass = n > 0 ? 'mic-sssg--up' : n < 0 ? 'mic-sssg--down' : 'mic-sssg--na';
+    return { text: `${sign}${n}%`, toneClass };
+}
+
+function renderSssgTileBody(area) {
+    const today = formatSssgDisplay(areaSssgToday(area));
+    const wtd = formatSssgDisplay(areaSssgWtd(area));
+    const hasData = today.text !== '—' || wtd.text !== '—';
+    const futureClass = hasData ? '' : ' mic-tile--future';
+    return {
+        html: `
+        <article class="mic-tile mic-tile--sssg${futureClass} mic-tile--pos-sssg">
+            <div class="mic-tile-body">
+                <div class="mic-tile-label">Today SSSG</div>
+                <div class="mic-sssg-value ${today.toneClass}">${escapeHtml(today.text)}</div>
+                <div class="mic-sssg-wtd ${wtd.toneClass}">WTD ${escapeHtml(wtd.text)}</div>
+            </div>
+        </article>`,
+        hasData,
+    };
+}
+
+function renderPromoBanner() {
+    return `
+        <a
+            class="admin-promo-banner"
+            href="${CURRENT_PROMO.pdfUrl}"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="${CURRENT_PROMO.label}: ${CURRENT_PROMO.name}. Tap to view FRROP."
+        >
+            <span class="admin-promo-banner-bg" aria-hidden="true">
+                <img src="${CURRENT_PROMO.imageUrl}" alt="">
+            </span>
+            <span class="admin-promo-banner-content">
+                <span class="admin-promo-banner-text">
+                    <span class="admin-promo-banner-label">${CURRENT_PROMO.label}</span>
+                    <span class="admin-promo-banner-name">${CURRENT_PROMO.name}</span>
+                </span>
+                <span class="admin-promo-banner-cta">View FRROP</span>
+            </span>
+        </a>
+    `;
+}
+
 function renderShell() {
     document.documentElement.classList.add('admin-overview-page');
     document.body.classList.add('admin-overview-page');
     app.innerHTML = `
-        <div class="mic-page">
-            <header class="mic-header">
-                <div class="nav-back-host" id="admin-overview-back"></div>
-                <div>
-                    <h1>ADMIN OVERVIEW</h1>
-                    <p class="subtitle">Market snapshot</p>
+        <div class="mic-page mic-page--admin">
+            <header class="mic-header mic-header--admin">
+                <div class="mic-header-brand">
+                    <div class="nav-back-host" id="admin-overview-back"></div>
+                    <div>
+                        <h1>ADMIN OVERVIEW</h1>
+                        <p class="subtitle">Market snapshot</p>
+                    </div>
                 </div>
+                ${renderPromoBanner()}
                 <div class="mic-header-actions">
                     <button type="button" class="mic-account-btn" id="admin-view-accounts-btn">View accounts</button>
                     <div class="mic-clock">
@@ -92,6 +186,11 @@ function renderShell() {
             </header>
             <div class="mic-grid mic-grid--admin" id="admin-grid"></div>
         </div>
+        ${window.MicSettings?.renderCog?.() || ''}
+        ${window.MicSettings?.renderPanel?.({
+            viewAccountsHidden: false,
+            darkModeHint: 'Dark background and tiles on this overview.',
+        }) || ''}
     `;
     window.DashboardNavBack?.mountBackButton(document.getElementById('admin-overview-back'), {
         fallback: '/admin',
@@ -100,6 +199,11 @@ function renderShell() {
     document.getElementById('admin-view-accounts-btn')?.addEventListener('click', () => {
         window.DashboardAccount?.openViewAccountsModal?.({ isAdmin: true });
     });
+    window.MicSettings?.bind?.({
+        getViewAccountsOptions: () => ({ isAdmin: true }),
+        resolveViewAccountsVisibility: false,
+    });
+    window.MicSettings?.initPreferences?.();
 }
 
 function areaRowCells(areas) {
@@ -166,9 +270,8 @@ function updateAreaStoresTile(area) {
     if (salesEl) salesEl.innerHTML = renderAreaSalesTotal(sales);
 
     const listEl = tile.querySelector('.mic-store-lead-list');
-    const stores = Array.isArray(area?.storeSales) ? area.storeSales : [];
     const rows =
-        window.StoreSnapRow?.renderStoreSnapList?.(stores, formatMoney, undefined, {
+        window.StoreSnapRow?.renderStoreSnapList?.(sortStoresByNumber(area?.storeSales), formatMoney, undefined, {
             storeBasePath: '/admin',
         }) || '<p class="mic-store-lead-empty">No stores in this area yet.</p>';
     if (listEl) listEl.innerHTML = rows;
@@ -192,21 +295,25 @@ function updateVocTile(vocRaw = {}) {
 function updateSssgTile(area) {
     const tile = document.querySelector('.mic-tile--pos-sssg');
     if (!tile) return;
-    const sssg = formatAreaSssg(area);
+    const today = formatSssgDisplay(areaSssgToday(area));
+    const wtd = formatSssgDisplay(areaSssgWtd(area));
     const valueEl = tile.querySelector('.mic-sssg-value');
-    const subEl = tile.querySelector('.mic-tile-sub');
-    if (valueEl) valueEl.textContent = sssg == null ? '—' : `${sssg}%`;
-    if (subEl) {
-        subEl.textContent =
-            sssg == null ? 'Pipeline coming soon' : `${area?.name || 'Area'} average`;
+    const wtdEl = tile.querySelector('.mic-sssg-wtd');
+    if (valueEl) {
+        valueEl.textContent = today.text;
+        valueEl.className = `mic-sssg-value ${today.toneClass}`;
     }
-    tile.classList.toggle('mic-tile--future', sssg == null);
+    if (wtdEl) {
+        wtdEl.textContent = `WTD ${wtd.text}`;
+        wtdEl.className = `mic-sssg-wtd ${wtd.toneClass}`;
+    }
+    tile.classList.toggle('mic-tile--future', today.text === '—' && wtd.text === '—');
 }
 
-function replaceStockCountTile(stock) {
-    const tile = document.querySelector('.mic-tile--pos-stock');
+function replaceOrdersToPlaceTile(stores) {
+    const tile = document.querySelector('.mic-tile--pos-orders');
     if (!tile) return;
-    tile.outerHTML = renderStockCountTile(stock);
+    tile.outerHTML = renderOrdersToPlaceTile(stores);
 }
 
 function updateAreaTiles(area) {
@@ -214,7 +321,7 @@ function updateAreaTiles(area) {
     updateAreaStoresTile(area);
     updateVocTile(currentVoc() || {});
     updateSssgTile(area);
-    replaceStockCountTile(area?.stockCount);
+    replaceOrdersToPlaceTile(overviewData?.storesNeedingOrders || []);
     return true;
 }
 
@@ -230,53 +337,29 @@ function bindAreaTextSelector() {
             areaIndex = idx;
             updateAreaTiles(currentArea());
             applyAreaHighlight();
-            stopRotation();
         });
     });
 }
 
 function renderSssgTile(area) {
-    const sssg = formatAreaSssg(area);
-    const futureClass = sssg == null ? ' mic-tile--future' : '';
+    return renderSssgTileBody(area).html;
+}
+
+function renderAdminLabelTile({ label, posClass, sub = 'Coming soon' }) {
     return `
-        <article class="mic-tile mic-tile--sssg${futureClass} mic-tile--pos-sssg">
+        <article class="mic-tile ${posClass}">
             <div class="mic-tile-body">
-                <div class="mic-tile-label">SSSG %</div>
-                <div class="mic-sssg-value">${sssg == null ? '—' : `${sssg}%`}</div>
-                <div class="mic-tile-sub">${
-                    sssg == null ? 'Pipeline coming soon' : `${area?.name || 'Area'} average`
-                }</div>
+                <div class="mic-tile-label">${escapeHtml(label)}</div>
+                <div class="mic-tile-sub">${escapeHtml(sub)}</div>
             </div>
         </article>
     `;
 }
 
-function renderPromoTile() {
-    return `
-        <a
-            class="mic-tile mic-tile--link mic-tile--promo mic-tile--pos-promo"
-            href="${CURRENT_PROMO.pdfUrl}"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="${CURRENT_PROMO.label}: ${CURRENT_PROMO.name}. Tap to view FRROP."
-        >
-            <div class="mic-promo-media" aria-hidden="true">
-                <img src="${CURRENT_PROMO.imageUrl}" alt="">
-                <p class="mic-promo-name">${CURRENT_PROMO.name}</p>
-            </div>
-            <div class="mic-promo-idle">
-                <span class="mic-tile-label">${CURRENT_PROMO.label}</span>
-                <span class="mic-tile-foot mic-promo-foot">tap to view FRROP</span>
-            </div>
-        </a>
-    `;
-}
-
 function renderAreaStoresTile(area) {
     const sales = area?.salesToday || { actual: 0, forecast: 0 };
-    const stores = Array.isArray(area?.storeSales) ? area.storeSales : [];
     const rows =
-        window.StoreSnapRow?.renderStoreSnapList?.(stores, formatMoney, undefined, {
+        window.StoreSnapRow?.renderStoreSnapList?.(sortStoresByNumber(area?.storeSales), formatMoney, undefined, {
             storeBasePath: '/admin',
         }) || '<p class="mic-store-lead-empty">No stores in this area yet.</p>';
 
@@ -291,34 +374,46 @@ function renderAreaStoresTile(area) {
     `;
 }
 
-function renderStockCountTile(stock) {
-    const sc = stock || {};
-    const active = Boolean(sc.active);
-    const clickable = Boolean(sc.clickable && sc.href);
-    const tag = clickable ? 'a' : 'article';
-    const hrefAttr = clickable ? ` href="${sc.href}"` : '';
-    const classes = [
-        'mic-tile',
-        'mic-tile--stock-count',
-        active ? 'mic-tile--stock-active' : 'mic-tile--stock-idle',
-        clickable ? 'mic-tile--link' : '',
-    ]
-        .filter(Boolean)
-        .join(' ');
-    const foot = clickable
-        ? 'Open stock count →'
-        : active
-          ? 'Stock counts due in area'
-          : '';
+function ordersStoreDetail(entry) {
+    const count = Number(entry?.pendingCount) || 0;
+    if (count > 0) {
+        return `${count} vendor${count === 1 ? '' : 's'} to count`;
+    }
+    return entry?.message || 'Open stock count';
+}
+
+function renderOrdersToPlaceTile(stores) {
+    const list = Array.isArray(stores) ? stores : [];
+    const hasStores = list.length > 0;
+    const tone = hasStores ? 'mic-tile--orders-active' : 'mic-tile--orders-idle';
+    const rows = hasStores
+        ? list
+              .map(
+                  (store) => `
+            <li class="mic-orders-store-item" role="listitem">
+                <a
+                    class="mic-orders-store-link"
+                    href="${escapeHtml(store.href)}"
+                    aria-label="${escapeHtml(`${store.storeName || store.storeNumber} — ${ordersStoreDetail(store)}`)}"
+                >
+                    <span class="mic-orders-store-title">
+                        <span class="mic-orders-store-name">${escapeHtml(store.storeName || store.storeNumber)}</span>
+                        <span class="mic-orders-store-num">${escapeHtml(store.storeNumber)}</span>
+                    </span>
+                    <span class="mic-orders-store-detail">${escapeHtml(ordersStoreDetail(store))}</span>
+                </a>
+            </li>`
+              )
+              .join('')
+        : '<li class="mic-orders-store-empty">All orders are placed for today</li>';
+
     return `
-        <${tag} class="${classes} mic-tile--pos-stock"${hrefAttr}${clickable ? '' : ' aria-disabled="true"'}>
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">Stock count</div>
-                <div class="mic-tile-main">${active ? 'Orders to place' : 'All clear'}</div>
-                <div class="mic-tile-sub">${sc.message || ''}</div>
+        <article class="mic-tile mic-tile--orders-to-place ${tone} mic-tile--pos-orders">
+            <div class="mic-tile-body mic-tile-body--orders">
+                <div class="mic-tile-label">Orders to place</div>
+                <ul class="mic-orders-store-list" role="list">${rows}</ul>
             </div>
-            ${foot ? `<div class="mic-tile-foot">${foot}</div>` : ''}
-        </${tag}>
+        </article>
     `;
 }
 
@@ -354,50 +449,55 @@ function renderTiles() {
 
         ${renderSssgTile(area)}
 
-        ${renderPromoTile()}
-
-        ${renderStockCountTile(area?.stockCount)}
+        ${renderAdminLabelTile({ label: 'DFSC', posClass: 'mic-tile--pos-dfsc' })}
+        ${renderAdminLabelTile({ label: 'Daily count', posClass: 'mic-tile--pos-daily-count' })}
+        ${renderAdminLabelTile({ label: 'Square One', posClass: 'mic-tile--pos-square-one' })}
+        ${renderOrdersToPlaceTile(overviewData?.storesNeedingOrders || [])}
     `;
 
     bindAreaTextSelector();
     applyAreaHighlight();
 }
 
-function stopRotation() {
-    if (rotateTimer) {
-        clearInterval(rotateTimer);
-        rotateTimer = null;
-    }
-}
-
-function startRotation() {
-    stopRotation();
-    const areas = overviewData?.areas || [];
-    if (!areas.length) return;
-    areaIndex = areaIndex % areas.length;
-    const ms = overviewData?.rotateIntervalMs || 8000;
-    rotateTimer = window.setInterval(() => {
-        const list = overviewData?.areas || [];
-        if (!list.length) return;
-        areaIndex = (areaIndex + 1) % list.length;
-        if (!updateAreaTiles(currentArea())) renderTiles();
-        else applyAreaHighlight();
-    }, ms);
-}
-
 async function loadOverview() {
-    const res = await fetch('/api/admin/overview', { credentials: 'same-origin' });
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-        app.textContent = data.error || 'Could not load admin overview.';
-        return;
+    if (overviewLoadInFlight) return;
+    overviewLoadInFlight = true;
+    try {
+        const res = await fetch('/api/admin/overview', { credentials: 'same-origin' });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            app.textContent = data.error || 'Could not load admin overview.';
+            return;
+        }
+        if (data.salesUpdatedAt) lastSalesUpdatedAt = data.salesUpdatedAt;
+        overviewData = data;
+        const areas = data.areas || [];
+        if (areas.length) areaIndex = defaultAreaIndex(areas);
+        if (!document.getElementById('admin-grid')) renderShell();
+        renderTiles();
+    } finally {
+        overviewLoadInFlight = false;
     }
-    overviewData = data;
-    const areas = data.areas || [];
-    if (areas.length) areaIndex = areaIndex % areas.length;
-    if (!document.getElementById('admin-grid')) renderShell();
-    renderTiles();
-    startRotation();
+}
+
+async function checkForScrapeUpdate() {
+    if (overviewLoadInFlight) return;
+    try {
+        const res = await fetch('/api/admin/overview/status', { credentials: 'same-origin' });
+        const data = await res.json();
+        if (!res.ok || !data.success) return;
+        const updatedAt = data.salesUpdatedAt || null;
+        if (!updatedAt) return;
+        if (!lastSalesUpdatedAt) {
+            lastSalesUpdatedAt = updatedAt;
+            return;
+        }
+        if (updatedAt !== lastSalesUpdatedAt) {
+            await loadOverview();
+        }
+    } catch {
+        /* ignore transient poll errors */
+    }
 }
 
 applyDashboardScale();
@@ -408,3 +508,4 @@ window.setInterval(() => {
     if (clock) clock.textContent = formatTime(new Date());
 }, 1000);
 window.setInterval(loadOverview, REFRESH_MS);
+window.setInterval(checkForScrapeUpdate, SCRAPE_POLL_MS);

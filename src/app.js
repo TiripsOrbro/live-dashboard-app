@@ -72,7 +72,15 @@ const {
     onStoreOrdersComplete,
     clearStoreScrapeCaches,
     resetScheduledOrdersForNewDay,
+    resetSssgForNewDay,
+    getCachedSssgLy,
 } = require('./services/macromatixScraper');
+const { computeSssgPercent } = require('./services/sssg/sssgCalc');
+const {
+    resetWeeklyLedgerIfNeeded,
+    captureEndOfDaySssg,
+    updateTodayPartialInLedger,
+} = require('./services/sssg/sssgWeeklyLedger');
 const {
     prepareStockCountForMmx,
     applyStockCountSession,
@@ -721,6 +729,12 @@ function isSalesCacheFresh() {
     return (Date.now() - salesCacheAt) < (SALES_CACHE_SECONDS * 1000);
 }
 
+function getSalesUpdatedAt() {
+    if (salesCache?.timestamp) return String(salesCache.timestamp);
+    if (salesCacheAt) return new Date(salesCacheAt).toISOString();
+    return null;
+}
+
 function logDashboardScrapeComplete(payload) {
     const tz = process.env.DASHBOARD_TIME_ZONE || process.env.MMX_TIME_ZONE || 'Australia/Melbourne';
     let when;
@@ -896,13 +910,48 @@ function postCloseSnapshotPath(storeNumber) {
     return path.join(POST_CLOSE_SNAPSHOT_DIR, `${key || 'unknown'}.json`);
 }
 
+function computeSssgForStore(store) {
+    if (!store || !storeHasMeaningfulData(store)) return null;
+    const dateKey = melbourneDateKey();
+    const slots = getCachedSssgLy(store.storeNumber, dateKey);
+    if (!Array.isArray(slots) || !slots.length) return store.sssgPercent != null ? store.sssgPercent : null;
+    const cfg = getStoreConfig(store.storeNumber);
+    const timeZone =
+        String(store.timeZone || '').trim() ||
+        cfg?.timeZone ||
+        process.env.DASHBOARD_TIME_ZONE ||
+        'Australia/Melbourne';
+    return computeSssgPercent({
+        slots,
+        actual: store.actual,
+        forecast: store.forecast,
+        openHour: store.openHour,
+        closeHour: store.closeHour,
+        timeZone,
+    });
+}
+
+function syncSssgWeeklyForStore(store, { finalize = false } = {}) {
+    if (!store?.storeNumber || !storeHasMeaningfulData(store)) return;
+    const slots = getCachedSssgLy(store.storeNumber, melbourneDateKey());
+    if (!Array.isArray(slots) || !slots.length) return;
+    if (finalize) {
+        captureEndOfDaySssg(store, slots);
+    } else {
+        updateTodayPartialInLedger(store, slots);
+    }
+}
+
 function capturePostCloseSnapshot(store) {
     if (!storeHasMeaningfulData(store)) return;
+    const sssgPercent =
+        store.sssgPercent != null ? store.sssgPercent : computeSssgForStore(store);
     const snap = {
         capturedAt: new Date().toISOString(),
         actual: [...store.actual],
         forecast: [...store.forecast],
         pendingVendors: Array.isArray(store.pendingVendors) ? [...store.pendingVendors] : [],
+        sssgPercent: sssgPercent != null ? sssgPercent : null,
     };
     store.postCloseSnapshot = snap;
     try {
@@ -932,6 +981,8 @@ function restorePostCloseSnapshot(store) {
     store.actual = [...snap.actual];
     store.forecast = [...snap.forecast];
     store.pendingVendors = Array.isArray(snap.pendingVendors) ? [...snap.pendingVendors] : [];
+    store.sssgPercent =
+        snap.sssgPercent != null ? snap.sssgPercent : computeSssgForStore(store);
     store.postCloseSnapshot = snap;
     store.retained = true;
     return true;
@@ -974,6 +1025,7 @@ function mergeStoresPreservingGood(prevPayload, freshPayload) {
                 closeHour: Number.isFinite(fresh.closeHour) ? fresh.closeHour : prev.closeHour,
                 storeName: fresh.storeName || prev.storeName,
                 pendingVendors: Array.isArray(fresh.pendingVendors) ? fresh.pendingVendors : prev.pendingVendors,
+                sssgPercent: fresh.sssgPercent != null ? fresh.sssgPercent : prev.sssgPercent,
                 retained: true,
             };
         }
@@ -993,6 +1045,8 @@ function buildCacheShellFromStoreList() {
 function applyScrapeScheduleToCache(cache, now = new Date()) {
     if (!cache) return cache;
     if (!Array.isArray(cache.stores)) cache.stores = [];
+
+    resetWeeklyLedgerIfNeeded(now);
 
     const listed = getStoreList();
     const byNum = new Map(cache.stores.map((s) => [String(s.storeNumber), s]));
@@ -1031,6 +1085,9 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
             store.scrapePhase = 'idle';
             clearPostCloseSnapshot(key);
         } else if (phase === 'retain' || inPostCloseGrace) {
+            if (prev === 'active' && storeHasMeaningfulData(store)) {
+                syncSssgWeeklyForStore(store, { finalize: true });
+            }
             if (!storeHasMeaningfulData(store)) {
                 restorePostCloseSnapshot(store);
             }
@@ -1041,8 +1098,17 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
         } else {
             if (prev === 'idle') {
                 resetScheduledOrdersForNewDay(key);
+                resetSssgForNewDay(key);
+                resetWeeklyLedgerIfNeeded(now);
+            }
+            if (!storeHasMeaningfulData(store)) {
+                restorePostCloseSnapshot(store);
+            }
+            if (store.sssgPercent == null && storeHasMeaningfulData(store)) {
+                store.sssgPercent = computeSssgForStore(store);
             }
             if (storeHasMeaningfulData(store)) {
+                syncSssgWeeklyForStore(store, { finalize: false });
                 capturePostCloseSnapshot(store);
             }
             store.scrapePhase = 'active';
@@ -1093,7 +1159,10 @@ function runScrapeIntoCache(options) {
             };
             salesCacheAt = Date.now();
             for (const store of salesCache.stores) {
-                if (storeHasMeaningfulData(store)) capturePostCloseSnapshot(store);
+                if (storeHasMeaningfulData(store)) {
+                    syncSssgWeeklyForStore(store, { finalize: false });
+                    capturePostCloseSnapshot(store);
+                }
             }
             applyScrapeScheduleToCache(salesCache);
             logDashboardScrapeComplete(salesCache);
@@ -1155,6 +1224,7 @@ function emptyStorePayload(storeNumber, storeName) {
         actual: [],
         forecast: [],
         pendingVendors: [],
+        sssgPercent: null,
         storeNumber: storeNumber || '',
         storeName: storeName || storeNumber || '',
         openHour: hours.openHour,
@@ -1188,6 +1258,7 @@ function storeSliceFromPayload(payload, requestedStore) {
                   process.env.DASHBOARD_TIME_ZONE ||
                   'Australia/Melbourne',
               postCloseRetainHours: POST_CLOSE_RETAIN_HOURS,
+              sssgPercent: store.sssgPercent != null ? store.sssgPercent : null,
               ...(store.error ? { storeError: store.error } : {}),
           }
         : emptyStorePayload(requestedStore, '');
@@ -2258,6 +2329,15 @@ app.delete('/api/mic/daily-item-multiplier/:id', (req, res) => {
     }
 });
 
+app.get('/api/admin/overview/status', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isAdminUser(user)) {
+        res.status(403).json({ success: false, error: 'Admin only.' });
+        return;
+    }
+    res.json({ success: true, salesUpdatedAt: getSalesUpdatedAt() });
+});
+
 app.get('/api/admin/overview', async (req, res) => {
     try {
         const user = req.dashboardUser || getRequestUser(req);
@@ -2282,7 +2362,11 @@ app.get('/api/admin/overview', async (req, res) => {
         }));
         stores = filterStoresForUser(user, stores);
         const areas = buildAreaGroups(stores);
-        res.json({ success: true, ...buildAdminOverviewPayload(payload, areas) });
+        res.json({
+            success: true,
+            salesUpdatedAt: getSalesUpdatedAt(),
+            ...buildAdminOverviewPayload(payload, areas),
+        });
     } catch (error) {
         console.error('API: Error loading admin overview:', error);
         res.status(500).json({ success: false, error: error.message });

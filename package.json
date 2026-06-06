@@ -31,7 +31,9 @@
     "upsell-report": "node scripts/upsell-leaderboard-report.js",
     "upsell-discover": "node scripts/discover-bi-report.js",
     "upsell-probe-export": "node scripts/probe-powerbi-export.js",
-    "upsell-score-sample": "node scripts/upsell-score-sample.js"
+    "upsell-score-sample": "node scripts/upsell-score-sample.js",
+    "probe-sssg-grid": "node scripts/probe-sssg-grid.js",
+    "import-sssg-weekly": "node scripts/import-sssg-weekly.js"
   },
   "engines": {
     "node": ">=18"

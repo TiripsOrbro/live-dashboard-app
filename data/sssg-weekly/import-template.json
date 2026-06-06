@@ -1,0 +1,51 @@
+{
+  "weekStart": "2026-06-01",
+  "_note": "Fill actualTotal and lyTotal per store. Mon 2026-06-01 through Fri 2026-06-05 for this week.",
+  "days": {
+    "2026-06-01": {
+      "3806": { "actualTotal": 5355.30, "lyTotal": 5128.14 },
+      "3808": { "actualTotal": 4404.39, "lyTotal": 4192.04 },
+      "3811": { "actualTotal": 3360.72, "lyTotal": 3760.85 },
+      "3901": { "actualTotal": 6022.55, "lyTotal": 5561.00 },
+      "3902": { "actualTotal": 4238.81, "lyTotal": 5199.51 },
+      "3903": { "actualTotal": 8179.57, "lyTotal": 6996.02 },
+      "3904": { "actualTotal": 7124.02, "lyTotal": 5489.75 }
+    },
+    "2026-06-02": {
+      "3806": { "actualTotal": 5603.33, "lyTotal": 5380.65 },
+      "3808": { "actualTotal": 4616.27, "lyTotal": 4158.25 },
+      "3811": { "actualTotal": 4162.01, "lyTotal": 3677.37 },
+      "3901": { "actualTotal": 4834.63, "lyTotal": 3808.02 },
+      "3902": { "actualTotal": 3134.22, "lyTotal": 3292.30 },
+      "3903": { "actualTotal": 6903.15, "lyTotal": 4992.13 },
+      "3904": { "actualTotal": 5522.75, "lyTotal": 4479.62 }
+    },
+    "2026-06-03": {
+      "3806": { "actualTotal": 5263.65, "lyTotal": 4525.44 },
+      "3808": { "actualTotal": 6999.15, "lyTotal": 5663.09 },
+      "3811": { "actualTotal": 5093.37, "lyTotal": 5151.82 },
+      "3901": { "actualTotal": 4447.13, "lyTotal": 4070.63 },
+      "3902": { "actualTotal": 4262.09, "lyTotal": 4326.20 },
+      "3903": { "actualTotal": 7730.39, "lyTotal": 5458.16 },
+      "3904": { "actualTotal": 5881.40, "lyTotal": 4314.53 }
+    },
+    "2026-06-04": {
+      "3806": { "actualTotal": 6134.21, "lyTotal": 5195.93 },
+      "3808": { "actualTotal": 6530.45, "lyTotal": 5472.45 },
+      "3811": { "actualTotal": 4872.24, "lyTotal": 4669.51 },
+      "3901": { "actualTotal": 5426.11, "lyTotal": 4713.72 },
+      "3902": { "actualTotal": 4044.30, "lyTotal": 4587.10 },
+      "3903": { "actualTotal": 7381.13, "lyTotal": 6043.26 },
+      "3904": { "actualTotal": 6636.02, "lyTotal": 4554.04 }
+    },
+    "2026-06-05": {
+      "3806": { "actualTotal": 8883.87, "lyTotal": 6631.13 },
+      "3808": { "actualTotal": 8391.96, "lyTotal": 7055.69 },
+      "3811": { "actualTotal": 7717.71, "lyTotal": 7646.36 },
+      "3901": { "actualTotal": 4789.92, "lyTotal": 4750.16 },
+      "3902": { "actualTotal": 5164.31, "lyTotal": 4611.11 },
+      "3903": { "actualTotal": 10841.92, "lyTotal": 8347.98 },
+      "3904": { "actualTotal": 7603.57, "lyTotal": 5483.90 }
+    }
+  }
+}

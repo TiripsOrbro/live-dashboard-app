@@ -120,6 +120,144 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    flex-shrink: 0;
+}
+
+.mic-page--admin {
+    --admin-grid-cols: minmax(0, 1.05fr) repeat(2, minmax(0, 1fr));
+    --admin-grid-gap: calc(14px * var(--dashboard-scale));
+}
+
+.mic-header--admin {
+    display: grid;
+    grid-template-columns: var(--admin-grid-cols);
+    column-gap: var(--admin-grid-gap);
+    align-items: center;
+    margin-bottom: 0;
+}
+
+.mic-header-brand {
+    grid-column: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: calc(8px * var(--dashboard-scale));
+    min-width: 0;
+    align-self: center;
+}
+
+.mic-header--admin .mic-header-actions {
+    grid-column: 3;
+    justify-self: end;
+}
+
+.admin-promo-banner {
+    position: relative;
+    grid-column: 2;
+    width: 100%;
+    min-width: 0;
+    min-height: calc(64px * var(--dashboard-scale));
+    display: flex;
+    align-items: stretch;
+    overflow: hidden;
+    padding: 0;
+    border: var(--cell-border) color-mix(in srgb, var(--tb-purple) 28%, var(--charcoal));
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--charcoal) 8%, transparent);
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.admin-promo-banner:hover,
+.admin-promo-banner:focus-visible {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px color-mix(in srgb, var(--charcoal) 14%, transparent);
+}
+
+.admin-promo-banner-bg {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+}
+
+.admin-promo-banner-bg img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 58% center;
+    filter: grayscale(15%) brightness(0.88);
+    transform: scale(1);
+    transition: filter 0.4s ease, transform 0.45s ease;
+}
+
+.admin-promo-banner:hover .admin-promo-banner-bg img,
+.admin-promo-banner:focus-visible .admin-promo-banner-bg img {
+    filter: grayscale(0%) brightness(1);
+    transform: scale(1.04);
+}
+
+.admin-promo-banner-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: calc(12px * var(--dashboard-scale));
+    width: 100%;
+    padding: calc(10px * var(--dashboard-scale)) calc(14px * var(--dashboard-scale));
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, #161616 72%, transparent) 0%,
+        color-mix(in srgb, #161616 28%, transparent) 42%,
+        transparent 68%
+    );
+    transition: background 0.4s ease;
+}
+
+.admin-promo-banner:hover .admin-promo-banner-content,
+.admin-promo-banner:focus-visible .admin-promo-banner-content {
+    background: linear-gradient(
+        90deg,
+        color-mix(in srgb, #161616 58%, transparent) 0%,
+        color-mix(in srgb, #161616 18%, transparent) 42%,
+        transparent 68%
+    );
+}
+
+.admin-promo-banner-text {
+    display: flex;
+    flex-direction: column;
+    gap: calc(2px * var(--dashboard-scale));
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.admin-promo-banner-label {
+    font-size: var(--font-size-6);
+    font-weight: var(--font-weight-ui-label);
+    color: color-mix(in srgb, #f5d442 88%, white);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-shadow: 0 1px 4px color-mix(in srgb, #161616 85%, transparent);
+}
+
+.admin-promo-banner-name {
+    font-size: var(--font-size-4);
+    font-weight: var(--font-weight-semibold);
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #fff;
+    text-shadow: 0 1px 4px color-mix(in srgb, #161616 90%, transparent);
+}
+
+.admin-promo-banner-cta {
+    flex-shrink: 0;
+    font-size: var(--font-size-5);
+    font-weight: var(--font-weight-ui-label);
+    color: #fff;
+    white-space: nowrap;
+    text-shadow: 0 1px 4px color-mix(in srgb, #161616 90%, transparent);
 }
 
 .mic-clock {
@@ -190,19 +328,38 @@
     min-height: calc(100vh - 152px);
 }
 
+.admin-overview-page .mic-page--admin {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    row-gap: calc(18px * var(--dashboard-scale));
+    height: 100vh;
+    min-height: 100vh;
+    box-sizing: border-box;
+}
+
+.admin-overview-page .mic-grid--admin {
+    min-height: 0;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    padding-top: 2px;
+    box-sizing: border-box;
+}
+
 .mic-grid--admin {
-    grid-template-rows: repeat(2, minmax(0, 1fr));
-    height: calc(100vh - 152px);
-    max-height: calc(100vh - 152px);
-    overflow: hidden;
+    grid-template-columns: var(--admin-grid-cols, minmax(0, 1.05fr) repeat(2, minmax(0, 1fr)));
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+    gap: var(--admin-grid-gap, calc(14px * var(--dashboard-scale)));
 }
 
 .mic-grid--admin .mic-tile--pos-area-stores {
     grid-column: 1;
-    grid-row: 1 / span 2;
+    grid-row: 1 / span 3;
     min-height: 0;
     max-height: 100%;
     overflow: hidden;
+    box-sizing: border-box;
+    border: var(--cell-border) var(--charcoal);
 }
 
 .mic-grid--admin .mic-tile--pos-voc {
@@ -215,14 +372,24 @@
     grid-row: 1;
 }
 
-.mic-grid--admin .mic-tile--pos-promo {
+.mic-grid--admin .mic-tile--pos-dfsc {
     grid-column: 2;
     grid-row: 2;
 }
 
-.mic-grid--admin .mic-tile--pos-stock {
+.mic-grid--admin .mic-tile--pos-daily-count {
     grid-column: 3;
     grid-row: 2;
+}
+
+.mic-grid--admin .mic-tile--pos-square-one {
+    grid-column: 2;
+    grid-row: 3;
+}
+
+.mic-grid--admin .mic-tile--pos-orders {
+    grid-column: 3;
+    grid-row: 3;
 }
 
 
@@ -567,6 +734,18 @@
     color: color-mix(in srgb, var(--charcoal) 68%, white);
 }
 
+.mic-store-snap-sssg--up .mic-store-snap-sssg-val {
+    color: var(--good-border);
+}
+
+.mic-store-snap-sssg--down .mic-store-snap-sssg-val {
+    color: var(--bad-border);
+}
+
+.mic-store-snap-sssg--na .mic-store-snap-sssg-val {
+    color: color-mix(in srgb, var(--charcoal) 50%, white);
+}
+
 .mic-store-snap-forecast {
     flex-shrink: 0;
 }
@@ -599,7 +778,7 @@
 }
 
 .mic-tile--store-leaderboard .mic-store-snap:last-child {
-    border-bottom: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--charcoal) 8%, white);
 }
 
 .mic-store-lead-row {
@@ -721,6 +900,12 @@
 .mic-tile--link:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 20px color-mix(in srgb, var(--charcoal) 12%, transparent);
+}
+
+.mic-grid--admin .mic-tile--link:hover,
+.mic-grid--admin .mic-tile--link:focus-visible {
+    transform: none;
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--charcoal) 14%, transparent);
 }
 
 .mic-tile--sales-live {
@@ -863,6 +1048,26 @@
     line-height: 1;
 }
 
+.mic-sssg-wtd {
+    text-align: center;
+    font-size: clamp(1rem, 3.5vmin, calc(var(--font-size-1) * 1.1));
+    font-weight: var(--font-weight-ui-label);
+    line-height: 1.2;
+    color: color-mix(in srgb, var(--charcoal) 62%, white);
+}
+
+.mic-sssg--up {
+    color: var(--good-border);
+}
+
+.mic-sssg--down {
+    color: var(--bad-border);
+}
+
+.mic-sssg--na {
+    color: color-mix(in srgb, var(--charcoal) 50%, white);
+}
+
 .mic-tile--promo {
     position: relative;
     overflow: hidden;
@@ -920,8 +1125,8 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    object-position: center;
-    filter: grayscale(30%) brightness(0.78);
+    object-position: 58% center;
+    filter: grayscale(15%) brightness(0.88);
     transform: scale(1);
     transition: filter 0.4s ease, transform 0.45s ease;
 }
@@ -977,6 +1182,109 @@
     .mic-tile--promo:focus-visible .mic-promo-media img {
         transform: none;
     }
+}
+
+.mic-tile--orders-active {
+    background: color-mix(in srgb, #0d9488 12%, var(--white));
+    border-color: #0d9488;
+}
+
+.mic-tile--orders-idle {
+    background: color-mix(in srgb, var(--charcoal) 6%, var(--grey));
+    border-color: color-mix(in srgb, var(--charcoal) 35%, var(--grey));
+    opacity: 0.85;
+}
+
+.mic-tile--orders-idle .mic-tile-label,
+.mic-orders-store-empty {
+    color: color-mix(in srgb, var(--charcoal) 55%, white);
+}
+
+.mic-tile--orders-to-place {
+    align-items: stretch;
+    justify-content: flex-start;
+    text-align: left;
+}
+
+.mic-tile-body--orders {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    text-align: left;
+    min-height: 0;
+    height: 100%;
+    gap: calc(6px * var(--dashboard-scale));
+}
+
+.mic-orders-store-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: calc(6px * var(--dashboard-scale));
+}
+
+.mic-orders-store-item {
+    width: 100%;
+}
+
+.mic-orders-store-link {
+    display: flex;
+    flex-direction: column;
+    gap: calc(2px * var(--dashboard-scale));
+    width: 100%;
+    box-sizing: border-box;
+    padding: calc(8px * var(--dashboard-scale)) calc(10px * var(--dashboard-scale));
+    border-radius: calc(8px * var(--dashboard-scale));
+    background: color-mix(in srgb, #0d9488 8%, var(--white));
+    border: 1px solid color-mix(in srgb, #0d9488 35%, transparent);
+    color: inherit;
+    text-decoration: none;
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.mic-orders-store-link:hover,
+.mic-orders-store-link:focus-visible {
+    background: color-mix(in srgb, #0d9488 16%, var(--white));
+    transform: translateY(-1px);
+    outline: none;
+}
+
+.mic-orders-store-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: calc(8px * var(--dashboard-scale));
+}
+
+.mic-orders-store-name {
+    font-weight: 700;
+    font-size: calc(14px * var(--dashboard-scale));
+    line-height: 1.2;
+}
+
+.mic-orders-store-num {
+    font-size: calc(12px * var(--dashboard-scale));
+    font-weight: 600;
+    color: color-mix(in srgb, var(--charcoal) 55%, white);
+}
+
+.mic-orders-store-detail {
+    font-size: calc(11px * var(--dashboard-scale));
+    color: #0d9488;
+    font-weight: 600;
+}
+
+.mic-orders-store-empty {
+    font-size: calc(13px * var(--dashboard-scale));
+    padding: calc(8px * var(--dashboard-scale)) 0;
 }
 
 .mic-tile--stock-active {
@@ -1281,6 +1589,12 @@
         overflow: visible;
     }
 
+    .admin-overview-page .mic-page--admin {
+        height: auto;
+        min-height: 100vh;
+        --admin-grid-cols: repeat(2, minmax(0, 1fr));
+    }
+
     .mic-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         grid-template-rows: repeat(3, minmax(calc(140px * var(--dashboard-scale)), 1fr));
@@ -1294,11 +1608,31 @@
         overflow: visible;
     }
 
+    .mic-header--admin {
+        align-items: start;
+    }
+
+    .mic-header-brand {
+        grid-column: 1 / -1;
+    }
+
+    .admin-promo-banner {
+        grid-column: 1;
+        width: 100%;
+    }
+
+    .mic-header--admin .mic-header-actions {
+        grid-column: 2;
+        justify-self: end;
+    }
+
     .mic-grid--admin .mic-tile--pos-area-stores,
     .mic-grid--admin .mic-tile--pos-voc,
     .mic-grid--admin .mic-tile--pos-sssg,
-    .mic-grid--admin .mic-tile--pos-promo,
-    .mic-grid--admin .mic-tile--pos-stock {
+    .mic-grid--admin .mic-tile--pos-orders,
+    .mic-grid--admin .mic-tile--pos-dfsc,
+    .mic-grid--admin .mic-tile--pos-square-one,
+    .mic-grid--admin .mic-tile--pos-daily-count {
         grid-column: auto;
         grid-row: auto;
     }
@@ -1350,6 +1684,19 @@ html.mic-dark-mode body {
 html.mic-dark-mode .mic-page {
     background: #161616;
     color: #e8e8e8;
+}
+
+html.mic-dark-mode .admin-promo-banner {
+    border-color: color-mix(in srgb, var(--tb-purple-light) 35%, #444);
+}
+
+html.mic-dark-mode .admin-promo-banner-bg img {
+    filter: grayscale(10%) brightness(0.82);
+}
+
+html.mic-dark-mode .admin-promo-banner:hover .admin-promo-banner-bg img,
+html.mic-dark-mode .admin-promo-banner:focus-visible .admin-promo-banner-bg img {
+    filter: grayscale(0%) brightness(0.95);
 }
 
 html.mic-dark-mode .mic-header .subtitle,
@@ -1417,6 +1764,35 @@ html.mic-dark-mode .mic-tile--promo:focus-visible .mic-promo-media img {
 
 html.mic-dark-mode .mic-tile--multiplier.is-set {
     background: color-mix(in srgb, var(--tb-purple-light) 18%, #262626);
+}
+
+html.mic-dark-mode .mic-tile--orders-active {
+    background: color-mix(in srgb, #0d9488 22%, #262626);
+    border-color: #14b8a6;
+}
+
+html.mic-dark-mode .mic-tile--orders-idle {
+    background: color-mix(in srgb, #161616 40%, #262626);
+    border-color: #444;
+}
+
+html.mic-dark-mode .mic-orders-store-link {
+    background: color-mix(in srgb, #0d9488 14%, #262626);
+    border-color: color-mix(in srgb, #14b8a6 45%, #444);
+    color: #e8e8e8;
+}
+
+html.mic-dark-mode .mic-orders-store-link:hover,
+html.mic-dark-mode .mic-orders-store-link:focus-visible {
+    background: color-mix(in srgb, #0d9488 24%, #262626);
+}
+
+html.mic-dark-mode .mic-orders-store-num {
+    color: color-mix(in srgb, #e8e8e8 55%, #161616);
+}
+
+html.mic-dark-mode .mic-orders-store-detail {
+    color: #5eead4;
 }
 
 html.mic-dark-mode .mic-tile--stock-active {

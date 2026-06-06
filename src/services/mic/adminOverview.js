@@ -15,6 +15,8 @@ const {
 const { buildStockCountTileState } = require('../stockCountTileState');
 const { DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR, getStoreConfig } = require('../storeList');
 const { TIME_ZONE } = require('../upselling/upsellingConfig');
+const { getCachedSssgLy } = require('../macromatixScraper');
+const { computeAreaWtdSssgPercent } = require('../sssg/sssgWeeklyLedger');
 
 /** Same areas as store picker — always rotate through these even with no stores/data. */
 const ADMIN_ROTATE_AREAS = ['Area 1', 'Area 2', 'Area 21', 'Area 22'];
@@ -79,6 +81,16 @@ function resolveStoreTimeZone(store) {
     return cfg?.timeZone || TIME_ZONE;
 }
 
+function computeAreaSssgToday(areaStores) {
+    const values = (areaStores || [])
+        .map((s) => s.sssgPercent)
+        .filter((v) => v != null && !Number.isNaN(Number(v)))
+        .map((v) => Number(v));
+    if (!values.length) return null;
+    const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
+    return Math.round(avg * 10) / 10;
+}
+
 function computeStoreSalesToday(store) {
     const openHour = Number.isFinite(store.openHour) ? store.openHour : DEFAULT_OPEN_HOUR;
     const closeHour = Number.isFinite(store.closeHour) ? store.closeHour : DEFAULT_CLOSE_HOUR;
@@ -129,6 +141,29 @@ function computeAreaSalesToday(areaStores) {
         closeHour: DEFAULT_CLOSE_HOUR,
         progress,
     };
+}
+
+function buildStoresNeedingOrders(liveByNum, areaGroups) {
+    const seen = new Set();
+    const entries = [];
+    for (const group of ensureAllAreaGroups(areaGroups)) {
+        for (const cfg of group.stores || []) {
+            const storeNumber = String(cfg.storeNumber || '').trim();
+            if (!storeNumber || seen.has(storeNumber)) continue;
+            seen.add(storeNumber);
+            const live = liveByNum.get(storeNumber) || {};
+            const tile = buildStockCountTileState(storeNumber, live);
+            if (!tile.active || !tile.href) continue;
+            entries.push({
+                storeNumber,
+                storeName: String(cfg.storeName || storeNumber).trim(),
+                href: tile.href,
+                pendingCount: tile.pendingCount,
+                message: tile.message,
+            });
+        }
+    }
+    return entries.sort((a, b) => a.storeNumber.localeCompare(b.storeNumber));
 }
 
 function buildAreaStockCountTileState(areaStores, liveByNum) {
@@ -182,14 +217,25 @@ function buildAdminOverviewPayload(salesPayload, areaGroups) {
                       storeName: s.storeName,
                       ...computeStoreSalesToday(s),
                   }))
-                  .sort((a, b) => b.actual - a.actual || String(a.storeNumber).localeCompare(String(b.storeNumber)))
+                  .sort((a, b) =>
+                      String(a.storeNumber).localeCompare(String(b.storeNumber), undefined, {
+                          numeric: true,
+                      })
+                  )
             : [];
+        const sssgTodayPercent = hasStores ? computeAreaSssgToday(areaStores) : null;
+        const sssgWtdPercent = hasStores
+            ? computeAreaWtdSssgPercent(areaStores, (s) => getCachedSssgLy(s.storeNumber, day))
+            : null;
+
         return {
             name: group.name,
             areaKey: group.key || normalizeAreaKey(group.name),
             salesToday: hasStores ? computeAreaSalesToday(areaStores) : emptyAreaSalesToday(),
             storeSales,
             stockCount: buildAreaStockCountTileState(areaStores, liveByNum),
+            sssgTodayPercent,
+            sssgWtdPercent,
         };
     });
 
@@ -209,6 +255,7 @@ function buildAdminOverviewPayload(salesPayload, areaGroups) {
         day,
         areas,
         vocByArea,
+        storesNeedingOrders: buildStoresNeedingOrders(liveByNum, areaGroups),
         activeMultipliers: getAllActiveMultipliersForDay(day),
         items,
         defaultMultiplier: DEFAULT_ITEM_MULTIPLIER,
@@ -221,7 +268,9 @@ module.exports = {
     ADMIN_ROTATE_AREAS,
     buildAdminOverviewPayload,
     computeAreaSalesToday,
+    computeAreaSssgToday,
     computeStoreSalesToday,
     mergeAreaHourly,
     ensureAllAreaGroups,
+    buildStoresNeedingOrders,
 };

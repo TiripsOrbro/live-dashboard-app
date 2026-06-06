@@ -1,5 +1,5 @@
 /**
- * Store snapshot rows — name, actual/forecast, SSSG placeholder, on-track status bar.
+ * Store snapshot rows — name, actual/forecast, SSSG %, on-track status bar.
  */
 (function () {
     const TRACK_FILL = {
@@ -41,7 +41,16 @@
     function formatSssg(store) {
         const v = store?.sssgPercent;
         if (v == null || v === '' || Number.isNaN(Number(v))) return '—';
-        return `${Number(v)}%`;
+        const n = Number(v);
+        const sign = n > 0 ? '+' : '';
+        return `${sign}${n}%`;
+    }
+
+    function sssgToneClass(store) {
+        const v = Number(store?.sssgPercent);
+        if (!Number.isFinite(v)) return 'mic-store-snap-sssg--na';
+        if (v >= 0) return 'mic-store-snap-sssg--up';
+        return 'mic-store-snap-sssg--down';
     }
 
     function storeSnapHref(num, options = {}) {
@@ -78,7 +87,7 @@
                         <span class="mic-store-snap-actual" style="color: ${actualColor}">${escapeHtml(actual)}</span>
                     </div>
                     <div class="mic-store-snap-bottom">
-                        <span class="mic-store-snap-sssg">SSSG% <span class="mic-store-snap-sssg-val">${escapeHtml(sssg)}</span></span>
+                        <span class="mic-store-snap-sssg ${sssgToneClass(store)}">SSSG <span class="mic-store-snap-sssg-val">${escapeHtml(sssg)}</span></span>
                         <span class="mic-store-snap-forecast">Forecast ${escapeHtml(forecast)}</span>
                     </div>
                     <div class="mic-store-snap-pace" aria-hidden="true">

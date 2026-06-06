@@ -277,6 +277,7 @@ function computeSalesToday(storeSlice = {}) {
         openHour,
         closeHour,
         progress,
+        sssgPercent: storeSlice.sssgPercent != null ? storeSlice.sssgPercent : null,
     };
 }
 

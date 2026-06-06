@@ -191,4 +191,5 @@ module.exports = {
     computeDaySalesPresentation,
     getActualCellClass,
     getPaceClass,
+    zoneHourMinuteSecond,
 };

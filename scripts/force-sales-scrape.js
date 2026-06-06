@@ -44,6 +44,7 @@ function writeSnapshot(store) {
         actual: [...store.actual],
         forecast: [...store.forecast],
         pendingVendors: Array.isArray(store.pendingVendors) ? [...store.pendingVendors] : [],
+        sssgPercent: store.sssgPercent != null ? store.sssgPercent : null,
     };
     fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
     fs.writeFileSync(path.join(SNAPSHOT_DIR, `${key}.json`), JSON.stringify(snap, null, 2), 'utf8');
@@ -91,8 +92,12 @@ function parseArgs(argv) {
             if (ok) saved++;
             const nz = Array.isArray(s.actual) ? s.actual.filter((v) => Number(v) > 0).length : 0;
             const total = sumHourly(s.actual);
+            const sssg =
+                s.sssgPercent != null && !Number.isNaN(Number(s.sssgPercent))
+                    ? ` | SSSG ${s.sssgPercent}%`
+                    : '';
             console.log(
-                `  ${s.storeNumber} ${s.storeName || ''} | actual $${total.toFixed(2)} (${nz} hrs >0)` +
+                `  ${s.storeNumber} ${s.storeName || ''} | actual $${total.toFixed(2)} (${nz} hrs >0)${sssg}` +
                     (ok ? ' → snapshot saved' : ' → no snapshot (all zero)') +
                     (s.error ? ` | ERROR: ${s.error}` : '')
             );

@@ -55,6 +55,13 @@
 
     function storeSnapHref(num, options = {}) {
         const base = String(options.storeBasePath || '').replace(/\/$/, '');
+        const areaCode = String(options.adminAreaCode || '').trim();
+        if (base === '/Admin' || base === '/admin') {
+            if (options.adminAreaLinkOnly && areaCode) {
+                return window.AppPaths?.adminArea?.(areaCode) || `/Admin/${encodeURIComponent(areaCode)}`;
+            }
+            if (num) return window.AppPaths?.adminStore?.(num) || `/Admin/${encodeURIComponent(num)}`;
+        }
         return base ? `${base}/${num}` : `/${num}`;
     }
 

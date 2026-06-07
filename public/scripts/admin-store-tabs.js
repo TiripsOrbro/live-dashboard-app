@@ -1,18 +1,34 @@
 /**
- * Admin store dashboard — area selector + store switcher at /admin/{storeNumber}.
- * Desktop: tabs spread evenly. Mobile: picker button + menu.
- * Tabs are limited to the active store's area (test store is separate).
+ * Admin store dashboard — /Admin/A1…A22 with in-page store switching; legacy /Admin/{store}.
  */
 (function (global) {
     const MOBILE_MAX = 768;
     const ADMIN_AREAS = ['Area 1', 'Area 2', 'Area 21', 'Area 22'];
 
+    function isAdminAreaPath() {
+        return /^\/Admin\/A\d+\/?$/i.test(global.location.pathname);
+    }
+
+    function isLegacyAdminStorePath() {
+        return /^\/Admin\/(teststore|\d{3,6})\/?$/i.test(global.location.pathname);
+    }
+
     function isAdminStorePath() {
-        return /^\/admin\/(teststore|\d{3,6})\/?$/i.test(global.location.pathname);
+        return isAdminAreaPath() || isLegacyAdminStorePath();
+    }
+
+    function areaCodeFromName(name) {
+        const m = String(name || '').match(/(\d+)/);
+        return m ? `A${Number(m[1])}` : '';
+    }
+
+    function areaFromPath() {
+        const m = global.location.pathname.match(/^\/Admin\/A(\d+)\/?$/i);
+        return m ? `A${m[1]}` : '';
     }
 
     function storeFromPath() {
-        const m = global.location.pathname.match(/^\/admin\/(teststore|\d{3,6})\/?$/i);
+        const m = global.location.pathname.match(/^\/Admin\/(teststore|\d{3,6})\/?$/i);
         return m ? String(m[1]).toLowerCase() : '';
     }
 
@@ -34,7 +50,8 @@
 
     function storeTabId(store) {
         if (!store) return '';
-        return store.testStore ? 'teststore' : String(store.storeNumber || '').replace(/[^0-9]/g, '');
+        if (store.testStore) return 'teststore';
+        return String(store.storeNumber || '').replace(/[^0-9]/g, '');
     }
 
     function areaKeyForStore(store) {
@@ -43,7 +60,10 @@
         return store.areaKey || normalizeAreaKey(store.area || '');
     }
 
-    function activeAreaKey(stores, activeStore) {
+    function activeAreaKey(stores, activeStore, areaCode) {
+        if (areaCode) {
+            return normalizeAreaKey(areaCodeFromName(`Area ${String(areaCode).replace(/^A/i, '')}`));
+        }
         const active = String(activeStore || storeFromPath()).toLowerCase();
         if (active === 'teststore') return 'test-store';
         const entry = stores.find((s) => storeTabId(s) === active);
@@ -52,20 +72,23 @@
 
     function storesInArea(stores, areaName) {
         const key = normalizeAreaKey(areaName);
-        return sortStores(
-            (stores || []).filter((s) => !s.testStore && areaKeyForStore(s) === key)
-        );
+        return sortStores((stores || []).filter((s) => !s.testStore && areaKeyForStore(s) === key));
     }
 
-    function firstStoreHrefForArea(stores, areaName) {
-        const inArea = storesInArea(stores, areaName);
-        if (inArea.length) return tabHref(storeTabId(inArea[0]));
-        return '/admin/teststore';
+    function areaHref(areaName) {
+        const code = areaCodeFromName(areaName);
+        if (code) return global.AppPaths?.adminArea?.(code) || `/Admin/${code}`;
+        return global.AppPaths?.adminOverview?.() || '/Admin/Overview';
     }
 
-    function filterStoresForActiveArea(stores, activeStore) {
+    function filterStoresForActiveArea(stores, activeStore, areaCode) {
         const list = Array.isArray(stores) ? stores.filter((s) => s && (s.storeNumber || s.testStore)) : [];
         const active = String(activeStore || '').toLowerCase();
+
+        if (isAdminAreaPath() && areaCode) {
+            const key = normalizeAreaKey(areaCodeFromName(`Area ${String(areaCode).replace(/^A/i, '')}`));
+            return list.filter((s) => !s.testStore && areaKeyForStore(s) === key);
+        }
 
         if (active === 'teststore') {
             return list.filter((s) => s.testStore);
@@ -89,9 +112,11 @@
         );
     }
 
-    function tabHref(storeNumber) {
+    function legacyTabHref(storeNumber) {
         const num = String(storeNumber || '').trim();
-        return num ? `/admin/${encodeURIComponent(num)}` : '/admin/overview';
+        return num
+            ? global.AppPaths?.adminStore?.(num) || `/Admin/${encodeURIComponent(num)}`
+            : global.AppPaths?.adminOverview?.() || '/Admin/Overview';
     }
 
     function tabLabel(store) {
@@ -109,22 +134,25 @@
     }
 
     function activePickerLabel(stores, activeStore) {
+        if (areaTotalsViewActive) return 'Area';
         const active = String(activeStore || '').toLowerCase();
         const current = stores.find((s) => storeTabId(s) === active);
         if (!current) return 'Select store';
         return mobileTabLabel(current);
     }
 
-    function renderAreaTabs(stores, activeStore) {
-        const currentKey = activeAreaKey(stores, activeStore);
+    let areaTotalsViewActive = false;
+
+    function renderAreaTabs(stores, activeStore, areaCode) {
+        const currentKey = activeAreaKey(stores, activeStore, areaCode);
         const parts = [];
         ADMIN_AREAS.forEach((name, idx) => {
             const key = normalizeAreaKey(name);
             const isActive = key === currentKey;
-            const href = firstStoreHrefForArea(stores, name);
+            const href = areaHref(name);
             if (isActive) {
                 parts.push(
-                    `<span class="admin-area-tab is-active" role="tab" aria-selected="true">${escapeHtml(name)}</span>`
+                    `<button type="button" class="admin-area-tab is-active${areaTotalsViewActive ? ' is-area-totals-view' : ''}" role="tab" aria-selected="true" data-area-totals-view aria-pressed="${areaTotalsViewActive ? 'true' : 'false'}">${escapeHtml(name)}</button>`
                 );
             } else {
                 parts.push(
@@ -138,39 +166,74 @@
         return parts.join('');
     }
 
-    function renderTabLink(store, activeStore) {
+    function renderAreaTotalsTab(useInPageSwitch) {
+        if (!useInPageSwitch) return '';
+        const cls = `admin-store-tabs__tab admin-store-tabs__tab--area${areaTotalsViewActive ? ' is-active' : ''}`;
+        return `<button type="button" class="${cls}" data-area-totals-tab role="tab"${
+            areaTotalsViewActive ? ' aria-current="page"' : ''
+        } aria-selected="${areaTotalsViewActive ? 'true' : 'false'}"><span class="admin-store-tabs__num">Area</span></button>`;
+    }
+
+    function renderAreaTotalsMenuItem(useInPageSwitch) {
+        if (!useInPageSwitch) return '';
+        const cls = `admin-store-tabs__menu-item admin-store-tabs__menu-item--area${
+            areaTotalsViewActive ? ' is-active' : ''
+        }`;
+        return `<button type="button" class="${cls}" data-area-totals-tab role="option"${
+            areaTotalsViewActive ? ' aria-current="page"' : ''
+        }>Area dashboard</button>`;
+    }
+
+    function renderStoreTabControl(store, activeStore, useInPageSwitch) {
         const num = storeTabId(store);
         if (!num) return '';
         const active = String(activeStore || '').toLowerCase();
-        const isActive = num === active;
+        const isActive = !areaTotalsViewActive && num === active;
         const label = tabLabel(store);
-        return `<a class="admin-store-tabs__tab${isActive ? ' is-active' : ''}" href="${tabHref(num)}"${
+        const cls = `admin-store-tabs__tab${isActive ? ' is-active' : ''}`;
+        if (useInPageSwitch) {
+            return `<button type="button" class="${cls}" data-store-select="${escapeHtml(num)}"${
+                isActive ? ' aria-current="page"' : ''
+            } role="tab"><span class="admin-store-tabs__num">${escapeHtml(label)}</span></button>`;
+        }
+        return `<a class="${cls}" href="${escapeHtml(legacyTabHref(num))}"${
             isActive ? ' aria-current="page"' : ''
         } role="tab"><span class="admin-store-tabs__num">${escapeHtml(label)}</span></a>`;
     }
 
-    function renderMenuLink(store, activeStore) {
+    function renderMenuControl(store, activeStore, useInPageSwitch) {
         const num = storeTabId(store);
         if (!num) return '';
         const active = String(activeStore || '').toLowerCase();
-        const isActive = num === active;
+        const isActive = !areaTotalsViewActive && num === active;
         const label = mobileTabLabel(store);
-        return `<a class="admin-store-tabs__menu-item${isActive ? ' is-active' : ''}" href="${tabHref(num)}"${
+        const cls = `admin-store-tabs__menu-item${isActive ? ' is-active' : ''}`;
+        if (useInPageSwitch) {
+            return `<button type="button" class="${cls}" data-store-select="${escapeHtml(num)}"${
+                isActive ? ' aria-current="page"' : ''
+            } role="option">${escapeHtml(label)}</button>`;
+        }
+        return `<a class="${cls}" href="${escapeHtml(legacyTabHref(num))}"${
             isActive ? ' aria-current="page"' : ''
         } role="option">${escapeHtml(label)}</a>`;
     }
 
-    function renderTabs(stores, activeStore) {
-        const filtered = sortStores(filterStoresForActiveArea(stores, activeStore));
+    function renderTabs(stores, activeStore, areaCode) {
+        const useInPageSwitch = isAdminAreaPath();
+        const filtered = sortStores(filterStoresForActiveArea(stores, activeStore, areaCode));
         const active = activeStore || storeFromPath();
-        const items = filtered.map((s) => renderTabLink(s, active)).join('');
-        const menuItems = filtered.map((s) => renderMenuLink(s, active)).join('');
+        const areaTab = renderAreaTotalsTab(useInPageSwitch);
+        const items =
+            areaTab + filtered.map((s) => renderStoreTabControl(s, active, useInPageSwitch)).join('');
+        const menuItems =
+            renderAreaTotalsMenuItem(useInPageSwitch) +
+            filtered.map((s) => renderMenuControl(s, active, useInPageSwitch)).join('');
         const pickerLabel = escapeHtml(activePickerLabel(filtered, active));
 
         return `
             <div class="admin-store-chrome">
                 <nav class="admin-area-tabs admin-store-area-tabs" role="tablist" aria-label="Select area">
-                    ${renderAreaTabs(stores, active)}
+                    ${renderAreaTabs(stores, active, areaCode)}
                 </nav>
                 <nav class="admin-store-tabs" aria-label="Switch store">
                     <div class="admin-store-tabs__scroll" role="tablist">${items}</div>
@@ -267,7 +330,37 @@
         });
 
         bar.addEventListener('click', (e) => {
+            const pick = e.target.closest('[data-store-select]');
+            if (pick) {
+                e.preventDefault();
+                const storeNum = pick.getAttribute('data-store-select');
+                if (storeNum && global.AdminAreaDashboard?.selectStore) {
+                    global.AdminAreaDashboard.selectStore(storeNum);
+                }
+                closeMobileMenu(bar);
+                return;
+            }
             if (e.target.closest('.admin-store-tabs__menu-item')) closeMobileMenu(bar);
+        });
+
+        bar.addEventListener('click', (e) => {
+            const areaTotalsBtn = e.target.closest('[data-area-totals-view]');
+            if (areaTotalsBtn) {
+                e.preventDefault();
+                if (areaTotalsViewActive) {
+                    global.AdminAreaDashboard?.showStoreView?.();
+                } else {
+                    global.AdminAreaDashboard?.showAreaTotals?.();
+                }
+                return;
+            }
+            const tab = e.target.closest('.admin-store-tabs__tab[data-store-select]');
+            if (!tab) return;
+            e.preventDefault();
+            const storeNum = tab.getAttribute('data-store-select');
+            if (storeNum && global.AdminAreaDashboard?.selectStore) {
+                global.AdminAreaDashboard.selectStore(storeNum);
+            }
         });
 
         document.addEventListener('click', (e) => {
@@ -291,10 +384,32 @@
         );
     }
 
-    async function mountAdminStoreTabs(activeStore) {
+    let cachedStores = [];
+    let cachedAreaCode = '';
+    let cachedActiveStore = '';
+
+    function paintTabs(activeStore) {
+        if (activeStore) cachedActiveStore = String(activeStore).toLowerCase();
+        const bar = document.getElementById('admin-store-tabs');
+        if (!bar) return;
+        bar.innerHTML = renderTabs(cachedStores, cachedActiveStore, cachedAreaCode);
+        bindMobilePicker(bar);
+        bar.querySelector('.admin-store-tabs__tab.is-active')?.scrollIntoView({
+            inline: 'center',
+            block: 'nearest',
+            behavior: 'smooth',
+        });
+    }
+
+    async function mountAdminStoreTabs(activeStore, options = {}) {
         if (!isAdminStorePath()) return;
         const dashboard = document.querySelector('.dashboard');
         if (!dashboard) return;
+
+        cachedAreaCode = options.areaCode || areaFromPath();
+        if (Array.isArray(options.stores) && options.stores.length) {
+            cachedStores = options.stores;
+        }
 
         let bar = document.getElementById('admin-store-tabs');
         if (!bar) {
@@ -313,27 +428,76 @@
         try {
             const res = await fetch('/api/stores', { credentials: 'same-origin' });
             const data = await res.json();
-            const stores = Array.isArray(data.stores) ? data.stores : [];
+            if (Array.isArray(data.stores) && data.stores.length) {
+                cachedStores = data.stores;
+            }
             const current = activeStore || storeFromPath();
-            bar.innerHTML = renderTabs(stores, current);
-            bindMobilePicker(bar);
-            bar.querySelector('.admin-store-tabs__tab.is-active')?.scrollIntoView({
-                inline: 'center',
-                block: 'nearest',
-                behavior: 'smooth',
-            });
+            paintTabs(current);
         } catch {
-            bar.innerHTML = renderTabs([], activeStore || storeFromPath());
-            bindMobilePicker(bar);
+            if (!cachedStores.length) cachedStores = [];
+            paintTabs(activeStore || storeFromPath());
         }
+    }
+
+    function refreshFromAreaSales(areaStores, activeStore, areaCode) {
+        if (!isAdminAreaPath()) return;
+        cachedAreaCode = areaCode || cachedAreaCode || areaFromPath();
+        if (Array.isArray(areaStores) && areaStores.length) {
+            const key = normalizeAreaKey(
+                areaCodeFromName(`Area ${String(cachedAreaCode).replace(/^A/i, '')}`)
+            );
+            cachedStores = areaStores.map((slice) => ({
+                storeNumber: slice.storeNumber,
+                storeName: slice.storeName || slice.storeNumber,
+                area: `Area ${String(cachedAreaCode).replace(/^A/i, '')}`,
+                areaKey: key,
+            }));
+        }
+        paintTabs(activeStore || storeFromPath());
+    }
+
+    function updateActiveStore(activeStore) {
+        if (!isAdminAreaPath()) return;
+        paintTabs(activeStore);
+    }
+
+    function setViewMode(mode) {
+        areaTotalsViewActive = mode === 'area';
+        paintTabs(cachedActiveStore);
     }
 
     global.AdminStoreTabs = {
         isAdminStorePath,
+        isAdminAreaPath,
+        isLegacyAdminStorePath,
         storeFromPath,
+        areaFromPath,
+        areaHref,
+        areaCodeFromName,
         filterStoresForActiveArea,
         mount: mountAdminStoreTabs,
+        updateActiveStore,
+        refreshFromAreaSales,
+        setViewMode,
         mobileMaxWidth: MOBILE_MAX,
         adminAreas: ADMIN_AREAS,
     };
+
+    document.addEventListener('click', (e) => {
+        if (!isAdminAreaPath()) return;
+        const areaStoreTab = e.target.closest('#admin-store-tabs [data-area-totals-tab]');
+        if (areaStoreTab) {
+            e.preventDefault();
+            if (!areaTotalsViewActive) global.AdminAreaDashboard?.showAreaTotals?.();
+            return;
+        }
+        const areaTotalsBtn = e.target.closest('#admin-store-tabs [data-area-totals-view]');
+        if (!areaTotalsBtn) return;
+        e.preventDefault();
+        if (areaTotalsViewActive) {
+            global.AdminAreaDashboard?.showStoreView?.();
+        } else {
+            global.AdminAreaDashboard?.showAreaTotals?.();
+        }
+    });
 })(window);

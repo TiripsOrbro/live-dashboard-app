@@ -20,7 +20,7 @@
             const alwaysFallback = Boolean(options.alwaysFallback);
             const fadeToStores = Boolean(options.fadeToStores);
             const useFade =
-                Boolean(options.fade) || fadeToStores || dest === '/stores' || dest === '/admin/overview';
+                Boolean(options.fade) || fadeToStores || dest === '/stores' || dest === '/Admin/Overview' || dest === '/admin/overview';
 
             if (alwaysFallback || useFade) {
                 if (useFade && window.DashboardPageTransition?.navigateBackToStores) {

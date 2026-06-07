@@ -54,7 +54,7 @@ async function fetchJson(url, options = {}) {
 }
 
 function micPath() {
-    return `/${STORE_NUMBER}/mic`;
+    return window.AppPaths?.micOverview?.() || '/MIC/Overview';
 }
 
 function mountBackNav() {
@@ -2379,7 +2379,7 @@ async function init() {
             denied
                 ? 'DFSC is not available on shared store login accounts. Ask your manager to create a personal crew account for you.'
                 : err.message
-        )}</div><p style="margin-top:1rem;text-align:center"><a class="dfsc-btn dfsc-btn-secondary" href="/${escapeHtml(STORE_NUMBER)}/mic">Back to MIC</a></p></div>`;
+        )}</div><p style="margin-top:1rem;text-align:center"><a class="dfsc-btn dfsc-btn-secondary" href="${escapeHtml(window.AppPaths?.micOverview?.() || '/MIC/Overview')}">Back to MIC</a></p></div>`;
     }
 }
 

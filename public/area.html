@@ -18,32 +18,8 @@
     <link rel="stylesheet" href="/styles/nav-back.css">
     <link rel="stylesheet" href="/styles/mic.css">
     <style>
-        /* Scroll: inherit dashboard.css (.dashboard max-height 100% + overflow-y on desktop; page scroll on mobile). */
-        body.area-dashboard-page .area-grid-section .dashboard-grid {
-            overflow-x: auto;
-            padding-bottom: 6px;
-        }
         .sales-status {
             margin-bottom: 14px;
-        }
-        .audits-aside,
-        .pending-vendors-aside {
-            max-width: none;
-            min-width: 240px;
-        }
-        .area-chip {
-            background: color-mix(in srgb, var(--blank) 12%, var(--dark-purple-border));
-            color: var(--blank);
-            padding: 8px 14px;
-            border: none;
-            text-align: center;
-            font-size: var(--font-size-3);
-            font-weight: var(--font-weight-grid-label);
-            line-height: 1.25;
-            white-space: normal;
-        }
-        .dashboard-grid-footer {
-            margin-top: 14px;
         }
         .area-grid-stack {
             display: grid;
@@ -51,6 +27,10 @@
         }
         .area-grid-section {
             padding: 0;
+        }
+        .area-grid-section .dashboard-grid {
+            overflow-x: auto;
+            padding-bottom: 6px;
         }
         .area-grid-heading {
             margin: 0 0 calc(10px * var(--dashboard-scale));
@@ -63,16 +43,6 @@
             outline: 2px solid color-mix(in srgb, var(--tb-purple-light) 55%, var(--charcoal));
             outline-offset: -2px;
         }
-        .area-dashboard-layout {
-            display: grid;
-            grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
-            gap: 16px;
-            align-items: start;
-        }
-        .area-store-panel {
-            position: sticky;
-            top: 12px;
-        }
         .area-page-tabs button.admin-area-tab {
             border: none;
             font: inherit;
@@ -80,13 +50,11 @@
             appearance: none;
             -webkit-appearance: none;
         }
-        @media (max-width: 900px) {
-            .area-dashboard-layout {
-                grid-template-columns: 1fr;
-            }
-            .area-store-panel {
-                position: static;
-            }
+        body.area-dashboard-page .dashboard-grid-footer {
+            margin-top: 8px;
+        }
+        a.audit-chip {
+            text-decoration: none;
         }
         @media (max-width: 900px) {
             .area-grid-section .dashboard-grid {
@@ -121,16 +89,14 @@
 
             <div class="sales-status" id="status-banner" hidden></div>
 
-            <div class="area-dashboard-layout">
-                <aside class="area-store-panel" id="area-store-panel" aria-label="Stores in area"></aside>
-                <div class="area-grid-stack" id="area-grids"></div>
-            </div>
+            <div class="area-grid-stack" id="area-grids"></div>
+
             <div class="dashboard-grid-footer">
                 <div class="dashboard-grid-footer-ledger">
                     <div class="dashboard-grid-footer-lead">
                         <div class="audits-aside" role="region" aria-label="Stores with audits outstanding">
-                            <h3 class="audits-heading">Stores with Audits Outstanding</h3>
-                            <div id="audits-list" class="audits-list"></div>
+                            <div class="audits-heading">List of Audits</div>
+                            <div id="audits-list" class="audits-list" aria-live="polite"></div>
                         </div>
                     </div>
                     <p class="dashboard-colour-note">
@@ -138,16 +104,16 @@
                     </p>
                     <div class="dashboard-grid-footer-trail">
                         <div class="pending-vendors-aside" role="region" aria-label="Stores with orders outstanding">
-                            <h3 class="pending-vendors-heading">Stores with Orders Outstanding</h3>
-                            <div id="orders-list" class="pending-vendors-list"></div>
+                            <div class="pending-vendors-heading">Orders to place</div>
+                            <div id="orders-list" class="pending-vendors-list" aria-live="polite"></div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+    <script src="/scripts/app-paths.js"></script>
     <script src="/scripts/page-transition.js"></script>
-    <script src="/scripts/store-snap-row.js"></script>
     <script src="/scripts/nav-back.js"></script>
     <script>
         DashboardNavBack?.mountBackButton(document.getElementById('area-nav-back'), {

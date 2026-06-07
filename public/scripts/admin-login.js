@@ -44,7 +44,7 @@
                 window.location.replace('/change-password');
                 return;
             }
-            window.location.replace(data.defaultPath || '/admin/overview');
+            window.location.replace(data.defaultPath || '/Admin/Overview');
         } catch (err) {
             showError('Could not sign in. Check your connection.');
         }

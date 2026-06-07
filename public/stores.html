@@ -523,11 +523,12 @@
 
     <main id="store-grid" class="store-grid" aria-label="Store list"></main>
 
+    <script src="/scripts/app-paths.js"></script>
     <script src="/scripts/nav-back.js"></script>
     <script src="/scripts/stores.js"></script>
     <script>
         DashboardNavBack?.mountBackButton(document.getElementById('stores-nav-back'), {
-            fallback: '/admin/overview',
+            fallback: '/Admin/Overview',
             alwaysFallback: true,
         });
         DashboardPageTransition.installStoreLinkFade(document);

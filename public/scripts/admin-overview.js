@@ -57,6 +57,19 @@ function sortStoresByNumber(stores) {
     );
 }
 
+function areaCodeFromName(name) {
+    const m = String(name || '').match(/(\d+)/);
+    return m ? `A${Number(m[1])}` : '';
+}
+
+function adminStoreSnapOptions(area) {
+    return {
+        storeBasePath: '/Admin',
+        adminAreaCode: areaCodeFromName(area?.name),
+        adminAreaLinkOnly: true,
+    };
+}
+
 function formatTime(date) {
     return date.toLocaleTimeString('en-AU', {
         hour: 'numeric',
@@ -255,8 +268,9 @@ function renderShell() {
         }) || ''}
     `;
     window.DashboardNavBack?.mountBackButton(document.getElementById('admin-overview-back'), {
-        fallback: '/admin',
+        fallback: '/stores',
         alwaysFallback: true,
+        fadeToStores: true,
     });
     document.getElementById('admin-view-accounts-btn')?.addEventListener('click', () => {
         window.DashboardAccount?.openViewAccountsModal?.({ isAdmin: true });
@@ -345,9 +359,7 @@ function updateAreaStoresTile(displayArea) {
 
     const listEl = tile.querySelector('.mic-store-lead-list');
     const rows =
-        window.StoreSnapRow?.renderStoreSnapList?.(sortStoresByNumber(displayArea?.storeSales), formatMoney, undefined, {
-            storeBasePath: '/admin',
-        }) || '<p class="mic-store-lead-empty">No stores in this area yet.</p>';
+        window.StoreSnapRow?.renderStoreSnapList?.(sortStoresByNumber(displayArea?.storeSales), formatMoney, undefined, adminStoreSnapOptions(displayArea)) || '<p class="mic-store-lead-empty">No stores in this area yet.</p>';
     if (listEl) listEl.innerHTML = rows;
 
     const track = tile.querySelector('.admin-area-text-track');
@@ -493,9 +505,7 @@ function renderDfscAdminTile() {
 function renderAreaStoresTile(area) {
     const sales = area?.salesToday || { actual: 0, forecast: 0 };
     const rows =
-        window.StoreSnapRow?.renderStoreSnapList?.(sortStoresByNumber(area?.storeSales), formatMoney, undefined, {
-            storeBasePath: '/admin',
-        }) || '<p class="mic-store-lead-empty">No stores in this area yet.</p>';
+        window.StoreSnapRow?.renderStoreSnapList?.(sortStoresByNumber(area?.storeSales), formatMoney, undefined, adminStoreSnapOptions(area)) || '<p class="mic-store-lead-empty">No stores in this area yet.</p>';
 
     return `
         <article class="mic-tile mic-tile--store-leaderboard mic-tile--pos-area-stores">

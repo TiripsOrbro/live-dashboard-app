@@ -3,20 +3,74 @@
 ----------------------------------------------------------- */
 const app = document.getElementById('app');
 
-/** Store id from URL (/admin/3811, /3811, /kiosk/3811, /nologin/3811, or /teststore). */
-const IS_ADMIN_STORE_DASHBOARD = /^\/admin\/(teststore|\d{3,6})\/?$/i.test(window.location.pathname);
-const STORE_NUMBER =
-    (
-        window.location.pathname.match(/^\/admin\/(teststore|\d{3,6})\/?$/i) ||
-        window.location.pathname.match(/\/(?:nologin|kiosk)\/(\d{3,6})\/?$/i) ||
-        window.location.pathname.match(/^\/(teststore|\d{3,6})\/?$/i) ||
-        []
-    )[1]?.toLowerCase() || '';
+/** Store id from URL (/Admin/A22, /MIC/3811, /kiosk/3811, or legacy /3811). */
+const IS_ADMIN_AREA_DASHBOARD = /^\/Admin\/A(\d+)\/?$/i.test(window.location.pathname);
+const ADMIN_AREA_MATCH = window.location.pathname.match(/^\/Admin\/A(\d+)\/?$/i);
+const ADMIN_AREA_CODE = ADMIN_AREA_MATCH ? `A${ADMIN_AREA_MATCH[1]}` : '';
+const IS_MIC_STORE_DASHBOARD = /^\/MIC\/(teststore|\d{3,6})\/?$/i.test(window.location.pathname);
+const IS_LEGACY_ADMIN_STORE_DASHBOARD = /^\/Admin\/(teststore|\d{3,6})\/?$/i.test(
+    window.location.pathname
+);
+const IS_ADMIN_STORE_DASHBOARD = IS_ADMIN_AREA_DASHBOARD || IS_LEGACY_ADMIN_STORE_DASHBOARD;
+
+function storeNumberFromPath() {
+    return (
+        (
+            window.location.pathname.match(/^\/Admin\/(teststore|\d{3,6})\/?$/i) ||
+            window.location.pathname.match(/^\/MIC\/(teststore|\d{3,6})\/?$/i) ||
+            window.location.pathname.match(/\/(?:nologin|kiosk)\/(\d{3,6})\/?$/i) ||
+            window.location.pathname.match(/^\/(teststore|\d{3,6})\/?$/i) ||
+            []
+        )[1]?.toLowerCase() || ''
+    );
+}
+
+function initialAdminAreaStore() {
+    try {
+        const fromQuery = new URLSearchParams(window.location.search).get('store');
+        if (fromQuery) return String(fromQuery).toLowerCase();
+        if (ADMIN_AREA_CODE) {
+            const saved = sessionStorage.getItem(`admin-area-store-${ADMIN_AREA_CODE}`);
+            if (saved) return String(saved).toLowerCase();
+        }
+    } catch {
+        /* ignore */
+    }
+    return '';
+}
+
+let STORE_NUMBER = IS_ADMIN_AREA_DASHBOARD ? initialAdminAreaStore() : storeNumberFromPath();
 const KIOSK_TOKEN =
     typeof window !== 'undefined' && window.__DASHBOARD_KIOSK__
         ? String(window.__DASHBOARD_KIOSK__)
         : '';
 const STORE_QUERY = STORE_NUMBER ? `?store=${encodeURIComponent(STORE_NUMBER)}` : '';
+
+function isKioskDashboardEntry() {
+    if (/^\/kiosk(\/|$)/i.test(window.location.pathname)) return true;
+    if (KIOSK_TOKEN) return true;
+    try {
+        if (sessionStorage.getItem('dashboard-entry') === 'kiosk') return true;
+    } catch {
+        /* ignore */
+    }
+    return document.cookie.split(';').some((c) => c.trim() === 'dashboard_entry=kiosk');
+}
+
+function isNologinDashboardEntry() {
+    return document.cookie.split(';').some((c) => c.trim().startsWith('dashboard_nologin='));
+}
+
+/** Settings cog on sales dashboard — MIC and admin logins only, not wall/kiosk tablets. */
+function shouldShowDashboardSettings() {
+    if (isKioskDashboardEntry() || isNologinDashboardEntry()) return false;
+    if (IS_ADMIN_STORE_DASHBOARD || IS_MIC_STORE_DASHBOARD) return true;
+    return (
+        document.cookie.split(';').some((c) => c.trim() === 'dashboard_entry=store') ||
+        /^\/MIC\/(teststore|\d{3,6})\/?$/i.test(window.location.pathname) ||
+        /^\/(teststore|\d{3,6})\/?$/i.test(window.location.pathname)
+    );
+}
 
 function withStore(url) {
     let out = url;
@@ -52,8 +106,133 @@ function salesApiUrl(extraParams = {}) {
     return `${url}${sep}${qs}`;
 }
 const AUDITS_API_URL = withStore(`${window.location.origin}/api/audits`);
+function auditsApiUrl() {
+    return withStore(`${window.location.origin}/api/audits`);
+}
 const AUDIT_SCHEDULE_URL = withStore(`${window.location.origin}/api/audit-schedule`);
 const SALES_REFRESH_MINUTES = 2;
+
+/** Preloaded admin area payloads keyed by store number (lowercase). */
+const adminAreaSalesCache = new Map();
+
+function adminAreaStorageKey() {
+    return ADMIN_AREA_CODE ? `admin-area-store-${ADMIN_AREA_CODE}` : '';
+}
+
+function rememberAdminAreaStore(storeNum) {
+    const key = adminAreaStorageKey();
+    if (!key || !storeNum) return;
+    try {
+        sessionStorage.setItem(key, String(storeNum).toLowerCase());
+    } catch {
+        /* ignore */
+    }
+}
+
+async function applyAdminStoreSlice(storeNum) {
+    const key = String(storeNum || '').toLowerCase();
+    const slice = adminAreaSalesCache.get(key);
+    if (!slice) return false;
+
+    STORE_NUMBER = key;
+    rememberAdminAreaStore(key);
+    applySalesPayload(slice);
+    updateStoreHeader();
+
+    if (typeof window.upsellingPodium?.init === 'function') {
+        window.upsellingPodium.init(STORE_NUMBER);
+    }
+    if (typeof window.StockCountNotify?.initPipelineWatcher === 'function') {
+        window.StockCountNotify.initPipelineWatcher(STORE_NUMBER);
+    }
+
+    await loadAuditSchedule();
+    await loadAuditState();
+    updateTimestamp(slice.timestamp);
+    updateSalesStatus(slice);
+    salesDataLoadedOnce = true;
+    updateGrid();
+    updatePendingVendorsPanel();
+    window.AdminStoreTabs?.updateActiveStore?.(STORE_NUMBER);
+    return true;
+}
+
+async function loadAdminAreaSales() {
+    if (!IS_ADMIN_AREA_DASHBOARD || !ADMIN_AREA_CODE) return false;
+    const res = await fetch(
+        `${window.location.origin}/api/admin/area-sales?area=${encodeURIComponent(ADMIN_AREA_CODE)}`,
+        { credentials: 'include' }
+    );
+    if (!res.ok) {
+        throw new Error(`Area sales API responded with ${res.status}`);
+    }
+    const data = await res.json();
+    if (!data.success) {
+        throw new Error(data.error || 'Area sales API returned unsuccessful response');
+    }
+
+    adminAreaSalesCache.clear();
+    const list = Array.isArray(data.stores) ? data.stores : [];
+    for (const slice of list) {
+        const num = String(slice.storeNumber || '').toLowerCase();
+        if (num) adminAreaSalesCache.set(num, slice);
+    }
+
+    const prefer =
+        STORE_NUMBER ||
+        initialAdminAreaStore() ||
+        String(list[0]?.storeNumber || '').toLowerCase();
+    if (!prefer) return false;
+
+    const applied = await applyAdminStoreSlice(prefer);
+    if (!applied && list.length) {
+        await applyAdminStoreSlice(list[0].storeNumber);
+    }
+
+    window.AdminStoreTabs?.refreshFromAreaSales?.(list, STORE_NUMBER, ADMIN_AREA_CODE);
+
+    if (window.location.search) {
+        history.replaceState({ area: ADMIN_AREA_CODE, store: STORE_NUMBER }, '', window.location.pathname);
+    }
+    return true;
+}
+
+function wantsAdminAreaTotalsView() {
+    try {
+        return new URLSearchParams(window.location.search).get('view') === 'area';
+    } catch {
+        return false;
+    }
+}
+
+async function switchAdminStore(storeNum) {
+    if (!IS_ADMIN_AREA_DASHBOARD) return false;
+    if (document.body.classList.contains('admin-showing-area-totals')) {
+        window.AdminAreaPanel?.hide?.();
+    }
+    const ok = await applyAdminStoreSlice(storeNum);
+    if (ok) applyDashboardScale();
+    return ok;
+}
+
+async function showAdminAreaTotals() {
+    if (!IS_ADMIN_AREA_DASHBOARD || !ADMIN_AREA_CODE) return;
+    await window.AdminAreaPanel?.show?.(ADMIN_AREA_CODE);
+    applyDashboardScale();
+}
+
+function showAdminStoreView() {
+    if (!IS_ADMIN_AREA_DASHBOARD) return;
+    window.AdminAreaPanel?.hide?.();
+    applyDashboardScale();
+}
+
+window.AdminAreaDashboard = {
+    selectStore: switchAdminStore,
+    reloadArea: loadAdminAreaSales,
+    showAreaTotals: showAdminAreaTotals,
+    showStoreView: showAdminStoreView,
+};
 
 /** Store name/number from the latest sales payload, shown in the header. */
 let currentStoreLabel = STORE_NUMBER || '';
@@ -395,7 +574,7 @@ async function loadAuditState() {
     await loadAuditSchedule();
     syncAuditPeriodState();
     try {
-        const res = await fetch(AUDITS_API_URL);
+        const res = await fetch(auditsApiUrl());
         if (!res.ok) throw new Error(`Audit API responded with ${res.status}`);
         const data = await res.json();
         if (!data.success) throw new Error(data.error || 'Audit API returned unsuccessful response');
@@ -414,7 +593,7 @@ async function loadAuditState() {
 async function saveAuditState() {
     syncAuditPeriodState();
     try {
-        const res = await fetch(AUDITS_API_URL, {
+        const res = await fetch(auditsApiUrl(), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ dismissed: [...dismissedAudits] }),
@@ -518,6 +697,11 @@ async function loadSalesData() {
         updateGrid();
     }
     try {
+        if (IS_ADMIN_AREA_DASHBOARD) {
+            await loadAdminAreaSales();
+            return;
+        }
+
         const res = await fetch(SALES_API_URL, { credentials: 'include' });
         if (!res.ok) {
             throw new Error(`API responded with ${res.status}`);
@@ -1983,6 +2167,9 @@ function buildColourGuideNoteHtml() {
 }
 
 async function applyUserPreferences() {
+    if (shouldShowDashboardSettings() && window.MicSettings?.initPreferences) {
+        return window.MicSettings.initPreferences();
+    }
     try {
         const res = await fetch(withStore(`${window.location.origin}/api/me`), { credentials: 'include' });
         if (!res.ok) return;
@@ -1994,6 +2181,25 @@ async function applyUserPreferences() {
     } catch {
         /* ignore */
     }
+}
+
+function bindDashboardSettings() {
+    if (!shouldShowDashboardSettings() || !window.MicSettings) return;
+    window.MicSettings.bind({
+        getViewAccountsOptions: () => (IS_ADMIN_STORE_DASHBOARD ? { isAdmin: true } : {}),
+        resolveViewAccountsVisibility: !IS_ADMIN_STORE_DASHBOARD,
+    });
+}
+
+function renderDashboardSettingsChrome() {
+    if (!shouldShowDashboardSettings() || !window.MicSettings) return '';
+    return `
+        ${window.MicSettings.renderCog()}
+        ${window.MicSettings.renderPanel({
+            viewAccountsHidden: !IS_ADMIN_STORE_DASHBOARD,
+            darkModeHint: 'Dark background on dashboard pages that support it.',
+        })}
+    `;
 }
 
 function buildAuditsAsideHtml() {
@@ -2146,7 +2352,7 @@ function renderDashboard() {
                 <div class="rotate-hint-icon" aria-hidden="true">↻</div>
                 <h2>Rotate to landscape</h2>
                 <p>The sales grid is built for a wide view. Turn your phone sideways for the best layout.</p>
-                <a class="rotate-hint-back" href="${IS_ADMIN_STORE_DASHBOARD ? '/admin/overview' : '/'}">← ${
+                <a class="rotate-hint-back" href="${IS_ADMIN_STORE_DASHBOARD ? (window.AppPaths?.adminOverview?.() || '/Admin/Overview') : '/'}">← ${
                     IS_ADMIN_STORE_DASHBOARD ? 'Admin overview' : 'All stores'
                 }</a>
             </div>
@@ -2197,6 +2403,12 @@ function renderDashboard() {
             <div id="sales-status" class="sales-status" role="status" aria-live="polite" hidden></div>
             <div id="audit-schedule-status" class="audit-schedule-status" role="alert" aria-live="assertive" hidden></div>
 
+            ${
+                IS_ADMIN_AREA_DASHBOARD
+                    ? `<div id="admin-store-view">`
+                    : ''
+            }
+
             <div class="dashboard-grid" id="portrait-panel-dashboard"></div>
 
             <div id="portrait-panel-audits" class="portrait-tab-panel" role="tabpanel" aria-labelledby="portrait-tab-audits" hidden>
@@ -2215,8 +2427,37 @@ function renderDashboard() {
                 <p id="portrait-orders-empty" class="portrait-tab-empty" hidden>No orders to place right now.</p>
             </div>
 
+            ${
+                IS_ADMIN_AREA_DASHBOARD
+                    ? `</div>
+            <div id="admin-area-view" hidden>
+                <div id="admin-area-grids" class="area-grid-stack"></div>
+                <div class="dashboard-grid-footer admin-area-footer">
+                    <div class="dashboard-grid-footer-ledger">
+                        <div class="dashboard-grid-footer-lead">
+                            <div class="audits-aside" role="region" aria-label="Stores with audits outstanding">
+                                <div class="audits-heading">List of Audits</div>
+                                <div id="admin-area-audits-list" class="audits-list" aria-live="polite"></div>
+                            </div>
+                        </div>
+                        <p class="dashboard-colour-note">
+                            Area view groups stores by timezone/state and sums forecast/actual by local trading hour. Click the active area name again to return to a store.
+                        </p>
+                        <div class="dashboard-grid-footer-trail">
+                            <div class="pending-vendors-aside" role="region" aria-label="Stores with orders outstanding">
+                                <div class="pending-vendors-heading">Orders to place</div>
+                                <div id="admin-area-orders-list" class="pending-vendors-list" aria-live="polite"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`
+                    : ''
+            }
+
             <div id="popup-container"></div>
         </div>
+        ${renderDashboardSettingsChrome()}
     `;
     bindFooterChipDismissOnce();
     bindPortraitTabsOnce();
@@ -2225,33 +2466,27 @@ function renderDashboard() {
     updateRotateHint();
     showGridSkeleton();
     applyPortraitTabVisibility();
+    bindDashboardSettings();
     if (STORE_NUMBER && typeof window.upsellingPodium?.init === 'function') {
         window.upsellingPodium.init(STORE_NUMBER);
     }
-    const isKioskDashboard = /^\/kiosk(\/|$)/i.test(window.location.pathname);
-    const isKioskEntry = (() => {
-        if (isKioskDashboard) return true;
-        try {
-            if (sessionStorage.getItem('dashboard-entry') === 'kiosk') return true;
-        } catch (_) {
-            /* ignore */
-        }
-        return document.cookie.split(';').some((c) => c.trim() === 'dashboard_entry=kiosk');
-    })();
+    const isKioskEntry = isKioskDashboardEntry();
     const isMicStoreEntry =
         !isKioskEntry &&
-        (document.cookie.split(';').some((c) => c.trim() === 'dashboard_entry=store') ||
+        (IS_MIC_STORE_DASHBOARD ||
+            document.cookie.split(';').some((c) => c.trim() === 'dashboard_entry=store') ||
+            /^\/MIC\/(teststore|\d{3,6})\/?$/i.test(window.location.pathname) ||
             /^\/\d{3,6}\/?$/i.test(window.location.pathname) ||
             /^\/teststore\/?$/i.test(window.location.pathname));
     if (STORE_NUMBER && window.DashboardNavBack) {
         if (IS_ADMIN_STORE_DASHBOARD) {
             window.DashboardNavBack.mountBackButton(document.getElementById('admin-store-nav-back'), {
-                fallback: '/admin/overview',
+                fallback: window.AppPaths?.adminOverview?.() || '/Admin/Overview',
                 alwaysFallback: true,
             });
         } else if (isMicStoreEntry) {
             window.DashboardNavBack.mountBackButton(document.getElementById('dashboard-nav-back'), {
-                fallback: `/${STORE_NUMBER}/mic`,
+                fallback: window.AppPaths?.micOverview?.() || '/MIC/Overview',
                 alwaysFallback: true,
             });
         } else if (!isKioskEntry) {
@@ -2265,7 +2500,7 @@ function renderDashboard() {
 
     if (IS_ADMIN_STORE_DASHBOARD) {
         document.body.classList.add('dashboard-page--admin-store');
-        window.AdminStoreTabs?.mount?.(STORE_NUMBER);
+        window.AdminStoreTabs?.mount?.(STORE_NUMBER, { areaCode: ADMIN_AREA_CODE });
     }
 }
 
@@ -2442,13 +2677,33 @@ function initMobileLandscape() {
     lastPortraitLayout = isPortraitMobileView();
     applyDashboardScale();
     renderDashboard();
-    await initTradingHours();
-    showGridSkeleton();
+    if (IS_ADMIN_AREA_DASHBOARD) {
+        showGridSkeleton();
+        try {
+            await loadAdminAreaSales();
+            window.AdminAreaPanel?.preload?.(ADMIN_AREA_CODE);
+            if (wantsAdminAreaTotalsView()) {
+                await showAdminAreaTotals();
+                history.replaceState({ area: ADMIN_AREA_CODE, store: STORE_NUMBER }, '', window.location.pathname);
+            }
+        } catch (err) {
+            console.error('Failed to load admin area sales:', err);
+            updateSalesStatus({
+                stale: true,
+                warning: 'Unable to load area sales. If issue persists, contact Ash.',
+            });
+        }
+    } else {
+        await initTradingHours();
+        showGridSkeleton();
+    }
     await applyUserPreferences();
     initPopupTestButton();
     initMobileLandscape();
     await loadAuditSchedule();
-    await loadAuditState();
+    if (!IS_ADMIN_AREA_DASHBOARD) {
+        await loadAuditState();
+    }
     if (STORE_NUMBER) {
         window.StockCountNotify?.initPipelineWatcher?.(STORE_NUMBER);
     }

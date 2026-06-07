@@ -1,5 +1,6 @@
-const STORE_NUMBER =
-    (window.location.pathname.match(/\/(\d{3,6})\/mic\/?$/i) || [])[1] || '';
+const IS_MIC_OVERVIEW = /^\/MIC\/Overview\/?$/i.test(window.location.pathname);
+let STORE_NUMBER =
+    (window.location.pathname.match(/^\/MIC\/(teststore|\d{3,6})\/?$/i) || [])[1] || '';
 
 const app = document.getElementById('app');
 const REFRESH_MS = 2 * 60 * 1000;
@@ -203,7 +204,7 @@ function renderMiniDashboard(sales) {
         return `
             <div class="mic-mini-dashboard mic-mini-dashboard--mobile">
                 ${totalsHtml}
-                <a class="mic-store-lead-dashboard-link mic-store-lead-dashboard-link--plain mic-meal-dashboard-link" href="/${escapeHtml(STORE_NUMBER)}">View full dashboard →</a>
+                <a class="mic-store-lead-dashboard-link mic-store-lead-dashboard-link--plain mic-meal-dashboard-link" href="${escapeHtml(window.AppPaths?.micStore?.(STORE_NUMBER) || `/MIC/${STORE_NUMBER}`)}">View full dashboard →</a>
             </div>
         `;
     }
@@ -238,7 +239,7 @@ function renderStoreSalesTile(data) {
             </div>
             <div class="mic-store-lead-list mic-store-lead-list--dashboard">
                 ${renderMiniDashboard(sales)}
-                ${isMicMobileView() ? '' : `<a class="mic-store-lead-dashboard-link mic-store-lead-dashboard-link--plain" href="/${escapeHtml(STORE_NUMBER)}">Open full dashboard →</a>`}
+                ${isMicMobileView() ? '' : `<a class="mic-store-lead-dashboard-link mic-store-lead-dashboard-link--plain" href="${escapeHtml(window.AppPaths?.micStore?.(STORE_NUMBER) || `/MIC/${STORE_NUMBER}`)}">Open full dashboard →</a>`}
                 ${renderMultiplierBlock(data)}
             </div>
         </article>
@@ -309,7 +310,7 @@ function renderOrdersToPlaceTile(data) {
             <li class="mic-orders-store-item" role="listitem">
                 <a
                     class="mic-orders-store-link"
-                    href="${escapeHtml(sc.href || `/${STORE_NUMBER}`)}"
+                    href="${escapeHtml(sc.href || window.AppPaths?.micStore?.(STORE_NUMBER) || `/MIC/${STORE_NUMBER}`)}"
                     aria-label="${escapeHtml(`${data?.storeName || STORE_NUMBER} — ${ordersStoreDetail(sc)}`)}"
                 >
                     <span class="mic-orders-store-title">
@@ -530,7 +531,27 @@ async function loadMicData() {
     renderTiles(micData);
 }
 
-function init() {
+async function resolveMicStoreNumber() {
+    if (STORE_NUMBER) return STORE_NUMBER;
+    if (!IS_MIC_OVERVIEW) return '';
+    try {
+        const res = await fetch('/api/me', { credentials: 'same-origin' });
+        if (!res.ok) return '';
+        const me = await res.json();
+        const stores = me.stores === '*' ? [] : Array.isArray(me.stores) ? me.stores.map(String) : [];
+        if (stores.length === 1) return stores[0].toLowerCase();
+        const fromUser = String(me.username || '').match(/(\d{3,6})/);
+        if (fromUser) return fromUser[1].toLowerCase();
+    } catch {
+        /* ignore */
+    }
+    return '';
+}
+
+async function init() {
+    if (!STORE_NUMBER && IS_MIC_OVERVIEW) {
+        STORE_NUMBER = await resolveMicStoreNumber();
+    }
     if (!STORE_NUMBER) {
         app.textContent = 'Invalid store.';
         return;

@@ -45,9 +45,23 @@ function areaCodeFromValue(value) {
 
 function areaPathFromGroup(group) {
     const areaCode = areaCodeFromValue(group?.name || group?.key || '');
-    if (areaCode) return `/${areaCode}`;
+    if (areaCode) {
+        return `${window.AppPaths?.adminArea?.(areaCode) || `/Admin/${areaCode}`}?view=area`;
+    }
     const areaKey = group?.key || normalizeAreaKey(group?.name || '');
     return `/area/${encodeURIComponent(areaKey)}`;
+}
+
+function adminStoreHref(store) {
+    const code = areaCodeFromValue(store?.area || store?.areaKey || '');
+    const num = String(store?.storeNumber || '').replace(/[^0-9]/g, '');
+    if (store?.testStore) return window.AppPaths?.adminStore?.('teststore') || '/Admin/teststore';
+    if (code && num) {
+        return window.AppPaths?.adminAreaWithStore?.(code, num) || `/Admin/${code}?store=${encodeURIComponent(num)}`;
+    }
+    return num
+        ? window.AppPaths?.adminStore?.(num) || `/Admin/${num}`
+        : window.AppPaths?.adminOverview?.() || '/Admin/Overview';
 }
 
 function ensureVisibleAreas(groups) {
@@ -83,7 +97,7 @@ function renderStoreTiles(stores) {
             const tileClass = isTest ? 'store-tile store-tile--test' : 'store-tile';
             const label = isTest ? 'Test Store' : number;
             return `
-                <a class="${tileClass}" href="/admin/${number}">
+                <a class="${tileClass}" href="${adminStoreHref(s)}">
                     <span class="store-tile-number">${label}</span>
                     ${name ? `<span class="store-tile-name">${name}</span>` : ''}
                     ${hours ? `<span class="store-tile-hours">${hours}</span>` : ''}

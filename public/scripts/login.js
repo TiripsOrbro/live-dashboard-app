@@ -150,7 +150,7 @@ function loginDestination(data, username) {
     const name = String(username || '').trim();
     const cbMatch = name.match(/^CB(\d{3,6})$/i);
     const store = cbMatch ? cbMatch[1] : /^\d{3,6}$/.test(name) ? name : '';
-    if (store) return `/${store}/mic`;
+    if (store) return window.AppPaths?.micOverview?.() || '/MIC/Overview';
     return '/login';
 }
 

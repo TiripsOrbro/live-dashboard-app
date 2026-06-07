@@ -285,8 +285,21 @@
                 const stores = profileData.stores === '*' ? [] : profileData.stores || [];
                 storeNumber = String(stores[0] || '').trim();
             }
-            const micMatch = window.location.pathname.match(/\/(\d{3,6})\/mic\/?$/i);
+            const micMatch =
+                window.location.pathname.match(/^\/MIC\/(\d{3,6})\/?$/i) ||
+                window.location.pathname.match(/\/(\d{3,6})\/mic\/?$/i);
             if (!storeNumber && micMatch) storeNumber = micMatch[1];
+            if (!storeNumber && /^\/MIC\/Overview\/?$/i.test(window.location.pathname)) {
+                try {
+                    const meRes = await fetch('/api/me', { credentials: 'same-origin' });
+                    const me = await meRes.json();
+                    const stores =
+                        me.stores === '*' ? [] : Array.isArray(me.stores) ? me.stores.map(String) : [];
+                    if (stores.length === 1) storeNumber = stores[0];
+                } catch {
+                    /* ignore */
+                }
+            }
         }
 
         if (!storeNumber) {

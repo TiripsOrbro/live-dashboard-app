@@ -2,7 +2,7 @@
 
 Plain-English summary of what changed in each release — written for store managers and admins, not developers.
 
-**Current live branch:** `Version-0.3.2`
+**Current live branch:** `Version-0.3.3`
 
 ---
 
@@ -25,6 +25,25 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ---
 
 ## Release history
+
+### Version 0.3.3 — June 2026
+
+**Changed**
+
+- **Canonical URL namespaces** for managers and admins:
+  - **`/MIC/Overview`** — MIC home (tiles, mini dashboard)
+  - **`/MIC/3811`** — MIC store sales dashboard
+  - **`/Admin/Overview`** — admin home
+  - **`/Admin/A22`** — admin area workspace: all stores in the area preload; **store tabs switch in-page** with no reload
+- Old paths redirect automatically (`/3811/mic` → `/MIC/Overview`, `/admin/overview` → `/Admin/Overview`, `/3811` → `/MIC/3811` or `/Admin/A##` for admins).
+- Combined area totals (VIC/WA grids) remain at **`/A22`** from the store picker “Area Dashboard” tile.
+
+**What you need to do**
+
+- Update bookmarks to the new paths above.
+- Hard refresh (Ctrl+F5) once after deploy.
+
+---
 
 ### Version 0.3.2 — June 2026
 

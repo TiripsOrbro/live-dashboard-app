@@ -1010,7 +1010,24 @@ function singleStoreForUser(user) {
 }
 
 function getAdminRedirectPath() {
-    return '/admin/overview';
+    return '/Admin/Overview';
+}
+
+function getMicOverviewPath() {
+    return '/MIC/Overview';
+}
+
+function getMicStorePath(storeNumber) {
+    const slug = String(storeNumber || '').trim().toLowerCase();
+    if (slug === 'teststore') return '/MIC/teststore';
+    const num = String(storeNumber || '').replace(/[^0-9]/g, '');
+    return num ? `/MIC/${num}` : getMicOverviewPath();
+}
+
+function getAdminAreaPath(areaCodeOrName) {
+    const m = String(areaCodeOrName || '').match(/(\d+)/);
+    const code = m ? `A${Number(m[1])}` : String(areaCodeOrName || '').trim();
+    return code ? `/Admin/${code}` : getAdminRedirectPath();
 }
 
 function getKioskRedirectPath(user) {
@@ -1025,7 +1042,7 @@ function getLoginRedirectPath(user, mode = 'mic') {
     if (!user) return '/login';
     if (isAdminUser(user)) return getAdminRedirectPath();
     const store = singleStoreForUser(user);
-    if (store) return `/${store}/mic`;
+    if (store) return getMicOverviewPath();
     return '/login';
 }
 
@@ -1055,8 +1072,8 @@ function userProfileForClient(user) {
             role: 'store',
             stores,
             skipStorePicker: true,
-            defaultPath: store ? `/${store}` : '/',
-            micPath: store ? `/${store}/mic` : null,
+            defaultPath: store ? getMicStorePath(store) : '/',
+            micPath: store ? getMicOverviewPath() : null,
             canCreateAccount: false,
             canViewManagedAccounts: false,
             colorBlind: false,
@@ -1098,7 +1115,7 @@ function userProfileForClient(user) {
             : isAdminUser(user)
               ? getAdminRedirectPath()
               : getLoginRedirectPath(user, 'mic'),
-        micPath: store ? `/${store}/mic` : null,
+        micPath: store ? getMicOverviewPath() : null,
         canCreateAccount: canUserCreateAccounts(user),
         canViewManagedAccounts: canUserCreateAccounts(user),
         canAccessDfsc: canUserAccessDfsc(user),
@@ -1140,6 +1157,9 @@ module.exports = {
     getLoginRedirectPath,
     getAdminRedirectPath,
     getKioskRedirectPath,
+    getMicOverviewPath,
+    getMicStorePath,
+    getAdminAreaPath,
     singleStoreForUser,
     sessionCookieOptions,
     userProfileForClient,

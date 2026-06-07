@@ -178,6 +178,9 @@ const {
     getLoginRedirectPath,
     getAdminRedirectPath,
     getKioskRedirectPath,
+    getMicOverviewPath,
+    getMicStorePath,
+    getAdminAreaPath,
     singleStoreForUser,
     sessionCookieOptions,
     nologinCookieOptions,
@@ -1621,20 +1624,94 @@ app.get('/stores', (req, res) => {
     res.sendFile(path.join(PUBLIC_ROOT, 'stores.html'));
 });
 
-app.get('/admin/overview', requireAdminPage, (req, res) => {
+function sendAdminOverviewPage(req, res) {
     res.sendFile(path.join(PUBLIC_ROOT, 'admin-overview.html'));
+}
+
+app.get(/^\/admin\/overview\/?$/i, requireAdminPage, sendAdminOverviewPage);
+
+app.get(/^\/Admin\/A(\d+)\/?$/i, requireAdminPage, (req, res) => {
+    res.sendFile(path.join(PUBLIC_ROOT, 'index.html'));
 });
 
-// Admin per-store dashboard — tabs to switch stores (see public/scripts/admin-store-tabs.js).
-app.get(/^\/admin\/teststore\/?$/i, requireAdminPage, (req, res) => {
+app.get(/^\/Admin\/teststore\/?$/i, requireAdminPage, (req, res) => {
     if (!assertStoreAccess(req, res, TEST_STORE_SLUG)) return;
     res.sendFile(path.join(PUBLIC_ROOT, 'index.html'));
 });
 
+/** /Admin/3811 → /Admin/A22?store=3811 (client strips query after load). */
+app.get(/^\/Admin\/(\d{3,6})\/?$/i, requireAdminPage, (req, res) => {
+    const storeNumber = (req.path.match(/^\/Admin\/(\d{3,6})\/?$/i) || [])[1];
+    if (!assertStoreAccess(req, res, storeNumber)) return;
+    const cfg = getStoreConfig(storeNumber);
+    const areaCode = areaCodeFromValue(areaNameFromStore(cfg || {})) || 'A22';
+    res.redirect(302, `${getAdminAreaPath(areaCode)}?store=${encodeURIComponent(storeNumber)}`);
+});
+
+app.get(/^\/admin\/A(\d+)\/?$/i, requireAdminPage, (req, res) => {
+    const n = (req.path.match(/^\/admin\/A(\d+)\/?$/i) || [])[1];
+    res.redirect(302, getAdminAreaPath(`A${n}`));
+});
+
 app.get(/^\/admin\/(\d{3,6})\/?$/i, requireAdminPage, (req, res) => {
     const storeNumber = (req.path.match(/^\/admin\/(\d{3,6})\/?$/i) || [])[1];
+    res.redirect(302, `/Admin/${storeNumber}`);
+});
+
+app.get(/^\/admin\/teststore\/?$/i, requireAdminPage, (_req, res) => {
+    res.redirect(302, '/Admin/teststore');
+});
+
+// —— MIC: overview + per-store sales dashboard ——
+app.get(/^\/MIC\/Overview\/?$/i, (req, res) => {
+    if (dashboardEntryFromRequest(req) === 'kiosk') {
+        const user = req.dashboardUser || getRequestUser(req);
+        res.redirect(getKioskRedirectPath(user));
+        return;
+    }
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!user) {
+        res.redirect('/login');
+        return;
+    }
+    if (isAdminUser(user)) {
+        res.redirect(getAdminRedirectPath());
+        return;
+    }
+    if (isNologinUser(user)) {
+        sendForbidden(req, res, 'MIC overview is not available on no-login links.');
+        return;
+    }
+    const store = singleStoreForUser(user);
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    res.sendFile(path.join(PUBLIC_ROOT, 'mic.html'));
+});
+
+app.get(/^\/MIC\/teststore\/?$/i, (req, res) => {
+    if (dashboardEntryFromRequest(req) === 'kiosk') {
+        res.redirect('/kiosk/teststore');
+        return;
+    }
+    if (!assertStoreAccess(req, res, TEST_STORE_SLUG)) return;
+    res.sendFile(path.join(PUBLIC_ROOT, 'index.html'));
+});
+
+app.get(/^\/MIC\/(\d{3,6})\/?$/i, (req, res) => {
+    const storeNumber = (req.path.match(/^\/MIC\/(\d{3,6})\/?$/i) || [])[1];
+    if (dashboardEntryFromRequest(req) === 'kiosk') {
+        res.redirect(`/kiosk/${storeNumber}`);
+        return;
+    }
     if (!assertStoreAccess(req, res, storeNumber)) return;
     res.sendFile(path.join(PUBLIC_ROOT, 'index.html'));
+});
+
+app.get(/^\/(\d{3,6})\/mic\/?$/i, (req, res) => {
+    res.redirect(302, getMicOverviewPath());
+});
+
+app.get(/^\/(\d{3,6})\/MIC\/?$/i, (req, res) => {
+    res.redirect(302, getMicOverviewPath());
 });
 
 // Kiosk wall dashboard — /kiosk/3811 (no back button; entry cookie kiosk).
@@ -1649,14 +1726,18 @@ app.get(/^\/kiosk\/(\d{3,6})\/?$/i, (req, res) => {
     res.sendFile(path.join(__dirname, '../public', 'index.html'));
 });
 
-// Per-store dashboard (MIC / manager) — e.g. /3811. Kiosk sessions redirect to /kiosk/{store}.
+// Legacy numeric store paths → MIC or Admin area workspace.
 app.get(/^\/teststore\/?$/i, (req, res) => {
     if (dashboardEntryFromRequest(req) === 'kiosk') {
         res.redirect('/kiosk/teststore');
         return;
     }
-    if (!assertStoreAccess(req, res, TEST_STORE_SLUG)) return;
-    res.sendFile(path.join(__dirname, '../public', 'index.html'));
+    const user = req.dashboardUser || getRequestUser(req);
+    if (user && isAdminUser(user)) {
+        res.redirect(302, getAdminAreaPath('A22') + '?store=teststore');
+        return;
+    }
+    res.redirect(302, getMicStorePath('teststore'));
 });
 
 app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
@@ -1666,16 +1747,35 @@ app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
         return;
     }
     if (!assertStoreAccess(req, res, storeNumber)) return;
-    res.sendFile(path.join(__dirname, '../public', 'index.html'));
-});
-
-app.get(/^\/(\d{3,6})\/mic\/?$/i, (req, res) => {
-    const storeNumber = (req.path.match(/^\/(\d{3,6})\/mic\/?$/i) || [])[1];
-    if (!assertStoreAccess(req, res, storeNumber)) return;
-    res.sendFile(path.join(__dirname, '../public', 'mic.html'));
+    const user = req.dashboardUser || getRequestUser(req);
+    if (user && isAdminUser(user)) {
+        const cfg = getStoreConfig(storeNumber);
+        const areaCode = areaCodeFromValue(areaNameFromStore(cfg || {})) || 'A22';
+        res.redirect(302, `${getAdminAreaPath(areaCode)}?store=${encodeURIComponent(storeNumber)}`);
+        return;
+    }
+    res.redirect(302, getMicStorePath(storeNumber));
 });
 
 app.get(/^\/(area\/[a-z0-9-]+|a\d+)\/?$/i, (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (user && isAdminUser(user)) {
+        const codeMatch = req.path.match(/^\/(a\d+)\/?$/i);
+        if (codeMatch) {
+            const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+            res.redirect(302, `${getAdminAreaPath(codeMatch[1].toUpperCase())}${qs}`);
+            return;
+        }
+        const areaSlugMatch = req.path.match(/^\/area\/([a-z0-9-]+)\/?$/i);
+        if (areaSlugMatch) {
+            const numMatch = areaSlugMatch[1].match(/(\d+)/);
+            if (numMatch) {
+                const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+                res.redirect(302, `${getAdminAreaPath(`A${numMatch[1]}`)}${qs}`);
+                return;
+            }
+        }
+    }
     res.sendFile(path.join(__dirname, '../public', 'area.html'));
 });
 
@@ -3115,6 +3215,66 @@ async function loadAuditStateMapForStores(storeNumbers) {
     );
     return map;
 }
+
+app.get('/api/admin/area-sales', async (req, res) => {
+    try {
+        const user = req.dashboardUser || getRequestUser(req);
+        if (!isAdminUser(user)) {
+            return res.status(403).json({ success: false, error: 'Admin access required.' });
+        }
+        const areaParam = String(req.query.area || '').trim();
+        if (!areaParam) {
+            return res.status(400).json({ success: false, error: 'Missing area query parameter.' });
+        }
+
+        let payload;
+        try {
+            payload = await getSalesDataCached();
+        } catch (error) {
+            console.warn('[Admin area sales] Falling back to cached/empty sales payload:', error.message);
+            payload = salesCache || buildCacheShellFromStoreList();
+        }
+
+        const storesCfg = buildStoresCfgWithAreas().filter((s) => areaParamMatchesStore(areaParam, s));
+        let areaMeta = storesCfg.length
+            ? { name: storesCfg[0].area, key: storesCfg[0].areaKey }
+            : null;
+        if (!areaMeta) {
+            const resolved = resolveAreaFromAdminList(areaParam);
+            if (!resolved) {
+                return res.status(404).json({ success: false, error: `Unknown area: ${areaParam}` });
+            }
+            areaMeta = resolved;
+        }
+
+        const testPending = wantsTestStockCountPending(req);
+        const slices = [];
+        for (const cfg of storesCfg) {
+            const slice = await enrichSalesSliceWithStockCount(
+                filterSalesSliceForUser(storeSliceFromPayload(payload, cfg.storeNumber), user),
+                { testPending }
+            );
+            slices.push({
+                ...slice,
+                area: cfg.area,
+                areaKey: cfg.areaKey,
+                timeZone: cfg.timeZone || slice.timeZone,
+            });
+        }
+
+        res.json({
+            success: true,
+            area: areaMeta.name,
+            areaKey: areaMeta.key,
+            areaCode: areaCodeFromValue(areaMeta.name) || areaParam,
+            timestamp: payload.timestamp,
+            stores: slices,
+        });
+    } catch (error) {
+        console.error('API: Error loading admin area sales:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
 app.get('/api/area-dashboard/all', async (req, res) => {
     try {

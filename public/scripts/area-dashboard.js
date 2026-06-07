@@ -1,10 +1,12 @@
+const IS_ADMIN_AREA_ROUTE = false;
+
 const areaPathMatch = window.location.pathname.match(/\/area\/([a-z0-9-]+)\/?$/i);
-const areaCodeMatch = window.location.pathname.match(/\/(a\d+)\/?$/i);
+const areaCodeMatch = window.location.pathname.match(/^\/(a\d+)\/?$/i);
 const initialAreaKey =
-    (areaPathMatch ? areaPathMatch[1] : areaCodeMatch ? areaCodeMatch[1].toUpperCase() : '') || '';
+    (areaPathMatch ? areaPathMatch[1] : areaCodeMatch ? areaCodeMatch[1].toUpperCase() : '') ||
+    '';
 const titleEl = document.getElementById('title');
 const areaTabsEl = document.getElementById('area-tabs');
-const areaStorePanel = document.getElementById('area-store-panel');
 const areaGrids = document.getElementById('area-grids');
 const ordersList = document.getElementById('orders-list');
 const auditsList = document.getElementById('audits-list');
@@ -29,7 +31,8 @@ function areaCodeFromName(name) {
 
 function areaPathFromName(name) {
     const code = areaCodeFromName(name);
-    return code ? `/${code}` : `/area/${encodeURIComponent(String(name).toLowerCase().replace(/\s+/g, '-'))}`;
+    if (code) return `/${code}`;
+    return `/area/${encodeURIComponent(String(name).toLowerCase().replace(/\s+/g, '-'))}`;
 }
 
 function normalizeAreaMatchKey(value) {
@@ -42,8 +45,22 @@ function normalizeAreaMatchKey(value) {
 
 function areaKeyFromPath() {
     const pathMatch = window.location.pathname.match(/\/area\/([a-z0-9-]+)\/?$/i);
-    const codeMatch = window.location.pathname.match(/\/(a\d+)\/?$/i);
+    const codeMatch = window.location.pathname.match(/^\/(a\d+)\/?$/i);
     return (pathMatch ? pathMatch[1] : codeMatch ? codeMatch[1].toUpperCase() : '') || '';
+}
+
+function mountAdminNavBack() {
+    if (!isAdminView || !window.DashboardNavBack) return;
+    const header = document.querySelector('.dashboard-header .top-info');
+    if (!header || document.getElementById('area-admin-nav-back')) return;
+    const host = document.createElement('div');
+    host.className = 'nav-back-host';
+    host.id = 'area-admin-nav-back';
+    header.prepend(host);
+    window.DashboardNavBack.mountBackButton(host, {
+        fallback: window.AppPaths?.adminOverview?.() || '/Admin/Overview',
+        alwaysFallback: true,
+    });
 }
 
 function cacheAreaPayload(data) {
@@ -119,24 +136,59 @@ function renderAreaTabs(currentAreaName) {
     wireAreaTabs();
 }
 
-function renderStorePanel(data) {
-    if (!areaStorePanel) return;
-    const stores = Array.isArray(data.storeSales) ? data.storeSales : [];
-    const total = Number(data.areaSalesTotal) || stores.reduce((s, r) => s + (Number(r.actual) || 0), 0);
-    const snapOptions = data.isAdmin ? { storeBasePath: '/admin' } : {};
-    const rows =
-        window.StoreSnapRow?.renderStoreSnapList?.(stores, fmtCurrency, undefined, snapOptions) ||
-        '<p class="mic-store-lead-empty">No stores in this area.</p>';
+function escapeHtml(text) {
+    return String(text ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
 
-    areaStorePanel.innerHTML = `
-        <article class="mic-tile mic-tile--store-leaderboard" style="min-height: 100%;">
-            <div class="mic-store-lead">
-                <div class="mic-store-lead-label">${data.area || 'Area'} sales today</div>
-                <div class="mic-store-lead-value">${fmtCurrency(total)}</div>
-            </div>
-            <div class="mic-store-lead-list" role="list">${rows}</div>
-        </article>
-    `;
+function adminStoreHref(storeNumber) {
+    const num = String(storeNumber || '').replace(/[^0-9]/g, '');
+    return num
+        ? window.AppPaths?.adminStore?.(num) || `/Admin/${encodeURIComponent(num)}`
+        : window.AppPaths?.adminOverview?.() || '/Admin/Overview';
+}
+
+function syncFooterGridColumns(dashboards) {
+    const maxHours = Math.max(
+        12,
+        ...(dashboards || []).map((d) => (Array.isArray(d?.combinedHourly) ? d.combinedHourly.length : 0))
+    );
+    document.documentElement.style.setProperty('--grid-hours', String(maxHours));
+}
+
+function renderOutstandingLists(data) {
+    if (!ordersList || !auditsList) return;
+
+    const orders = data.storesWithOrdersOutstanding || [];
+    if (!orders.length) {
+        ordersList.innerHTML =
+            '<div class="pending-vendor-item pending-vendor-item--info"><p class="pending-vendor-monday-note">No stores with orders outstanding.</p></div>';
+    } else {
+        ordersList.innerHTML = orders
+            .map((s) => {
+                const label = `${s.storeNumber} ${s.storeName} (${s.pendingCount})`;
+                const href = adminStoreHref(s.storeNumber);
+                return `<div class="pending-vendor-item"><a class="pending-vendor-chip pending-vendor-chip--link" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}">${escapeHtml(label)}</a></div>`;
+            })
+            .join('');
+    }
+
+    const audits = data.storesWithAuditsOutstanding || [];
+    if (!audits.length) {
+        auditsList.innerHTML =
+            '<div class="audit-item"><span class="audit-chip" style="cursor: default;">No stores with audits outstanding.</span></div>';
+    } else {
+        auditsList.innerHTML = audits
+            .map((s) => {
+                const label = `${s.storeNumber} ${s.storeName} (${s.outstandingCount})`;
+                const href = adminStoreHref(s.storeNumber);
+                return `<div class="audit-item"><a class="audit-chip" href="${escapeHtml(href)}" aria-label="${escapeHtml(label)}">${escapeHtml(label)}</a></div>`;
+            })
+            .join('');
+    }
 }
 
 function fmtHour(hour) {
@@ -149,13 +201,6 @@ function fmtHour(hour) {
 function fmtCurrency(value) {
     const n = Number(value || 0);
     return `$${Math.round(n).toLocaleString()}`;
-}
-
-function li(text) {
-    const el = document.createElement('div');
-    el.className = 'area-chip';
-    el.textContent = text;
-    return el;
 }
 
 function sum(rows, key) {
@@ -339,6 +384,7 @@ function buildGrid(rows, titleText = '', dash = {}) {
 
 function renderDashboards(dashboards) {
     if (areaGrids) areaGrids.innerHTML = '';
+    syncFooterGridColumns(dashboards);
     if (!dashboards.length) {
         buildGrid([], 'Sales Dashboard');
         return;
@@ -372,7 +418,6 @@ function applyAreaView(data) {
     isAdminView = Boolean(data.isAdmin);
     if (Array.isArray(data.areas) && data.areas.length) areaList = data.areas;
     renderAreaTabs(data.area);
-    renderStorePanel(data);
     if (updatedEl && data.timestamp) {
         updatedEl.textContent = new Date(data.timestamp).toLocaleTimeString([], {
             hour: '2-digit',
@@ -389,19 +434,8 @@ function applyAreaView(data) {
     }
     renderDashboards(dashboards);
 
-    ordersList.innerHTML = '';
-    const orders = data.storesWithOrdersOutstanding || [];
-    if (!orders.length) ordersList.appendChild(li('No stores with orders outstanding.'));
-    for (const s of orders) {
-        ordersList.appendChild(li(`${s.storeNumber} ${s.storeName} (${s.pendingCount})`));
-    }
-
-    auditsList.innerHTML = '';
-    const audits = data.storesWithAuditsOutstanding || [];
-    if (!audits.length) auditsList.appendChild(li('No stores with audits outstanding.'));
-    for (const s of audits) {
-        auditsList.appendChild(li(`${s.storeNumber} ${s.storeName} (${s.outstandingCount})`));
-    }
+    mountAdminNavBack();
+    renderOutstandingLists(data);
 }
 
 function selectArea(key, { pushHistory = false } = {}) {
@@ -488,6 +522,9 @@ async function loadAreas({ silent = false } = {}) {
     applyAreaView(data);
     if (!silent) setStatus('');
 }
+
+applyDashboardScale();
+window.addEventListener('resize', applyDashboardScale, { passive: true });
 
 loadAreas().catch((err) => {
     setStatus(err.message || 'Unable to refresh area data. If issue persists, contact Ash.');

@@ -11,7 +11,11 @@ const {
     getStockCountQueueStatus,
     melbourneDateKey,
 } = require('./stockCountState');
-const { openMacromatixBrowser, closeBrowserQuietly, selectStoreOnPage } = require('./macromatixScraper');
+const {
+    openMacromatixBrowser,
+    closeBrowserQuietly,
+    resolveStoreOnCurrentPage,
+} = require('./macromatixScraper');
 const {
     enterCombinedStockCount,
     applyKeyItemCount,
@@ -38,21 +42,9 @@ function withStoreMmxOptions(storeNumber, options = {}) {
     return { ...options, storeNumber: String(storeNumber).replace(/\D/g, '') };
 }
 
-/** Select the target store on the current MMX page (combo, report picker, or label fallback). */
+/** Select the target store on the current MMX page (combo, report picker, or existing session). */
 async function selectStoreInMacromatix(page, storeNumber) {
-    const num = String(storeNumber).replace(/\D/g, '');
-    const storeCfg = getStoreConfig(num) || { storeNumber: num, storeName: num };
-    const storeLabel = storeSelectorLabel(storeCfg);
-
-    await page.waitForTimeout(800);
-    let picked = await selectStoreOnPage(page, num);
-    if (!picked && storeLabel && storeLabel !== num) {
-        log.info(`Store combo miss for ${num} — trying label "${storeLabel}"`);
-        const { selectStore: selectStoreByLabel } = require('./mmxReports/pipeline-supply-chain-reports');
-        await selectStoreByLabel(page, storeLabel, { storeNumber: num, waitMs: 500 });
-        picked = await selectStoreOnPage(page, num);
-    }
-    if (!picked) throw new Error(`Could not select store ${num} in Macromatix`);
+    const picked = await resolveStoreOnCurrentPage(page, storeNumber);
     log.info(`Store selected: ${picked}`);
     return picked;
 }
@@ -273,9 +265,7 @@ async function runVendorOrdersForStore(page, storeNumber, dateKey, orderPack = n
         }));
     const { byVendorId, vendorOrdersCfg, buildTo } = pack;
 
-    const selectStore = async (p, num) => {
-        await selectStoreInMacromatix(p, num);
-    };
+    const selectStore = async (p, num) => selectStoreInMacromatix(p, num);
 
     const settings = {
         navTimeoutMs: Number(process.env.MMX_NAV_TIMEOUT_MS || 45000),

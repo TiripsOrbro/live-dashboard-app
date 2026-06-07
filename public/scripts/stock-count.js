@@ -1180,7 +1180,13 @@ async function sendToMmx() {
 
         const { res, data } = await fetchJson(apiQuery('/api/stock-count/send-to-mmx'), { method: 'POST' });
         if (!res.ok || !data.success) {
-            throw new Error(data.error || 'Send to Macromatix failed.');
+            const detail = String(data.error || '').trim();
+            throw new Error(
+                detail ||
+                    (res.ok
+                        ? 'Send to Macromatix failed.'
+                        : `Send to Macromatix failed (HTTP ${res.status}). Check pm2 logs dashboard on the server.`)
+            );
         }
         if (data.keyItemCountSkipped || data.autoApplied) {
             preparedAutoApplied = true;

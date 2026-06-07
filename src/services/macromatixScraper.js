@@ -928,6 +928,65 @@ async function selectStoreOnPage(page, storeNumber) {
     return fromSelect?.text || null;
 }
 
+/**
+ * True when the current page is already scoped to `storeNumber` (single-store logins, or combo
+ * already showing the right store). Does not navigate away from the current page.
+ */
+async function confirmStoreContextOnPage(page, storeNumber) {
+    const want = String(storeNumber || '').replace(/[^0-9]/g, '');
+    if (!want) return null;
+
+    const comboId = await findStoreComboId(page);
+    if (comboId) {
+        const text = await getStoreComboText(page, comboId);
+        if (new RegExp(`(^|\\D)${want}(\\D|$)`).test(text || '')) {
+            return text.trim();
+        }
+        let items = await readStoreComboItems(page, comboId);
+        if (!items.length) {
+            items = await openStoreComboAndReadItems(page, comboId);
+        }
+        if (items.length === 1 && storeNumberFromLabel(items[0].storeName) === want) {
+            return items[0].storeName;
+        }
+    }
+
+    const hasStoreHint = await page.evaluate((w) => {
+        const body = (document.body?.innerText || '').replace(/\s+/g, ' ');
+        return new RegExp(`\\b${w}\\b`).test(body.slice(0, 16000));
+    }, want);
+    if (hasStoreHint) return want;
+
+    return null;
+}
+
+/** Select a store on the current MMX page, or confirm the session is already on that store. */
+async function resolveStoreOnCurrentPage(page, storeNumber, options = {}) {
+    const num = String(storeNumber || '').replace(/\D/g, '');
+    if (!num) throw new Error('Store number required');
+
+    const storeCfg = getStoreConfig(num) || { storeNumber: num, storeName: num };
+    const storeLabel = [storeCfg.storeNumber, storeCfg.storeName].filter(Boolean).join(' ').trim() || num;
+
+    await page.waitForTimeout(Number(options.waitMs ?? 800));
+    let picked = await selectStoreOnPage(page, num);
+    if (!picked && storeLabel && storeLabel !== num) {
+        const { selectStore: selectStoreByLabel } = require('./mmxReports/pipeline-supply-chain-reports');
+        await selectStoreByLabel(page, storeLabel, { storeNumber: num, waitMs: 500 });
+        picked = await selectStoreOnPage(page, num);
+    }
+    if (!picked) {
+        picked = await confirmStoreContextOnPage(page, num);
+        if (picked) {
+            console.log(`[Macromatix] Store ${num} already in session context (${picked})`);
+        }
+    }
+    if (!picked && !options.optional) {
+        throw new Error(`Could not select store ${num} in Macromatix`);
+    }
+    return picked;
+}
+
 /** Day view tab on the labour scheduler (re-clicked after each store change because the grid reloads). */
 const DAY_VIEW_TAB_SELECTOR =
     '#ctl00_ph_scheduleLabour_rdScheduler_C_rtbLabour > div > div > div > ul > li:nth-child(12) > a';
@@ -2180,6 +2239,15 @@ function listMacromatixCredentialCandidatesForStore(storeNumber, options = {}) {
         return candidates;
     }
 
+    const { hasMmxCredentialFileForUser } = require('./mmxUserCredentials');
+    const hasSavedCreds =
+        linkedUsers.some((u) => hasMmxCredentialFileForUser(u)) || hasMmxCredentialFileForUser(store);
+    if (hasSavedCreds) {
+        throw new Error(
+            `Saved Macromatix login for store ${store} could not be read. Check MMX_USER_CREDENTIALS_KEY in .env matches the key used when Create account was completed.`
+        );
+    }
+
     const envUser = String(process.env[`SCRAPER_STORE_${store}_USERNAME`] || '').trim();
     const envPass = String(process.env[`SCRAPER_STORE_${store}_PASSWORD`] || '');
     if (envUser && envPass) {
@@ -2647,6 +2715,16 @@ async function openMacromatixBrowser(options = {}) {
               : ' Set SCRAPER_USERNAME / SCRAPER_PASSWORD or create store accounts via Create account.';
         throw new Error(`Macromatix credentials are not configured.${storeHint}`);
     }
+    if (
+        /^your-/i.test(String(username || '').trim()) ||
+        /^your-/i.test(String(password || '').trim()) ||
+        /^change-this/i.test(String(username || '').trim())
+    ) {
+        throw new Error(
+            'Macromatix credentials in .env are still placeholders. Set SCRAPER_USERNAME / SCRAPER_PASSWORD on the server, or complete Create account for this store.'
+        );
+    }
+
     console.log(
         `[Macromatix] Opening browser${storeNumber ? ` for store ${storeNumber}` : ''} via ${source || 'unknown'} as ${maskUsernameForLog(username)}`
     );
@@ -2699,6 +2777,8 @@ module.exports.isMacromatixLoginPage = isMacromatixLoginPage;
 module.exports.closeBrowserQuietly = closeBrowserQuietly;
 module.exports.probePendingOrdersForStores = probePendingOrdersForStores;
 module.exports.selectStoreOnPage = selectStoreOnPage;
+module.exports.confirmStoreContextOnPage = confirmStoreContextOnPage;
+module.exports.resolveStoreOnCurrentPage = resolveStoreOnCurrentPage;
 module.exports.getLastKnownPendingVendors = getLastKnownPendingVendors;
 module.exports.onStoreOrdersComplete = onStoreOrdersComplete;
 module.exports.isScheduledOrdersCompleteToday = isScheduledOrdersCompleteToday;

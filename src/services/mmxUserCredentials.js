@@ -118,7 +118,10 @@ function readUserAccountSecrets(dashboardUsername) {
                 mmxUsername: String(decrypted.mmxUsername || '').trim(),
                 mmxPassword: String(decrypted.mmxPassword || ''),
             };
-        } catch {
+        } catch (error) {
+            console.warn(
+                `[MMX credentials] Could not decrypt saved login for "${dashUser}" — check MMX_USER_CREDENTIALS_KEY: ${error.message}`
+            );
             return null;
         }
     }
@@ -166,6 +169,12 @@ function hasMmxCredentialsForUser(dashboardUsername) {
     return Boolean(readMmxCredentialsForUser(dashboardUsername)?.username);
 }
 
+function hasMmxCredentialFileForUser(dashboardUsername) {
+    const dashUser = String(dashboardUsername || '').trim();
+    if (!dashUser) return false;
+    return fs.existsSync(credentialsPath(dashUser));
+}
+
 function deleteMmxCredentialsForUser(dashboardUsername) {
     const dashUser = String(dashboardUsername || '').trim();
     if (!dashUser) return { ok: false, error: 'Username is required.' };
@@ -185,5 +194,6 @@ module.exports = {
     readUserAccountSecrets,
     readMmxCredentialsForUser,
     hasMmxCredentialsForUser,
+    hasMmxCredentialFileForUser,
     deleteMmxCredentialsForUser,
 };

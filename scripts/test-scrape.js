@@ -2,7 +2,7 @@
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
-require('dotenv').config({ path: path.join(__dirname, '../.env.production'), override: true });
+require('./load-project-env');
 
 // On Windows (dev), point Puppeteer at a local Chrome/Edge if not already set.
 if (!process.env.SCRAPER_EXECUTABLE_PATH && process.platform === 'win32') {

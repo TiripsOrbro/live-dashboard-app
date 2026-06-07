@@ -36,7 +36,7 @@ live-dashboard-app
    ```
    Puppeteer's bundled Chromium download is **skipped** (see `.npmrc`) because it has no ARM64 build and the scraper uses the system Chromium instead. See [Raspberry Pi setup](#raspberry-pi-setup-pm2) for installing Chromium.
 
-3. Create a `.env` file in the root directory and add your login credentials and other necessary environment variables. On startup the app loads `.env` first, then `.env.production` if it exists. Values in `.env.production` override `.env` (so empty placeholder `SCRAPER_*` lines in `.env` do not block real credentials in `.env.production`).
+3. Copy `.env.example` to `.env` and fill in Macromatix credentials and other settings. The app and PM2 load **only** `.env` (Pi and dev use the same file).
 
 ## Usage
 1. Start the application:
@@ -64,7 +64,7 @@ sudo apt install -y chromium     # older Raspberry Pi OS: chromium-browser
 which chromium || which chromium-browser
 ```
 
-Put the resulting path in `.env.production` as `SCRAPER_EXECUTABLE_PATH` (e.g. `/usr/bin/chromium`). If you skip this, the app auto-detects common paths and otherwise exits with a clear error telling you to install Chromium.
+Put the resulting path in `.env` as `SCRAPER_EXECUTABLE_PATH` (e.g. `/usr/bin/chromium`). If you skip this, the app auto-detects common paths and otherwise exits with a clear error telling you to install Chromium.
 
 ### 2. Install dependencies
 
@@ -74,9 +74,9 @@ git pull
 npm install        # Chromium download is skipped via .npmrc
 ```
 
-### 3. `.env.production`
+### 3. `.env`
 
-Create `~/live-dashboard-app/.env.production` (readable only by the Pi user):
+Create `~/live-dashboard-app/.env` (readable only by the Pi user):
 
 ```ini
 NODE_ENV=production
@@ -157,7 +157,7 @@ Sign out: `/logout`. Old `/unlock` bookmarks redirect to `/login`.
 
 ### Kiosk / no-login store links (optional)
 
-For wall-mounted tablets that should open one store without signing in, enable nologin links in `.env.production`:
+For wall-mounted tablets that should open one store without signing in, enable nologin links in `.env`:
 
 ```ini
 DASHBOARD_NOLOGIN_ENABLED=1
@@ -177,7 +177,7 @@ The **login and welcome screens use a dedicated dark theme** (black background, 
 
 ### Scrape failure alerts (optional)
 
-Add to `.env.production` to get notified when Macromatix scraping fails (rate-limited to once per 30 minutes by default):
+Add to `.env` to get notified when Macromatix scraping fails (rate-limited to once per 30 minutes by default):
 
 ```ini
 # Discord/Slack/generic webhook (JSON POST with { content, text })
@@ -290,7 +290,7 @@ pm2 save
 pm2 startup                      # run the command it prints (once) to survive reboot
 ```
 
-`ecosystem.config.cjs` loads `.env` then `.env.production`, restarts on crash, and recycles the process if memory passes ~600 MB (guards against a long-running Chromium leak).
+`ecosystem.config.cjs` loads `.env`, restarts on crash, and recycles the process if memory passes ~600 MB (guards against a long-running Chromium leak).
 
 Useful commands:
 
@@ -391,7 +391,7 @@ Encoding credentials is not security because encoded values can be decoded. If y
 node -e "const crypto=require('crypto'); const key=crypto.createHash('sha256').update(process.env.SCRAPER_CREDENTIALS_KEY).digest(); const iv=crypto.randomBytes(12); const cipher=crypto.createCipheriv('aes-256-gcm', key, iv); const data=Buffer.concat([cipher.update(JSON.stringify({username:process.env.SCRAPER_USERNAME,password:process.env.SCRAPER_PASSWORD}),'utf8'), cipher.final()]); console.log(Buffer.from(JSON.stringify({iv:iv.toString('base64'),tag:cipher.getAuthTag().toString('base64'),data:data.toString('base64')})).toString('base64'))"
 ```
 
-Then store only `SCRAPER_CREDENTIALS_KEY` and `SCRAPER_CREDENTIALS_ENCRYPTED` in `.env.production`, and remove `SCRAPER_USERNAME` / `SCRAPER_PASSWORD`.
+Then store only `SCRAPER_CREDENTIALS_KEY` and `SCRAPER_CREDENTIALS_ENCRYPTED` in `.env`, and remove `SCRAPER_USERNAME` / `SCRAPER_PASSWORD`.
 
 ### Per-user Macromatix logins (Create account flow)
 

@@ -1,6 +1,6 @@
 /**
  * Optional scrape-failure alerts via webhook and/or SMTP email.
- * Configure in .env.production — all vars optional; alerts are rate-limited.
+ * Configure in `.env` — all vars optional; alerts are rate-limited.
  */
 const ALERT_COOLDOWN_MS = Number(process.env.DASHBOARD_ALERT_COOLDOWN_MS || 30 * 60 * 1000);
 

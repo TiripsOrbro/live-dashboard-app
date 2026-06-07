@@ -34,11 +34,10 @@ function loadEnvFile(name) {
     return out;
 }
 
-// AshDash / PM2: .env.production only — put Macromatix creds and Pi settings there, not in .env.
+// PM2 loads the same single `.env` as the app (Pi + dev).
 const env = {
-    ...loadEnvFile('.env.production'),
+    ...loadEnvFile('.env'),
     NODE_ENV: 'production',
-    DASHBOARD_ENV: 'production',
 };
 
 module.exports = {

@@ -460,7 +460,7 @@ function getPuppeteerLaunchOptions(overrides = {}) {
     } else if (!hasBundledChromium()) {
         throw new Error(
             'No Chromium found. On a Raspberry Pi run "sudo apt install -y chromium" (or chromium-browser), ' +
-                'then set SCRAPER_EXECUTABLE_PATH in .env/.env.production (e.g. /usr/bin/chromium). ' +
+                'then set SCRAPER_EXECUTABLE_PATH in .env (e.g. /usr/bin/chromium). ' +
                 'On Windows, set it to Edge/Chrome path (e.g. C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe). ' +
                 'Puppeteer\'s bundled Chromium download is skipped via .npmrc, so a system browser is required.'
         );
@@ -1592,7 +1592,7 @@ async function assertMacromatixAuthenticated(page, context = 'Macromatix') {
     if (!(await isMacromatixLoginPage(page))) return;
     const loginError = await readMacromatixLoginError(page);
     const hint =
-        'Check SCRAPER_USERNAME / SCRAPER_PASSWORD (or SCRAPER_CREDENTIALS_ENCRYPTED) in .env.production on the server.';
+        'Check SCRAPER_USERNAME / SCRAPER_PASSWORD (or SCRAPER_CREDENTIALS_ENCRYPTED) in .env on the server.';
     throw new Error(
         `${context}: not logged in${loginError ? ` — ${loginError}` : ''}. ${hint}`
     );
@@ -1628,7 +1628,7 @@ async function loginPage(page, username, password) {
     if (await isMacromatixLoginPage(page)) {
         const loginError = await readMacromatixLoginError(page);
         throw new Error(
-            loginError || 'Macromatix login failed. Check SCRAPER_USERNAME and SCRAPER_PASSWORD in .env.production.'
+            loginError || 'Macromatix login failed. Check SCRAPER_USERNAME and SCRAPER_PASSWORD in .env.'
         );
     }
     console.log('[Macromatix] Logged in');
@@ -1763,7 +1763,7 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
             `Store ${target} not accessible with this Macromatix login. ` +
                 `Labour scheduler: ${labourNums.join(', ') || 'none'}. ` +
                 `Change Store: ${spaNums}. ` +
-                `Check SCRAPER_* in .env.production, or add crew MMX credentials via Create account.`
+                `Check SCRAPER_* in .env, or add crew MMX credentials via Create account.`
         );
     }
 
@@ -2181,7 +2181,7 @@ async function scrapeMacromatix(options = {}) {
         const hint =
             String(process.env.SCRAPER_CREDENTIALS_ENCRYPTED || '').trim()
                 ? 'Check SCRAPER_CREDENTIALS_ENCRYPTED / SCRAPER_CREDENTIALS_KEY (decrypt failed or empty username/password).'
-                : 'Set SCRAPER_USERNAME and SCRAPER_PASSWORD in .env or .env.production at the project root (both are loaded on startup).';
+                : 'Set SCRAPER_USERNAME and SCRAPER_PASSWORD in .env at the project root.';
         throw new Error(`Macromatix scraper credentials are not configured. ${hint}`);
     }
 

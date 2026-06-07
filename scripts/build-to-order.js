@@ -11,7 +11,7 @@
  */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
-require('dotenv').config({ path: path.join(__dirname, '../.env.production'), override: true });
+require('./load-project-env');
 
 const { calculateBuildToOrders, filterAmericoldOrderLines, REPORTS_DIR } = require('../src/services/buildToCalculator');
 const { buildOrderLinesByVendorId } = require('../src/services/buildToOrderLines');

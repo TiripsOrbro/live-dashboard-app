@@ -60,7 +60,6 @@ function summarizeFileValues(values) {
 
 function main() {
     const baseEnv = parseEnvFile('.env');
-    const prodEnv = parseEnvFile('.env.production');
 
     const { loadEnv } = require('../src/loadEnv');
     const loadResult = loadEnv({ root: ROOT });
@@ -81,18 +80,11 @@ function main() {
     const out = {
         loadMode: loadResult.mode,
         loadedFiles: loadResult.loaded,
-        note:
-            loadResult.mode === 'production-only'
-                ? 'DASHBOARD_ENV=production — only .env.production is loaded.'
-                : '.env.production overrides .env for the same variable name.',
+        note: 'The app and PM2 load `.env` only.',
         files: {
             '.env': {
                 exists: baseEnv.exists,
                 defines: summarizeFileValues(baseEnv.values),
-            },
-            '.env.production': {
-                exists: prodEnv.exists,
-                defines: summarizeFileValues(prodEnv.values),
             },
         },
         effectiveAfterLoad: {
@@ -105,16 +97,6 @@ function main() {
         },
         perUserMode: /^(1|true|yes|on)$/i.test(String(process.env.MMX_USE_PER_USER_CREDENTIALS ?? '')),
     };
-
-    const baseUser = String(baseEnv.values.SCRAPER_USERNAME || '').trim();
-    const prodUser = String(prodEnv.values.SCRAPER_USERNAME || '').trim();
-    if (baseUser && prodUser && baseUser !== prodUser) {
-        out.usernameMismatch =
-            `.env has "${baseUser}" but .env.production has "${prodUser}" — production wins.`;
-    } else if (baseUser && !prodUser && prodEnv.exists) {
-        out.hint =
-            '.env.production exists but does not set SCRAPER_USERNAME — using .env username.';
-    }
 
     console.log(JSON.stringify(out, null, 2));
 

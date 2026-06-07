@@ -2,7 +2,7 @@
 /** Probe Store Reports page controls after selecting Inventory Special Event. */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
-require('dotenv').config({ path: path.join(__dirname, '../.env.production'), override: true });
+require('./load-project-env');
 
 const { openMacromatixBrowser, closeBrowserQuietly } = require('../src/services/macromatixScraper');
 const { loadPipelineConfig } = require('../src/services/mmxReportDownloader');

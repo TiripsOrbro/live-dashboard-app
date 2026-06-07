@@ -7,7 +7,7 @@
  */
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
-require('dotenv').config({ path: path.join(__dirname, '../.env.production'), override: true });
+require('./load-project-env');
 
 const { listStores } = require('../src/services/macromatixScraper');
 

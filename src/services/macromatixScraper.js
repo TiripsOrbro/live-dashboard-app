@@ -1594,11 +1594,13 @@ async function logoutPage(page) {
 }
 
 /**
- * Post-login store picker for single-store Macromatix accounts — SPA Change Store first, ASP.NET fallback.
+ * Post-login store picker — login dropdown, then labour scheduler combo (full store list),
+ * then Change Store SPA for accounts that only expose stores there.
  */
 async function selectStoreAfterLogin(page, storeNumber, credentials) {
     const target = String(storeNumber || '').trim();
-    if (!target) throw new Error('Store number required after login');
+    const want = target.replace(/\D/g, '');
+    if (!want) throw new Error('Store number required after login');
 
     const pickedLogin = await selectStoreOnLoginDropdown(page, target);
     if (pickedLogin) {
@@ -1610,14 +1612,39 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
     if (hasLoginDropdown) {
         const available = await listStoresOnLoginDropdown(page);
         const nums = available.map((s) => s.storeNumber).join(', ') || '(none parsed)';
-        throw new Error(`Store ${target} not found on login store dropdown. Available: ${nums}`);
+        if (available.some((s) => s.storeNumber === want)) {
+            throw new Error(
+                `Store ${target} is on the login dropdown but could not be selected. Available: ${nums}`
+            );
+        }
+        console.log(
+            `[Macromatix] Store ${target} not on login dropdown (${nums}); trying labour scheduler`
+        );
     }
 
-    const pickedOnPage = await selectStoreOnPage(page, target);
-    if (pickedOnPage) {
-        console.log(`[Macromatix] Post-login store selected (ASP.NET picker): ${pickedOnPage}`);
+    await page.goto(LABOUR_URL, GOTO_OPTS);
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(1200);
+    await assertMacromatixAuthenticated(page, 'Store selection');
+
+    const pickedOnLabour = await selectStoreOnPage(page, target);
+    if (pickedOnLabour) {
+        console.log(`[Macromatix] Post-login store selected (labour scheduler): ${target}`);
         await waitForStoreSelectionPostback(page);
-        return pickedOnPage;
+        return pickedOnLabour;
+    }
+
+    let labourNums = [];
+    try {
+        const labourStores = await enumerateStores(page);
+        labourNums = labourStores.map((s) => s.storeNumber);
+        if (labourStores.length && !labourNums.includes(want)) {
+            console.log(
+                `[Macromatix] Store ${target} not on labour scheduler (${labourNums.join(', ')}); trying Change Store SPA`
+            );
+        }
+    } catch {
+        /* ignore */
     }
 
     const {
@@ -1632,12 +1659,13 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
     await ensureSpaAuthenticated(page, credentials);
 
     const listed = await listStoresOnChangeStorePage(page);
-    const want = target.replace(/\D/g, '');
     if (listed.length && !listed.some((s) => s.storeNumber === want)) {
-        const nums = listed.map((s) => s.storeNumber).join(', ');
+        const spaNums = listed.map((s) => s.storeNumber).join(', ');
         throw new Error(
-            `Store ${target} not listed on Change Store page. Visible: ${nums}. ` +
-                `Add per-store Macromatix credentials (data/mmx-users/${want}.json or SCRAPER_STORE_${want}_USERNAME/PASSWORD in .env.production).`
+            `Store ${target} not accessible with this Macromatix login. ` +
+                `Labour scheduler: ${labourNums.join(', ') || 'none'}. ` +
+                `Change Store: ${spaNums}. ` +
+                `Add SCRAPER_QLD_* / SCRAPER_STORE_${want}_* in .env.production or crew MMX credentials in data/mmx-users/.`
         );
     }
 
@@ -1813,11 +1841,73 @@ async function verifyMacromatixLogin(username, password) {
     }
 }
 
+const WA_STORE_NUMBERS = new Set(['3901', '3902', '3903', '3904']);
+const QLD_STORE_NUMBER_RE = /^37[56]\d{2}$/;
+
+function areaEnvSuffix(area) {
+    return String(area || '')
+        .trim()
+        .replace(/\s+/g, '_')
+        .replace(/[^A-Za-z0-9_]/g, '');
+}
+
+function storeScraperRegion(storeNumber) {
+    const num = String(storeNumber || '').trim().replace(/\D/g, '');
+    if (WA_STORE_NUMBERS.has(num)) return 'WA';
+    if (QLD_STORE_NUMBER_RE.test(num)) return 'QLD';
+    const cfg = getStoreConfig(num);
+    const tz = String(cfg?.timeZone || '');
+    if (tz.includes('Brisbane')) return 'QLD';
+    if (tz.includes('Perth')) return 'WA';
+    return 'VIC';
+}
+
+/** All configured global/regional scraper logins to try for a store. */
+function listGlobalMacromatixCredentialPool(storeNumber) {
+    const pool = [];
+    const seen = new Set();
+
+    function push(creds, source) {
+        if (!creds?.username || !creds?.password) return;
+        const key = `${creds.username}\0${creds.password}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        pool.push({ username: creds.username, password: creds.password, source });
+    }
+
+    push(getMacromatixCredentials(), 'global SCRAPER_*');
+
+    for (let i = 1; i <= 9; i++) {
+        const username = String(process.env[`SCRAPER_ALT_${i}_USERNAME`] || '').trim();
+        const password = String(process.env[`SCRAPER_ALT_${i}_PASSWORD`] || '');
+        if (username && password) {
+            push({ username, password }, `SCRAPER_ALT_${i}`);
+        }
+    }
+
+    const region = storeScraperRegion(storeNumber);
+    const regionUser = String(process.env[`SCRAPER_${region}_USERNAME`] || '').trim();
+    const regionPass = String(process.env[`SCRAPER_${region}_PASSWORD`] || '');
+    if (regionUser && regionPass) {
+        push({ username: regionUser, password: regionPass }, `SCRAPER_${region}_*`);
+    }
+
+    const areaKey = areaEnvSuffix(getStoreConfig(storeNumber)?.area);
+    if (areaKey) {
+        const areaUser = String(process.env[`SCRAPER_AREA_${areaKey}_USERNAME`] || '').trim();
+        const areaPass = String(process.env[`SCRAPER_AREA_${areaKey}_PASSWORD`] || '');
+        if (areaUser && areaPass) {
+            push({ username: areaUser, password: areaPass }, `SCRAPER_AREA_${areaKey}_*`);
+        }
+    }
+
+    return pool;
+}
+
 /** Resolve MMX credentials for browser automation (reports, stock count, scraper). */
 /** Ordered Macromatix login attempts for a store (default global until crew accounts exist). */
 function listMacromatixCredentialCandidatesForStore(storeNumber) {
     const store = String(storeNumber || '').trim().replace(/\D/g, '');
-    const global = getMacromatixCredentials();
     const candidates = [];
     const seen = new Set();
 
@@ -1848,16 +1938,24 @@ function listMacromatixCredentialCandidatesForStore(storeNumber) {
             storeMmx.push({ ...stored, source: `mmx-users/${dashUser}` });
         }
     }
+    const directStoreMmx = readMmxCredentialsForUser(store);
+    if (directStoreMmx?.username && directStoreMmx?.password) {
+        storeMmx.push({ ...directStoreMmx, source: `mmx-users/${store}` });
+    }
 
     if (!storeMmx.length) {
-        push(global, 'global SCRAPER_*');
+        for (const entry of listGlobalMacromatixCredentialPool(store)) {
+            push(entry, entry.source);
+        }
         return candidates;
     }
 
     for (const entry of storeMmx) {
         push(entry, entry.source);
     }
-    push(global, 'global SCRAPER_* (fallback)');
+    for (const entry of listGlobalMacromatixCredentialPool(store)) {
+        push(entry, `${entry.source} (fallback)`);
+    }
     return candidates;
 }
 

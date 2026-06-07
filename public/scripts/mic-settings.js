@@ -69,6 +69,7 @@
                             </div>
                         </div>
                     </div>
+                    <button type="button" class="mic-settings-btn" data-action="logout">Sign out</button>
                 </div>
                 <button type="button" class="mic-settings-close" id="mic-settings-close">Close</button>
             </div>
@@ -228,6 +229,9 @@
         picker.querySelector('[data-action="changelog"]')?.addEventListener('click', () => {
             closeSettingsPanel();
             global.location.href = '/changelog';
+        });
+        picker.querySelector('[data-action="logout"]')?.addEventListener('click', () => {
+            global.location.href = '/logout';
         });
 
         if (options.resolveViewAccountsVisibility !== false) {

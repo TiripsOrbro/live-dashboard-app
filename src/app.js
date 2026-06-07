@@ -17,9 +17,8 @@ process.env.SCRAPER_HEADLESS = 'true';
     const u = Boolean(String(process.env.SCRAPER_USERNAME || '').trim());
     const p = Boolean(String(process.env.SCRAPER_PASSWORD || '').trim());
     console.log(`[Env] Macromatix: SCRAPER_USERNAME ${u ? 'set' : 'MISSING'}, SCRAPER_PASSWORD ${p ? 'set' : 'MISSING'}`);
-    const perUser = /^(1|true|yes|on)$/i.test(String(process.env.MMX_USE_PER_USER_CREDENTIALS ?? '').trim());
     console.log(
-        `[Env] Macromatix automation: ${perUser ? 'per-user files when present' : 'global SCRAPER_* only (data/mmx-users/ ignored)'}`
+        '[Env] Macromatix scraper: per-store credentials from data/mmx-users/{store}.json or SCRAPER_STORE_XXXX_* env, else global SCRAPER_* fallback'
     );
 })();
 

@@ -480,6 +480,30 @@ function isManagedStoreAccountBlock(block) {
     return true;
 }
 
+/** Primary store login for a store number (e.g. 3811), not CB* or manager-created crew accounts. */
+function findPrimaryStoreDashboardUsername(storeNumber) {
+    const store = normalizeStoreKey(storeNumber);
+    if (!store || isTestStore(store)) return '';
+    const blocks = parseUsersFileBlocks(readUsersFileText());
+    for (const block of blocks) {
+        if (isManagedStoreAccountBlock(block)) continue;
+        if (isCbUsername(block.username)) continue;
+        if (!blockGrantsStore(block, store)) continue;
+        if (normalizeStoreKey(block.username) === store) {
+            return String(block.username).trim();
+        }
+    }
+    for (const block of blocks) {
+        if (isManagedStoreAccountBlock(block)) continue;
+        if (isCbUsername(block.username)) continue;
+        if (!blockGrantsStore(block, store)) continue;
+        if (isStorePatternUsername(block.username)) {
+            return String(block.username).trim();
+        }
+    }
+    return store;
+}
+
 function listManagedStoreAccounts(storeNumber) {
     const store = normalizeStoreKey(storeNumber);
     if (!store || isTestStore(store)) return [];
@@ -1121,6 +1145,7 @@ module.exports = {
     appendStoreUser,
     canUserCreateAccounts,
     canUserManageStoreAccounts,
+    findPrimaryStoreDashboardUsername,
     listManagedStoreAccounts,
     deleteManagedStoreAccount,
     isRealDashboardUser,

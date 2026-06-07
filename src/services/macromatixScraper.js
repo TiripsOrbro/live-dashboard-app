@@ -1395,6 +1395,43 @@ async function isMacromatixLoginPage(page) {
 
 const SELECT_STORE_URL = `${BASE_URL}MMS_Logon.aspx?mode=SelectStore`;
 
+function maskUsernameForLog(username) {
+    const u = String(username || '').trim();
+    if (!u) return '(empty)';
+    if (u.length <= 3) return `${u[0] || '?'}**`;
+    return `${u.slice(0, 3)}***${u.slice(-2)}`;
+}
+
+async function countStoresOnLoginDropdown(page) {
+    return page.evaluate(() => {
+        const sel = document.querySelector('#ddlStoreSelection, select[name="ddlStoreSelection"]');
+        if (!sel) return 0;
+        return [...sel.options].filter((opt) => {
+            const text = (opt.textContent || '').replace(/\s+/g, ' ').trim();
+            return text && !/^select store$/i.test(text) && /\b\d{3,6}\b/.test(text);
+        }).length;
+    });
+}
+
+/** Wait until the login store dropdown stops growing (async store list on slow Pi). */
+async function waitForLoginStoreDropdownStable(page, timeoutMs = 25000) {
+    const deadline = Date.now() + timeoutMs;
+    let lastCount = -1;
+    let stableSince = 0;
+    while (Date.now() < deadline) {
+        const count = await countStoresOnLoginDropdown(page);
+        if (count > 0 && count === lastCount) {
+            if (!stableSince) stableSince = Date.now();
+            if (Date.now() - stableSince >= 1500) return count;
+        } else {
+            lastCount = count;
+            stableSince = 0;
+        }
+        await page.waitForTimeout(350);
+    }
+    return Math.max(lastCount, 0);
+}
+
 async function waitForLoginStoreDropdownPopulated(page, timeoutMs = 18000) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -1660,10 +1697,18 @@ async function assertMacromatixAuthenticated(page, context = 'Macromatix') {
 
 /** Log in on a fresh page (each isolated context needs its own session). */
 async function loginPage(page, username, password) {
-    console.log('[Macromatix] Navigating to login...');
-    await page.goto(BASE_URL, LOGIN_GOTO_OPTS);
+    const userLabel = maskUsernameForLog(username);
+    console.log(`[Macromatix] Navigating to login (SelectStore) as ${userLabel}...`);
+    await page.goto(SELECT_STORE_URL, LOGIN_GOTO_OPTS);
+
+    if (await isLoginStorePickerPresent(page)) {
+        const count = await waitForLoginStoreDropdownStable(page);
+        console.log(`[Macromatix] Logged in (${count} stores on login picker)`);
+        return;
+    }
+
     await page.waitForSelector('#Login_UserName', { visible: true, timeout: 15000 });
-    console.log('[Macromatix] Logging in...');
+    console.log(`[Macromatix] Logging in as ${userLabel}...`);
     await fillInputValue(page, '#Login_UserName', username);
     await fillInputValue(page, '#Login_Password', password);
     const loginButton = await page.$('input[type="submit"]');
@@ -1682,7 +1727,7 @@ async function loginPage(page, username, password) {
                     !document.querySelector('#Login_UserName')
                 );
             },
-            { timeout: 20000 }
+            { timeout: 25000 }
         )
         .catch(() => {});
     if (await isMacromatixLoginPage(page)) {
@@ -1692,9 +1737,25 @@ async function loginPage(page, username, password) {
         );
     }
     if (await isLoginStorePickerPresent(page)) {
-        await waitForLoginStoreDropdownPopulated(page, 20000);
+        const count = await waitForLoginStoreDropdownStable(page);
+        console.log(`[Macromatix] Logged in (${count} stores on login picker)`);
+        return;
     }
-    console.log('[Macromatix] Logged in');
+
+    // Headless login sometimes skips SelectStore and lands on home — reopen the picker URL.
+    if (!(await isMacromatixLoginPage(page))) {
+        console.log('[Macromatix] Login skipped store picker; reopening SelectStore...');
+        await page.goto(SELECT_STORE_URL, LOGIN_GOTO_OPTS);
+        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+        await page.waitForTimeout(800);
+        if (await isLoginStorePickerPresent(page)) {
+            const count = await waitForLoginStoreDropdownStable(page);
+            console.log(`[Macromatix] Logged in (${count} stores on login picker)`);
+            return;
+        }
+    }
+
+    console.log('[Macromatix] Logged in (no store picker — single-store account?)');
 }
 
 const LOGOUT_URL_CANDIDATES = [
@@ -1772,6 +1833,7 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
     }
     const hasLoginDropdown = await isLoginStorePickerPresent(page);
     if (hasLoginDropdown) {
+        await waitForLoginStoreDropdownStable(page);
         const available = await listStoresOnLoginDropdown(page);
         const nums = available.map((s) => s.storeNumber).join(', ') || '(none parsed)';
         if (available.some((s) => s.storeNumber === want)) {
@@ -1779,9 +1841,8 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
                 `Store ${target} is on the login picker but could not be selected. Available: ${nums}`
             );
         }
-        throw new Error(
-            `Store ${target} is not on the login store picker. Available: ${nums}. ` +
-                'Macromatix requires selecting the store at login before it appears in labour scheduler.'
+        console.log(
+            `[Macromatix] Store ${target} not on login picker (${available.length} stores: ${nums}); trying labour scheduler`
         );
     }
 

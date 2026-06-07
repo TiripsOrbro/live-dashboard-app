@@ -1393,18 +1393,70 @@ async function isMacromatixLoginPage(page) {
     return Boolean(await page.$('#Login_UserName'));
 }
 
+const SELECT_STORE_URL = `${BASE_URL}MMS_Logon.aspx?mode=SelectStore`;
+
+async function waitForLoginStoreDropdownPopulated(page, timeoutMs = 18000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const ready = await page.evaluate(() => {
+            const sel = document.querySelector('#ddlStoreSelection, select[name="ddlStoreSelection"]');
+            if (!sel) return false;
+            return [...sel.options].some((opt) => {
+                const text = (opt.textContent || '').replace(/\s+/g, ' ').trim();
+                return text && !/^select store$/i.test(text) && /\b\d{3,6}\b/.test(text);
+            });
+        });
+        if (ready) return true;
+        await page.waitForTimeout(400);
+    }
+    return false;
+}
+
+/** Open the post-login store picker when the account must select a store before labour scheduler works. */
+async function ensureLoginStorePickerPage(page) {
+    if (await page.$('#ddlStoreSelection, select[name="ddlStoreSelection"]')) {
+        return true;
+    }
+    if (/mode=SelectStore/i.test(page.url() || '')) {
+        await page
+            .waitForSelector('#ddlStoreSelection, select[name="ddlStoreSelection"]', {
+                visible: true,
+                timeout: 12000,
+            })
+            .catch(() => {});
+        if (await page.$('#ddlStoreSelection, select[name="ddlStoreSelection"]')) {
+            return true;
+        }
+    }
+    if (await isMacromatixLoginPage(page)) {
+        return false;
+    }
+    console.log('[Macromatix] Navigating to login store picker (SelectStore)...');
+    await page.goto(SELECT_STORE_URL, GOTO_OPTS);
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(800);
+    await assertMacromatixAuthenticated(page, 'SelectStore');
+    return Boolean(await page.$('#ddlStoreSelection, select[name="ddlStoreSelection"]'));
+}
+
+async function isLoginStorePickerPresent(page) {
+    return Boolean(await page.$('#ddlStoreSelection, select[name="ddlStoreSelection"]'));
+}
+
 /**
- * Post-login `#ddlStoreSelection` dropdown (single-store Macromatix accounts).
+ * Post-login `#ddlStoreSelection` — required for multi-store accounts so the store appears in labour scheduler.
  * Returns selected option text, or null if the control is missing / no match.
  */
 async function selectStoreOnLoginDropdown(page, storeNumber) {
     const want = String(storeNumber || '').replace(/[^0-9]/g, '');
     if (!want) return null;
 
-    const selHandle = await page.$('#ddlStoreSelection, select[name="ddlStoreSelection"]');
-    if (!selHandle) return null;
+    const pickerAvailable = await ensureLoginStorePickerPage(page);
+    if (!pickerAvailable) return null;
 
-    const result = await page.evaluate((w) => {
+    await waitForLoginStoreDropdownPopulated(page);
+
+    const match = await page.evaluate((w) => {
         const sel = document.querySelector('#ddlStoreSelection, select[name="ddlStoreSelection"]');
         if (!sel) return null;
         const re = new RegExp(`(^|\\D)${w}(\\D|$)`);
@@ -1412,18 +1464,28 @@ async function selectStoreOnLoginDropdown(page, storeNumber) {
             const text = (opt.textContent || '').replace(/\s+/g, ' ').trim();
             if (!text || /^select store$/i.test(text)) continue;
             if (re.test(text)) {
-                const changed = sel.value !== opt.value;
-                sel.value = opt.value;
-                if (changed) {
-                    sel.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-                return { text, value: opt.value, changed };
+                return { text, value: opt.value };
             }
         }
         return null;
     }, want);
 
-    if (!result) return null;
+    if (!match) return null;
+
+    try {
+        await page.select('#ddlStoreSelection', match.value);
+    } catch {
+        await page.evaluate((value) => {
+            const sel = document.querySelector('#ddlStoreSelection, select[name="ddlStoreSelection"]');
+            if (!sel) return;
+            sel.value = value;
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+        }, match.value);
+    }
+
+    await page.waitForTimeout(350);
+    await triggerDoPostBackSloppy(page, 'ddlStoreSelection');
+    await page.waitForTimeout(450);
 
     const clicked = await page.evaluate(() => {
         const storeBtn = document.querySelector('#btStoreSelection, input[name="btStoreSelection"]');
@@ -1442,25 +1504,27 @@ async function selectStoreOnLoginDropdown(page, storeNumber) {
     });
 
     await Promise.race([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {}),
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 25000 }).catch(() => {}),
         page.waitForFunction(
             () => !/mode=SelectStore/i.test(location.href || ''),
-            { timeout: 20000 }
+            { timeout: 25000 }
         ).catch(() => {}),
-        page.waitForTimeout(clicked ? 5000 : 1500),
+        page.waitForTimeout(clicked ? 6000 : 2000),
     ]);
     await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(600);
 
-    const stillOnPicker = /mode=SelectStore/i.test(page.url()) || (await page.$('#ddlStoreSelection'));
+    const stillOnPicker =
+        /mode=SelectStore/i.test(page.url() || '') ||
+        Boolean(await page.$('#ddlStoreSelection, select[name="ddlStoreSelection"]'));
     if (stillOnPicker) {
         throw new Error(`Store ${want} selection did not leave the login picker (still on SelectStore)`);
     }
 
     console.log(
-        `[Macromatix] Login store dropdown: ${result.text}${clicked ? ` (clicked ${clicked})` : ''}`
+        `[Macromatix] Login store dropdown: ${match.text}${clicked ? ` (clicked ${clicked})` : ''}`
     );
-    return result.text;
+    return match.text;
 }
 
 function normalizeStorePickResult(result) {
@@ -1535,11 +1599,7 @@ async function tryImplicitSingleStoreContext(page, storeNumber) {
     }
 
     if (/LabourScheduler/i.test(page.url() || '')) {
-        return {
-            label: want,
-            implicit: true,
-            reason: 'single-store account (labour loaded, no picker)',
-        };
+        return null;
     }
 
     return null;
@@ -1631,6 +1691,9 @@ async function loginPage(page, username, password) {
             loginError || 'Macromatix login failed. Check SCRAPER_USERNAME and SCRAPER_PASSWORD in .env.'
         );
     }
+    if (await isLoginStorePickerPresent(page)) {
+        await waitForLoginStoreDropdownPopulated(page, 20000);
+    }
     console.log('[Macromatix] Logged in');
 }
 
@@ -1690,32 +1753,42 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
     const want = target.replace(/\D/g, '');
     if (!want) throw new Error('Store number required after login');
 
-    const pickedLogin = await selectStoreOnLoginDropdown(page, target);
+    let pickedLogin = null;
+    for (let attempt = 0; attempt < 3 && !pickedLogin; attempt++) {
+        if (attempt > 0) {
+            console.log(`[Macromatix] Retrying login store picker for ${target} (attempt ${attempt + 1})`);
+            await page.waitForTimeout(800);
+        }
+        pickedLogin = await selectStoreOnLoginDropdown(page, target);
+    }
     if (pickedLogin) {
         console.log(`[Macromatix] Post-login store selected (login dropdown): ${target}`);
         return pickedLogin;
     }
 
-    const hasLoginDropdown = await page.$('#ddlStoreSelection, select[name="ddlStoreSelection"]');
+    const pickerPresent = await isLoginStorePickerPresent(page);
+    if (!pickerPresent) {
+        await ensureLoginStorePickerPage(page);
+    }
+    const hasLoginDropdown = await isLoginStorePickerPresent(page);
     if (hasLoginDropdown) {
         const available = await listStoresOnLoginDropdown(page);
         const nums = available.map((s) => s.storeNumber).join(', ') || '(none parsed)';
         if (available.some((s) => s.storeNumber === want)) {
             throw new Error(
-                `Store ${target} is on the login dropdown but could not be selected. Available: ${nums}`
+                `Store ${target} is on the login picker but could not be selected. Available: ${nums}`
             );
         }
-        console.log(
-            `[Macromatix] Store ${target} not on login dropdown (${nums}); trying labour scheduler`
+        throw new Error(
+            `Store ${target} is not on the login store picker. Available: ${nums}. ` +
+                'Macromatix requires selecting the store at login before it appears in labour scheduler.'
         );
-    } else if (!/mode=SelectStore/i.test(page.url() || '')) {
-        const implicit = await tryImplicitSingleStoreContext(page, target);
-        if (implicit) {
-            console.log(
-                `[Macromatix] Post-login store context (${implicit.reason}): ${target}`
-            );
-            return implicit;
-        }
+    }
+
+    const implicit = await tryImplicitSingleStoreContext(page, target);
+    if (implicit) {
+        console.log(`[Macromatix] Post-login store context (${implicit.reason}): ${target}`);
+        return implicit;
     }
 
     if (!/LabourScheduler/i.test(page.url() || '')) {

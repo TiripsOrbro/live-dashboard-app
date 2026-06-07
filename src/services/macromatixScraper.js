@@ -1463,19 +1463,107 @@ async function selectStoreOnLoginDropdown(page, storeNumber) {
     return result.text;
 }
 
+function normalizeStorePickResult(result) {
+    if (result && typeof result === 'object') {
+        return {
+            label: String(result.label || result.storeNumber || '').trim(),
+            implicit: Boolean(result.implicit),
+            reason: String(result.reason || '').trim(),
+        };
+    }
+    return {
+        label: String(result || '').trim(),
+        implicit: false,
+        reason: '',
+    };
+}
+
+/**
+ * Single-store Macromatix logins often skip `#ddlStoreSelection` and land straight in the app.
+ * Detect when the session is already scoped to the target store so we do not force Change Store.
+ */
+async function tryImplicitSingleStoreContext(page, storeNumber) {
+    const want = String(storeNumber || '').replace(/[^0-9]/g, '');
+    if (!want) return null;
+
+    const onSelectStore =
+        /mode=SelectStore/i.test(page.url() || '') ||
+        Boolean(await page.$('#ddlStoreSelection, select[name="ddlStoreSelection"]'));
+    if (onSelectStore) return null;
+
+    if (!/LabourScheduler/i.test(page.url() || '')) {
+        await page.goto(LABOUR_URL, GOTO_OPTS);
+        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+        await page.waitForTimeout(1200);
+    }
+    await assertMacromatixAuthenticated(page, 'Store context check');
+
+    const comboId = await findStoreComboId(page);
+    if (comboId) {
+        const text = await getStoreComboText(page, comboId);
+        if (new RegExp(`(^|\\D)${want}(\\D|$)`).test(text || '')) {
+            return {
+                label: text.trim(),
+                implicit: true,
+                reason: 'already on store (labour combo)',
+            };
+        }
+        let items = await readStoreComboItems(page, comboId);
+        if (!items.length) {
+            items = await openStoreComboAndReadItems(page, comboId);
+        }
+        if (items.length === 1 && storeNumberFromLabel(items[0].storeName) === want) {
+            return {
+                label: items[0].storeName,
+                implicit: true,
+                reason: 'single-store account (one combo option)',
+            };
+        }
+        return null;
+    }
+
+    const hasStoreHint = await page.evaluate((w) => {
+        const body = (document.body?.innerText || '').replace(/\s+/g, ' ');
+        return new RegExp(`\\b${w}\\b`).test(body.slice(0, 12000));
+    }, want);
+    if (hasStoreHint) {
+        return {
+            label: want,
+            implicit: true,
+            reason: 'single-store account (no picker)',
+        };
+    }
+
+    if (/LabourScheduler/i.test(page.url() || '')) {
+        return {
+            label: want,
+            implicit: true,
+            reason: 'single-store account (labour loaded, no picker)',
+        };
+    }
+
+    return null;
+}
+
 /** Confirm the labour scheduler (or similar) shows the expected store number. */
 async function verifyLabourStoreContext(page, storeNumber) {
     const want = String(storeNumber || '').replace(/[^0-9]/g, '');
     if (!want) return false;
 
-    const LABOUR_URL =
-        'https://tacobellau.macromatix.net/MMS_Stores_LabourScheduler.aspx?MenuCustomItemID=249';
-    await page.goto(LABOUR_URL, GOTO_OPTS);
-    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
-    await page.waitForTimeout(1200);
+    if (!/LabourScheduler/i.test(page.url() || '')) {
+        await page.goto(LABOUR_URL, GOTO_OPTS);
+        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+        await page.waitForTimeout(1200);
+    }
 
     const comboId = await findStoreComboId(page);
-    if (!comboId) return false;
+    if (!comboId) {
+        const hasStoreHint = await page.evaluate((w) => {
+            const body = (document.body?.innerText || '').replace(/\s+/g, ' ');
+            return new RegExp(`\\b${w}\\b`).test(body.slice(0, 12000));
+        }, want);
+        return hasStoreHint;
+    }
     const text = await getStoreComboText(page, comboId);
     return new RegExp(`(^|\\D)${want}(\\D|$)`).test(text || '');
 }
@@ -1620,11 +1708,21 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
         console.log(
             `[Macromatix] Store ${target} not on login dropdown (${nums}); trying labour scheduler`
         );
+    } else if (!/mode=SelectStore/i.test(page.url() || '')) {
+        const implicit = await tryImplicitSingleStoreContext(page, target);
+        if (implicit) {
+            console.log(
+                `[Macromatix] Post-login store context (${implicit.reason}): ${target}`
+            );
+            return implicit;
+        }
     }
 
-    await page.goto(LABOUR_URL, GOTO_OPTS);
-    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
-    await page.waitForTimeout(1200);
+    if (!/LabourScheduler/i.test(page.url() || '')) {
+        await page.goto(LABOUR_URL, GOTO_OPTS);
+        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+        await page.waitForTimeout(1200);
+    }
     await assertMacromatixAuthenticated(page, 'Store selection');
 
     const pickedOnLabour = await selectStoreOnPage(page, target);
@@ -1717,12 +1815,19 @@ function attachSssgToResult(result, todayKey) {
 async function scrapeSingleStoreSession(page, store, ctx, credentials) {
     const storeNumber = String(store.storeNumber || '').trim();
 
-    await selectStoreAfterLogin(page, storeNumber, credentials);
+    const pick = await selectStoreAfterLogin(page, storeNumber, credentials);
+    const pickMeta = normalizeStorePickResult(pick);
 
-    const onCorrectStore = await verifyLabourStoreContext(page, storeNumber);
-    if (!onCorrectStore) {
-        throw new Error(
-            `Labour scheduler is not showing store ${storeNumber} after login store selection`
+    if (!pickMeta.implicit) {
+        const onCorrectStore = await verifyLabourStoreContext(page, storeNumber);
+        if (!onCorrectStore) {
+            throw new Error(
+                `Labour scheduler is not showing store ${storeNumber} after login store selection`
+            );
+        }
+    } else {
+        console.log(
+            `[Macromatix] Store ${storeNumber}: implicit login context (${pickMeta.reason})`
         );
     }
 

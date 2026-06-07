@@ -1,6 +1,7 @@
 const areaPathMatch = window.location.pathname.match(/\/area\/([a-z0-9-]+)\/?$/i);
 const areaCodeMatch = window.location.pathname.match(/\/(a\d+)\/?$/i);
-const areaKey = (areaPathMatch ? areaPathMatch[1] : areaCodeMatch ? areaCodeMatch[1].toUpperCase() : '') || '';
+const initialAreaKey =
+    (areaPathMatch ? areaPathMatch[1] : areaCodeMatch ? areaCodeMatch[1].toUpperCase() : '') || '';
 const titleEl = document.getElementById('title');
 const areaTabsEl = document.getElementById('area-tabs');
 const areaStorePanel = document.getElementById('area-store-panel');
@@ -11,10 +12,15 @@ const timeEl = document.getElementById('time-display');
 const updatedEl = document.getElementById('last-updated');
 const statusBanner = document.getElementById('status-banner');
 let latestDashboards = [];
-let latestAreaKey = areaKey;
+let latestAreaKey = initialAreaKey;
 
 let areaList = ['Area 1', 'Area 2', 'Area 21', 'Area 22'];
 let isAdminView = false;
+/** @type {Map<string, object>} */
+const areasByKey = new Map();
+let areaTabsWired = false;
+
+const AREA_DATA_REFRESH_MS = 60000;
 
 function areaCodeFromName(name) {
     const m = String(name || '').match(/(\d+)/);
@@ -34,6 +40,52 @@ function normalizeAreaMatchKey(value) {
         .replace(/(^-|-$)/g, '');
 }
 
+function areaKeyFromPath() {
+    const pathMatch = window.location.pathname.match(/\/area\/([a-z0-9-]+)\/?$/i);
+    const codeMatch = window.location.pathname.match(/\/(a\d+)\/?$/i);
+    return (pathMatch ? pathMatch[1] : codeMatch ? codeMatch[1].toUpperCase() : '') || '';
+}
+
+function cacheAreaPayload(data) {
+    if (!data) return;
+    const aliases = new Set(
+        [
+            data.areaKey,
+            data.area,
+            areaCodeFromName(data.area),
+            normalizeAreaMatchKey(data.areaKey),
+            normalizeAreaMatchKey(data.area),
+            normalizeAreaMatchKey(areaCodeFromName(data.area)),
+        ].filter(Boolean)
+    );
+    for (const alias of aliases) {
+        areasByKey.set(alias, data);
+    }
+}
+
+function resolveAreaPayload(key) {
+    const want = normalizeAreaMatchKey(key);
+    if (areasByKey.has(want)) return areasByKey.get(want);
+    if (areasByKey.has(key)) return areasByKey.get(key);
+    for (const data of areasByKey.values()) {
+        if (normalizeAreaMatchKey(data.areaKey) === want) return data;
+        if (normalizeAreaMatchKey(data.area) === want) return data;
+        if (normalizeAreaMatchKey(areaCodeFromName(data.area)) === want) return data;
+    }
+    return null;
+}
+
+function wireAreaTabs() {
+    if (!areaTabsEl || areaTabsWired) return;
+    areaTabsWired = true;
+    areaTabsEl.addEventListener('click', (event) => {
+        const btn = event.target.closest('button[data-area-select]');
+        if (!btn) return;
+        event.preventDefault();
+        selectArea(btn.dataset.areaSelect, { pushHistory: true });
+    });
+}
+
 function renderAreaTabs(currentAreaName) {
     if (!areaTabsEl) return;
     if (!isAdminView) {
@@ -45,23 +97,26 @@ function renderAreaTabs(currentAreaName) {
     const currentKey = normalizeAreaMatchKey(currentAreaName || latestAreaKey);
     const parts = [];
     areaList.forEach((name, idx) => {
-        const key = normalizeAreaMatchKey(name);
+        const tabKey = areaCodeFromName(name) || normalizeAreaMatchKey(name);
         const active =
-            key === currentKey ||
-            normalizeAreaMatchKey(areaCodeFromName(name)) === normalizeAreaMatchKey(latestAreaKey);
-        const href = areaPathFromName(name);
+            normalizeAreaMatchKey(name) === currentKey ||
+            normalizeAreaMatchKey(areaCodeFromName(name)) === currentKey ||
+            normalizeAreaMatchKey(latestAreaKey) === normalizeAreaMatchKey(tabKey);
         if (active) {
             parts.push(
                 `<span class="admin-area-tab is-active" role="tab" aria-selected="true">${name}</span>`
             );
         } else {
-            parts.push(`<a class="admin-area-tab" role="tab" href="${href}">${name}</a>`);
+            parts.push(
+                `<button type="button" class="admin-area-tab" role="tab" data-area-select="${tabKey}" aria-selected="false">${name}</button>`
+            );
         }
         if (idx < areaList.length - 1) {
             parts.push('<span class="admin-area-tab-pipe" aria-hidden="true"> |</span>');
         }
     });
     areaTabsEl.innerHTML = parts.join('');
+    wireAreaTabs();
 }
 
 function renderStorePanel(data) {
@@ -310,20 +365,19 @@ function setStatus(message) {
     statusBanner.textContent = message;
 }
 
-async function loadArea() {
-    if (!areaKey) return;
-    const res = await fetch(`/api/area-dashboard?area=${encodeURIComponent(areaKey)}`, { credentials: 'include' });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.error || 'Failed to load area dashboard');
-
+function applyAreaView(data) {
+    if (!data) return;
     titleEl.textContent = 'SALES DASHBOARD';
-    latestAreaKey = data.areaKey || areaKey;
+    latestAreaKey = areaCodeFromName(data.area) || data.areaKey || latestAreaKey;
     isAdminView = Boolean(data.isAdmin);
     if (Array.isArray(data.areas) && data.areas.length) areaList = data.areas;
     renderAreaTabs(data.area);
     renderStorePanel(data);
-    if (updatedEl) {
-        updatedEl.textContent = new Date(data.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (updatedEl && data.timestamp) {
+        updatedEl.textContent = new Date(data.timestamp).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+        });
     }
     const dashboards = Array.isArray(data.dashboards) ? data.dashboards : [];
     latestDashboards = dashboards;
@@ -350,8 +404,98 @@ async function loadArea() {
     }
 }
 
-loadArea().catch((err) => {
+function selectArea(key, { pushHistory = false } = {}) {
+    const data = resolveAreaPayload(key);
+    if (!data) return false;
+    applyAreaView(data);
+    if (pushHistory) {
+        const path = areaPathFromName(data.area);
+        if (window.location.pathname !== path) {
+            history.pushState({ areaKey: areaCodeFromName(data.area) || data.areaKey }, '', path);
+        }
+    }
+    return true;
+}
+
+function ingestBulkPayload(bulk) {
+    areasByKey.clear();
+    for (const data of Object.values(bulk.byArea || {})) {
+        cacheAreaPayload(data);
+    }
+    isAdminView = Boolean(bulk.isAdmin);
+    if (Array.isArray(bulk.areas) && bulk.areas.length) areaList = bulk.areas;
+}
+
+function ingestSinglePayload(data) {
+    cacheAreaPayload(data);
+    isAdminView = Boolean(data.isAdmin);
+    if (Array.isArray(data.areas) && data.areas.length) areaList = data.areas;
+}
+
+async function fetchAllAreas() {
+    const res = await fetch('/api/area-dashboard/all', { credentials: 'include' });
+    if (!res.ok) return null;
+    const bulk = await res.json();
+    if (!bulk.success) throw new Error(bulk.error || 'Failed to load area dashboards');
+    return bulk;
+}
+
+async function fetchSingleArea(key) {
+    const res = await fetch(`/api/area-dashboard?area=${encodeURIComponent(key)}`, {
+        credentials: 'include',
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed to load area dashboard');
+    return data;
+}
+
+async function loadAreas({ silent = false } = {}) {
+    if (!silent) setStatus('Loading area data…');
+
+    try {
+        const bulk = await fetchAllAreas();
+        if (bulk) {
+            ingestBulkPayload(bulk);
+            const pick =
+                initialAreaKey ||
+                areaCodeFromName(areaList[0]) ||
+                normalizeAreaMatchKey(areaList[0]) ||
+                Object.keys(bulk.byArea || {})[0];
+            if (!selectArea(pick, { pushHistory: false })) {
+                const first = Object.values(bulk.byArea || {})[0];
+                if (first) applyAreaView(first);
+            } else if (initialAreaKey) {
+                const data = resolveAreaPayload(initialAreaKey);
+                if (data) {
+                    const path = areaPathFromName(data.area);
+                    history.replaceState(
+                        { areaKey: areaCodeFromName(data.area) || data.areaKey },
+                        '',
+                        path
+                    );
+                }
+            }
+            if (!silent) setStatus('');
+            return;
+        }
+    } catch {
+        /* fall through to single-area fetch */
+    }
+
+    const key = initialAreaKey || areaCodeFromName(areaList[0]) || areaList[0];
+    const data = await fetchSingleArea(key);
+    ingestSinglePayload(data);
+    applyAreaView(data);
+    if (!silent) setStatus('');
+}
+
+loadAreas().catch((err) => {
     setStatus(err.message || 'Unable to refresh area data. If issue persists, contact Ash.');
+});
+
+window.addEventListener('popstate', () => {
+    const key = history.state?.areaKey || areaKeyFromPath();
+    if (key) selectArea(key, { pushHistory: false });
 });
 
 updateClock();
@@ -360,3 +504,11 @@ const GRID_PROGRESS_REFRESH_MS = 10000;
 setInterval(() => {
     if (latestDashboards.length) renderDashboards(latestDashboards);
 }, GRID_PROGRESS_REFRESH_MS);
+setInterval(() => {
+    loadAreas({ silent: true })
+        .then(() => {
+            const key = history.state?.areaKey || latestAreaKey || areaKeyFromPath();
+            selectArea(key, { pushHistory: false });
+        })
+        .catch(() => {});
+}, AREA_DATA_REFRESH_MS);

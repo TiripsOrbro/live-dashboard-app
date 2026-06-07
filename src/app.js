@@ -2939,43 +2939,190 @@ app.get('/api/stores', async (req, res) => {
     }
 });
 
-app.get('/api/area-dashboard', async (req, res) => {
-    try {
-        const areaParam = String(req.query.area || '').trim();
-        if (!areaParam) {
-            return res.status(400).json({ success: false, error: 'Missing area query parameter.' });
+function buildStoresCfgWithAreas() {
+    return getStoreList().map((s) => ({
+        ...s,
+        area: areaNameFromStore(s),
+        areaKey: normalizeAreaKey(areaNameFromStore(s)),
+        timeZone: s.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne',
+    }));
+}
+
+async function buildAreaDashboardPayload(areaParam, user, salesPayload, auditStateByStore) {
+    const storesCfg = buildStoresCfgWithAreas();
+    const adminUser = isAdminUser(user);
+
+    let areaStoresCfg = storesCfg.filter((s) => areaParamMatchesStore(areaParam, s));
+    let areaMeta = areaStoresCfg.length
+        ? { name: areaStoresCfg[0].area, key: areaStoresCfg[0].areaKey }
+        : null;
+
+    if (!areaStoresCfg.length) {
+        if (!adminUser) {
+            return { error: `Unknown area: ${areaParam}`, status: 404 };
         }
-        const storesCfg = getStoreList().map((s) => ({
-            ...s,
-            area: areaNameFromStore(s),
-            areaKey: normalizeAreaKey(areaNameFromStore(s)),
-            timeZone: s.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne',
+        const resolved = resolveAreaFromAdminList(areaParam);
+        if (!resolved) {
+            return { error: `Unknown area: ${areaParam}`, status: 404 };
+        }
+        areaMeta = resolved;
+    }
+
+    const allowedStores = filterStoresForUser(
+        user,
+        areaStoresCfg.map((s) => ({ storeNumber: s.storeNumber, storeName: s.storeName }))
+    ).map((s) => String(s.storeNumber));
+    const filteredCfg = areaStoresCfg.filter((s) => allowedStores.includes(String(s.storeNumber)));
+    if (!filteredCfg.length && !adminUser) {
+        return { forbidden: true };
+    }
+
+    const payload = salesPayload || salesCache || buildCacheShellFromStoreList();
+    const liveByNum = new Map((payload.stores || []).map((s) => [String(s.storeNumber), s]));
+    const stores = filteredCfg.map((cfg) => {
+        const live = liveByNum.get(String(cfg.storeNumber)) || {};
+        return {
+            storeNumber: cfg.storeNumber,
+            storeName: cfg.storeName,
+            area: cfg.area,
+            timeZone: cfg.timeZone,
+            openHour: cfg.openHour,
+            closeHour: cfg.closeHour,
+            actual: Array.isArray(live.actual) ? live.actual : [],
+            forecast: Array.isArray(live.forecast) ? live.forecast : [],
+            pendingVendors: Array.isArray(live.pendingVendors) ? live.pendingVendors : [],
+            sssgPercent: live.sssgPercent != null ? live.sssgPercent : null,
+        };
+    });
+    const groupedByTimeZone = new Map();
+    for (const store of stores) {
+        const tz = store.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
+        const group = groupedByTimeZone.get(tz) || [];
+        group.push(store);
+        groupedByTimeZone.set(tz, group);
+    }
+    const dashboards = [...groupedByTimeZone.entries()]
+        .map(([timeZone, tzStores]) => {
+            const earliestOpen = tzStores.reduce(
+                (min, s) => Math.min(min, Number.isFinite(s.openHour) ? s.openHour : DEFAULT_OPEN_HOUR),
+                Number.POSITIVE_INFINITY
+            );
+            const latestClose = tzStores.reduce(
+                (max, s) => Math.max(max, Number.isFinite(s.closeHour) ? s.closeHour : DEFAULT_CLOSE_HOUR),
+                Number.NEGATIVE_INFINITY
+            );
+            const openHour = Number.isFinite(earliestOpen) ? Math.trunc(earliestOpen) : DEFAULT_OPEN_HOUR;
+            const closeHour = Number.isFinite(latestClose) ? Math.trunc(latestClose) : DEFAULT_CLOSE_HOUR;
+            return {
+                timeZone,
+                state: stateCodeFromTimeZone(timeZone),
+                openHour,
+                closeHour,
+                stores: tzStores.map((s) => ({
+                    storeNumber: s.storeNumber,
+                    storeName: s.storeName,
+                })),
+                combinedHourly: combineAreaHourlyByLocalRange(tzStores, openHour, closeHour),
+            };
+        })
+        .sort((a, b) => a.state.localeCompare(b.state));
+    const combinedHourly = combineAreaHourly(stores);
+    const auditsSchedule = getAuditSchedule();
+    const requiredAudits = Array.isArray(auditsSchedule?.auditListItems) ? auditsSchedule.auditListItems : [];
+    const storesWithOrdersOutstanding = stores
+        .filter((s) => s.pendingVendors.length)
+        .map((s) => ({
+            storeNumber: s.storeNumber,
+            storeName: s.storeName,
+            timeZone: s.timeZone,
+            pendingCount: s.pendingVendors.length,
+            pendingVendors: s.pendingVendors,
         }));
+    const storesWithAuditsOutstanding = [];
+    for (const s of stores) {
+        const state = auditStateByStore?.get(String(s.storeNumber)) || (await getAuditState(s.storeNumber));
+        const dismissed = new Set((state.dismissed || []).map((x) => String(x).trim()));
+        const outstanding = requiredAudits.filter((label) => !dismissed.has(String(label).trim()));
+        if (outstanding.length) {
+            storesWithAuditsOutstanding.push({
+                storeNumber: s.storeNumber,
+                storeName: s.storeName,
+                timeZone: s.timeZone,
+                outstandingCount: outstanding.length,
+                outstandingAudits: outstanding,
+            });
+        }
+    }
+
+    let storeSales = stores
+        .map((s) => ({
+            storeNumber: s.storeNumber,
+            storeName: s.storeName,
+            sssgPercent: s.sssgPercent,
+            ...computeStoreSalesToday(s),
+        }))
+        .sort(
+            (a, b) =>
+                b.actual - a.actual ||
+                String(a.storeNumber).localeCompare(String(b.storeNumber), undefined, { numeric: true })
+        );
+
+    if (!storeSales.length && adminUser && areaMeta) {
+        storeSales = [
+            {
+                storeNumber: TEST_STORE_SLUG,
+                storeName: TEST_STORE_NAME,
+                testStore: true,
+                actual: 0,
+                forecast: 0,
+                trackClass: 'cell-green',
+            },
+        ];
+    }
+
+    const areaSalesTotal = storeSales.reduce((sum, s) => sum + (Number(s.actual) || 0), 0);
+
+    return {
+        success: true,
+        area: areaMeta.name,
+        areaKey: areaMeta.key,
+        isAdmin: adminUser,
+        areas: adminUser ? ADMIN_ROTATE_AREAS : [areaMeta.name],
+        timestamp: payload.timestamp,
+        areaSalesTotal: Math.round(areaSalesTotal),
+        storeSales,
+        stores: stores.map((s) => ({
+            storeNumber: s.storeNumber,
+            storeName: s.storeName,
+            timeZone: s.timeZone,
+            openHour: s.openHour,
+            closeHour: s.closeHour,
+        })),
+        dashboards,
+        combinedHourly,
+        storesWithOrdersOutstanding,
+        storesWithAuditsOutstanding,
+    };
+}
+
+async function loadAuditStateMapForStores(storeNumbers) {
+    const map = new Map();
+    const nums = [...new Set((storeNumbers || []).map((n) => String(n).trim()).filter(Boolean))];
+    await Promise.all(
+        nums.map(async (num) => {
+            map.set(num, await getAuditState(num));
+        })
+    );
+    return map;
+}
+
+app.get('/api/area-dashboard/all', async (req, res) => {
+    try {
         const user = req.dashboardUser || getRequestUser(req);
         const adminUser = isAdminUser(user);
-
-        let areaStoresCfg = storesCfg.filter((s) => areaParamMatchesStore(areaParam, s));
-        let areaMeta = areaStoresCfg.length
-            ? { name: areaStoresCfg[0].area, key: areaStoresCfg[0].areaKey }
-            : null;
-
-        if (!areaStoresCfg.length) {
-            if (!adminUser) {
-                return res.status(404).json({ success: false, error: `Unknown area: ${areaParam}` });
-            }
-            const resolved = resolveAreaFromAdminList(areaParam);
-            if (!resolved) {
-                return res.status(404).json({ success: false, error: `Unknown area: ${areaParam}` });
-            }
-            areaMeta = resolved;
+        if (!adminUser) {
+            return res.status(403).json({ success: false, error: 'Admin access required.' });
         }
-
-        const allowedStores = filterStoresForUser(
-            user,
-            areaStoresCfg.map((s) => ({ storeNumber: s.storeNumber, storeName: s.storeName }))
-        ).map((s) => String(s.storeNumber));
-        const filteredCfg = areaStoresCfg.filter((s) => allowedStores.includes(String(s.storeNumber)));
-        if (!filteredCfg.length && !adminUser) return sendForbidden(req, res);
 
         let payload;
         try {
@@ -2984,129 +3131,55 @@ app.get('/api/area-dashboard', async (req, res) => {
             console.warn('[Area Dashboard] Falling back to cached/empty sales payload:', error.message);
             payload = salesCache || buildCacheShellFromStoreList();
         }
-        const liveByNum = new Map((payload.stores || []).map((s) => [String(s.storeNumber), s]));
-        const stores = filteredCfg.map((cfg) => {
-            const live = liveByNum.get(String(cfg.storeNumber)) || {};
-            return {
-                storeNumber: cfg.storeNumber,
-                storeName: cfg.storeName,
-                area: cfg.area,
-                timeZone: cfg.timeZone,
-                openHour: cfg.openHour,
-                closeHour: cfg.closeHour,
-                actual: Array.isArray(live.actual) ? live.actual : [],
-                forecast: Array.isArray(live.forecast) ? live.forecast : [],
-                pendingVendors: Array.isArray(live.pendingVendors) ? live.pendingVendors : [],
-            };
-        });
-        const groupedByTimeZone = new Map();
-        for (const store of stores) {
-            const tz = store.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
-            const group = groupedByTimeZone.get(tz) || [];
-            group.push(store);
-            groupedByTimeZone.set(tz, group);
-        }
-        const dashboards = [...groupedByTimeZone.entries()]
-            .map(([timeZone, tzStores]) => {
-                const earliestOpen = tzStores.reduce(
-                    (min, s) => Math.min(min, Number.isFinite(s.openHour) ? s.openHour : DEFAULT_OPEN_HOUR),
-                    Number.POSITIVE_INFINITY
-                );
-                const latestClose = tzStores.reduce(
-                    (max, s) => Math.max(max, Number.isFinite(s.closeHour) ? s.closeHour : DEFAULT_CLOSE_HOUR),
-                    Number.NEGATIVE_INFINITY
-                );
-                const openHour = Number.isFinite(earliestOpen) ? Math.trunc(earliestOpen) : DEFAULT_OPEN_HOUR;
-                const closeHour = Number.isFinite(latestClose) ? Math.trunc(latestClose) : DEFAULT_CLOSE_HOUR;
-                return {
-                    timeZone,
-                    state: stateCodeFromTimeZone(timeZone),
-                    openHour,
-                    closeHour,
-                    stores: tzStores.map((s) => ({
-                        storeNumber: s.storeNumber,
-                        storeName: s.storeName,
-                    })),
-                    combinedHourly: combineAreaHourlyByLocalRange(tzStores, openHour, closeHour),
-                };
-            })
-            .sort((a, b) => a.state.localeCompare(b.state));
-        const combinedHourly = combineAreaHourly(stores);
-        const auditsSchedule = getAuditSchedule();
-        const requiredAudits = Array.isArray(auditsSchedule?.auditListItems) ? auditsSchedule.auditListItems : [];
-        const storesWithOrdersOutstanding = stores
-            .filter((s) => s.pendingVendors.length)
-            .map((s) => ({
-                storeNumber: s.storeNumber,
-                storeName: s.storeName,
-                timeZone: s.timeZone,
-                pendingCount: s.pendingVendors.length,
-                pendingVendors: s.pendingVendors,
-            }));
-        const storesWithAuditsOutstanding = [];
-        for (const s of stores) {
-            const state = await getAuditState(s.storeNumber);
-            const dismissed = new Set((state.dismissed || []).map((x) => String(x).trim()));
-            const outstanding = requiredAudits.filter((label) => !dismissed.has(String(label).trim()));
-            if (outstanding.length) {
-                storesWithAuditsOutstanding.push({
-                    storeNumber: s.storeNumber,
-                    storeName: s.storeName,
-                    timeZone: s.timeZone,
-                    outstandingCount: outstanding.length,
-                    outstandingAudits: outstanding,
-                });
-            }
-        }
 
-        let storeSales = stores
-            .map((s) => ({
-                storeNumber: s.storeNumber,
-                storeName: s.storeName,
-                ...computeStoreSalesToday(s),
-            }))
-            .sort(
-                (a, b) =>
-                    b.actual - a.actual ||
-                    String(a.storeNumber).localeCompare(String(b.storeNumber), undefined, { numeric: true })
-            );
+        const storesCfg = buildStoresCfgWithAreas();
+        const auditStateByStore = await loadAuditStateMapForStores(
+            storesCfg.map((s) => s.storeNumber)
+        );
 
-        if (!storeSales.length && adminUser && areaMeta) {
-            storeSales = [
-                {
-                    storeNumber: TEST_STORE_SLUG,
-                    storeName: TEST_STORE_NAME,
-                    testStore: true,
-                    actual: 0,
-                    forecast: 0,
-                    trackClass: 'cell-green',
-                },
-            ];
+        const byArea = {};
+        for (const areaName of ADMIN_ROTATE_AREAS) {
+            const areaParam = areaCodeFromValue(areaName) || areaName;
+            const built = await buildAreaDashboardPayload(areaParam, user, payload, auditStateByStore);
+            if (built?.forbidden || built?.error) continue;
+            byArea[built.areaKey] = built;
         }
-
-        const areaSalesTotal = storeSales.reduce((sum, s) => sum + (Number(s.actual) || 0), 0);
 
         res.json({
             success: true,
-            area: areaMeta.name,
-            areaKey: areaMeta.key,
-            isAdmin: adminUser,
-            areas: adminUser ? ADMIN_ROTATE_AREAS : [areaMeta.name],
+            isAdmin: true,
+            areas: ADMIN_ROTATE_AREAS,
             timestamp: payload.timestamp,
-            areaSalesTotal: Math.round(areaSalesTotal),
-            storeSales,
-            stores: stores.map((s) => ({
-                storeNumber: s.storeNumber,
-                storeName: s.storeName,
-                timeZone: s.timeZone,
-                openHour: s.openHour,
-                closeHour: s.closeHour,
-            })),
-            dashboards,
-            combinedHourly,
-            storesWithOrdersOutstanding,
-            storesWithAuditsOutstanding,
+            byArea,
         });
+    } catch (error) {
+        console.error('API: Error loading all area dashboards:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/area-dashboard', async (req, res) => {
+    try {
+        const areaParam = String(req.query.area || '').trim();
+        if (!areaParam) {
+            return res.status(400).json({ success: false, error: 'Missing area query parameter.' });
+        }
+        const user = req.dashboardUser || getRequestUser(req);
+
+        let payload;
+        try {
+            payload = await getSalesDataCached();
+        } catch (error) {
+            console.warn('[Area Dashboard] Falling back to cached/empty sales payload:', error.message);
+            payload = salesCache || buildCacheShellFromStoreList();
+        }
+
+        const built = await buildAreaDashboardPayload(areaParam, user, payload);
+        if (built?.forbidden) return sendForbidden(req, res);
+        if (built?.error) {
+            return res.status(built.status || 404).json({ success: false, error: built.error });
+        }
+        res.json(built);
     } catch (error) {
         console.error('API: Error loading area dashboard:', error);
         res.status(500).json({ success: false, error: error.message });

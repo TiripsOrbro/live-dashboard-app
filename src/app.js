@@ -1610,6 +1610,16 @@ function pendingVendorLabelsForStockCount(req, storeNumber) {
     return labels;
 }
 
+/** Pass store + signed-in user so MMX automation prefers Create-account logins for that store. */
+function mmxAutomationOptions(req, storeNumber, extra = {}) {
+    const user = req.dashboardUser || getRequestUser(req);
+    return {
+        ...extra,
+        storeNumber: String(storeNumber),
+        dashboardUsername: String(user?.username || '').trim(),
+    };
+}
+
 app.get('/welcome', (req, res) => {
     res.redirect('/login');
 });
@@ -2286,9 +2296,13 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
         if (!store || !assertStoreAccess(req, res, store)) return;
 
         console.log(`[StockCount] Send to MMX (prepare) — store ${store} vendor ${vendorSlug}`);
-        const result = await prepareStockCountForMmx(store, vendorSlug, {
-            pendingVendorLabels: pendingVendorLabelsForStockCount(req, store),
-        });
+        const result = await prepareStockCountForMmx(
+            store,
+            vendorSlug,
+            mmxAutomationOptions(req, store, {
+                pendingVendorLabels: pendingVendorLabelsForStockCount(req, store),
+            })
+        );
         res.json({ success: true, ...result });
     } catch (error) {
         console.error('API: Error preparing stock count for MMX:', error);
@@ -2325,7 +2339,10 @@ app.post('/api/stock-count/send-to-mmx/apply', async (req, res) => {
             const skipReportDownload = /^(1|true|yes|on)$/i.test(
                 String(req.body?.skipReportDownload ?? req.query.skipReportDownload ?? 'false')
             );
-            const result = await runScheduledOrdersOnly(store, { skipReportDownload });
+            const result = await runScheduledOrdersOnly(
+                store,
+                mmxAutomationOptions(req, store, { skipReportDownload })
+            );
             res.json({ success: true, ...result });
             return;
         }
@@ -2342,7 +2359,7 @@ app.post('/api/stock-count/send-to-mmx/apply', async (req, res) => {
         }
 
         console.log(`[StockCount] Apply MMX count — store ${store} session ${sessionId}`);
-        const result = await applyStockCountSession(store, sessionId, {});
+        const result = await applyStockCountSession(store, sessionId, mmxAutomationOptions(req, store));
         res.json({ success: true, ...result });
     } catch (error) {
         console.error('API: Error applying stock count in MMX:', error);
@@ -2362,7 +2379,10 @@ app.post('/api/stock-count/fill-orders', async (req, res) => {
             String(req.body?.skipReportDownload ?? req.query.skipReportDownload ?? 'false')
         );
         console.log(`[StockCount] Fill scheduled orders — store ${store}`);
-        const result = await runScheduledOrdersOnly(store, { skipReportDownload });
+        const result = await runScheduledOrdersOnly(
+            store,
+            mmxAutomationOptions(req, store, { skipReportDownload })
+        );
         res.json({ success: true, ...result });
     } catch (error) {
         console.error('API: Error filling scheduled orders:', error);

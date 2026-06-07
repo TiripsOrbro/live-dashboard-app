@@ -34,6 +34,29 @@ function storeSelectorLabel(store) {
     return name || num;
 }
 
+function withStoreMmxOptions(storeNumber, options = {}) {
+    return { ...options, storeNumber: String(storeNumber).replace(/\D/g, '') };
+}
+
+/** Select the target store on the current MMX page (combo, report picker, or label fallback). */
+async function selectStoreInMacromatix(page, storeNumber) {
+    const num = String(storeNumber).replace(/\D/g, '');
+    const storeCfg = getStoreConfig(num) || { storeNumber: num, storeName: num };
+    const storeLabel = storeSelectorLabel(storeCfg);
+
+    await page.waitForTimeout(800);
+    let picked = await selectStoreOnPage(page, num);
+    if (!picked && storeLabel && storeLabel !== num) {
+        log.info(`Store combo miss for ${num} — trying label "${storeLabel}"`);
+        const { selectStore: selectStoreByLabel } = require('./mmxReports/pipeline-supply-chain-reports');
+        await selectStoreByLabel(page, storeLabel, { storeNumber: num, waitMs: 500 });
+        picked = await selectStoreOnPage(page, num);
+    }
+    if (!picked) throw new Error(`Could not select store ${num} in Macromatix`);
+    log.info(`Store selected: ${picked}`);
+    return picked;
+}
+
 async function withStoreLock(storeNumber, fn) {
     const key = String(storeNumber);
     const prev = runLockByStore.get(key) || Promise.resolve();
@@ -152,7 +175,7 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
     let browser;
     let page;
     try {
-        ({ browser, page } = await openMacromatixBrowser(options));
+        ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
         log.info(
             `Store ${storeNumber}: manual-only stock count — skipping Key Item Count; downloading ISE, SOH, and SOO, then filling scheduled orders from app counts`
         );
@@ -251,15 +274,7 @@ async function runVendorOrdersForStore(page, storeNumber, dateKey, orderPack = n
     const { byVendorId, vendorOrdersCfg, buildTo } = pack;
 
     const selectStore = async (p, num) => {
-        await p.waitForTimeout(800);
-        let picked = await selectStoreOnPage(p, num);
-        if (!picked && storeLabel && storeLabel !== String(num)) {
-            log.info(`Store combo miss for ${num} — trying label "${storeLabel}"`);
-            const { selectStore: selectStoreByLabel } = require('./mmxReports/pipeline-supply-chain-reports');
-            await selectStoreByLabel(p, storeLabel, { storeNumber: num, waitMs: 500 });
-            picked = await selectStoreOnPage(p, num);
-        }
-        if (!picked) throw new Error(`Could not select store ${num} in Macromatix`);
+        await selectStoreInMacromatix(p, num);
     };
 
     const settings = {
@@ -339,7 +354,7 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         let browser;
         let page;
         try {
-            ({ browser, page } = await openMacromatixBrowser(options));
+            ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
             await downloadReportsForStores({ ...downloadOpts, page, browser });
         } finally {
             await closeBrowserQuietly(browser, 'pre-order report download');
@@ -501,7 +516,7 @@ async function resumeScheduledOrdersInNewBrowser(storeNumber, dateKey, options =
     let browser;
     let page;
     try {
-        ({ browser, page } = await openMacromatixBrowser(options));
+        ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
         const orders = await runOrdersAfterApply(storeNumber, dateKey, { page, browser });
         const orderFailures = formatOrderFailures(orders);
         return { orders, orderFailures };
@@ -527,7 +542,7 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
         let browser;
         let page;
         try {
-            ({ browser, page } = await openMacromatixBrowser(options));
+            ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
             log.info(`Build-to cycle for store ${storeNumber} — download 3 reports, fill orders, clear reports`);
             const cycle = await runStoreBuildToCycle(storeNumber, {
                 ...options,
@@ -580,12 +595,10 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
         let browser;
         let page;
         try {
-            ({ browser, page } = await openMacromatixBrowser(options));
+            ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
 
             const selectStore = async (p, num) => {
-                const picked = await selectStoreOnPage(p, num);
-                if (!picked) throw new Error(`Could not select store ${num} in Macromatix`);
-                log.info(`Store selected: ${picked}`);
+                await selectStoreInMacromatix(p, num);
             };
 
             const vendorLabels = vendorEntries.map((e) => e.catalog.label).join(', ');

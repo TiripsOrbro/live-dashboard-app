@@ -2,7 +2,7 @@
 
 Plain-English summary of what changed in each release — written for store managers and admins, not developers.
 
-**Current live branch:** `Version-0.3.1`
+**Current live branch:** `Version-0.3.2`
 
 ---
 
@@ -25,6 +25,30 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ---
 
 ## Release history
+
+### Version 0.3.2 — June 2026
+
+**Added**
+
+- **Instant area dashboard tabs** — all four area dashboards load in one go; switching **Area 1 / 2 / 21 / 22** is instant with no full page reload.
+- **Sign out** — available from the settings menu (gear icon).
+
+**Changed**
+
+- **Macromatix login on the Pi** — the scraper signs in on the store picker screen so all stores (including Queensland) appear and scrape correctly.
+- **Single `.env` file** — the Pi and dev PC both use one `.env` at the project root (no separate `.env.production`).
+
+**Fixed**
+
+- **Queensland & Victoria store sales** — stores outside Area 22 now scrape and show on area dashboards after login credentials and store selection were corrected on the Pi.
+- **First-login password** — you can keep the same password when it matches the temporary one (no forced change to an identical password).
+
+**What you need to do**
+
+- On the Pi: `git pull origin Version-0.3`, then `pm2 delete dashboard && pm2 start ecosystem.config.cjs --only dashboard && pm2 save`.
+- Hard refresh once on tablets (`Update now` on login, or Ctrl+Shift+R) so area dashboard tabs load the new script.
+
+---
 
 ### Version 0.3.1 — June 2026
 

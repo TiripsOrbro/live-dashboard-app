@@ -580,9 +580,6 @@ function completePasswordSetup(username, currentPassword, newPassword) {
     }
     const complexity = validatePasswordComplexity(next, verified.role);
     if (!complexity.ok) return complexity;
-    if (timingSafeEqualString(current, next)) {
-        return { ok: false, error: 'Choose a new password different from your temporary password.' };
-    }
     const blocks = parseUsersFileBlocks(readUsersFileText());
     const block = blocks.find((row) => blockMatchesUsername(row, name));
     if (!block) {

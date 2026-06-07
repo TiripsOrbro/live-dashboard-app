@@ -47,14 +47,42 @@ async function ensureSpaAuthenticated(page, credentials) {
 }
 
 /**
+ * True when the Angular Change Store screen is visible.
+ */
+async function isOnChangeStorePage(page) {
+    return page.evaluate(() => {
+        const body = (document.body?.innerText || '').toLowerCase();
+        const hash = (location.hash || '').toLowerCase();
+        return hash.includes('changestore') || body.includes('change store');
+    });
+}
+
+async function waitForChangeStorePage(page) {
+    await page
+        .waitForFunction(
+            () => {
+                const body = (document.body?.innerText || '').toLowerCase();
+                const hash = (location.hash || '').toLowerCase();
+                return hash.includes('changestore') || body.includes('change store') || document.querySelector('table');
+            },
+            { timeout: GRID_WAIT_MS }
+        )
+        .catch(() => {});
+    await page.waitForTimeout(600);
+}
+
+/**
  * List stores visible on the Change Store page.
  */
 async function listStoresOnChangeStorePage(page) {
+    const onPage = await isOnChangeStorePage(page);
+    if (!onPage) return [];
+
     return page.evaluate(() => {
         const stores = [];
-        const rows = [...document.querySelectorAll('tr')];
+        const rows = [...document.querySelectorAll('tr, [role="row"]')];
         for (const row of rows) {
-            const cells = [...row.querySelectorAll('td')];
+            const cells = [...row.querySelectorAll('td, [role="cell"]')];
             if (cells.length < 2) continue;
             const numText = (cells[0]?.textContent || '').replace(/\D/g, '');
             if (!/^\d{3,6}$/.test(numText)) continue;
@@ -69,18 +97,50 @@ async function listStoresOnChangeStorePage(page) {
  * Click Select for the given store on the Change Store page.
  */
 async function selectStoreOnSpa(page, storeNumber) {
-    const target = String(storeNumber || '').trim();
+    const target = String(storeNumber || '').trim().replace(/\D/g, '');
+    if (!target) throw new Error('Store number required for SPA store selection');
+
+    await waitForChangeStorePage(page);
+
+    await page.evaluate((num) => {
+        for (const inp of document.querySelectorAll('input[type="text"], input[type="search"]')) {
+            const ph = (inp.placeholder || '').toLowerCase();
+            const label = (inp.closest('label')?.textContent || '').toLowerCase();
+            if (ph.includes('store') || ph.includes('search') || ph.includes('filter') || label.includes('store')) {
+                inp.focus();
+                inp.value = num;
+                inp.dispatchEvent(new Event('input', { bubbles: true }));
+                inp.dispatchEvent(new Event('change', { bubbles: true }));
+                break;
+            }
+        }
+    }, target);
+    await page.waitForTimeout(800);
+
     const clicked = await page.evaluate((num) => {
-        const rows = [...document.querySelectorAll('tr')];
+        const rows = [...document.querySelectorAll('tr, [role="row"]')];
         for (const row of rows) {
             const text = (row.textContent || '').replace(/\s+/g, ' ');
             if (!new RegExp(`\\b${num}\\b`).test(text)) continue;
 
-            const selectEl = [...row.querySelectorAll('button, a, input, span')].find((el) =>
-                /^select$/i.test((el.textContent || el.value || '').trim())
-            );
-            if (selectEl) {
-                selectEl.click();
+            const candidates = [...row.querySelectorAll('button, a, input, span, div[role="button"], [ng-click], [data-ng-click]')];
+            for (const el of candidates) {
+                const label = (el.textContent || el.value || el.getAttribute('aria-label') || '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                const ngClick = el.getAttribute('ng-click') || el.getAttribute('data-ng-click') || '';
+                if (/^select$/i.test(label) || /^choose$/i.test(label)) {
+                    el.click();
+                    return true;
+                }
+                if (/select/i.test(ngClick) && /store|change/i.test(ngClick)) {
+                    el.click();
+                    return true;
+                }
+            }
+            const actions = [...row.querySelectorAll('button, a')];
+            if (actions.length) {
+                actions[actions.length - 1].click();
                 return true;
             }
         }
@@ -88,15 +148,15 @@ async function selectStoreOnSpa(page, storeNumber) {
     }, target);
 
     if (!clicked) {
-        throw new Error(`Select button not found for store ${target}`);
+        const listed = await listStoresOnChangeStorePage(page);
+        const visible = listed.map((s) => s.storeNumber).join(', ') || 'none';
+        throw new Error(`Select button not found for store ${target} (visible on Change Store page: ${visible})`);
     }
 
     await page.waitForTimeout(2000);
-    await page.waitForFunction(
-        (num) => (document.body?.innerText || '').includes(num),
-        { timeout: 15000 },
-        target
-    ).catch(() => {});
+    await page
+        .waitForFunction((num) => (document.body?.innerText || '').includes(num), { timeout: 15000 }, target)
+        .catch(() => {});
 }
 
 /**
@@ -216,6 +276,8 @@ module.exports = {
     FORECASTING_URL,
     parseMoneyText,
     ensureSpaAuthenticated,
+    isOnChangeStorePage,
+    waitForChangeStorePage,
     listStoresOnChangeStorePage,
     selectStoreOnSpa,
     readLastYearForecastGrid,

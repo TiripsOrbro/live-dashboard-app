@@ -191,11 +191,7 @@
 
     async function captureCelsius() {
         if (!device?.gatt?.connected || !characteristic) {
-            await connect();
-        }
-        if (lastReading?.celsius != null) {
-            const ageMs = Date.now() - Date.parse(lastReading.capturedAt || '');
-            if (!Number.isFinite(ageMs) || ageMs < 5000) return lastReading.celsius;
+            throw new Error('Bluetooth Thermometer is not connected.');
         }
         try {
             const value = await characteristic.readValue();
@@ -206,7 +202,11 @@
                 return parsed;
             }
         } catch {
-            /* wait for notify */
+            /* wait for notify or use recent cached reading */
+        }
+        if (lastReading?.celsius != null) {
+            const ageMs = Date.now() - Date.parse(lastReading.capturedAt || '');
+            if (!Number.isFinite(ageMs) || ageMs < 15000) return lastReading.celsius;
         }
         return waitForReading();
     }

@@ -840,15 +840,25 @@ function blue2Supported() {
     return Boolean(window.DfscBlue2?.isSupported?.());
 }
 
-function questionSupportsBlue2(question) {
+function blue2Connected() {
+    return Boolean(blue2Supported() && window.DfscBlue2.getState().connected);
+}
+
+function showCaptureTempButton(question) {
     if (!blue2Supported()) return false;
     if (question?.id === 'init_prepThermoTemp') return false;
     return isTemperatureQuestion(question);
 }
 
 function renderCaptureTempButton(questionId, { locked = false, disabled = false } = {}) {
-    if (locked) return '';
-    return `<button type="button" class="dfsc-capture-temp" data-blue2-qid="${escapeHtml(questionId)}"${disabled ? ' disabled' : ''}>Capture Temp.</button>`;
+    if (locked || !blue2Supported()) return '';
+    const fieldDisabled = disabled;
+    const connected = blue2Connected();
+    const isDisabled = fieldDisabled || !connected;
+    const title = !fieldDisabled && !connected ? 'Connect the Bluetooth Thermometer first' : '';
+    return `<button type="button" class="dfsc-capture-temp" data-blue2-qid="${escapeHtml(questionId)}"${
+        fieldDisabled ? ' data-blue2-field-disabled="true"' : ''
+    }${isDisabled ? ' disabled' : ''}${title ? ` title="${escapeHtml(title)}"` : ''}>Capture Temp.</button>`;
 }
 
 function tempInputHtml(questionId, { value = '', disabled = false, qtype = 'temp', placeholder = '' } = {}) {
@@ -897,6 +907,17 @@ function updateBlue2Bar() {
     const btn = document.getElementById('dfsc-blue2-connect-btn');
     if (btn) btn.textContent = state.connected ? 'Disconnect' : 'Connect Bluetooth Thermometer';
     document.querySelector('.dfsc-blue2-dot')?.classList.toggle('is-connected', state.connected);
+    updateCaptureTempButtons();
+}
+
+function updateCaptureTempButtons() {
+    if (!blue2Supported()) return;
+    const connected = blue2Connected();
+    document.querySelectorAll('[data-blue2-qid]').forEach((btn) => {
+        if (btn.dataset.blue2FieldDisabled === 'true') return;
+        btn.disabled = !connected;
+        btn.title = connected ? '' : 'Connect the Bluetooth Thermometer first';
+    });
 }
 
 async function toggleBlue2Connection() {
@@ -919,6 +940,12 @@ async function toggleBlue2Connection() {
 
 async function captureBlue2ForQuestion(questionId) {
     if (!blue2Supported()) return;
+    if (!blue2Connected()) {
+        statusMessage = 'Connect the Bluetooth Thermometer first using the bar above.';
+        statusKind = 'error';
+        renderStatusBar();
+        return;
+    }
     statusMessage = '';
     const btn = document.querySelector(`[data-blue2-qid="${questionId}"]`);
     if (btn) {
@@ -937,8 +964,12 @@ async function captureBlue2ForQuestion(questionId) {
         renderStatusBar();
     } finally {
         if (btn) {
-            btn.disabled = false;
             btn.textContent = 'Capture Temp.';
+            if (btn.dataset.blue2FieldDisabled === 'true') {
+                btn.disabled = true;
+            } else {
+                btn.disabled = !blue2Connected();
+            }
         }
     }
 }
@@ -956,7 +987,11 @@ function bindBlue2CaptureButtons() {
 function setupBlue2() {
     if (blue2Unsubscribe) blue2Unsubscribe();
     if (!blue2Supported()) return;
-    blue2Unsubscribe = window.DfscBlue2.onStateChange(() => updateBlue2Bar());
+    blue2Unsubscribe = window.DfscBlue2.onStateChange(() => {
+        updateBlue2Bar();
+        updateCaptureTempButtons();
+    });
+    updateBlue2Bar();
 }
 
 function teardownBlue2() {
@@ -1021,7 +1056,7 @@ function renderCarryoverControl(question) {
     const tempValue = isNo ? '' : raw;
     const locked = !isTimeGateOpen(question);
     const tempNc = !isNo && !editingTempQuestions.has(question.id) && isTempRangeNonCompliant(question, raw);
-    const captureBtn = questionSupportsBlue2(question)
+    const captureBtn = showCaptureTempButton(question)
         ? renderCaptureTempButton(question.id, { locked, disabled: isNo })
         : '';
     return `
@@ -1215,7 +1250,7 @@ function renderQuestion(question) {
     } else if (question.type === 'temperature' || question.type === 'temperature_na') {
         const isNa = String(value).toLowerCase() === 'na';
         const tempNc = !isEditingTemp && !isNa && isTempRangeNonCompliant(question, value);
-        const captureBtn = questionSupportsBlue2(question)
+        const captureBtn = showCaptureTempButton(question)
             ? renderCaptureTempButton(question.id, { locked, disabled: isNa })
             : '';
         control = `
@@ -1470,6 +1505,7 @@ function renderQuestionArea({ scrollToTop = false } = {}) {
 
     bindQuestionEvents();
     bindBlue2CaptureButtons();
+    updateCaptureTempButtons();
     bindSignOffSignature();
     updateStepperClasses();
     if (scrollToTop) scrollDfscSectionToTop();

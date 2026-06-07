@@ -1606,18 +1606,11 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
         return pickedLogin;
     }
 
-    const {
-        CHANGE_STORE_URL,
-        ensureSpaAuthenticated,
-        listStoresOnChangeStorePage,
-        selectStoreOnSpa,
-    } = require('./sssg/sssgScraper');
-
-    let listed = await listStoresOnChangeStorePage(page);
-    if (listed.length) {
-        await selectStoreOnSpa(page, target);
-        console.log(`[Macromatix] Post-login store selected (SPA picker): ${target}`);
-        return target;
+    const hasLoginDropdown = await page.$('#ddlStoreSelection, select[name="ddlStoreSelection"]');
+    if (hasLoginDropdown) {
+        const available = await listStoresOnLoginDropdown(page);
+        const nums = available.map((s) => s.storeNumber).join(', ') || '(none parsed)';
+        throw new Error(`Store ${target} not found on login store dropdown. Available: ${nums}`);
     }
 
     const pickedOnPage = await selectStoreOnPage(page, target);
@@ -1627,25 +1620,37 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
         return pickedOnPage;
     }
 
+    const {
+        CHANGE_STORE_URL,
+        ensureSpaAuthenticated,
+        listStoresOnChangeStorePage,
+        selectStoreOnSpa,
+    } = require('./sssg/sssgScraper');
+
     await page.goto(CHANGE_STORE_URL, { waitUntil: 'load', timeout: 60000 });
     await page.waitForTimeout(1200);
     await ensureSpaAuthenticated(page, credentials);
 
-    listed = await listStoresOnChangeStorePage(page);
-    if (listed.length) {
+    const listed = await listStoresOnChangeStorePage(page);
+    const want = target.replace(/\D/g, '');
+    if (listed.length && !listed.some((s) => s.storeNumber === want)) {
+        const nums = listed.map((s) => s.storeNumber).join(', ');
+        throw new Error(`Store ${target} not listed on Change Store page. Visible: ${nums}`);
+    }
+
+    try {
         await selectStoreOnSpa(page, target);
         console.log(`[Macromatix] Post-login store selected (SPA): ${target}`);
         return target;
+    } catch (spaErr) {
+        const picked = await selectStoreOnPage(page, target);
+        if (picked) {
+            console.log(`[Macromatix] Post-login store selected (ASP.NET fallback): ${picked}`);
+            await waitForStoreSelectionPostback(page);
+            return picked;
+        }
+        throw spaErr;
     }
-
-    const picked = await selectStoreOnPage(page, target);
-    if (picked) {
-        console.log(`[Macromatix] Post-login store selected (ASP.NET): ${picked}`);
-        await waitForStoreSelectionPostback(page);
-        return picked;
-    }
-
-    throw new Error(`Could not select store ${target} on post-login picker`);
 }
 
 /** Attach SSSG percent to a scrape result when LY slots are available. */

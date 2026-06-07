@@ -1763,7 +1763,7 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
             `Store ${target} not accessible with this Macromatix login. ` +
                 `Labour scheduler: ${labourNums.join(', ') || 'none'}. ` +
                 `Change Store: ${spaNums}. ` +
-                `Add SCRAPER_QLD_* / SCRAPER_STORE_${want}_* in .env.production or crew MMX credentials in data/mmx-users/.`
+                `Check SCRAPER_* in .env.production, or add crew MMX credentials via Create account.`
         );
     }
 
@@ -1946,29 +1946,8 @@ async function verifyMacromatixLogin(username, password) {
     }
 }
 
-const WA_STORE_NUMBERS = new Set(['3901', '3902', '3903', '3904']);
-const QLD_STORE_NUMBER_RE = /^37[56]\d{2}$/;
-
-function areaEnvSuffix(area) {
-    return String(area || '')
-        .trim()
-        .replace(/\s+/g, '_')
-        .replace(/[^A-Za-z0-9_]/g, '');
-}
-
-function storeScraperRegion(storeNumber) {
-    const num = String(storeNumber || '').trim().replace(/\D/g, '');
-    if (WA_STORE_NUMBERS.has(num)) return 'WA';
-    if (QLD_STORE_NUMBER_RE.test(num)) return 'QLD';
-    const cfg = getStoreConfig(num);
-    const tz = String(cfg?.timeZone || '');
-    if (tz.includes('Brisbane')) return 'QLD';
-    if (tz.includes('Perth')) return 'WA';
-    return 'VIC';
-}
-
-/** All configured global/regional scraper logins to try for a store. */
-function listGlobalMacromatixCredentialPool(storeNumber) {
+/** All configured default scraper logins (primary + optional alternates). */
+function listGlobalMacromatixCredentialPool() {
     const pool = [];
     const seen = new Set();
 
@@ -1987,22 +1966,6 @@ function listGlobalMacromatixCredentialPool(storeNumber) {
         const password = String(process.env[`SCRAPER_ALT_${i}_PASSWORD`] || '');
         if (username && password) {
             push({ username, password }, `SCRAPER_ALT_${i}`);
-        }
-    }
-
-    const region = storeScraperRegion(storeNumber);
-    const regionUser = String(process.env[`SCRAPER_${region}_USERNAME`] || '').trim();
-    const regionPass = String(process.env[`SCRAPER_${region}_PASSWORD`] || '');
-    if (regionUser && regionPass) {
-        push({ username: regionUser, password: regionPass }, `SCRAPER_${region}_*`);
-    }
-
-    const areaKey = areaEnvSuffix(getStoreConfig(storeNumber)?.area);
-    if (areaKey) {
-        const areaUser = String(process.env[`SCRAPER_AREA_${areaKey}_USERNAME`] || '').trim();
-        const areaPass = String(process.env[`SCRAPER_AREA_${areaKey}_PASSWORD`] || '');
-        if (areaUser && areaPass) {
-            push({ username: areaUser, password: areaPass }, `SCRAPER_AREA_${areaKey}_*`);
         }
     }
 
@@ -2049,7 +2012,7 @@ function listMacromatixCredentialCandidatesForStore(storeNumber) {
     }
 
     if (!storeMmx.length) {
-        for (const entry of listGlobalMacromatixCredentialPool(store)) {
+        for (const entry of listGlobalMacromatixCredentialPool()) {
             push(entry, entry.source);
         }
         return candidates;
@@ -2058,7 +2021,7 @@ function listMacromatixCredentialCandidatesForStore(storeNumber) {
     for (const entry of storeMmx) {
         push(entry, entry.source);
     }
-    for (const entry of listGlobalMacromatixCredentialPool(store)) {
+    for (const entry of listGlobalMacromatixCredentialPool()) {
         push(entry, `${entry.source} (fallback)`);
     }
     return candidates;

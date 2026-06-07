@@ -12,21 +12,27 @@ const SERVER_BOOT_AT = new Date().toISOString();
 
 function readDashboardVersion() {
     const fromEnv = String(process.env.DASHBOARD_VERSION || '').trim();
-    if (fromEnv) return fromEnv;
+    if (fromEnv) return normalizeVersionDisplay(fromEnv);
     try {
         const changelog = fs.readFileSync(CHANGELOG_PATH, 'utf8');
         const match = changelog.match(/\*\*Current live branch:\*\*\s*`([^`]+)`/);
-        if (match) return match[1].trim();
+        if (match) return normalizeVersionDisplay(match[1].trim());
     } catch {
         /* ignore */
     }
     try {
         const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, 'utf8'));
-        if (pkg?.version) return `v${pkg.version}`;
+        if (pkg?.version) return pkg.version;
     } catch {
         /* ignore */
     }
     return 'dev';
+}
+
+function normalizeVersionDisplay(raw) {
+    const label = String(raw || '').trim();
+    if (!label) return 'dev';
+    return label.replace(/^version[- ]?/i, '').replace(/^v/i, '') || label;
 }
 
 function getDashboardMeta() {

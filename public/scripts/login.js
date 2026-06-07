@@ -380,19 +380,23 @@ loginForm.addEventListener('submit', async (event) => {
 readQueryError();
 
 const loginVersionEl = document.getElementById('login-version');
-const loginUpdateBanner = document.getElementById('login-update-banner');
 const loginUpdateBtn = document.getElementById('login-update-btn');
 let loginMetaPollId = null;
 
+function formatVersionLabel(raw) {
+    const label = String(raw || '').trim();
+    if (!label) return '';
+    return `Version ${label.replace(/^version[- ]?/i, '')}`;
+}
+
 function setLoginVersion(version) {
     if (!loginVersionEl) return;
-    const label = String(version || '').trim();
-    loginVersionEl.textContent = label ? `Version ${label}` : '';
+    loginVersionEl.textContent = formatVersionLabel(version);
 }
 
 function setLoginUpdateVisible(visible) {
-    if (!loginUpdateBanner) return;
-    loginUpdateBanner.hidden = !visible;
+    if (!loginUpdateBtn) return;
+    loginUpdateBtn.hidden = !visible;
 }
 
 async function refreshLoginMeta() {

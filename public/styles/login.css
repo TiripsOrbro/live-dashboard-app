@@ -864,6 +864,16 @@ body.welcome-overlay-active .stores-sign-out-btn {
     padding-top: 0.5rem;
 }
 
+.login-page-footer {
+    margin-top: 0.25rem;
+}
+
+.login-page-footer .login-version {
+    margin-top: 0.65rem;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
 .login-link-btn {
     background: none;
     border: none;
@@ -878,43 +888,8 @@ a.login-link-btn {
     display: inline;
 }
 
-.login-update-banner {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.65rem;
-    margin: 0 0 1.1rem;
-    padding: 0.85rem 1rem;
-    border-radius: 12px;
-    border: 1px solid color-mix(in srgb, var(--tb-purple-light) 45%, var(--login-border));
-    background: color-mix(in srgb, var(--tb-purple-light) 12%, var(--login-surface));
-}
-
-.login-update-text {
-    margin: 0;
-    font-size: 0.88rem;
-    color: var(--login-text);
-    text-align: center;
-}
-
-.login-update-btn {
-    appearance: none;
-    border: 1px solid var(--tb-purple-light);
-    background: var(--tb-purple-light);
-    color: #fff;
-    font-size: 0.85rem;
-    font-weight: 600;
-    padding: 0.45rem 1rem;
-    border-radius: 999px;
-    cursor: pointer;
-}
-
-.login-update-btn:hover:not(:disabled) {
-    filter: brightness(1.08);
-}
-
-.login-update-btn:disabled {
-    opacity: 0.65;
+button.login-link-btn:disabled {
+    opacity: 0.55;
     cursor: wait;
 }
 

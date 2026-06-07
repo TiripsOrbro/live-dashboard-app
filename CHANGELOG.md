@@ -2,7 +2,7 @@
 
 Plain-English summary of what changed in each release — written for store managers and admins, not developers.
 
-**Current live branch:** `Version-0.3`
+**Current live branch:** `Version-0.3.1`
 
 ---
 
@@ -25,6 +25,30 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ---
 
 ## Release history
+
+### Version 0.3.1 — June 2026
+
+**Added**
+
+- **Update now on login** — after a server restart, the sign-in screen shows an **Update now** link so tablets can hard-refresh and load the latest pages.
+- **What's new** — release notes are available from **Settings → What's new** (and a version number at the bottom of the login screen).
+- **First-login password setup** — new accounts must set a proper password before using the dashboard (passwords are stored encrypted in `.Users`).
+- **DFSC crew accounts** — managers can create crew logins with encrypted name and Macromatix details; primary store logins cannot open DFSC (use a crew account instead).
+
+**Changed**
+
+- Login **Update now** and the version label sit at the bottom of the sign-in screen, styled like **Create account**.
+
+**Fixed**
+
+- Nothing else in this patch beyond the login layout tweak.
+
+**What you need to do**
+
+- On the Pi: pull branch `Version-0.3`, run `npm install`, restart PM2 (`pm2 restart dashboard`).
+- After restart, tap **Update now** on the login screen if it appears (or hard refresh once).
+
+---
 
 ### Version 0.3 — June 2026
 

@@ -22,11 +22,6 @@
                     <p class="login-subtitle">Sign in to your store</p>
                 </header>
 
-                <div id="login-update-banner" class="login-update-banner" hidden role="status" aria-live="polite">
-                    <p class="login-update-text">A dashboard update is ready.</p>
-                    <button type="button" id="login-update-btn" class="login-update-btn">Update now</button>
-                </div>
-
                 <form id="login-form" class="login-form" novalidate>
                     <label class="login-field">
                         Username
@@ -48,11 +43,14 @@
                     <p id="login-error" class="login-error" role="alert" aria-live="polite"></p>
                 </form>
 
-                <footer class="login-account-footer">
-                    <a class="login-link-btn" href="/Create-Account">Create account</a>
+                <footer class="login-page-footer">
+                    <div class="login-account-footer">
+                        <a class="login-link-btn" href="/Create-Account">Create account</a>
+                        <button type="button" id="login-update-btn" class="login-link-btn" hidden>Update now</button>
+                    </div>
+                    <p class="login-version" id="login-version" aria-live="polite"></p>
                 </footer>
             </div>
-            <p class="login-version" id="login-version" aria-live="polite"></p>
             <div id="login-progress" class="login-progress" role="progressbar" aria-label="Signing in" hidden>
                 <div class="login-progress-track">
                     <div class="login-progress-bar"></div>

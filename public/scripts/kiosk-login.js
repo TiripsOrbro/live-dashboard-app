@@ -36,6 +36,10 @@
                 errorEl.textContent = data.error || 'Sign in failed.';
                 return;
             }
+            if (data.mustChangePassword) {
+                window.location.replace('/change-password');
+                return;
+            }
             try {
                 sessionStorage.setItem('dashboard-entry', 'kiosk');
             } catch (_) {

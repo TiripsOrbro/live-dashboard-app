@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { readUserAccountSecrets } = require('./mmxUserCredentials');
 const { isTestStore, normalizeStoreKey, TEST_STORE_SLUG } = require('./testStore');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
@@ -58,6 +59,79 @@ function verifyPassword(stored, plain) {
         return timingSafeEqualString(derived, expected);
     }
     return timingSafeEqualString(value, plain);
+}
+
+function isPasswordHashed(stored) {
+    return String(stored || '').trim().startsWith('scrypt:');
+}
+
+function storedPasswordMustChange(stored) {
+    const value = String(stored || '').trim();
+    return Boolean(value) && !isPasswordHashed(value);
+}
+
+const PASSWORD_UPPER_RE = /[A-Z]/;
+const PASSWORD_DIGIT_RE = /\d/;
+const PASSWORD_SPECIAL_RE = /[^A-Za-z0-9]/;
+
+function validatePasswordComplexity(password, role) {
+    const pass = String(password || '');
+    if (pass.length < 8) {
+        return { ok: false, error: 'Password must be at least 8 characters.' };
+    }
+    const hasUpper = PASSWORD_UPPER_RE.test(pass);
+    const hasSpecial = PASSWORD_SPECIAL_RE.test(pass);
+    const hasDigit = PASSWORD_DIGIT_RE.test(pass);
+    const admin = role === 'admin';
+
+    if (admin) {
+        const missing = [];
+        if (!hasUpper) missing.push('a capital letter');
+        if (!hasSpecial) missing.push('a special character');
+        if (!hasDigit) missing.push('a number');
+        if (missing.length) {
+            return {
+                ok: false,
+                error: `Admin password must include ${missing.join(', ')}.`,
+            };
+        }
+        return { ok: true };
+    }
+
+    if (!hasUpper && !hasSpecial && !hasDigit) {
+        return {
+            ok: false,
+            error: 'Password must include at least a capital letter, a special character, or a number.',
+        };
+    }
+    return { ok: true };
+}
+
+function passwordPolicyForUser(user) {
+    const admin = isAdminUser(user);
+    return {
+        minLength: 8,
+        admin,
+        requireUpper: admin,
+        requireSpecial: admin,
+        requireDigit: admin,
+        requireAnyOne: !admin,
+        label: admin
+            ? 'At least 8 characters with a capital letter, a special character, and a number.'
+            : 'At least 8 characters with a capital letter, a special character, or a number.',
+    };
+}
+
+function lookupStoredPassword(username) {
+    const name = String(username || '').trim();
+    if (!name) return '';
+    const blocks = parseUsersFileBlocks(readUsersFileText());
+    const block = blocks.find((row) => blockMatchesUsername(row, name));
+    return block?.password || '';
+}
+
+function userNeedsPasswordChange(username) {
+    return storedPasswordMustChange(lookupStoredPassword(username));
 }
 
 function stripTrailingPipe(value) {
@@ -318,6 +392,40 @@ function appendAccountAudit(entry) {
     }
 }
 
+function isPrimaryStoreLogin(user) {
+    if (!user || isAdminUser(user)) return false;
+    return isStorePatternUsername(user.username);
+}
+
+/** Admins and manager-created crew accounts — not primary store logins (3811 / CB3811). */
+function canUserAccessDfsc(user) {
+    if (!isRealDashboardUser(user)) return false;
+    if (isAdminUser(user)) return true;
+    return !isPrimaryStoreLogin(user);
+}
+
+function fullNameFromSecrets(secrets) {
+    if (!secrets) return '';
+    return [secrets.firstName, secrets.lastName].filter(Boolean).join(' ').trim();
+}
+
+function getDfscConductorName(user) {
+    if (!user) return '';
+    if (isRealDashboardUser(user)) {
+        const full = fullNameFromSecrets(readUserAccountSecrets(user.username));
+        if (full) return full;
+    }
+    return String(user.displayName || lookupDisplayName(user.username) || '').trim();
+}
+
+function lookupWelcomeName(username) {
+    const name = String(username || '').trim();
+    if (!name) return '';
+    const secrets = readUserAccountSecrets(name);
+    if (secrets?.firstName) return secrets.firstName;
+    return lookupDisplayName(name) || name;
+}
+
 function isStorePatternUsername(username) {
     const name = String(username || '').trim();
     return /^\d{3,6}$/.test(name) || /^CB\d{3,6}$/i.test(name);
@@ -435,12 +543,14 @@ function changeUserPassword(username, currentPassword, newPassword) {
     if (!name || !current || !next) {
         return { ok: false, error: 'Current and new password are required.' };
     }
-    if (next.length < 6) {
-        return { ok: false, error: 'New password must be at least 6 characters.' };
-    }
     const verified = authenticate(name, current);
     if (!verified) {
         return { ok: false, error: 'Current password is incorrect.' };
+    }
+    const complexity = validatePasswordComplexity(next, verified.role);
+    if (!complexity.ok) return complexity;
+    if (timingSafeEqualString(current, next)) {
+        return { ok: false, error: 'Choose a new password different from your current one.' };
     }
     const blocks = parseUsersFileBlocks(readUsersFileText());
     const block = blocks.find((row) => blockMatchesUsername(row, name));
@@ -451,6 +561,37 @@ function changeUserPassword(username, currentPassword, newPassword) {
     writeUsersFileText(serializeUsersFile(blocks));
     appendAccountAudit({ action: 'change-password', username: name });
     return { ok: true };
+}
+
+/** First login — replace a temporary plaintext password with a hashed one. */
+function completePasswordSetup(username, currentPassword, newPassword) {
+    const name = String(username || '').trim();
+    const current = String(currentPassword || '');
+    const next = String(newPassword || '');
+    if (!name || !current || !next) {
+        return { ok: false, error: 'Current and new password are required.' };
+    }
+    if (!userNeedsPasswordChange(name)) {
+        return { ok: false, error: 'Your password is already set. Sign in normally or use Change password in settings.' };
+    }
+    const verified = authenticate(name, current);
+    if (!verified) {
+        return { ok: false, error: 'Current password is incorrect.' };
+    }
+    const complexity = validatePasswordComplexity(next, verified.role);
+    if (!complexity.ok) return complexity;
+    if (timingSafeEqualString(current, next)) {
+        return { ok: false, error: 'Choose a new password different from your temporary password.' };
+    }
+    const blocks = parseUsersFileBlocks(readUsersFileText());
+    const block = blocks.find((row) => blockMatchesUsername(row, name));
+    if (!block) {
+        return { ok: false, error: 'Account not found.' };
+    }
+    block.password = hashPassword(next);
+    writeUsersFileText(serializeUsersFile(blocks));
+    appendAccountAudit({ action: 'complete-password-setup', username: name });
+    return { ok: true, user: { ...verified, passwordChangeRequired: false } };
 }
 
 function setAccountColourBlindPreference(username, enabled) {
@@ -504,9 +645,11 @@ function appendStoreUser({ username, password, stores, displayName, createdBy, a
     if (!name || !pass) {
         return { ok: false, error: 'Username and password are required.' };
     }
-    if (pass.length < 6) {
-        return { ok: false, error: 'Password must be at least 6 characters.' };
+    if (pass.length < 8) {
+        return { ok: false, error: 'Password must be at least 8 characters.' };
     }
+    const complexity = validatePasswordComplexity(pass, 'store');
+    if (!complexity.ok) return complexity;
     if (/^CB/i.test(name) && isCbUsername(name)) {
         return { ok: false, error: 'Create the main username; a colour-blind alias is added automatically when applicable.' };
     }
@@ -581,7 +724,9 @@ function authenticate(username, password) {
     for (const row of readUsersFileSync()) {
         if (!usernameMatches(row.username, name)) continue;
         if (!verifyPassword(row.password, pass)) return null;
-        return normalizeUser(row);
+        const user = normalizeUser(row);
+        user.passwordChangeRequired = storedPasswordMustChange(row.password);
+        return user;
     }
     return null;
 }
@@ -904,8 +1049,9 @@ function userProfileForClient(user) {
     const stores = user.stores === '*' ? '*' : [...user.stores];
     const skipStorePicker = Boolean(singleStoreForUser(user));
     const displayName = String(user.displayName || lookupDisplayName(user.username) || '').trim();
-    const welcomeName = displayName || user.username;
+    const welcomeName = lookupWelcomeName(user.username) || displayName || user.username;
     const store = singleStoreForUser(user);
+    const mustChangePassword = isRealDashboardUser(user) && userNeedsPasswordChange(user.username);
     return {
         username: user.username,
         displayName,
@@ -913,12 +1059,20 @@ function userProfileForClient(user) {
         role: user.role,
         stores,
         skipStorePicker,
-            defaultPath: isAdminUser(user) ? getAdminRedirectPath() : getLoginRedirectPath(user, 'mic'),
+        defaultPath: mustChangePassword
+            ? '/change-password'
+            : isAdminUser(user)
+              ? getAdminRedirectPath()
+              : getLoginRedirectPath(user, 'mic'),
         micPath: store ? `/${store}/mic` : null,
         canCreateAccount: canUserCreateAccounts(user),
         canViewManagedAccounts: canUserCreateAccounts(user),
+        canAccessDfsc: canUserAccessDfsc(user),
+        conductorFullName: getDfscConductorName(user),
         colorBlind: Boolean(user.colorBlind),
         micDarkMode: Boolean(user.micDarkMode),
+        mustChangePassword,
+        passwordPolicy: mustChangePassword ? passwordPolicyForUser(user) : null,
     };
 }
 
@@ -960,6 +1114,11 @@ module.exports = {
     isStorePatternUsername,
     usernameExists,
     changeUserPassword,
+    completePasswordSetup,
+    validatePasswordComplexity,
+    passwordPolicyForUser,
+    userNeedsPasswordChange,
+    isPasswordHashed,
     setAccountColourBlindPreference,
     setAccountMicDarkModePreference,
     appendStoreUser,
@@ -968,6 +1127,10 @@ module.exports = {
     listManagedStoreAccounts,
     deleteManagedStoreAccount,
     isRealDashboardUser,
+    isPrimaryStoreLogin,
+    canUserAccessDfsc,
+    getDfscConductorName,
+    lookupWelcomeName,
     isSyntheticUser,
     parseUsersFileBlocks,
     normalizeUser,

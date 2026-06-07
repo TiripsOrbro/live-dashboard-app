@@ -1,0 +1,79 @@
+.changelog-page .changelog-root {
+    min-height: 100%;
+    overflow-y: auto;
+}
+
+.changelog-page .changelog-card {
+    max-width: 42rem;
+    width: min(100%, 42rem);
+    margin: 0 auto;
+}
+
+.changelog-title {
+    font-size: 1.35rem;
+}
+
+.changelog-body {
+    margin-top: 1rem;
+    max-height: min(62vh, 34rem);
+    overflow-y: auto;
+    padding-right: 0.25rem;
+    font-size: 0.92rem;
+    line-height: 1.55;
+    color: var(--login-text);
+}
+
+.changelog-body h1,
+.changelog-body h2,
+.changelog-body h3 {
+    margin: 1.25rem 0 0.55rem;
+    line-height: 1.25;
+}
+
+.changelog-body h1 {
+    font-size: 1.15rem;
+}
+
+.changelog-body h2 {
+    font-size: 1.05rem;
+    color: var(--tb-purple-light);
+}
+
+.changelog-body h3 {
+    font-size: 0.95rem;
+}
+
+.changelog-body p,
+.changelog-body ul {
+    margin: 0.45rem 0;
+}
+
+.changelog-body ul {
+    padding-left: 1.2rem;
+}
+
+.changelog-body li + li {
+    margin-top: 0.25rem;
+}
+
+.changelog-body hr {
+    border: 0;
+    border-top: 1px solid var(--login-border);
+    margin: 1rem 0;
+}
+
+.changelog-table-line {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    overflow-x: auto;
+}
+
+.changelog-error {
+    color: #ffb4b4;
+}
+
+.changelog-version-foot {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--login-border);
+}

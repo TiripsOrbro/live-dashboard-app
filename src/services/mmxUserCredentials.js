@@ -68,17 +68,18 @@ function readCredentialsFileRaw(dashboardUsername) {
     }
 }
 
-/** AES-256-GCM at rest — only the dashboard username is stored in cleartext for lookup. */
-function saveMmxCredentialsForUser(dashboardUsername, mmxUsername, mmxPassword) {
+function writeUserAccountSecrets(dashboardUsername, secrets) {
     const dashUser = String(dashboardUsername || '').trim();
-    const mmxUser = String(mmxUsername || '').trim();
-    const mmxPass = String(mmxPassword || '');
+    const mmxUser = String(secrets?.mmxUsername || '').trim();
+    const mmxPass = String(secrets?.mmxPassword || '');
     if (!dashUser || !mmxUser || !mmxPass) {
         return { ok: false, error: 'Dashboard user and Macromatix credentials are required.' };
     }
     try {
         fs.mkdirSync(MMX_CREDENTIALS_DIR, { recursive: true });
         const encrypted = encryptPayload({
+            firstName: String(secrets.firstName || '').trim(),
+            lastName: String(secrets.lastName || '').trim(),
             mmxUsername: mmxUser,
             mmxPassword: mmxPass,
             updatedAt: new Date().toISOString(),
@@ -98,40 +99,67 @@ function saveMmxCredentialsForUser(dashboardUsername, mmxUsername, mmxPassword) 
         );
         return { ok: true, encrypted: true };
     } catch (error) {
-        return { ok: false, error: error.message || 'Could not save Macromatix credentials.' };
+        return { ok: false, error: error.message || 'Could not save account credentials.' };
     }
 }
 
-function readMmxCredentialsForUser(dashboardUsername) {
+function readUserAccountSecrets(dashboardUsername) {
     const dashUser = String(dashboardUsername || '').trim();
     if (!dashUser) return null;
     const raw = readCredentialsFileRaw(dashUser);
     if (!raw) return null;
 
-    if (raw.encrypted && raw.encrypted.iv && raw.encrypted.data && raw.encrypted.tag) {
+    if (raw.encrypted?.iv && raw.encrypted?.data && raw.encrypted?.tag) {
         try {
             const decrypted = decryptPayload(raw.encrypted);
             return {
-                username: String(decrypted.mmxUsername || '').trim(),
-                password: String(decrypted.mmxPassword || ''),
+                firstName: String(decrypted.firstName || '').trim(),
+                lastName: String(decrypted.lastName || '').trim(),
+                mmxUsername: String(decrypted.mmxUsername || '').trim(),
+                mmxPassword: String(decrypted.mmxPassword || ''),
             };
         } catch {
             return null;
         }
     }
 
-    // Legacy plaintext file — re-save encrypted and remove secrets from disk.
     const legacyUser = String(raw.mmxUsername || '').trim();
     const legacyPass = String(raw.mmxPassword || '');
     if (legacyUser && legacyPass) {
-        const migrated = saveMmxCredentialsForUser(dashUser, legacyUser, legacyPass);
+        const migrated = writeUserAccountSecrets(dashUser, {
+            firstName: '',
+            lastName: '',
+            mmxUsername: legacyUser,
+            mmxPassword: legacyPass,
+        });
         if (migrated.ok) {
             console.log(`[MMX credentials] Migrated plaintext credentials to encrypted storage for ${dashUser}`);
         }
-        return { username: legacyUser, password: legacyPass };
+        return { firstName: '', lastName: '', mmxUsername: legacyUser, mmxPassword: legacyPass };
     }
 
     return null;
+}
+
+/** AES-256-GCM at rest — only the dashboard username is stored in cleartext for lookup. */
+function saveUserAccountSecrets(dashboardUsername, secrets) {
+    return writeUserAccountSecrets(dashboardUsername, secrets);
+}
+
+function saveMmxCredentialsForUser(dashboardUsername, mmxUsername, mmxPassword, profile = {}) {
+    const existing = readUserAccountSecrets(dashboardUsername) || {};
+    return writeUserAccountSecrets(dashboardUsername, {
+        firstName: String(profile.firstName ?? existing.firstName ?? '').trim(),
+        lastName: String(profile.lastName ?? existing.lastName ?? '').trim(),
+        mmxUsername,
+        mmxPassword,
+    });
+}
+
+function readMmxCredentialsForUser(dashboardUsername) {
+    const secrets = readUserAccountSecrets(dashboardUsername);
+    if (!secrets?.mmxUsername) return null;
+    return { username: secrets.mmxUsername, password: secrets.mmxPassword };
 }
 
 function hasMmxCredentialsForUser(dashboardUsername) {
@@ -153,6 +181,8 @@ function deleteMmxCredentialsForUser(dashboardUsername) {
 
 module.exports = {
     saveMmxCredentialsForUser,
+    saveUserAccountSecrets,
+    readUserAccountSecrets,
     readMmxCredentialsForUser,
     hasMmxCredentialsForUser,
     deleteMmxCredentialsForUser,

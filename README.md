@@ -149,6 +149,8 @@ node scripts/hash-dashboard-password.js "your-password"
 
 Paste the `scrypt:…` output into `.Users` as the password line.
 
+**First sign-in password change:** If the password line in `.Users` is still plain text (not `scrypt:…`), the user is sent to **Set your password** on first login. Their new password is written back to `.Users` as an encrypted `scrypt:` hash. Admin passwords must include a capital letter, a special character, and a number; store passwords must include at least one of those. Minimum length is 8 characters.
+
 When `.Users` exists, username/password login is required. If no users file exists, the app falls back to the legacy single `DASHBOARD_ACCESS_KEY` (full admin access). With neither configured, the dashboard is open (dev only).
 
 Sign out: `/logout`. Old `/unlock` bookmarks redirect to `/login`.

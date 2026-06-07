@@ -317,8 +317,9 @@ function computeSalesToday(storeSlice = {}) {
     };
 }
 
-function buildMicPayload(storeNumber, storeSlice = {}) {
+function buildMicPayload(storeNumber, storeSlice = {}, options = {}) {
     const store = String(storeNumber || '').trim();
+    const canAccessDfsc = options.canAccessDfsc !== false;
     const day = melbourneTodayIso();
     const dailyItemMultipliers = getDailyItemMultipliers(store, day);
     const cfg = getStoreConfig(store) || {};
@@ -360,14 +361,16 @@ function buildMicPayload(storeNumber, storeSlice = {}) {
         defaultMultiplier: DEFAULT_ITEM_MULTIPLIER,
         multiplierNothingLabel: MULTIPLIER_NOTHING_LABEL,
         stockCount: buildStockCountTileState(store, storeSlice),
-        dfsc: {
-            href: `/${store}/dfsc`,
-            subtext: dfscSubtext,
-            amCompleted: dfscDay.amCompleted,
-            pmCompleted: dfscDay.pmCompleted,
-            inProgress: Boolean(dfscDay.inProgress),
-            openAuditCount,
-        },
+        dfsc: canAccessDfsc
+            ? {
+                  href: `/${store}/dfsc`,
+                  subtext: dfscSubtext,
+                  amCompleted: dfscDay.amCompleted,
+                  pmCompleted: dfscDay.pmCompleted,
+                  inProgress: Boolean(dfscDay.inProgress),
+                  openAuditCount,
+              }
+            : null,
     };
 }
 

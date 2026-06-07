@@ -43,6 +43,7 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 **Changed**
 
 - **Single login for everyone** — admins can sign in at `/login` (same page as store managers) and are taken straight to the admin overview after login. The separate `/admin` login page still works.
+- **First-login password setup** — accounts with a temporary plain-text password in `.Users` must choose a new password before using the dashboard. The new password is saved encrypted in `.Users`. Admins need a capital letter, special character, and number; store accounts need at least one of those (minimum 8 characters).
 - **Macromatix scraping** — each store is logged into separately (better for accounts that only allow one store per login). Scraping also pulls **last year’s sales** data used for live **SSSG %**.
 - **Upselling leaderboard** — scoring and storage updates for the podium display.
 

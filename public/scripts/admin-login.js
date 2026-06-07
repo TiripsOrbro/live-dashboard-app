@@ -40,6 +40,10 @@
                 showError(data.error || 'Sign in failed.');
                 return;
             }
+            if (data.mustChangePassword) {
+                window.location.replace('/change-password');
+                return;
+            }
             window.location.replace(data.defaultPath || '/admin/overview');
         } catch (err) {
             showError('Could not sign in. Check your connection.');

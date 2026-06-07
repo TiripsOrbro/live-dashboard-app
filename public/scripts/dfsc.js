@@ -1399,7 +1399,7 @@ function renderSignOffSection() {
         <div class="dfsc-field">
             <label for="dfsc-signoff-name">Full name of the manager who completed this checklist</label>
             <input class="dfsc-input" id="dfsc-signoff-name" type="text"
-                value="${escapeHtml(session.signOff?.name || session.conductor?.name || '')}" />
+                value="${escapeHtml(session.signOff?.name || session.conductor?.name || context?.conductorFullName || '')}" />
         </div>
         <div class="dfsc-field">
             <span class="dfsc-field-label">Signature</span>
@@ -2265,6 +2265,12 @@ function renderLandingView() {
     document.getElementById('dfsc-core-report-btn')?.addEventListener('click', downloadCoreReport);
     document.getElementById('dfsc-history-btn')?.addEventListener('click', openInspectionHistory);
     bindOpenAuditEvents();
+
+    const nameInput = document.getElementById('dfsc-name');
+    if (nameInput && context.conductorFullName) {
+        nameInput.value = context.conductorFullName;
+    }
+
     requestAnimationFrame(() => blurActiveTextInput());
 }
 
@@ -2368,7 +2374,12 @@ async function init() {
 
         renderLandingView();
     } catch (err) {
-        app.innerHTML = `<div class="dfsc-shell"><div class="dfsc-status dfsc-status--error">${escapeHtml(err.message)}</div></div>`;
+        const denied = /not available|403/i.test(String(err.message || ''));
+        app.innerHTML = `<div class="dfsc-shell"><div class="dfsc-status dfsc-status--error">${escapeHtml(
+            denied
+                ? 'DFSC is not available on shared store login accounts. Ask your manager to create a personal crew account for you.'
+                : err.message
+        )}</div><p style="margin-top:1rem;text-align:center"><a class="dfsc-btn dfsc-btn-secondary" href="/${escapeHtml(STORE_NUMBER)}/mic">Back to MIC</a></p></div>`;
     }
 }
 

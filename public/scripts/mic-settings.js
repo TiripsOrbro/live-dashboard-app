@@ -24,6 +24,7 @@
                 <div class="mic-settings-actions">
                     <button type="button" class="mic-settings-btn" data-action="change-password">Change password</button>
                     <button type="button" class="mic-settings-btn" data-action="view-accounts" id="mic-view-accounts-btn"${viewAccountsHidden ? ' hidden' : ''}>View accounts</button>
+                    <button type="button" class="mic-settings-btn" data-action="changelog">What's new</button>
                     <div class="mic-settings-pref-block">
                         <div class="mic-settings-toggle-row">
                             <span class="mic-settings-toggle-label" id="mic-dark-mode-label">Dark mode</span>
@@ -223,6 +224,10 @@
                     ? options.getViewAccountsOptions()
                     : options.viewAccountsOptions || {};
             global.DashboardAccount?.openViewAccountsModal?.(viewOpts);
+        });
+        picker.querySelector('[data-action="changelog"]')?.addEventListener('click', () => {
+            closeSettingsPanel();
+            global.location.href = '/changelog';
         });
 
         if (options.resolveViewAccountsVisibility !== false) {

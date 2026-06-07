@@ -21,11 +21,17 @@
         statusEl.hidden = true;
 
         const username = document.getElementById('new-username').value.trim();
-        const displayName = document.getElementById('new-display-name').value.trim();
+        const firstName = document.getElementById('new-first-name').value.trim();
+        const lastName = document.getElementById('new-last-name').value.trim();
         const password = document.getElementById('new-password').value;
         const confirmPassword = document.getElementById('new-password-confirm').value;
         const mmxUsername = document.getElementById('mmx-username').value.trim();
         const mmxPassword = document.getElementById('mmx-password').value;
+
+        if (!firstName || !lastName) {
+            errorEl.textContent = 'First name and last name are required.';
+            return;
+        }
 
         if (password !== confirmPassword) {
             errorEl.textContent = 'Passwords do not match.';
@@ -44,7 +50,8 @@
                 credentials: 'include',
                 body: JSON.stringify({
                     username,
-                    displayName: displayName || username,
+                    firstName,
+                    lastName,
                     password,
                     confirmPassword,
                     mmxUsername,

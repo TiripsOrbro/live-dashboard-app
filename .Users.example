@@ -6,8 +6,13 @@
 # Named admins: NicholasAntonello, ThomasRead, AshOwens
 #
 # Usernames are case-insensitive at login. Passwords are case-sensitive.
-# Passwords: plaintext for quick setup, or scrypt:… from scripts/hash-dashboard-password.js
+# Passwords: use temporary plaintext for first sign-in only — users are prompted to
+# set a new password on first login; the new password is saved encrypted (scrypt:…).
+# Or pre-hash with scripts/hash-dashboard-password.js if you do not want the first-login prompt.
 #
+# Password rules after first login:
+#   Admin (* access): 8+ chars, must include capital letter, special character, AND number.
+#   Store accounts:   8+ chars, must include at least ONE of capital, special, or number.
 # Optional CB username (e.g. CB3811): same password and welcome name, opens the dashboard
 # with blue/yellow/red colours instead of green/yellow/red (colour-blind friendly).
 #

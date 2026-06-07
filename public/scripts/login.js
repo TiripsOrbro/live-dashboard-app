@@ -344,6 +344,11 @@ async function submitLogin() {
             return;
         }
 
+        if (data.mustChangePassword) {
+            window.location.replace('/change-password');
+            return;
+        }
+
         const dest = loginDestination(data, username);
         try {
             sessionStorage.setItem(
@@ -373,3 +378,54 @@ loginForm.addEventListener('submit', async (event) => {
 });
 
 readQueryError();
+
+const loginVersionEl = document.getElementById('login-version');
+const loginUpdateBanner = document.getElementById('login-update-banner');
+const loginUpdateBtn = document.getElementById('login-update-btn');
+let loginMetaPollId = null;
+
+function setLoginVersion(version) {
+    if (!loginVersionEl) return;
+    const label = String(version || '').trim();
+    loginVersionEl.textContent = label ? `Version ${label}` : '';
+}
+
+function setLoginUpdateVisible(visible) {
+    if (!loginUpdateBanner) return;
+    loginUpdateBanner.hidden = !visible;
+}
+
+async function refreshLoginMeta() {
+    if (!window.DashboardMeta?.fetchMeta) return;
+    try {
+        const meta = await window.DashboardMeta.fetchMeta();
+        setLoginVersion(meta.version);
+        if (window.DashboardMeta.needsUpdate(meta)) {
+            setLoginUpdateVisible(true);
+            return;
+        }
+        setLoginUpdateVisible(false);
+        if (!localStorage.getItem(window.DashboardMeta.BOOT_STORAGE_KEY)) {
+            window.DashboardMeta.markSynced(meta);
+        }
+    } catch {
+        /* ignore — version footer stays blank */
+    }
+}
+
+if (loginUpdateBtn) {
+    loginUpdateBtn.addEventListener('click', async () => {
+        loginUpdateBtn.disabled = true;
+        try {
+            await window.DashboardMeta?.hardRefresh?.();
+        } catch {
+            loginUpdateBtn.disabled = false;
+        }
+    });
+}
+
+refreshLoginMeta();
+loginMetaPollId = window.setInterval(refreshLoginMeta, 60000);
+window.addEventListener('pagehide', () => {
+    if (loginMetaPollId) window.clearInterval(loginMetaPollId);
+});

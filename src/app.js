@@ -190,6 +190,9 @@ const {
     resolveUsersFilePath,
     isStorePatternUsername,
     changeUserPassword,
+    completePasswordSetup,
+    passwordPolicyForUser,
+    userNeedsPasswordChange,
     setAccountColourBlindPreference,
     setAccountMicDarkModePreference,
     appendStoreUser,
@@ -198,6 +201,8 @@ const {
     listManagedStoreAccounts,
     deleteManagedStoreAccount,
     isRealDashboardUser,
+    canUserAccessDfsc,
+    getDfscConductorName,
     parseCookies,
     usernameMatches,
 } = require('./services/dashboardUsers');
@@ -234,7 +239,8 @@ const {
     clearAccountGateCookie,
     resolveCreateAccountParent,
 } = require('./services/createAccountGate');
-const { saveMmxCredentialsForUser, deleteMmxCredentialsForUser } = require('./services/mmxUserCredentials');
+const { saveUserAccountSecrets, deleteMmxCredentialsForUser } = require('./services/mmxUserCredentials');
+const { getDashboardMeta, readChangelogMarkdown } = require('./services/dashboardMeta');
 const { verifyMacromatixLogin } = require('./services/macromatixScraper');
 const {
     createRegistrationOptions,
@@ -346,13 +352,18 @@ function setSessionCookie(res, user, remember = true, entry = '') {
 function sendLoginSuccess(req, res, user, destOverride = '') {
     const mode = String(req.body?.mode || 'dashboard').trim().toLowerCase();
     const profile = userProfileForClient(user);
-    const dest = destOverride || getLoginRedirectPath(user, mode) || profile.defaultPath || '/login';
+    const mustChange = Boolean(profile.mustChangePassword);
+    const dest = mustChange
+        ? '/change-password'
+        : destOverride || getLoginRedirectPath(user, mode) || profile.defaultPath || '/login';
     if (wantsJsonResponse(req)) {
         res.json({
             success: true,
             welcomeName: profile.welcomeName || '',
             defaultPath: dest,
             mode,
+            mustChangePassword: mustChange,
+            passwordPolicy: profile.passwordPolicy,
         });
         return;
     }
@@ -443,6 +454,8 @@ function isLoginPublicPath(reqPath) {
         return true;
     }
     if (reqPath === '/api/account/login-ui') return true;
+    if (reqPath === '/api/dashboard/meta') return true;
+    if (reqPath === '/scripts/dashboard-meta.js') return true;
     if (reqPath === '/api/account/create') return true;
     if (reqPath.startsWith('/api/webauthn/')) return true;
     return false;
@@ -478,6 +491,39 @@ function dashboardAuthMiddleware(req, res, next) {
     sendUnauthorized(req, res);
 }
 
+function isPasswordChangeAllowedPath(reqPath) {
+    if (reqPath === '/change-password') return true;
+    if (reqPath === '/api/account/complete-password-setup') return true;
+    if (reqPath === '/api/me') return true;
+    if (reqPath === '/logout') return true;
+    if (reqPath === '/scripts/change-password.js') return true;
+    if (reqPath === '/styles/login.css' || reqPath === '/styles/brand-mark.css') return true;
+    if (reqPath === '/scripts/brand-mark.js') return true;
+    if (reqPath === '/icon.svg' || reqPath === '/icon-mark.svg') return true;
+    return false;
+}
+
+function passwordChangeMiddleware(req, res, next) {
+    const user = req.dashboardUser;
+    if (!isRealDashboardUser(user) || !userNeedsPasswordChange(user.username)) {
+        next();
+        return;
+    }
+    if (isPasswordChangeAllowedPath(req.path)) {
+        next();
+        return;
+    }
+    if (isApiRequest(req)) {
+        res.status(403).json({
+            success: false,
+            error: 'You must set a new password before continuing.',
+            mustChangePassword: true,
+        });
+        return;
+    }
+    res.redirect('/change-password');
+}
+
 app.use(ipAllowlistMiddleware);
 
 app.get('/unlock', (req, res) => {
@@ -490,6 +536,10 @@ app.get('/', (req, res) => {
         return;
     }
     const user = getRequestUser(req);
+    if (isRealDashboardUser(user) && userNeedsPasswordChange(user.username)) {
+        res.redirect('/change-password');
+        return;
+    }
     if (isAdminUser(user)) {
         res.redirect(getAdminRedirectPath());
         return;
@@ -501,6 +551,10 @@ app.get('/', (req, res) => {
 app.get('/login', (req, res) => {
     if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
         const user = getRequestUser(req);
+        if (isRealDashboardUser(user) && userNeedsPasswordChange(user.username)) {
+            res.redirect('/change-password');
+            return;
+        }
         const dest = getLoginRedirectPath(user);
         res.redirect(dest === '/login' ? '/login' : dest);
         return;
@@ -649,6 +703,11 @@ app.get('/api/account/login-ui', (req, res) => {
     });
 });
 
+app.get('/api/dashboard/meta', (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, ...getDashboardMeta() });
+});
+
 app.post('/unlock', (req, res) => {
     const password = String(req.body?.accessKey || '');
     if (!authRequired()) {
@@ -732,6 +791,7 @@ for (const loginAsset of ['/scripts/brand-mark.js', '/styles/brand-mark.css']) {
 }
 
 app.use(dashboardAuthMiddleware);
+app.use(passwordChangeMiddleware);
 
 // Middleware to serve static files. `index: false` so `/` is handled by our store-picker route below
 // rather than being auto-served from public/index.html (the per-store dashboard).
@@ -1495,6 +1555,23 @@ function assertStoreAccess(req, res, storeNumber) {
     return true;
 }
 
+function assertDfscAccess(req, res) {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessDfsc(user)) {
+        if (isApiRequest(req)) {
+            res.status(403).json({
+                success: false,
+                error: 'DFSC is not available on shared store login accounts. Ask your manager to create a personal crew account for you.',
+                canAccessDfsc: false,
+            });
+            return false;
+        }
+        res.status(403).send('DFSC is not available for this account type.');
+        return false;
+    }
+    return true;
+}
+
 async function enrichSalesSliceWithStockCount(slice, options = {}) {
     if (!slice || typeof slice !== 'object') return slice;
     const storeNumber = String(slice.storeNumber || '').trim();
@@ -1615,6 +1692,7 @@ app.get(/^\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)\/?$/i, (req, res) => 
 
 function sendDfscPage(req, res, storeNumber) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
+    if (!assertDfscAccess(req, res)) return;
     res.sendFile(path.join(__dirname, '../public', 'dfsc.html'));
 }
 
@@ -1631,6 +1709,77 @@ app.get(/^\/(teststore|\d{3,6})\/dfsc\/audit\/?$/i, (req, res) => {
 app.get('/api/me', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     res.json({ success: true, ...userProfileForClient(user) });
+});
+
+app.get('/change-password', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.redirect('/login');
+        return;
+    }
+    if (!userNeedsPasswordChange(user.username)) {
+        res.redirect(
+            isAdminUser(user) ? getAdminRedirectPath() : getLoginRedirectPath(user, 'mic')
+        );
+        return;
+    }
+    res.sendFile(path.join(PUBLIC_ROOT, 'change-password.html'));
+});
+
+app.get('/changelog', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.redirect('/login');
+        return;
+    }
+    res.sendFile(path.join(PUBLIC_ROOT, 'changelog.html'));
+});
+
+app.get('/api/dashboard/changelog', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.status(401).json({ success: false, error: 'Sign in to view the changelog.' });
+        return;
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json({
+        success: true,
+        version: getDashboardMeta().version,
+        markdown: readChangelogMarkdown(),
+    });
+});
+
+app.post('/api/account/complete-password-setup', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.status(403).json({ success: false, error: 'Sign in first to set your password.' });
+        return;
+    }
+    if (!userNeedsPasswordChange(user.username)) {
+        res.status(400).json({ success: false, error: 'Password setup is not required for this account.' });
+        return;
+    }
+    const currentPassword = String(req.body?.currentPassword || '');
+    const newPassword = String(req.body?.newPassword || '');
+    const confirmPassword = String(req.body?.confirmPassword || '');
+    if (newPassword !== confirmPassword) {
+        res.status(400).json({ success: false, error: 'New passwords do not match.' });
+        return;
+    }
+    const result = completePasswordSetup(user.username, currentPassword, newPassword);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    const entry = dashboardEntryFromRequest(req) || (isAdminUser(user) ? 'admin' : 'store');
+    const refreshed = authenticate(user.username, newPassword);
+    setSessionCookie(res, refreshed || user, true, entry);
+    const profile = userProfileForClient(refreshed || user);
+    res.json({
+        success: true,
+        defaultPath: profile.defaultPath,
+        welcomeName: profile.welcomeName,
+    });
 });
 
 app.post('/api/account/change-password', (req, res) => {
@@ -1725,12 +1874,18 @@ app.post('/api/account/create', async (req, res) => {
     const username = String(req.body?.username || '').trim();
     const password = String(req.body?.password || '');
     const confirmPassword = String(req.body?.confirmPassword || '');
-    const displayName = String(req.body?.displayName || username).trim();
+    const firstName = String(req.body?.firstName || '').trim();
+    const lastName = String(req.body?.lastName || '').trim();
+    const displayName = String(req.body?.displayName || firstName || username).trim();
     const mmxUsername = String(req.body?.mmxUsername || '').trim();
     const mmxPassword = String(req.body?.mmxPassword || '');
 
     if (password !== confirmPassword) {
         res.status(400).json({ success: false, error: 'Passwords do not match.' });
+        return;
+    }
+    if (!firstName || !lastName) {
+        res.status(400).json({ success: false, error: 'First name and last name are required.' });
         return;
     }
     if (!mmxUsername || !mmxPassword) {
@@ -1750,7 +1905,7 @@ app.post('/api/account/create', async (req, res) => {
     const result = appendStoreUser({
         username,
         password,
-        displayName,
+        displayName: firstName,
         stores: parent.stores,
         createdBy: parent.parentUsername,
         addCbAlias: parent.addCbAlias,
@@ -1760,7 +1915,12 @@ app.post('/api/account/create', async (req, res) => {
         return;
     }
 
-    const mmxSave = saveMmxCredentialsForUser(result.username, mmxUsername, mmxPassword);
+    const mmxSave = saveUserAccountSecrets(result.username, {
+        firstName,
+        lastName,
+        mmxUsername,
+        mmxPassword,
+    });
     if (!mmxSave.ok) {
         res.status(500).json({ success: false, error: mmxSave.error });
         return;
@@ -2275,9 +2435,9 @@ app.get('/api/mic', async (req, res) => {
     try {
         const store = String(req.query.store || '').trim();
         if (!store || !assertStoreAccess(req, res, store)) return;
+        const user = req.dashboardUser || getRequestUser(req);
         let storeSlice = {};
         if (isTestStore(store)) {
-            const user = req.dashboardUser || getRequestUser(req);
             const payload = await getSalesDataCached();
             storeSlice = buildTestStoreSalesSlice(payload, { stickyKey: stickyKeyForTestMirror(req, user) });
         } else {
@@ -2285,7 +2445,7 @@ app.get('/api/mic', async (req, res) => {
             storeSlice = storeSliceFromPayload(payload, store) || {};
             await enrichSalesSliceWithStockCount(storeSlice);
         }
-        res.json({ success: true, ...buildMicPayload(store, storeSlice) });
+        res.json({ success: true, ...buildMicPayload(store, storeSlice, { canAccessDfsc: canUserAccessDfsc(user) }) });
     } catch (error) {
         console.error('API: Error loading MIC overview:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -2361,7 +2521,14 @@ app.get('/api/dfsc/context', (req, res) => {
     try {
         const store = String(req.query.store || '').trim();
         if (!store || !assertStoreAccess(req, res, store)) return;
-        res.json({ success: true, ...getDfscContext(store) });
+        if (!assertDfscAccess(req, res)) return;
+        const user = req.dashboardUser || getRequestUser(req);
+        res.json({
+            success: true,
+            ...getDfscContext(store),
+            conductorFullName: getDfscConductorName(user),
+            canAccessDfsc: true,
+        });
     } catch (error) {
         console.error('API: Error loading DFSC context:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -2372,6 +2539,7 @@ app.get('/api/dfsc/open', (req, res) => {
     try {
         const store = String(req.query.store || '').trim();
         if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
         res.json({ success: true, openAudits: listDfscOpenAudits(store) });
     } catch (error) {
         console.error('API: Error listing open DFSC audits:', error);
@@ -2383,6 +2551,7 @@ app.get('/api/dfsc/history', (req, res) => {
     try {
         const store = String(req.query.store || '').trim();
         if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
         const limit = Number(req.query.limit) || 50;
         res.json({ success: true, history: listDfscInspectionHistory(store, { limit }) });
     } catch (error) {
@@ -2396,6 +2565,7 @@ app.delete('/api/dfsc/session', (req, res) => {
         const store = String(req.body?.store || req.query.store || '').trim();
         const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
         if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
         const result = deleteDfscOpenAudit(store, sessionId);
         if (!result.ok) {
             res.status(400).json({ success: false, error: result.error });
@@ -2412,6 +2582,7 @@ app.post('/api/dfsc/start', (req, res) => {
     try {
         const store = String(req.body?.store || req.query.store || '').trim();
         if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
         const result = createDfscSession(store, {
             name: req.body?.name,
             shift: req.body?.shift,
@@ -2434,6 +2605,7 @@ app.get('/api/dfsc/session', (req, res) => {
         const store = String(req.query.store || '').trim();
         const sessionId = String(req.query.sessionId || '').trim();
         if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
         const session = getDfscSessionById(store, sessionId, req.query.dateKey);
         if (!session) {
             res.status(404).json({ success: false, error: 'Session not found.' });
@@ -2451,6 +2623,7 @@ app.get('/api/dfsc/report.pdf', async (req, res) => {
         const store = String(req.query.store || '').trim();
         const sessionId = String(req.query.sessionId || '').trim();
         if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
         const session = getDfscSessionById(store, sessionId, req.query.dateKey);
         if (!session) {
             res.status(404).json({ success: false, error: 'Session not found.' });
@@ -2475,6 +2648,7 @@ app.get('/api/dfsc/core-report.pdf', async (req, res) => {
     try {
         const store = String(req.query.store || '').trim();
         if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
         const { buffer, filename } = await buildCoreReportPdf(store);
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -2490,6 +2664,7 @@ app.post('/api/dfsc/reopen', (req, res) => {
         const store = String(req.body?.store || req.query.store || '').trim();
         const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
         if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
         const result = reopenDfscSession(store, sessionId, req.body?.dateKey || req.query.dateKey);
         if (!result.ok) {
             res.status(400).json({ success: false, error: result.error });
@@ -2507,6 +2682,7 @@ app.put('/api/dfsc/session', (req, res) => {
         const store = String(req.body?.store || req.query.store || '').trim();
         const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
         if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
         const result = updateDfscSession(store, sessionId, {
             answers: req.body?.answers,
             sectionSkips: req.body?.sectionSkips,
@@ -2532,6 +2708,7 @@ app.post('/api/dfsc/session/validate-section', (req, res) => {
         const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
         const sectionId = String(req.body?.sectionId || '').trim();
         if (!store || !sessionId || !sectionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
         const result = validateSessionSection(store, sessionId, sectionId);
         if (!result.ok) {
             res.status(400).json({ success: false, error: result.error });
@@ -2549,6 +2726,7 @@ app.post('/api/dfsc/submit', (req, res) => {
         const store = String(req.body?.store || req.query.store || '').trim();
         const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
         if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
         const result = submitDfscSession(store, sessionId, req.body?.signOff || {});
         if (!result.ok) {
             res.status(400).json({ success: false, error: result.error });

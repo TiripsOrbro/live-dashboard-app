@@ -331,33 +331,7 @@
     }
 
     function openCreateAccountModal() {
-        openModal({
-            title: 'Create account',
-            submitLabel: 'Create account',
-            fields: [
-                { label: 'Username', name: 'username', autocomplete: 'username' },
-                { label: 'Display name', name: 'displayName', required: false },
-                { label: 'Password', name: 'password', type: 'password', autocomplete: 'new-password' },
-                { label: 'Confirm password', name: 'confirmPassword', type: 'password', autocomplete: 'new-password' },
-            ],
-            onSubmit: async (data) => {
-                if (data.password !== data.confirmPassword) {
-                    throw new Error('Passwords do not match.');
-                }
-                const res = await fetch('/api/account/create', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({
-                        username: data.username,
-                        displayName: data.displayName,
-                        password: data.password,
-                    }),
-                });
-                const body = await res.json().catch(() => ({}));
-                if (!res.ok || !body.success) throw new Error(body.error || 'Could not create account.');
-            },
-        });
+        window.location.href = '/Create-Account';
     }
 
     window.DashboardAccount = {

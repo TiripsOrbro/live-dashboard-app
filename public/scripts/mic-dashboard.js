@@ -273,7 +273,8 @@ function renderAdminLabelTile({ label, posClass, sub = 'Coming soon' }) {
 }
 
 function renderDfscTile(data) {
-    const dfsc = data?.dfsc || {};
+    const dfsc = data?.dfsc;
+    if (!dfsc) return '';
     const href = dfsc.href || `/${STORE_NUMBER}/dfsc`;
     const sub = dfsc.subtext || 'AM pending · PM pending';
     const tone = dfsc.inProgress ? 'mic-tile--orders-active' : dfsc.amCompleted && dfsc.pmCompleted ? 'mic-tile--stock-idle' : 'mic-tile--orders-idle';

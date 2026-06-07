@@ -587,14 +587,11 @@ app.post('/login', (req, res) => {
         sendLoginFailure(req, res, 'Incorrect username or password.', '/login');
         return;
     }
-    if (isAdminUser(user)) {
-        sendLoginFailure(req, res, 'Use Admin sign-in at /admin.', '/login');
-        return;
-    }
 
-    setSessionCookie(res, user, remember, 'store');
+    const admin = isAdminUser(user);
+    setSessionCookie(res, user, remember, admin ? 'admin' : 'store');
     logAuthLogin(req, user);
-    sendLoginSuccess(req, res, user, getLoginRedirectPath(user, 'mic'));
+    sendLoginSuccess(req, res, user, admin ? getAdminRedirectPath() : getLoginRedirectPath(user, 'mic'));
 });
 
 app.post('/admin/login', (req, res) => {

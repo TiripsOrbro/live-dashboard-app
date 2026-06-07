@@ -46,6 +46,10 @@ live-dashboard-app
 
 2. Open your web browser and navigate to `http://localhost:3000` to view the live dashboard.
 
+## Changelog
+
+Release notes in plain English (for store managers and admins) are in **[CHANGELOG.md](CHANGELOG.md)**. Update that file whenever you cut a new version branch — see the “How to update” section at the top.
+
 ## Raspberry Pi setup (PM2)
 
 This is the current production setup (Pi 4, user `orbro`, sibling to `mmx-report-automation`). PM2 keeps the dashboard running, restarts it on crash, and brings it back after reboot.
@@ -135,7 +139,7 @@ Each block is one store (or person). The `#` line is a display name shown on the
 
 - **Regular username** (e.g. `3811`) — standard green / yellow / red grid
 - **CB username** (e.g. `CB3811`) — same password and welcome name; **blue** replaces green for “on track”
-- **access: `*` or `all`** — every store (admin store picker)
+- **access: `*` or `all`** — every store (admin store picker); admins can sign in at **`/login`** or **`/admin`** and are taken to the admin overview
 - **access: store numbers** — comma-separated list; one store skips the picker and opens that dashboard directly
 - Passwords can be plaintext for quick setup; hash them for production:
 

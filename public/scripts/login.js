@@ -346,7 +346,10 @@ async function submitLogin() {
 
         const dest = loginDestination(data, username);
         try {
-            sessionStorage.setItem('dashboard-entry', 'store');
+            sessionStorage.setItem(
+                'dashboard-entry',
+                String(dest || '').startsWith('/admin') ? 'admin' : 'store'
+            );
         } catch (_) {
             /* ignore */
         }

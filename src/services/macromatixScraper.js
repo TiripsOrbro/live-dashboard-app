@@ -1814,33 +1814,56 @@ async function verifyMacromatixLogin(username, password) {
 }
 
 /** Resolve MMX credentials for browser automation (reports, stock count, scraper). */
-function resolveMacromatixCredentialsForStore(storeNumber) {
+/** Ordered Macromatix login attempts for a store (default global until crew accounts exist). */
+function listMacromatixCredentialCandidatesForStore(storeNumber) {
     const store = String(storeNumber || '').trim().replace(/\D/g, '');
-    if (!store) return { ...getMacromatixCredentials(), source: 'global SCRAPER_*' };
+    const global = getMacromatixCredentials();
+    const candidates = [];
+    const seen = new Set();
+
+    function push(creds, source) {
+        if (!creds?.username || !creds?.password) return;
+        const key = `${creds.username}\0${creds.password}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        candidates.push({
+            username: creds.username,
+            password: creds.password,
+            source,
+        });
+    }
 
     const envUser = String(process.env[`SCRAPER_STORE_${store}_USERNAME`] || '').trim();
     const envPass = String(process.env[`SCRAPER_STORE_${store}_PASSWORD`] || '');
     if (envUser && envPass) {
-        return { username: envUser, password: envPass, source: `SCRAPER_STORE_${store}_*` };
+        push({ username: envUser, password: envPass }, `SCRAPER_STORE_${store}_*`);
     }
 
+    const { listStoreMacromatixDashboardUsers } = require('./dashboardUsers');
     const { readMmxCredentialsForUser } = require('./mmxUserCredentials');
-    let dashUser = '';
-    try {
-        const { findPrimaryStoreDashboardUsername } = require('./dashboardUsers');
-        dashUser = findPrimaryStoreDashboardUsername(store);
-    } catch {
-        dashUser = store;
-    }
-
-    const lookupKeys = [...new Set([dashUser, store].filter(Boolean))];
-    for (const key of lookupKeys) {
-        const stored = readMmxCredentialsForUser(key);
+    const storeMmx = [];
+    for (const dashUser of listStoreMacromatixDashboardUsers(store)) {
+        const stored = readMmxCredentialsForUser(dashUser);
         if (stored?.username && stored?.password) {
-            return { ...stored, source: `mmx-users/${key}` };
+            storeMmx.push({ ...stored, source: `mmx-users/${dashUser}` });
         }
     }
 
+    if (!storeMmx.length) {
+        push(global, 'global SCRAPER_*');
+        return candidates;
+    }
+
+    for (const entry of storeMmx) {
+        push(entry, entry.source);
+    }
+    push(global, 'global SCRAPER_* (fallback)');
+    return candidates;
+}
+
+function resolveMacromatixCredentialsForStore(storeNumber) {
+    const candidates = listMacromatixCredentialCandidatesForStore(storeNumber);
+    if (candidates.length) return candidates[0];
     return { ...getMacromatixCredentials(), source: 'global SCRAPER_*' };
 }
 
@@ -1899,21 +1922,77 @@ function createIsolatedContext(browser) {
     return fn.call(browser);
 }
 
-function groupStoresByMacromatixCredentials(stores) {
+function groupStoresByMacromatixCredentials(stores, resolvedCredMap = null) {
     const groups = new Map();
     for (const store of stores) {
-        const resolved = resolveMacromatixCredentialsForStore(store.storeNumber);
+        const fromMap = resolvedCredMap?.get(store.storeNumber);
+        const resolved =
+            fromMap ||
+            resolveMacromatixCredentialsForStore(store.storeNumber);
         const key = `${resolved.username}\0${resolved.password}`;
         if (!groups.has(key)) {
             groups.set(key, {
                 credentials: { username: resolved.username, password: resolved.password },
-                source: resolved.source,
+                source: resolved.source || 'global SCRAPER_*',
                 stores: [],
             });
         }
         groups.get(key).stores.push(store);
     }
     return [...groups.values()];
+}
+
+async function scrapeStoreWithCredentialCandidates(browser, store, ctx, candidates) {
+    const label = store.storeNumber || '(default)';
+    const tries = Array.isArray(candidates) && candidates.length
+        ? candidates
+        : listMacromatixCredentialCandidatesForStore(store.storeNumber);
+    let lastErr;
+
+    for (let attempt = 0; attempt < tries.length; attempt++) {
+        const resolved = tries[attempt];
+        let context;
+        try {
+            if (tries.length > 1 || resolved.source !== 'global SCRAPER_*') {
+                console.log(
+                    `[Macromatix] Store ${label}: trying ${resolved.source} (${resolved.username})`
+                );
+            }
+            context = await createIsolatedContext(browser);
+            const workerPage = await context.newPage();
+            await workerPage.setViewport({ width: 1280, height: 720 });
+            await applyResourceBlocking(workerPage);
+            const storeCreds = { username: resolved.username, password: resolved.password };
+            await loginPage(workerPage, storeCreds.username, storeCreds.password);
+            const result = await scrapeSingleStoreSession(workerPage, store, ctx, storeCreds);
+            if (attempt > 0 || tries.length > 1) {
+                console.log(`[Macromatix] Store ${label}: succeeded via ${resolved.source}`);
+            }
+            return {
+                result,
+                credentials: storeCreds,
+                source: resolved.source,
+            };
+        } catch (err) {
+            lastErr = err;
+            const hasMore = attempt < tries.length - 1;
+            console.warn(
+                `[Macromatix] Store ${label}: ${resolved.source} failed — ${err.message}${
+                    hasMore ? ' — trying next login' : ''
+                }`
+            );
+        } finally {
+            if (context) {
+                try {
+                    await context.close();
+                } catch {
+                    /* ignore */
+                }
+            }
+        }
+    }
+
+    throw lastErr || new Error(`No Macromatix credentials available for store ${label}`);
 }
 
 /**
@@ -2057,45 +2136,33 @@ async function scrapeMacromatix(options = {}) {
                 `[Macromatix] Single-store login mode — ${stores.length} store(s), concurrency ${concurrency} (login → select → scrape → logout per store)`
             );
 
+            const storeSuccessfulCreds = new Map();
+
             const runSingleStoreWorker = async (workerId) => {
                 for (;;) {
                     const i = takeNext();
                     if (i < 0) break;
                     const store = stores[i];
                     const label = store.storeNumber || '(default)';
-                    let context;
                     try {
-                        const resolved = resolveMacromatixCredentialsForStore(store.storeNumber);
-                        const storeCreds = {
-                            username: resolved.username,
-                            password: resolved.password,
-                        };
-                        if (resolved.source !== 'global SCRAPER_*') {
-                            console.log(
-                                `[Macromatix] Store ${label}: ${resolved.source} (${storeCreds.username})`
-                            );
-                        }
-
-                        context = await createIsolatedContext(browser);
-                        const workerPage = await context.newPage();
-                        await workerPage.setViewport({ width: 1280, height: 720 });
-                        await applyResourceBlocking(workerPage);
-                        await loginPage(workerPage, storeCreds.username, storeCreds.password);
-                        results[i] = await scrapeSingleStoreSession(workerPage, store, ctx, storeCreds);
+                        const candidates = listMacromatixCredentialCandidatesForStore(store.storeNumber);
+                        const scraped = await scrapeStoreWithCredentialCandidates(
+                            browser,
+                            store,
+                            ctx,
+                            candidates
+                        );
+                        results[i] = scraped.result;
+                        storeSuccessfulCreds.set(store.storeNumber, {
+                            credentials: scraped.credentials,
+                            source: scraped.source,
+                        });
                     } catch (storeErr) {
                         console.error(
                             `[Macromatix] Worker ${workerId} store ${label} failed:`,
                             storeErr.message
                         );
                         results[i] = buildErrorResult(store, storeErr, todayKey);
-                    } finally {
-                        if (context) {
-                            try {
-                                await context.close();
-                            } catch {
-                                /* ignore */
-                            }
-                        }
                     }
                 }
             };
@@ -2106,7 +2173,15 @@ async function scrapeMacromatix(options = {}) {
             }
             await Promise.all(workers);
 
-            const credGroups = groupStoresByMacromatixCredentials(stores);
+            const credGroups = groupStoresByMacromatixCredentials(
+                stores.filter((s) => storeSuccessfulCreds.has(s.storeNumber)),
+                new Map(
+                    [...storeSuccessfulCreds.entries()].map(([storeNumber, row]) => [
+                        storeNumber,
+                        { ...row.credentials, source: row.source },
+                    ])
+                )
+            );
             for (const group of credGroups) {
                 if (group.source !== 'global SCRAPER_*') {
                     console.log(
@@ -2266,6 +2341,7 @@ module.exports.openMacromatixBrowser = openMacromatixBrowser;
 module.exports.verifyMacromatixLogin = verifyMacromatixLogin;
 module.exports.resolveMacromatixCredentials = resolveMacromatixCredentials;
 module.exports.resolveMacromatixCredentialsForStore = resolveMacromatixCredentialsForStore;
+module.exports.listMacromatixCredentialCandidatesForStore = listMacromatixCredentialCandidatesForStore;
 module.exports.loginPage = loginPage;
 module.exports.logoutPage = logoutPage;
 module.exports.selectStoreAfterLogin = selectStoreAfterLogin;

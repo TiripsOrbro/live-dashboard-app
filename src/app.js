@@ -18,7 +18,7 @@ process.env.SCRAPER_HEADLESS = 'true';
     const p = Boolean(String(process.env.SCRAPER_PASSWORD || '').trim());
     console.log(`[Env] Macromatix: SCRAPER_USERNAME ${u ? 'set' : 'MISSING'}, SCRAPER_PASSWORD ${p ? 'set' : 'MISSING'}`);
     console.log(
-        '[Env] Macromatix scraper: per-store credentials from data/mmx-users/{store}.json or SCRAPER_STORE_XXXX_* env, else global SCRAPER_* fallback'
+        '[Env] Macromatix scraper: global SCRAPER_* for each store until a crew account saves MMX creds; then tries store logins in order with global fallback'
     );
 })();
 

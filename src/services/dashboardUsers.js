@@ -504,6 +504,19 @@ function findPrimaryStoreDashboardUsername(storeNumber) {
     return store;
 }
 
+/** Dashboard usernames to check for per-store MMX credentials (primary login, then crew accounts). */
+function listStoreMacromatixDashboardUsers(storeNumber) {
+    const store = normalizeStoreKey(storeNumber);
+    if (!store || isTestStore(store)) return [];
+    const ordered = [];
+    const primary = findPrimaryStoreDashboardUsername(store);
+    if (primary) ordered.push(primary);
+    for (const row of listManagedStoreAccounts(store)) {
+        if (row.username) ordered.push(row.username);
+    }
+    return [...new Set(ordered.map((u) => String(u).trim()).filter(Boolean))];
+}
+
 function listManagedStoreAccounts(storeNumber) {
     const store = normalizeStoreKey(storeNumber);
     if (!store || isTestStore(store)) return [];
@@ -1146,6 +1159,7 @@ module.exports = {
     canUserCreateAccounts,
     canUserManageStoreAccounts,
     findPrimaryStoreDashboardUsername,
+    listStoreMacromatixDashboardUsers,
     listManagedStoreAccounts,
     deleteManagedStoreAccount,
     isRealDashboardUser,

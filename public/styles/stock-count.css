@@ -878,12 +878,29 @@ body.stock-count-page {
     color: color-mix(in srgb, var(--charcoal) 70%, var(--blank));
 }
 
-/* Desktop — page scroll (dashboard.css locks overflow on html/body/#app) + auto-hide scrollbar */
+/* Page scroll — dashboard.css locks overflow on html/body/#app (mobile + desktop) */
+html.stock-count-page {
+    overflow-x: hidden;
+    overflow-y: auto;
+    height: 100%;
+    -webkit-overflow-scrolling: touch;
+}
+
+body.stock-count-page {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+}
+
+body.stock-count-page #app {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+}
+
+/* Desktop — auto-hide scrollbar while scrolling */
 @media (min-width: 901px) {
     html.stock-count-page {
-        overflow-x: hidden;
-        overflow-y: auto;
-        height: 100%;
         scrollbar-width: thin;
         scrollbar-color: transparent transparent;
     }
@@ -911,18 +928,6 @@ body.stock-count-page {
     html.stock-count-page:hover::-webkit-scrollbar-thumb,
     html.stock-count-page.stock-count-scroll-active::-webkit-scrollbar-thumb {
         background-color: color-mix(in srgb, var(--charcoal) 28%, transparent);
-    }
-
-    body.stock-count-page {
-        height: auto;
-        min-height: 100%;
-        overflow: visible;
-    }
-
-    body.stock-count-page #app {
-        height: auto;
-        min-height: 100%;
-        overflow: visible;
     }
 
     .stock-count-panel {

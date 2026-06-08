@@ -585,6 +585,14 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
             return runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options);
         }
 
+        await setCheckpoint(storeNumber, {
+            stage: 'preparing',
+            dateKey,
+            vendorSlugs: toSend.map((row) => row.slug),
+            lastError: '',
+            sessionId: null,
+        });
+
         beginStockCountMmxWork(`stock count prepare (store ${storeNumber})`);
         let sessionStarted = false;
 
@@ -667,6 +675,15 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
             };
         } catch (error) {
             await closeBrowserQuietly(browser, 'mmx count prepare failed');
+            if (!sessionStarted) {
+                await setCheckpoint(storeNumber, {
+                    stage: 'prepare-failed',
+                    dateKey,
+                    vendorSlugs: toSend.map((row) => row.slug),
+                    lastError: error.message || String(error),
+                    sessionId: null,
+                }).catch(() => {});
+            }
             throw error;
         } finally {
             if (!sessionStarted) {
@@ -677,6 +694,7 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
 }
 
 const PIPELINE_IN_PROGRESS_STAGES = new Set([
+    'preparing',
     'prepared',
     'applying',
     'applied-orders-pending',
@@ -687,7 +705,8 @@ const PIPELINE_IN_PROGRESS_STAGES = new Set([
 async function getStockCountPipelineStatus(storeNumber) {
     const checkpoint = await getCheckpoint(storeNumber);
     const stage = checkpoint?.stage || 'idle';
-    return {
+    const sessionId = checkpoint?.sessionId || null;
+    const payload = {
         success: true,
         storeNumber: String(storeNumber),
         stage,
@@ -695,9 +714,23 @@ async function getStockCountPipelineStatus(storeNumber) {
         ordersComplete: stage === 'completed',
         lastError: checkpoint?.lastError || null,
         dateKey: checkpoint?.dateKey || null,
-        sessionId: checkpoint?.sessionId || null,
+        sessionId,
         updatedAt: checkpoint?.updatedAt || null,
+        vendorsSent: checkpoint?.vendorSlugs || [],
+        variances: [],
+        redVarianceCount: 0,
     };
+
+    if (sessionId && stage === 'prepared') {
+        const session = getSession(storeNumber, sessionId);
+        if (session) {
+            payload.variances = session.variances || [];
+            payload.redVarianceCount = payload.variances.length;
+            payload.vendorsSent = session.vendorSlugs?.length ? session.vendorSlugs : payload.vendorsSent;
+        }
+    }
+
+    return payload;
 }
 
 /**

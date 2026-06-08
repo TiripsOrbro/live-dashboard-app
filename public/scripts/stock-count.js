@@ -1077,6 +1077,68 @@ function finishMmxOrdersSuccess(data) {
     }
 }
 
+async function showPreparedVariancesFromStatus(status) {
+    mmxSessionId = status.sessionId || '';
+    mmxVariances = Array.isArray(status.variances) ? status.variances : [];
+    mmxVendorSlugs =
+        Array.isArray(status.vendorsSent) && status.vendorsSent.length ? status.vendorsSent : [VENDOR_SLUG];
+    await loadVendorCatalogsForSlugs(mmxVendorSlugs, { fullCatalog: true });
+    varianceDrafts = { ...recountDrafts, [VENDOR_SLUG]: draft };
+    for (const slug of mmxVendorSlugs) {
+        if (slug === VENDOR_SLUG || varianceDrafts[slug]?.locations) continue;
+        const { res, data: draftData } = await fetchJson(apiQuery('/api/stock-count/draft', slug));
+        if (res.ok && draftData?.locations) varianceDrafts[slug] = draftData;
+    }
+    if (viewMode === 'recount') {
+        recountCatalog = null;
+    }
+    viewMode = 'variances';
+}
+
+async function waitForPipelinePrepareComplete() {
+    processing = true;
+    processingStageLabel = 'Still sending to Macromatix…';
+    setStatus(
+        'Still sending to Macromatix — this can take a few minutes. You can leave this page; we will notify you when ready.',
+        ''
+    );
+    render();
+
+    for (let attempt = 0; attempt < 90; attempt++) {
+        await sleep(5000);
+        try {
+            const { res: statusRes, data: status } = await fetchJson(
+                apiQuery('/api/stock-count/pipeline-status')
+            );
+            if (!statusRes.ok) continue;
+
+            if (status.stage === 'prepare-failed' && status.lastError) {
+                throw new Error(status.lastError);
+            }
+            if (status.ordersComplete) {
+                finishMmxOrdersSuccess({ orderFailures: status.lastError || null });
+                return { autoApplied: true };
+            }
+            if (status.stage === 'prepared' && status.sessionId) {
+                return { prepared: true, status };
+            }
+            if (status.stage === 'applying' || status.stage === 'filling-orders') {
+                const recovered = await waitForPipelineApplyComplete(status.sessionId || mmxSessionId);
+                if (recovered) return { autoApplied: true };
+            }
+            if (status.stage === 'preparing' || status.inProgress) {
+                continue;
+            }
+        } catch (pollError) {
+            if (/prepare failed|apply failed/i.test(pollError.message) && attempt < 89) continue;
+            throw pollError;
+        }
+    }
+    throw new Error(
+        'Timed out waiting for Macromatix stock count. Check pm2 logs — the count may still have completed.'
+    );
+}
+
 async function waitForPipelineApplyComplete(sessionId) {
     const sid = sessionId || mmxSessionId;
     processing = true;
@@ -1116,10 +1178,14 @@ async function waitForPipelineApplyComplete(sessionId) {
     throw new Error('Timed out waiting for scheduled orders to finish. Check pm2 logs on the Pi.');
 }
 
-function shouldRecoverApplyError(message) {
-    return /session expired|apply failed|apply button|failed to fetch|network|invalid server response|timed out/i.test(
+function shouldRecoverGatewayError(message) {
+    return /524|502|503|504|gateway|cloudflare|failed to fetch|network|invalid server response|timed out|timeout/i.test(
         String(message || '')
     );
+}
+
+function shouldRecoverApplyError(message) {
+    return /session expired|apply failed|apply button/i.test(String(message || '')) || shouldRecoverGatewayError(message);
 }
 
 async function sendToMmx() {
@@ -1207,24 +1273,33 @@ async function sendToMmx() {
             }
             return;
         }
-        mmxSessionId = data.sessionId || '';
-        mmxVariances = Array.isArray(data.variances) ? data.variances : [];
-        mmxVendorSlugs = Array.isArray(data.vendorsSent) ? data.vendorsSent : [VENDOR_SLUG];
-        await loadVendorCatalogsForSlugs(mmxVendorSlugs, { fullCatalog: true });
-        varianceDrafts = { ...recountDrafts, [VENDOR_SLUG]: draft };
-        for (const slug of mmxVendorSlugs) {
-            if (slug === VENDOR_SLUG || varianceDrafts[slug]?.locations) continue;
-            const { res, data: draftData } = await fetchJson(apiQuery('/api/stock-count/draft', slug));
-            if (res.ok && draftData?.locations) varianceDrafts[slug] = draftData;
-        }
-        if (viewMode === 'recount') {
-            recountCatalog = null;
-        }
-        viewMode = 'variances';
+        await showPreparedVariancesFromStatus(data);
         processing = false;
         window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
         setStatus('Review variances below, then confirm to place scheduled orders.', '');
     } catch (error) {
+        if (shouldRecoverGatewayError(error.message)) {
+            try {
+                const prepared = await waitForPipelinePrepareComplete();
+                if (prepared?.autoApplied) {
+                    preparedAutoApplied = true;
+                    return;
+                }
+                if (prepared?.prepared) {
+                    await showPreparedVariancesFromStatus(prepared.status);
+                    processing = false;
+                    window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
+                    setStatus('Review variances below, then confirm to place scheduled orders.', '');
+                    return;
+                }
+            } catch (recoverError) {
+                window.StockCountNotify?.clearWatch?.(STORE_NUMBER);
+                window.StockCountNotify?.stopPolling?.();
+                setStatus(recoverError.message, 'error');
+                render();
+                return;
+            }
+        }
         if (shouldRecoverApplyError(error.message)) {
             try {
                 const recovered = await waitForPipelineApplyComplete(mmxSessionId);
@@ -1794,6 +1869,18 @@ function setupStockCountScrollbars() {
     });
 }
 
+async function resumePreparedPipelineOnLoad() {
+    try {
+        const { res, data } = await fetchJson(apiQuery('/api/stock-count/pipeline-status'));
+        if (!res.ok || data.stage !== 'prepared' || !data.sessionId) return false;
+        await showPreparedVariancesFromStatus(data);
+        setStatus('Review variances below, then confirm to place scheduled orders.', '');
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 async function init() {
     document.documentElement.classList.add('stock-count-page');
     document.body.classList.add('stock-count-page');
@@ -1833,6 +1920,10 @@ async function init() {
             draft = combinedVendorSlugs.length ? vendorDrafts[combinedVendorSlugs[0]] : null;
             await loadQueueStatus();
             document.title = `Stock Count — ${catalog.label}`;
+            if (await resumePreparedPipelineOnLoad()) {
+                render();
+                return;
+            }
             render();
             return;
         }
@@ -1849,6 +1940,10 @@ async function init() {
         draft = draftData;
         await loadQueueStatus();
         document.title = `Stock Count — ${catalog.label}`;
+        if (await resumePreparedPipelineOnLoad()) {
+            render();
+            return;
+        }
         render();
     } catch (error) {
         app.innerHTML = `<div class="stock-count"><p class="stock-count-status stock-count-status--error">${escapeHtml(error.message)}</p><p><a class="stock-count-back" href="${escapeHtml(dashboardPath())}">← Dashboard</a></p></div>`;

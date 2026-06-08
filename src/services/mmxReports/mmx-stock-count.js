@@ -128,21 +128,144 @@ async function clickRadTab(page, tabLabel) {
     return clicked;
 }
 
-async function clickMainTab(page, tabLabel) {
-    const want = String(tabLabel || '').trim().toLowerCase();
-    const clicked = await page.evaluate((label) => {
-        for (const el of document.querySelectorAll('a, span, li')) {
-            const t = (el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-            if (t === label) {
-                el.click();
-                return t;
+const MAIN_STOCK_COUNT_TAB_ALIASES = {
+    'count in progress': ['count in progress', 'counts in progress', 'in progress'],
+    'new count': ['new count', 'start new count', 'create new count'],
+};
+
+function mainStockCountTabLabels() {
+    return [...new Set([...MMX_COUNT_TABS, ...Object.values(MAIN_STOCK_COUNT_TAB_ALIASES).flat()])].map((t) =>
+        String(t).trim().toLowerCase()
+    );
+}
+
+async function waitForStockCountPageReady(page, cfg) {
+    const selectIds = [cfg.inProgressCountSelectId, cfg.countTypeSelectId];
+    await page
+        .waitForFunction(
+            (ids) =>
+                ids.some((id) => document.getElementById(id)) ||
+                [...document.querySelectorAll('.rtsUL .rtsLink, .rtsUL .rtsTxt')].some((el) =>
+                    /count in progress|new count/i.test(el.textContent || '')
+                ),
+            { timeout: 30000 },
+            selectIds
+        )
+        .catch(() => {});
+    await page.waitForTimeout(1000);
+}
+
+async function isNewCountPanelReady(page, cfg) {
+    return page.evaluate(
+        ({ countSel, countText }) => {
+            const sel = document.getElementById(countSel);
+            if (!sel) return false;
+            const want = String(countText || '').trim().toLowerCase();
+            return [...sel.options].some((o) => (o.textContent || '').trim().toLowerCase().includes(want));
+        },
+        { countSel: cfg.countTypeSelectId, countText: cfg.countTypeText }
+    );
+}
+
+async function listVisibleMainStockCountTabs(page) {
+    return page.evaluate((locationTabs) => {
+        const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        const loc = new Set(locationTabs);
+        const seen = new Set();
+        const out = [];
+        for (const strip of document.querySelectorAll('.rtsUL')) {
+            const texts = [...strip.querySelectorAll('.rtsLink, .rtsTxt, li.rtsLI')]
+                .map((el) => norm(el.textContent))
+                .filter(Boolean);
+            if (!texts.some((t) => /count in progress|new count|confirm count/i.test(t))) continue;
+            for (const t of texts) {
+                if (!t || loc.has(t) || seen.has(t)) continue;
+                seen.add(t);
+                out.push(t);
             }
         }
-        return null;
-    }, want);
-    if (!clicked) throw new Error(`Main tab not found: ${tabLabel}`);
+        return out;
+    }, mainStockCountTabLabels());
+}
+
+async function clickMainTab(page, tabLabel) {
+    const want = String(tabLabel || '').trim().toLowerCase();
+    const labels = MAIN_STOCK_COUNT_TAB_ALIASES[want] || [want];
+    const clicked = await page.evaluate(
+        ({ labelList, locationTabs }) => {
+            const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            const loc = new Set(locationTabs);
+            const candidates = [];
+
+            const pushCandidate = (el) => {
+                const t = norm(el.textContent);
+                if (!t || loc.has(t)) return;
+                candidates.push({ el, t });
+            };
+
+            for (const strip of document.querySelectorAll('.rtsUL')) {
+                const stripText = norm(strip.textContent || '');
+                if (!/count in progress|new count|confirm count/i.test(stripText)) continue;
+                for (const el of strip.querySelectorAll('.rtsLink, .rtsTxt, li.rtsLI')) {
+                    pushCandidate(el);
+                }
+                if (candidates.length) break;
+            }
+
+            if (!candidates.length) {
+                for (const el of document.querySelectorAll('.rtsLink, .rtsTxt, a.rtsLink, li.rtsLI')) {
+                    pushCandidate(el);
+                }
+            }
+
+            const clickEl = (entry) => {
+                const target =
+                    entry.el.closest('.rtsLI')?.querySelector('.rtsLink, a.rtsLink, a') ||
+                    entry.el.querySelector('.rtsLink, a.rtsLink, a, span') ||
+                    entry.el;
+                target.click();
+                return entry.t;
+            };
+
+            for (const label of labelList) {
+                for (const entry of candidates) {
+                    if (entry.t === label) return { ok: true, text: clickEl(entry) };
+                }
+            }
+            for (const label of labelList) {
+                for (const entry of candidates) {
+                    if (entry.t.startsWith(label) || label.startsWith(entry.t)) {
+                        return { ok: true, text: clickEl(entry) };
+                    }
+                }
+            }
+            for (const label of labelList) {
+                for (const entry of candidates) {
+                    if (entry.t.includes(label)) return { ok: true, text: clickEl(entry) };
+                }
+            }
+
+            return {
+                ok: false,
+                candidates: [...new Set(candidates.map((c) => c.t))].slice(0, 20),
+            };
+        },
+        { labelList: labels, locationTabs: mainStockCountTabLabels() }
+    );
+
+    if (!clicked?.ok) {
+        const visible = await listVisibleMainStockCountTabs(page);
+        const seen = clicked?.candidates?.length ? clicked.candidates.join(', ') : visible.join(', ') || 'none';
+        throw new Error(`Main tab not found: ${tabLabel} (seen: ${seen})`);
+    }
+
+    await Promise.all([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {}),
+        page.waitForTimeout(500),
+    ]);
     await page.waitForTimeout(1500);
-    return clicked;
+    log.info(`Opened stock count main tab: ${clicked.text}`);
+    return clicked.text;
 }
 
 async function selectCountType(page, cfg) {
@@ -284,6 +407,7 @@ async function findOpenKeyItemCount(page, cfg) {
 }
 
 async function ensureKeyItemCountEditable(page, cfg) {
+    await waitForStockCountPageReady(page, cfg);
     await clickMainTab(page, 'count in progress');
 
     const openCount = await findOpenKeyItemCount(page, cfg);
@@ -295,7 +419,15 @@ async function ensureKeyItemCountEditable(page, cfg) {
     }
 
     log.info('No open Key Item Count found — starting new count');
-    await clickMainTab(page, 'new count');
+    if (!(await isNewCountPanelReady(page, cfg))) {
+        await clickMainTab(page, 'new count');
+    }
+    if (!(await isNewCountPanelReady(page, cfg))) {
+        const visible = await listVisibleMainStockCountTabs(page);
+        throw new Error(
+            `New Count panel did not load (Key Item Count type missing). Main tabs seen: ${visible.join(', ') || 'none'}`
+        );
+    }
     await selectCountType(page, cfg);
     await clickButtonById(page, cfg.createCountButtonId);
 
@@ -628,6 +760,7 @@ async function typeIntoInput(page, inputId, value) {
 }
 
 async function openKeyItemCountForVerification(page, cfg, options = {}) {
+    await waitForStockCountPageReady(page, cfg);
     await clickMainTab(page, 'count in progress');
 
     const open = await findOpenKeyItemCount(page, cfg);

@@ -2165,34 +2165,37 @@ function listGlobalMacromatixCredentialPool() {
     return pool;
 }
 
-/** Saved Macromatix logins from Create account for a store (data/mmx-users). */
+/**
+ * Macromatix logins saved via Create account for a store.
+ * Only crew accounts in `.Users` (not the primary `3806` / `CB3806` store login) — each has
+ * a matching `data/mmx-users/{username}.json` with their Macromatix username/password.
+ */
 function collectStoreMmxCredentials(storeNumber) {
     const store = String(storeNumber || '').trim().replace(/\D/g, '');
     if (!store) return [];
 
-    const { listStoreMacromatixDashboardUsers } = require('./dashboardUsers');
+    const { usersFileConfigured, listManagedStoreAccounts } = require('./dashboardUsers');
     const { readMmxCredentialsForUser } = require('./mmxUserCredentials');
+    if (!usersFileConfigured()) return [];
+
     const out = [];
     const seen = new Set();
 
-    function add(creds, source) {
-        if (!creds?.username || !creds?.password) return;
-        const key = `${creds.username}\0${creds.password}`;
-        if (seen.has(key)) return;
+    for (const row of listManagedStoreAccounts(store)) {
+        const dashUser = String(row.username || '').trim();
+        if (!dashUser) continue;
+        const stored = readMmxCredentialsForUser(dashUser);
+        if (!stored?.username || !stored?.password) continue;
+        const key = `${stored.username}\0${stored.password}`;
+        if (seen.has(key)) continue;
         seen.add(key);
         out.push({
-            username: creds.username,
-            password: creds.password,
-            source,
+            username: stored.username,
+            password: stored.password,
+            source: `mmx-users/${dashUser}`,
+            dashboardUsername: dashUser,
         });
     }
-
-    for (const dashUser of listStoreMacromatixDashboardUsers(store)) {
-        const stored = readMmxCredentialsForUser(dashUser);
-        if (stored) add(stored, `mmx-users/${dashUser}`);
-    }
-    const directStoreMmx = readMmxCredentialsForUser(store);
-    if (directStoreMmx) add(directStoreMmx, `mmx-users/${store}`);
     return out;
 }
 
@@ -2200,7 +2203,17 @@ function storeHasMmxCredentials(storeNumber) {
     return collectStoreMmxCredentials(storeNumber).length > 0;
 }
 
-/** Ordered Macromatix login attempts for a store (Create-account logins before global SCRAPER_*). */
+/** Master Macromatix login from `.env` (`SCRAPER_USERNAME` / `SCRAPER_PASSWORD`). */
+function getMasterMacromatixCredentials() {
+    const creds = getMacromatixCredentials();
+    return { ...creds, source: 'master SCRAPER_* (.env)' };
+}
+
+/**
+ * Resolve Macromatix login for a store:
+ * - Create-account crew in `.Users` with saved MMX creds → use that Macromatix login
+ * - Otherwise → master `SCRAPER_USERNAME` / `SCRAPER_PASSWORD` from `.env`
+ */
 function listMacromatixCredentialCandidatesForStore(storeNumber, options = {}) {
     const store = String(storeNumber || '').trim().replace(/\D/g, '');
     const candidates = [];
@@ -2218,14 +2231,16 @@ function listMacromatixCredentialCandidatesForStore(storeNumber, options = {}) {
         });
     }
 
-    const { listStoreMacromatixDashboardUsers } = require('./dashboardUsers');
-    const { readMmxCredentialsForUser } = require('./mmxUserCredentials');
-    const linkedUsers = listStoreMacromatixDashboardUsers(store);
+    const { listManagedStoreAccounts } = require('./dashboardUsers');
+    const { readMmxCredentialsForUser, hasMmxCredentialFileForUser } = require('./mmxUserCredentials');
+    const managedAccounts = listManagedStoreAccounts(store);
+    const managedUsernames = new Set(
+        managedAccounts.map((row) => String(row.username || '').trim().toLowerCase()).filter(Boolean)
+    );
+
     const preferUser = String(options.dashboardUsername || '').trim();
-    if (preferUser) {
-        const preferNorm = preferUser.toLowerCase();
-        const isLinked = linkedUsers.some((u) => String(u).trim().toLowerCase() === preferNorm);
-        const preferred = isLinked ? readMmxCredentialsForUser(preferUser) : null;
+    if (preferUser && managedUsernames.has(preferUser.toLowerCase())) {
+        const preferred = readMmxCredentialsForUser(preferUser);
         if (preferred) {
             push(preferred, `mmx-users/${preferUser} (signed-in)`);
         }
@@ -2239,31 +2254,41 @@ function listMacromatixCredentialCandidatesForStore(storeNumber, options = {}) {
         return candidates;
     }
 
-    const { hasMmxCredentialFileForUser } = require('./mmxUserCredentials');
-    const hasSavedCreds =
-        linkedUsers.some((u) => hasMmxCredentialFileForUser(u)) || hasMmxCredentialFileForUser(store);
-    if (hasSavedCreds) {
+    const hasUnreadableSavedCreds = managedAccounts.some((row) =>
+        hasMmxCredentialFileForUser(row.username)
+    );
+    if (hasUnreadableSavedCreds) {
         throw new Error(
             `Saved Macromatix login for store ${store} could not be read. Check MMX_USER_CREDENTIALS_KEY in .env matches the key used when Create account was completed.`
         );
     }
 
-    const envUser = String(process.env[`SCRAPER_STORE_${store}_USERNAME`] || '').trim();
-    const envPass = String(process.env[`SCRAPER_STORE_${store}_PASSWORD`] || '');
-    if (envUser && envPass) {
-        push({ username: envUser, password: envPass }, `SCRAPER_STORE_${store}_*`);
-    }
-
-    for (const entry of listGlobalMacromatixCredentialPool()) {
-        push(entry, entry.source);
-    }
+    push(getMasterMacromatixCredentials(), 'master SCRAPER_* (.env)');
     return candidates;
 }
 
 function resolveMacromatixCredentialsForStore(storeNumber, options = {}) {
-    const candidates = listMacromatixCredentialCandidatesForStore(storeNumber, options);
-    if (candidates.length) return candidates[0];
-    return { ...getMacromatixCredentials(), source: 'global SCRAPER_*' };
+    const store = String(storeNumber || '').trim().replace(/\D/g, '');
+    const storeCreds = collectStoreMmxCredentials(store);
+    if (storeCreds.length) {
+        const candidates = listMacromatixCredentialCandidatesForStore(storeNumber, options);
+        const picked = candidates[0];
+        console.log(
+            `[Macromatix] Store ${store}: using Create-account MMX login via ${picked.source} (${maskUsernameForLog(picked.username)})`
+        );
+        return picked;
+    }
+
+    const master = getMasterMacromatixCredentials();
+    if (!String(master.username || '').trim() || !String(master.password || '').trim()) {
+        throw new Error(
+            `No Macromatix login for store ${store}. Set SCRAPER_USERNAME and SCRAPER_PASSWORD in .env, or complete Create account for this store.`
+        );
+    }
+    console.log(
+        `[Macromatix] Store ${store}: no Create-account MMX login — using master SCRAPER_* from .env (${maskUsernameForLog(master.username)})`
+    );
+    return master;
 }
 
 function resolveMacromatixCredentials(options = {}) {

@@ -97,35 +97,91 @@ function normalizeItemCode(code) {
         .replace(/^0+/, '');
 }
 
+function locationTabLabels() {
+    return MMX_COUNT_TABS.map((t) => String(t).trim().toLowerCase());
+}
+
+function isLocationCountTabLabel(label) {
+    const want = String(label || '').trim().toLowerCase();
+    return locationTabLabels().some((tab) => tab === want || tab.startsWith(want) || want.startsWith(tab));
+}
+
 async function clickRadTab(page, tabLabel) {
     const want = String(tabLabel || '')
         .replace(/\s+/g, ' ')
         .trim()
         .toLowerCase();
-    const clicked = await page.evaluate((label) => {
-        const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
-        const candidates = [];
-        for (const el of document.querySelectorAll('.rtsLink, .rtsTxt, a.rtsLink, li.rtsLI, .rtsUL li')) {
-            const t = norm(el.textContent);
-            if (!t) continue;
-            candidates.push({ el, t });
-        }
-        const clickEl = (entry) => {
-            (entry.el.querySelector('.rtsLink, a, span') || entry.el).click();
-            return entry.t;
-        };
-        for (const entry of candidates) {
-            if (entry.t === label) return clickEl(entry);
-        }
-        for (const entry of candidates) {
-            if (entry.t.startsWith(label) || label.startsWith(entry.t)) return clickEl(entry);
-        }
-        return null;
-    }, want);
+    const preferLocationStrip = isLocationCountTabLabel(want);
+    const clicked = await page.evaluate(
+        ({ label, preferLocationStrip }) => {
+            const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            const candidates = [];
+            const pushFromRoot = (root) => {
+                for (const el of root.querySelectorAll('.rtsLink, .rtsTxt, a.rtsLink, li.rtsLI')) {
+                    const t = norm(el.textContent);
+                    if (!t) continue;
+                    candidates.push({ el, t });
+                }
+            };
+
+            if (preferLocationStrip) {
+                for (const strip of document.querySelectorAll('.rtsUL')) {
+                    if (!/freezer|carry over|fridge|dry|soft drinks|count as 0|on floor/i.test(strip.textContent || '')) {
+                        continue;
+                    }
+                    pushFromRoot(strip);
+                    if (candidates.length) break;
+                }
+            }
+            if (!candidates.length) {
+                pushFromRoot(document);
+            }
+
+            const clickEl = (entry) => {
+                const target =
+                    entry.el.closest('.rtsLI')?.querySelector('.rtsLink, a.rtsLink, a') ||
+                    entry.el.querySelector('.rtsLink, a, span') ||
+                    entry.el;
+                target.click();
+                return entry.t;
+            };
+            for (const entry of candidates) {
+                if (entry.t === label) return clickEl(entry);
+            }
+            for (const entry of candidates) {
+                if (entry.t.startsWith(label) || label.startsWith(entry.t)) return clickEl(entry);
+            }
+            return null;
+        },
+        { label: want, preferLocationStrip }
+    );
     if (!clicked) throw new Error(`MMX tab not found: ${tabLabel}`);
     log.info(`Opened MMX tab: ${clicked}`);
-    await page.waitForTimeout(1500);
+    await Promise.all([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {}),
+        page.waitForTimeout(500),
+    ]);
+    await waitForCountGridInputs(page);
     return clicked;
+}
+
+async function waitForCountGridInputs(page, timeoutMs = 25000) {
+    await page
+        .waitForFunction(
+            () => {
+                for (const inp of document.querySelectorAll('input[id*="tbOH"]')) {
+                    if (inp.disabled || inp.readOnly) continue;
+                    const style = window.getComputedStyle(inp);
+                    if (style.display === 'none' || style.visibility === 'hidden') continue;
+                    const rect = inp.getBoundingClientRect();
+                    if (rect.width > 0 && rect.height > 0) return true;
+                }
+                return false;
+            },
+            { timeout: timeoutMs }
+        )
+        .catch(() => {});
+    await page.waitForTimeout(600);
 }
 
 const MAIN_STOCK_COUNT_TAB_ALIASES = {
@@ -207,30 +263,15 @@ async function clickMainTab(page, tabLabel, options = {}) {
         ({ labelList, locationTabs, stripFilterName }) => {
             const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
             const loc = new Set(locationTabs);
-            const candidates = [];
             const entryStrip = (text) => /count in progress|new count/i.test(text);
             const confirmStrip = (text) => /confirm count/i.test(text) && !entryStrip(text);
             const stripFilter = stripFilterName === 'confirm' ? confirmStrip : entryStrip;
 
-            const pushCandidate = (el, source) => {
+            const pushCandidate = (list, el) => {
                 const t = norm(el.value || el.textContent);
-                if (!t || loc.has(t)) return;
-                candidates.push({ el, t, source });
+                if (!t || loc.has(t) || t.length > 40) return;
+                list.push({ el, t });
             };
-
-            for (const strip of document.querySelectorAll('.rtsUL')) {
-                const stripText = norm(strip.textContent || '');
-                if (!stripFilter(stripText)) continue;
-                for (const el of strip.querySelectorAll('.rtsLink, .rtsTxt, li.rtsLI')) {
-                    pushCandidate(el, 'rts');
-                }
-            }
-
-            for (const el of document.querySelectorAll(
-                'a, button, input[type="button"], input[type="submit"], span, label'
-            )) {
-                pushCandidate(el, 'fallback');
-            }
 
             const clickEl = (entry) => {
                 const target =
@@ -241,7 +282,7 @@ async function clickMainTab(page, tabLabel, options = {}) {
                 return entry.t;
             };
 
-            const tryMatch = (matcher) => {
+            const tryMatch = (candidates, matcher) => {
                 for (const label of labelList) {
                     for (const entry of candidates) {
                         if (matcher(entry.t, label)) return { ok: true, text: clickEl(entry) };
@@ -250,16 +291,61 @@ async function clickMainTab(page, tabLabel, options = {}) {
                 return null;
             };
 
-            const exact = tryMatch((t, label) => t === label);
-            if (exact) return exact;
-            const starts = tryMatch((t, label) => t.startsWith(label) || label.startsWith(t));
-            if (starts) return starts;
-            const includes = tryMatch((t, label) => t.includes(label));
-            if (includes) return includes;
+            const matchCandidates = (candidates) => {
+                const exact = tryMatch(candidates, (t, label) => t === label);
+                if (exact) return exact;
+                const starts = tryMatch(candidates, (t, label) => t.startsWith(label) || label.startsWith(t));
+                if (starts) return starts;
+                return tryMatch(candidates, (t, label) => t.includes(label));
+            };
+
+            const collectFromStrips = () => {
+                const out = [];
+                for (const strip of document.querySelectorAll('.rtsUL')) {
+                    const stripText = norm(strip.textContent || '');
+                    if (!stripFilter(stripText)) continue;
+                    for (const el of strip.querySelectorAll('.rtsLink, .rtsTxt, li.rtsLI')) {
+                        pushCandidate(out, el);
+                    }
+                }
+                return out;
+            };
+
+            const collectFromRadTabs = () => {
+                const out = [];
+                for (const el of document.querySelectorAll(
+                    '.rtsTxt, a.rtsLink, li.rtsLI .rtsLink, [id*="RadTabStrip"] .rtsLink, [id*="RadTabStrip"] .rtsTxt'
+                )) {
+                    pushCandidate(out, el);
+                }
+                return out;
+            };
+
+            const collectFromClickables = () => {
+                const out = [];
+                for (const el of document.querySelectorAll(
+                    'a, button, input[type="button"], input[type="submit"]'
+                )) {
+                    pushCandidate(out, el);
+                }
+                return out;
+            };
+
+            const passes = [collectFromStrips, collectFromRadTabs, collectFromClickables];
+            const seen = new Set();
+            for (const collect of passes) {
+                const candidates = collect().filter((entry) => {
+                    if (seen.has(entry.t)) return false;
+                    seen.add(entry.t);
+                    return true;
+                });
+                const hit = matchCandidates(candidates);
+                if (hit) return hit;
+            }
 
             return {
                 ok: false,
-                candidates: [...new Set(candidates.map((c) => c.t))].slice(0, 20),
+                candidates: [...seen].slice(0, 20),
             };
         },
         { labelList: labels, locationTabs: mainStockCountTabLabels(), stripFilterName }
@@ -281,13 +367,79 @@ async function clickMainTab(page, tabLabel, options = {}) {
     return clicked.text;
 }
 
-async function tryClickEntryTab(page, tabLabel) {
+async function tryClickEntryTab(page, tabLabel, options = {}) {
     try {
-        return await clickMainTab(page, tabLabel);
+        return await clickMainTab(page, tabLabel, options);
     } catch (error) {
-        log.info(`Stock count tab "${tabLabel}" not clicked (${error.message}) — checking on-page count controls`);
+        if (!options.optional) throw error;
+        log.info(`Stock count tab "${tabLabel}" not clicked (${error.message})`);
         return null;
     }
+}
+
+async function waitForInProgressCountPanel(page, cfg, timeoutMs = 20000) {
+    const selId = cfg.inProgressCountSelectId || DEFAULT_CONFIG.inProgressCountSelectId;
+    await page
+        .waitForFunction(
+            (id) => {
+                const sel = document.getElementById(id);
+                return sel && sel.offsetParent !== null;
+            },
+            { timeout: timeoutMs },
+            selId
+        )
+        .catch(() => {});
+    await page.waitForTimeout(800);
+}
+
+async function waitForNewCountPanel(page, cfg, timeoutMs = 20000) {
+    await page
+        .waitForFunction(
+            (countSel) => {
+                const sel = document.getElementById(countSel);
+                return sel && sel.offsetParent !== null && sel.options && sel.options.length > 0;
+            },
+            { timeout: timeoutMs },
+            cfg.countTypeSelectId
+        )
+        .catch(() => {});
+    await page.waitForTimeout(800);
+}
+
+async function isOnInProgressCountPanel(page, cfg) {
+    const selId = cfg.inProgressCountSelectId || DEFAULT_CONFIG.inProgressCountSelectId;
+    return page.evaluate((id) => {
+        const sel = document.getElementById(id);
+        return Boolean(sel && sel.offsetParent !== null);
+    }, selId);
+}
+
+async function openCountInProgressTab(page, cfg) {
+    if (await isOnInProgressCountPanel(page, cfg)) {
+        log.info('Already on Count in Progress panel');
+        return true;
+    }
+
+    log.info('Opening Count in Progress tab to check for an open Key Item Count');
+    const clicked = await tryClickEntryTab(page, 'count in progress', { optional: true });
+    if (!clicked) return false;
+
+    await waitForInProgressCountPanel(page, cfg);
+    if (await isOnInProgressCountPanel(page, cfg)) return true;
+
+    log.info('Count in Progress tab clicked but in-progress panel did not appear');
+    return false;
+}
+
+async function openNewCountTab(page, cfg) {
+    if ((await isNewCountPanelReady(page, cfg)) && !(await isOnInProgressCountPanel(page, cfg))) {
+        log.info('Already on New Count panel');
+        return;
+    }
+
+    log.info('Opening New Count tab to start a Key Item Count');
+    await tryClickEntryTab(page, 'new count');
+    await waitForNewCountPanel(page, cfg);
 }
 
 async function selectCountType(page, cfg) {
@@ -432,8 +584,8 @@ async function findOpenKeyItemCount(page, cfg) {
 async function ensureKeyItemCountEditable(page, cfg) {
     await waitForStockCountPageReady(page, cfg);
 
-    if (await hasInProgressCountSelect(page, cfg)) {
-        await tryClickEntryTab(page, 'count in progress');
+    const onInProgress = await openCountInProgressTab(page, cfg);
+    if (onInProgress) {
         const openCount = await findOpenKeyItemCount(page, cfg);
         if (openCount) {
             log.info(
@@ -441,12 +593,13 @@ async function ensureKeyItemCountEditable(page, cfg) {
             );
             return { mode: 'in-progress', ...openCount };
         }
+        log.info('Count in Progress tab — no open Key Item Count batch found');
+    } else {
+        log.info('Count in Progress tab unavailable — will create a new Key Item Count');
     }
 
     log.info('No open Key Item Count found — starting new count');
-    if (!(await isNewCountPanelReady(page, cfg))) {
-        await tryClickEntryTab(page, 'new count');
-    }
+    await openNewCountTab(page, cfg);
     if (!(await isNewCountPanelReady(page, cfg))) {
         const visible = await listVisibleMainStockCountTabs(page);
         const hasCountSelect = await page.evaluate(
@@ -772,29 +925,86 @@ function filledCountsToClosingArray(catalogItem, counts) {
 }
 
 async function typeIntoInput(page, inputId, value) {
-    const selector = `#${inputId.replace(/:/g, '\\:')}`;
+    const id = String(inputId || '').trim();
+    if (!id) return false;
+    const text = String(value);
+
+    const setViaDom = await page.evaluate(
+        (inputId, val) => {
+            const inp = document.getElementById(inputId);
+            if (!inp || inp.disabled || inp.readOnly) return { ok: false };
+            inp.scrollIntoView({ block: 'center', inline: 'nearest' });
+            inp.focus();
+            inp.value = String(val);
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            inp.dispatchEvent(new Event('change', { bubbles: true }));
+            inp.dispatchEvent(new Event('blur', { bubbles: true }));
+            return { ok: true, readBack: String(inp.value || '').trim() };
+        },
+        id,
+        text
+    );
+    if (setViaDom?.ok && setViaDom.readBack === text) {
+        await page.waitForTimeout(80);
+        return true;
+    }
+
+    const selector = `#${id.replace(/:/g, '\\:')}`;
+    await page.waitForSelector(selector, { visible: true, timeout: 8000 }).catch(() => null);
     const handle = await page.$(selector);
-    if (!handle) return false;
-    await handle.click({ clickCount: 3 });
-    await handle.focus();
-    await page.keyboard.down('Control');
-    await page.keyboard.press('KeyA');
-    await page.keyboard.up('Control');
-    await page.keyboard.press('Backspace');
-    await page.keyboard.type(String(value), { delay: 15 });
-    await page.keyboard.press('Tab');
-    await handle.dispose();
-    await page.waitForTimeout(60);
-    return true;
+    if (!handle) {
+        const forced = await page.evaluate(
+            (inputId, val) => {
+                const inp = document.getElementById(inputId);
+                if (!inp || inp.disabled || inp.readOnly) return false;
+                inp.focus();
+                inp.value = String(val);
+                inp.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
+            },
+            id,
+            text
+        );
+        return Boolean(forced);
+    }
+
+    try {
+        await handle.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'nearest' }));
+        await page.waitForTimeout(120);
+        await handle.focus();
+        await page.keyboard.down('Control');
+        await page.keyboard.press('KeyA');
+        await page.keyboard.up('Control');
+        await page.keyboard.press('Backspace');
+        await page.keyboard.type(text, { delay: 15 });
+        await page.keyboard.press('Tab');
+        await page.waitForTimeout(80);
+        return true;
+    } catch (error) {
+        const forced = await page.evaluate(
+            (inputId, val) => {
+                const inp = document.getElementById(inputId);
+                if (!inp || inp.disabled || inp.readOnly) return false;
+                inp.focus();
+                inp.value = String(val);
+                inp.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
+            },
+            id,
+            text
+        );
+        if (!forced) throw error;
+        return true;
+    } finally {
+        await handle.dispose();
+    }
 }
 
 async function openKeyItemCountForVerification(page, cfg, options = {}) {
     await waitForStockCountPageReady(page, cfg);
-    if (await hasInProgressCountSelect(page, cfg)) {
-        await tryClickEntryTab(page, 'count in progress');
-    }
+    await openCountInProgressTab(page, cfg);
 
-    const open = await findOpenKeyItemCount(page, cfg);
+    const open = (await isOnInProgressCountPanel(page, cfg)) ? await findOpenKeyItemCount(page, cfg) : null;
     if (open) {
         log.info(
             `Verification using in-progress Key Item Count batch ${open.batch} (${open.status}) — ${open.countTitle}`
@@ -962,9 +1172,39 @@ async function fillLocationTab(page, cfg, catalog, locationName, itemsAtLocation
 
         const slotValues = countsToSlotValues(item, counts, row);
         for (const [slot, val] of Object.entries(slotValues)) {
-            const inputId = row.slotInputs?.[Number(slot)]?.id;
-            if (!inputId || val === '') continue;
-            await typeIntoInput(page, inputId, val);
+            if (val === '') continue;
+            const slotNum = Number(slot);
+            let inputId = row.slotInputs?.[slotNum]?.id;
+            if (!inputId) continue;
+
+            const liveId = await page.evaluate(
+                (code, slotIndex) => {
+                    const normCode = (s) =>
+                        String(s || '')
+                            .trim()
+                            .toUpperCase()
+                            .replace(/^0+(?=\d)/, '');
+                    const want = normCode(code);
+                    for (const inp of document.querySelectorAll('input[id*="tbOH"]')) {
+                        const m = inp.id.match(/tbOH([123])$/i);
+                        if (!m || Number(m[1]) !== slotIndex) continue;
+                        if (inp.disabled || inp.readOnly) continue;
+                        const tr = inp.closest('tr');
+                        const ctx = (tr?.innerText || '').replace(/\s+/g, ' ');
+                        if (want && !ctx.toUpperCase().includes(want)) continue;
+                        return inp.id;
+                    }
+                    return '';
+                },
+                item.itemCode || row.itemCode || '',
+                slotNum
+            );
+            if (liveId) inputId = liveId;
+
+            const wrote = await typeIntoInput(page, inputId, val);
+            if (!wrote) {
+                missed.push(`${item.itemCode || item.name} (could not set slot ${slot})`);
+            }
         }
         filled++;
     }

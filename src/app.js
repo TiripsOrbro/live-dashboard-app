@@ -25,6 +25,12 @@ process.env.SCRAPER_HEADLESS = 'true';
 const scrapeData = require('./services/scraper');
 const { notifyScrapeFailure } = require('./services/alertNotifier');
 const { isMmxResourceBusy } = require('./services/mmxResourceGate');
+const {
+    MmxWorkAbortedError,
+    resetSalesScrapeAbort,
+    registerSalesScrapeBrowser,
+    clearSalesScrapeBrowser,
+} = require('./services/salesScrapeAbort');
 const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./services/storeList');
 const {
     TEST_STORE_SLUG,
@@ -932,6 +938,7 @@ async function withTimeout(promise, ms, onTimeout) {
 }
 
 async function scrapeWithRetry(scrapeOptions = {}) {
+    resetSalesScrapeAbort();
     let lastError;
     const attempts = Math.max(1, SCRAPE_RETRIES + 1);
     for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -942,6 +949,7 @@ async function scrapeWithRetry(scrapeOptions = {}) {
                     ...scrapeOptions,
                     onBrowser: (browser) => {
                         activeBrowser = browser;
+                        registerSalesScrapeBrowser(browser);
                     },
                 }),
                 SCRAPE_TIMEOUT_MS,
@@ -949,9 +957,14 @@ async function scrapeWithRetry(scrapeOptions = {}) {
                     if (!activeBrowser) return;
                     console.warn('API: Closing active browser after scrape timeout');
                     await activeBrowser.close();
+                    clearSalesScrapeBrowser(activeBrowser);
                 }
             );
         } catch (error) {
+            if (activeBrowser) clearSalesScrapeBrowser(activeBrowser);
+            if (error?.aborted || error instanceof MmxWorkAbortedError) {
+                throw error;
+            }
             lastError = error;
             console.error(`API: Scrape attempt ${attempt}/${attempts} failed:`, error.message);
         }
@@ -1243,6 +1256,15 @@ function runScrapeIntoCache(options) {
             logDashboardScrapeComplete(salesCache);
             return salesCache;
         } catch (error) {
+            if (error?.aborted || error instanceof MmxWorkAbortedError) {
+                console.log('[Dashboard] Sales scrape aborted — stock count / orders in progress');
+                if (!salesCache) {
+                    salesCache = buildCacheShellFromStoreList();
+                    salesCacheAt = Date.now();
+                }
+                applyScrapeScheduleToCache(salesCache);
+                return salesCache;
+            }
             notifyScrapeFailure(error, 'scrape cycle').catch(() => {});
             throw error;
         }

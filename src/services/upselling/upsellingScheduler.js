@@ -9,6 +9,7 @@ const {
     TIME_ZONE,
 } = require('./upsellingConfig');
 const { loadScores } = require('./leaderboardStore');
+const { isMmxResourceBusy } = require('../mmxResourceGate');
 const { runUpsellMmxSync } = require('./upsellMmxPipeline');
 
 function melbourneWallClock(now = new Date()) {
@@ -93,6 +94,10 @@ function readLastHourKey(storeNumber) {
 }
 
 async function maybeRunScheduledUpsell(now = new Date()) {
+    if (isMmxResourceBusy()) {
+        return { skipped: true, reason: 'mmx-busy' };
+    }
+
     const cfg = loadUpsellingConfig();
     if (!isUpsellingUpdateWindow(now, cfg.peakWindows)) {
         return { skipped: true, reason: 'outside peak window' };

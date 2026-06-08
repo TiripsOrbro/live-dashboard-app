@@ -2,6 +2,23 @@
 
 let holdCount = 0;
 const idleWaiters = [];
+const abortHandlers = new Set();
+
+function registerMmxAbortHandler(handler) {
+    if (typeof handler === 'function') abortHandlers.add(handler);
+}
+
+/** Force-stop in-flight MMX browsers (sales scrape, upselling, etc.) before stock count / orders. */
+function abortCompetingMmxWork(reason) {
+    const label = String(reason || 'stock count / orders').trim();
+    for (const handler of abortHandlers) {
+        try {
+            handler(label);
+        } catch (err) {
+            console.warn('[MMX Resource] Abort handler failed:', err.message);
+        }
+    }
+}
 
 function acquireMmxResource(reason) {
     const wasIdle = holdCount === 0;
@@ -38,4 +55,6 @@ module.exports = {
     releaseMmxResource,
     isMmxResourceBusy,
     waitUntilMmxResourceIdle,
+    registerMmxAbortHandler,
+    abortCompetingMmxWork,
 };

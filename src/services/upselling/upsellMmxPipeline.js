@@ -1,7 +1,25 @@
 const fs = require('fs');
 const path = require('path');
 const { openMacromatixBrowser, closeBrowserQuietly } = require('../macromatixScraper');
-const { acquireMmxResource, releaseMmxResource, waitUntilMmxResourceIdle } = require('../mmxResourceGate');
+const {
+    acquireMmxResource,
+    releaseMmxResource,
+    waitUntilMmxResourceIdle,
+    registerMmxAbortHandler,
+} = require('../mmxResourceGate');
+
+let upsellActiveBrowser = null;
+
+function requestUpsellSyncAbort(reason) {
+    const browser = upsellActiveBrowser;
+    if (!browser) return false;
+    console.log(`[MMX Resource] Aborting in-flight upselling sync — ${reason}`);
+    upsellActiveBrowser = null;
+    browser.close().catch(() => {});
+    return true;
+}
+
+registerMmxAbortHandler(requestUpsellSyncAbort);
 const { configureDownloadPath, clickExportExcelDataOnly, waitForReportDownload } = require('../mmxReports/pipeline-download-reports');
 const { setReportStartDate } = require('../mmxReports/mmx-rad-date-picker');
 const { resolveReportDate } = require('../mmxReports/util-dates');
@@ -96,6 +114,7 @@ async function runUpsellMmxSync(storeNumber, options = {}) {
     let page;
     try {
         ({ browser, page } = await openMacromatixBrowser(options.browserOptions || {}));
+        upsellActiveBrowser = browser;
         const downloadDir = dataDir;
         ensureDir(downloadDir);
         await configureDownloadPath(page, downloadDir);
@@ -283,6 +302,7 @@ async function runUpsellMmxSync(storeNumber, options = {}) {
         writeLastSync({ ok: false, error: error.message, lastHourKey: options.lastHourKey });
         throw error;
     } finally {
+        if (browser && upsellActiveBrowser === browser) upsellActiveBrowser = null;
         releaseMmxResource('upselling sync');
         if (options.browserOptions?.keepBrowserOpen && browser) {
             console.log('[Upselling] Headed mode — browser stays open 90s so you can inspect (Ctrl+C to exit sooner)');

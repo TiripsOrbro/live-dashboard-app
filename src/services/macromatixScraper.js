@@ -1,6 +1,11 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const puppeteer = require('puppeteer');
+const {
+    throwIfSalesScrapeAborted,
+    isSalesScrapeAbortRequested,
+    MmxWorkAbortedError,
+} = require('./salesScrapeAbort');
 const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./storeList');
 const { getStoreScrapePhase, formatScrapeWindow } = require('./scrapeSchedule');
 
@@ -2559,6 +2564,7 @@ async function scrapeMacromatix(options = {}) {
 
             const runSingleStoreWorker = async (workerId) => {
                 for (;;) {
+                    throwIfSalesScrapeAborted();
                     const i = takeNext();
                     if (i < 0) break;
                     const store = stores[i];
@@ -2577,6 +2583,7 @@ async function scrapeMacromatix(options = {}) {
                             source: scraped.source,
                         });
                     } catch (storeErr) {
+                        if (storeErr?.aborted) throw storeErr;
                         console.error(
                             `[Macromatix] Worker ${workerId} store ${label} failed:`,
                             storeErr.message
@@ -2591,6 +2598,8 @@ async function scrapeMacromatix(options = {}) {
                 workers.push(runSingleStoreWorker(w));
             }
             await Promise.all(workers);
+
+            throwIfSalesScrapeAborted();
 
             const credGroups = groupStoresByMacromatixCredentials(
                 stores.filter((s) => storeSuccessfulCreds.has(s.storeNumber)),
@@ -2620,6 +2629,7 @@ async function scrapeMacromatix(options = {}) {
 
             const scrapeWithPage = async (workerPage) => {
                 for (;;) {
+                    throwIfSalesScrapeAborted();
                     const i = takeNext();
                     if (i < 0) break;
                     const store = stores[i];
@@ -2627,6 +2637,7 @@ async function scrapeMacromatix(options = {}) {
                     try {
                         results[i] = await scrapeStoreData(workerPage, store, ctx);
                     } catch (storeErr) {
+                        if (storeErr?.aborted) throw storeErr;
                         console.error(`[Macromatix] Store ${label} scrape failed:`, storeErr.message);
                         results[i] = buildErrorResult(store, storeErr, todayKey);
                     }
@@ -2666,6 +2677,8 @@ async function scrapeMacromatix(options = {}) {
                 }
             }
 
+            throwIfSalesScrapeAborted();
+
             try {
                 await runBatchSssgLyScrape(browser, stores, todayKey, credentials);
                 for (const result of results) {
@@ -2686,6 +2699,9 @@ async function scrapeMacromatix(options = {}) {
         };
     } catch (error) {
         await closeBrowserQuietly(browser, 'error cleanup');
+        if (error?.aborted || isSalesScrapeAbortRequested()) {
+            throw error?.aborted ? error : new MmxWorkAbortedError('Sales scrape aborted — stock count / orders in progress');
+        }
         console.error('[Macromatix] Error:', error.message);
         throw error;
     }

@@ -25,7 +25,13 @@ const { downloadReportsForStores } = require('./mmxReportDownloader');
 const { buildOrderLinesByVendorId } = require('./buildToOrderLines');
 const { runVendorOrderEntry } = require('./mmxReports/pipeline-enter-vendor-orders');
 const { createSession, getSession, destroySession } = require('./mmxCountSession');
-const { acquireMmxResource, releaseMmxResource } = require('./mmxResourceGate');
+require('./salesScrapeAbort');
+const { acquireMmxResource, releaseMmxResource, abortCompetingMmxWork } = require('./mmxResourceGate');
+
+function beginStockCountMmxWork(reason) {
+    abortCompetingMmxWork(reason);
+    acquireMmxResource(reason);
+}
 const { setCheckpoint, getCheckpoint, clearCheckpoint } = require('./mmxPipelineCheckpoint');
 const { runStoreOrdersCompleteCleanup } = require('./storeOrdersCompleteCleanup');
 const log = require('./mmxReports/util-logging');
@@ -163,7 +169,7 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
         await markMmxSent(storeNumber, row.slug, dateKey);
     }
 
-    acquireMmxResource(`manual counts → orders (store ${storeNumber})`);
+    beginStockCountMmxWork(`manual counts → orders (store ${storeNumber})`);
     let browser;
     let page;
     try {
@@ -502,7 +508,7 @@ async function runOrdersAfterApply(storeNumber, dateKey, mmx = {}) {
 }
 
 async function resumeScheduledOrdersInNewBrowser(storeNumber, dateKey, options = {}) {
-    acquireMmxResource(`resume scheduled orders (store ${storeNumber})`);
+    beginStockCountMmxWork(`resume scheduled orders (store ${storeNumber})`);
     let browser;
     let page;
     try {
@@ -527,7 +533,7 @@ function allVendorsMarkedMmxSent(vendorSlugs, sentSlugs) {
  */
 async function runScheduledOrdersOnly(storeNumber, options = {}) {
     return withStoreLock(storeNumber, async () => {
-        acquireMmxResource(`scheduled orders (store ${storeNumber})`);
+        beginStockCountMmxWork(`scheduled orders (store ${storeNumber})`);
         const dateKey = options.dateKey || melbourneDateKey();
         let browser;
         let page;
@@ -579,7 +585,7 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
             return runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options);
         }
 
-        acquireMmxResource(`stock count prepare (store ${storeNumber})`);
+        beginStockCountMmxWork(`stock count prepare (store ${storeNumber})`);
         let sessionStarted = false;
 
         let browser;

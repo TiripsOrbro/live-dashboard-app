@@ -27,7 +27,6 @@ const DAY_ALIASES = {
 
 const DEFAULT_AREA = 'Area 22';
 const TEST_AREA = 'Test Store';
-let areaFilterLogged = false;
 const PERTH_STORE_NAMES = ['midland', 'ellenbrook', 'canning vale', 'butler'];
 const PERTH_STORE_NUMBERS = new Set(['3901', '3902', '3903', '3904']);
 /** 375x / 376x — Queensland stores on Macromatix store picker. */
@@ -61,31 +60,6 @@ function normalizeHours(open, close) {
 function normalizeArea(value) {
     const s = String(value || '').trim();
     return s || DEFAULT_AREA;
-}
-
-/** Temporary testing filter — e.g. DASHBOARD_STORE_AREAS=Area 22 */
-function parseStoreAreaFilter() {
-    const raw = String(process.env.DASHBOARD_STORE_AREAS || '').trim();
-    if (!raw) return [];
-    return raw
-        .split(/[,;]+/)
-        .map((part) => part.trim())
-        .filter(Boolean);
-}
-
-function normalizeAreaFilterToken(value) {
-    const s = String(value || '').trim().toLowerCase();
-    if (!s) return '';
-    if (/^area\s+\d+$/i.test(s)) return s.replace(/\s+/g, ' ');
-    if (/^\d+$/.test(s)) return `area ${s}`;
-    return s;
-}
-
-function storeMatchesAreaFilter(store, areaFilter) {
-    if (!areaFilter.length) return true;
-    const storeArea = normalizeAreaFilterToken(normalizeArea(store.area));
-    const wanted = new Set(areaFilter.map((token) => normalizeAreaFilterToken(token)));
-    return wanted.has(storeArea);
 }
 
 function inferStoreTimeZone(storeNumber, storeName, explicit) {
@@ -210,7 +184,7 @@ function getStoreList() {
     }
 
     const now = new Date();
-    const parsed = parseStoreList(text).map((store) => {
+    return parseStoreList(text).map((store) => {
         const { openHour, closeHour } = resolveHours(store, now);
         const out = {
             storeNumber: store.storeNumber,
@@ -223,18 +197,6 @@ function getStoreList() {
         if (store.hoursByDay) out.hoursByDay = store.hoursByDay;
         return out;
     });
-
-    const areaFilter = parseStoreAreaFilter();
-    if (!areaFilter.length) return parsed;
-
-    const filtered = parsed.filter((store) => storeMatchesAreaFilter(store, areaFilter));
-    if (!areaFilterLogged) {
-        areaFilterLogged = true;
-        console.log(
-            `[StoreList] Area filter active (${areaFilter.join(', ')}) — ${filtered.length}/${parsed.length} store(s)`
-        );
-    }
-    return filtered;
 }
 
 /** Look up a single store's config (today's resolved hours) by number, or null if not listed. */
@@ -248,7 +210,6 @@ module.exports = {
     getStoreList,
     getStoreConfig,
     parseStoreList,
-    parseStoreAreaFilter,
     resolveHours,
     DEFAULT_OPEN_HOUR,
     DEFAULT_CLOSE_HOUR,

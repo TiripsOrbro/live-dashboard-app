@@ -44,7 +44,7 @@ function withStoreMmxOptions(storeNumber, options = {}) {
 
 /** Select the target store on the current MMX page (combo, report picker, or existing session). */
 async function selectStoreInMacromatix(page, storeNumber) {
-    const picked = await resolveStoreOnCurrentPage(page, storeNumber);
+    const picked = await resolveStoreOnCurrentPage(page, storeNumber, { requireComboSelection: true });
     log.info(`Store selected: ${picked}`);
     return picked;
 }

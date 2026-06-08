@@ -131,11 +131,19 @@ async function clickRadTab(page, tabLabel) {
 const MAIN_STOCK_COUNT_TAB_ALIASES = {
     'count in progress': ['count in progress', 'counts in progress', 'in progress'],
     'new count': ['new count', 'start new count', 'create new count'],
+    'confirm count': ['confirm count', 'confirm'],
 };
 
 function mainStockCountTabLabels() {
     return [...new Set([...MMX_COUNT_TABS, ...Object.values(MAIN_STOCK_COUNT_TAB_ALIASES).flat()])].map((t) =>
         String(t).trim().toLowerCase()
+    );
+}
+
+async function hasInProgressCountSelect(page, cfg) {
+    return page.evaluate(
+        (id) => Boolean(document.getElementById(id)),
+        cfg.inProgressCountSelectId || DEFAULT_CONFIG.inProgressCountSelectId
     );
 }
 
@@ -145,8 +153,8 @@ async function waitForStockCountPageReady(page, cfg) {
         .waitForFunction(
             (ids) =>
                 ids.some((id) => document.getElementById(id)) ||
-                [...document.querySelectorAll('.rtsUL .rtsLink, .rtsUL .rtsTxt')].some((el) =>
-                    /count in progress|new count/i.test(el.textContent || '')
+                [...document.querySelectorAll('.rtsUL .rtsLink, .rtsUL .rtsTxt, a, span, button, input')].some(
+                    (el) => /count in progress|new count/i.test(el.textContent || el.value || '')
                 ),
             { timeout: 30000 },
             selectIds
@@ -173,49 +181,55 @@ async function listVisibleMainStockCountTabs(page) {
         const loc = new Set(locationTabs);
         const seen = new Set();
         const out = [];
+        const push = (t) => {
+            if (!t || loc.has(t) || seen.has(t) || t.length > 40) return;
+            seen.add(t);
+            out.push(t);
+        };
+
         for (const strip of document.querySelectorAll('.rtsUL')) {
-            const texts = [...strip.querySelectorAll('.rtsLink, .rtsTxt, li.rtsLI')]
-                .map((el) => norm(el.textContent))
-                .filter(Boolean);
-            if (!texts.some((t) => /count in progress|new count|confirm count/i.test(t))) continue;
-            for (const t of texts) {
-                if (!t || loc.has(t) || seen.has(t)) continue;
-                seen.add(t);
-                out.push(t);
+            for (const el of strip.querySelectorAll('.rtsLink, .rtsTxt, li.rtsLI')) {
+                push(norm(el.textContent));
             }
         }
-        return out;
+        for (const el of document.querySelectorAll('a, button, input[type="button"], input[type="submit"]')) {
+            push(norm(el.value || el.textContent));
+        }
+        return out.filter((t) => /count|report/i.test(t)).slice(0, 20);
     }, mainStockCountTabLabels());
 }
 
-async function clickMainTab(page, tabLabel) {
+async function clickMainTab(page, tabLabel, options = {}) {
     const want = String(tabLabel || '').trim().toLowerCase();
     const labels = MAIN_STOCK_COUNT_TAB_ALIASES[want] || [want];
+    const stripFilterName = want === 'confirm count' ? 'confirm' : 'entry';
     const clicked = await page.evaluate(
-        ({ labelList, locationTabs }) => {
+        ({ labelList, locationTabs, stripFilterName }) => {
             const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
             const loc = new Set(locationTabs);
             const candidates = [];
+            const entryStrip = (text) => /count in progress|new count/i.test(text);
+            const confirmStrip = (text) => /confirm count/i.test(text) && !entryStrip(text);
+            const stripFilter = stripFilterName === 'confirm' ? confirmStrip : entryStrip;
 
-            const pushCandidate = (el) => {
-                const t = norm(el.textContent);
+            const pushCandidate = (el, source) => {
+                const t = norm(el.value || el.textContent);
                 if (!t || loc.has(t)) return;
-                candidates.push({ el, t });
+                candidates.push({ el, t, source });
             };
 
             for (const strip of document.querySelectorAll('.rtsUL')) {
                 const stripText = norm(strip.textContent || '');
-                if (!/count in progress|new count|confirm count/i.test(stripText)) continue;
+                if (!stripFilter(stripText)) continue;
                 for (const el of strip.querySelectorAll('.rtsLink, .rtsTxt, li.rtsLI')) {
-                    pushCandidate(el);
+                    pushCandidate(el, 'rts');
                 }
-                if (candidates.length) break;
             }
 
-            if (!candidates.length) {
-                for (const el of document.querySelectorAll('.rtsLink, .rtsTxt, a.rtsLink, li.rtsLI')) {
-                    pushCandidate(el);
-                }
+            for (const el of document.querySelectorAll(
+                'a, button, input[type="button"], input[type="submit"], span, label'
+            )) {
+                pushCandidate(el, 'fallback');
             }
 
             const clickEl = (entry) => {
@@ -227,33 +241,32 @@ async function clickMainTab(page, tabLabel) {
                 return entry.t;
             };
 
-            for (const label of labelList) {
-                for (const entry of candidates) {
-                    if (entry.t === label) return { ok: true, text: clickEl(entry) };
-                }
-            }
-            for (const label of labelList) {
-                for (const entry of candidates) {
-                    if (entry.t.startsWith(label) || label.startsWith(entry.t)) {
-                        return { ok: true, text: clickEl(entry) };
+            const tryMatch = (matcher) => {
+                for (const label of labelList) {
+                    for (const entry of candidates) {
+                        if (matcher(entry.t, label)) return { ok: true, text: clickEl(entry) };
                     }
                 }
-            }
-            for (const label of labelList) {
-                for (const entry of candidates) {
-                    if (entry.t.includes(label)) return { ok: true, text: clickEl(entry) };
-                }
-            }
+                return null;
+            };
+
+            const exact = tryMatch((t, label) => t === label);
+            if (exact) return exact;
+            const starts = tryMatch((t, label) => t.startsWith(label) || label.startsWith(t));
+            if (starts) return starts;
+            const includes = tryMatch((t, label) => t.includes(label));
+            if (includes) return includes;
 
             return {
                 ok: false,
                 candidates: [...new Set(candidates.map((c) => c.t))].slice(0, 20),
             };
         },
-        { labelList: labels, locationTabs: mainStockCountTabLabels() }
+        { labelList: labels, locationTabs: mainStockCountTabLabels(), stripFilterName }
     );
 
     if (!clicked?.ok) {
+        if (options.optional) return null;
         const visible = await listVisibleMainStockCountTabs(page);
         const seen = clicked?.candidates?.length ? clicked.candidates.join(', ') : visible.join(', ') || 'none';
         throw new Error(`Main tab not found: ${tabLabel} (seen: ${seen})`);
@@ -266,6 +279,15 @@ async function clickMainTab(page, tabLabel) {
     await page.waitForTimeout(1500);
     log.info(`Opened stock count main tab: ${clicked.text}`);
     return clicked.text;
+}
+
+async function tryClickEntryTab(page, tabLabel) {
+    try {
+        return await clickMainTab(page, tabLabel);
+    } catch (error) {
+        log.info(`Stock count tab "${tabLabel}" not clicked (${error.message}) — checking on-page count controls`);
+        return null;
+    }
 }
 
 async function selectCountType(page, cfg) {
@@ -385,6 +407,7 @@ function isKeyItemCountOption(cfg, optionText) {
 }
 
 async function findOpenKeyItemCount(page, cfg) {
+    if (!(await hasInProgressCountSelect(page, cfg))) return null;
     const options = await listInProgressCountOptions(page, cfg);
     if (!options.length) return null;
 
@@ -408,24 +431,30 @@ async function findOpenKeyItemCount(page, cfg) {
 
 async function ensureKeyItemCountEditable(page, cfg) {
     await waitForStockCountPageReady(page, cfg);
-    await clickMainTab(page, 'count in progress');
 
-    const openCount = await findOpenKeyItemCount(page, cfg);
-    if (openCount) {
-        log.info(
-            `Using in-progress Key Item Count batch ${openCount.batch} (status: ${openCount.status}) — ${openCount.countTitle}`
-        );
-        return { mode: 'in-progress', ...openCount };
+    if (await hasInProgressCountSelect(page, cfg)) {
+        await tryClickEntryTab(page, 'count in progress');
+        const openCount = await findOpenKeyItemCount(page, cfg);
+        if (openCount) {
+            log.info(
+                `Using in-progress Key Item Count batch ${openCount.batch} (status: ${openCount.status}) — ${openCount.countTitle}`
+            );
+            return { mode: 'in-progress', ...openCount };
+        }
     }
 
     log.info('No open Key Item Count found — starting new count');
     if (!(await isNewCountPanelReady(page, cfg))) {
-        await clickMainTab(page, 'new count');
+        await tryClickEntryTab(page, 'new count');
     }
     if (!(await isNewCountPanelReady(page, cfg))) {
         const visible = await listVisibleMainStockCountTabs(page);
+        const hasCountSelect = await page.evaluate(
+            (id) => Boolean(document.getElementById(id)),
+            cfg.countTypeSelectId
+        );
         throw new Error(
-            `New Count panel did not load (Key Item Count type missing). Main tabs seen: ${visible.join(', ') || 'none'}`
+            `New Count panel did not load (Key Item Count type missing). Count type select present: ${hasCountSelect}. Tabs seen: ${visible.join(', ') || 'none'}`
         );
     }
     await selectCountType(page, cfg);
@@ -761,7 +790,9 @@ async function typeIntoInput(page, inputId, value) {
 
 async function openKeyItemCountForVerification(page, cfg, options = {}) {
     await waitForStockCountPageReady(page, cfg);
-    await clickMainTab(page, 'count in progress');
+    if (await hasInProgressCountSelect(page, cfg)) {
+        await tryClickEntryTab(page, 'count in progress');
+    }
 
     const open = await findOpenKeyItemCount(page, cfg);
     if (open) {
@@ -1326,6 +1357,7 @@ async function enterCombinedStockCount(page, opts) {
     if (opts.selectStore) {
         await opts.selectStore(page, opts.storeNumber);
         await page.waitForTimeout(2500);
+        await waitForStockCountPageReady(page, cfg);
     }
 
     const countMode = await ensureKeyItemCountEditable(page, cfg);

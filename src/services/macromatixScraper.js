@@ -975,7 +975,7 @@ async function resolveStoreOnCurrentPage(page, storeNumber, options = {}) {
         await selectStoreByLabel(page, storeLabel, { storeNumber: num, waitMs: 500 });
         picked = await selectStoreOnPage(page, num);
     }
-    if (!picked) {
+    if (!picked && !options.requireComboSelection) {
         picked = await confirmStoreContextOnPage(page, num);
         if (picked) {
             console.log(`[Macromatix] Store ${num} already in session context (${picked})`);

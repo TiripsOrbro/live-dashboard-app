@@ -175,8 +175,37 @@ function isCbUsername(name) {
     return /^CB[A-Za-z0-9]+$/i.test(String(name || '').trim());
 }
 
+/** `.Users` comment lines — `#` headers or `//` section dividers (ignored except as labels). */
+function isUsersCommentLine(trimmed) {
+    const line = String(trimmed || '').trim();
+    return line.startsWith('#') || line.startsWith('//');
+}
+
+/**
+ * Display label from a `#` or `//` line. Decorative `//||||//` dividers return ''.
+ * `//          3806            //` → `3806`.
+ */
+function parseUsersCommentLabel(trimmed) {
+    const line = String(trimmed || '').trim();
+    if (line.startsWith('#')) {
+        return line.replace(/^#\s*/, '').trim();
+    }
+    if (!line.startsWith('//')) return '';
+
+    let body = line.replace(/^\/\/\s*/, '').replace(/\s*\/\/\s*$/, '').trim();
+    if (!body || /^[/|=\-_\s\\.]+$/.test(body)) return '';
+
+    const store = body.match(/\b(\d{3,6})\b/);
+    if (store) return store[1];
+
+    return body.replace(/\s+/g, ' ').trim();
+}
+
 function parseAccessBlock(block) {
-    const lines = block.filter((line) => line.trim() && !line.trim().startsWith('#'));
+    const lines = block.filter((line) => {
+        const trimmed = line.trim();
+        return trimmed && !isUsersCommentLine(trimmed);
+    });
     if (!lines.length) return null;
 
     let username = '';
@@ -249,6 +278,7 @@ function parseAccessBlock(block) {
 /**
  * Parse `.Users` blocks:
  *   # Display name (optional label)
+ *   //||||||||//  /  //  3806  //  /  //||||||||//  three-line store sections
  *   username |
  *   [CBusername |]   optional colour-blind login (same password + welcome name)
  *   password |
@@ -291,9 +321,12 @@ function parseUsersFile(text) {
             flushBlock();
             continue;
         }
-        if (trimmed.startsWith('#')) {
-            flushBlock();
-            blockName = trimmed.replace(/^#\s*/, '').trim();
+        if (isUsersCommentLine(trimmed)) {
+            const label = parseUsersCommentLabel(trimmed);
+            if (label) {
+                flushBlock();
+                blockName = label;
+            }
             continue;
         }
         block.push(rawLine);
@@ -333,9 +366,12 @@ function parseUsersFileBlocks(text) {
             flushBlock();
             continue;
         }
-        if (trimmed.startsWith('#')) {
-            flushBlock();
-            blockName = trimmed.replace(/^#\s*/, '').trim();
+        if (isUsersCommentLine(trimmed)) {
+            const label = parseUsersCommentLabel(trimmed);
+            if (label) {
+                flushBlock();
+                blockName = label;
+            }
             continue;
         }
         block.push(rawLine);

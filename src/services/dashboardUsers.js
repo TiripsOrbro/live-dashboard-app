@@ -402,6 +402,81 @@ function serializeUsersFile(blocks) {
     return blocks.map(serializeUserBlock).join('\n').trimEnd() + '\n';
 }
 
+function isStoreSectionLabel(label) {
+    const key = normalizeStoreKey(label);
+    return Boolean(key && /^\d{3,6}$/.test(key));
+}
+
+function storeSectionHeaderText(storeNumber) {
+    const store = normalizeStoreKey(storeNumber);
+    return [
+        '//||||||||||||||||||||||||||||||||||//',
+        `//              ${store}                //`,
+        '//||||||||||||||||||||||||||||||||||//',
+    ].join('\n');
+}
+
+function findStoreSectionLabelIndex(lines, storeNumber) {
+    const store = normalizeStoreKey(storeNumber);
+    if (!store) return -1;
+    for (let i = 0; i < lines.length; i += 1) {
+        const label = parseUsersCommentLabel(lines[i].trim());
+        if (label && normalizeStoreKey(label) === store && isStoreSectionLabel(label)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+function findNextStoreSectionLabelIndex(lines, afterIndex) {
+    for (let i = afterIndex + 1; i < lines.length; i += 1) {
+        const label = parseUsersCommentLabel(lines[i].trim());
+        if (label && isStoreSectionLabel(label)) return i;
+    }
+    return -1;
+}
+
+/** Insert a serialized user block under the matching `// 3806 //` section (or create one at EOF). */
+function insertUserBlockInStoreSection(fileText, storeNumber, blockText) {
+    const store = normalizeStoreKey(storeNumber);
+    const lines = String(fileText || '').replace(/\r\n/g, '\n').split('\n');
+    const trimmedBlock = String(blockText || '').trimEnd();
+    const labelIdx = findStoreSectionLabelIndex(lines, store);
+
+    if (labelIdx < 0) {
+        const existing = String(fileText || '').trimEnd();
+        const addition = `${storeSectionHeaderText(store)}\n\n${trimmedBlock}`;
+        return existing ? `${existing}\n\n${addition}\n` : `${addition}\n`;
+    }
+
+    const nextSection = findNextStoreSectionLabelIndex(lines, labelIdx);
+    const stop = nextSection >= 0 ? nextSection : lines.length;
+    let insertBefore = stop;
+    while (insertBefore > labelIdx + 1) {
+        const prev = lines[insertBefore - 1].trim();
+        if (!prev) {
+            insertBefore -= 1;
+            continue;
+        }
+        if (isUsersCommentLine(prev) && !parseUsersCommentLabel(prev)) {
+            insertBefore -= 1;
+            continue;
+        }
+        break;
+    }
+
+    let lastContent = labelIdx;
+    for (let i = labelIdx; i < insertBefore; i += 1) {
+        if (lines[i].trim()) lastContent = i;
+    }
+
+    const before = lines.slice(0, lastContent + 1);
+    const after = lines.slice(insertBefore);
+    const merged = [...before, '', ...trimmedBlock.split('\n')];
+    if (after.length) merged.push('', ...after);
+    return merged.join('\n').trimEnd() + '\n';
+}
+
 function invalidateUsersCache() {
     usersCache = null;
     usersCacheMtime = 0;
@@ -559,10 +634,14 @@ function listManagedStoreAccounts(storeNumber) {
     const blocks = parseUsersFileBlocks(readUsersFileText());
     return blocks
         .filter((block) => blockGrantsStore(block, store) && isManagedStoreAccountBlock(block))
-        .map((block) => ({
-            username: String(block.username || '').trim(),
-            nickname: String(block.displayName || block.username || '').trim(),
-        }))
+        .map((block) => {
+            const secrets = readUserAccountSecrets(block.username);
+            const fullName = fullNameFromSecrets(secrets);
+            return {
+                username: String(block.username || '').trim(),
+                nickname: fullName || String(block.displayName || block.username || '').trim(),
+            };
+        })
         .filter((row) => row.username)
         .sort((a, b) => a.nickname.localeCompare(b.nickname, undefined, { sensitivity: 'base' }));
 }
@@ -745,9 +824,17 @@ function appendStoreUser({ username, password, stores, displayName, createdBy, a
         role: 'store',
         stores: storeList,
     };
-    const existing = readUsersFileText().trimEnd();
     const addition = serializeUserBlock(block);
-    writeUsersFileText(existing ? `${existing}\n\n${addition}` : addition);
+    const existing = readUsersFileText();
+    const nextText =
+        storeList.length === 1
+            ? insertUserBlockInStoreSection(existing, storeList[0], addition)
+            : (() => {
+                  const trimmed = existing.trimEnd();
+                  const joined = trimmed ? `${trimmed}\n\n${addition}` : addition;
+                  return joined.endsWith('\n') ? joined : `${joined}\n`;
+              })();
+    writeUsersFileText(nextText);
     appendAccountAudit({
         action: 'create-account',
         username: name,

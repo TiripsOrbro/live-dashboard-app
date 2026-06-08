@@ -1985,7 +1985,11 @@ app.post('/api/account/create', async (req, res) => {
     const confirmPassword = String(req.body?.confirmPassword || '');
     const firstName = String(req.body?.firstName || '').trim();
     const lastName = String(req.body?.lastName || '').trim();
-    const displayName = String(req.body?.displayName || firstName || username).trim();
+    const displayName =
+        String(req.body?.displayName || '').trim() ||
+        [firstName, lastName].filter(Boolean).join(' ').trim() ||
+        firstName ||
+        username;
     const mmxUsername = String(req.body?.mmxUsername || '').trim();
     const mmxPassword = String(req.body?.mmxPassword || '');
 
@@ -2014,7 +2018,7 @@ app.post('/api/account/create', async (req, res) => {
     const result = appendStoreUser({
         username,
         password,
-        displayName: firstName,
+        displayName,
         stores: parent.stores,
         createdBy: parent.parentUsername,
         addCbAlias: parent.addCbAlias,

@@ -77,9 +77,10 @@ function writeUserAccountSecrets(dashboardUsername, secrets) {
     }
     try {
         fs.mkdirSync(MMX_CREDENTIALS_DIR, { recursive: true });
+        const existing = readCredentialsFileRaw(dashUser) || {};
+        const firstName = String(secrets.firstName || existing.firstName || '').trim();
+        const lastName = String(secrets.lastName || existing.lastName || '').trim();
         const encrypted = encryptPayload({
-            firstName: String(secrets.firstName || '').trim(),
-            lastName: String(secrets.lastName || '').trim(),
             mmxUsername: mmxUser,
             mmxPassword: mmxPass,
             updatedAt: new Date().toISOString(),
@@ -89,6 +90,8 @@ function writeUserAccountSecrets(dashboardUsername, secrets) {
             JSON.stringify(
                 {
                     username: dashUser,
+                    firstName,
+                    lastName,
                     encrypted,
                     updatedAt: new Date().toISOString(),
                 },
@@ -113,8 +116,8 @@ function readUserAccountSecrets(dashboardUsername) {
         try {
             const decrypted = decryptPayload(raw.encrypted);
             return {
-                firstName: String(decrypted.firstName || '').trim(),
-                lastName: String(decrypted.lastName || '').trim(),
+                firstName: String(raw.firstName || decrypted.firstName || '').trim(),
+                lastName: String(raw.lastName || decrypted.lastName || '').trim(),
                 mmxUsername: String(decrypted.mmxUsername || '').trim(),
                 mmxPassword: String(decrypted.mmxPassword || ''),
             };
@@ -144,7 +147,7 @@ function readUserAccountSecrets(dashboardUsername) {
     return null;
 }
 
-/** AES-256-GCM at rest — only the dashboard username is stored in cleartext for lookup. */
+/** AES-256-GCM at rest for Macromatix login; dashboard username and crew name stay in cleartext. */
 function saveUserAccountSecrets(dashboardUsername, secrets) {
     return writeUserAccountSecrets(dashboardUsername, secrets);
 }

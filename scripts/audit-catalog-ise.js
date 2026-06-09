@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Audit catalog items vs ISE / SOH / SOO for a store.
- * Usage: node scripts/audit-catalog-ise.js 3811 [--location Freezer] [--location Fridge]
+ * Usage: node scripts/audit-catalog-ise.js 3811 [--vendor americold] [--location Freezer] ...
  */
 const path = require('path');
 const { getVendorCatalog } = require('../src/services/vendorCatalog');
@@ -20,13 +20,16 @@ const MIN_NAME_SCORE = 25;
 
 function parseArgs(argv) {
     const storeNumber = (argv[2] || '').replace(/\D/g, '');
+    let vendor = 'americold';
     const locations = [];
     for (let i = 3; i < argv.length; i++) {
-        if (argv[i] === '--location' && argv[i + 1]) {
+        if (argv[i] === '--vendor' && argv[i + 1]) {
+            vendor = String(argv[++i]).trim().toLowerCase();
+        } else if (argv[i] === '--location' && argv[i + 1]) {
             locations.push(argv[++i]);
         }
     }
-    return { storeNumber, locations: locations.length ? locations : ['Freezer', 'Fridge'] };
+    return { storeNumber, vendor, locations };
 }
 
 function findInMap(keys, map) {
@@ -53,6 +56,7 @@ function bestIseByName(name, ise, usedCodes) {
 }
 
 function itemInLocations(item, locations) {
+    if (!locations?.length) return true;
     const locs = item.locations || [];
     return locs.some((l) => locations.includes(l));
 }
@@ -74,15 +78,17 @@ function itemBuildToKind(item) {
 }
 
 function main() {
-    const { storeNumber, locations } = parseArgs(process.argv);
+    const { storeNumber, vendor, locations } = parseArgs(process.argv);
     if (!storeNumber) {
-        console.error('Usage: node scripts/audit-catalog-ise.js <store> [--location Freezer] ...');
+        console.error(
+            'Usage: node scripts/audit-catalog-ise.js <store> [--vendor slug] [--location Freezer] ...'
+        );
         process.exit(1);
     }
 
-    const catalog = getVendorCatalog('americold');
+    const catalog = getVendorCatalog(vendor);
     if (!catalog) {
-        console.error('Americold catalog not found');
+        console.error(`Vendor catalog not found: ${vendor}`);
         process.exit(1);
     }
 
@@ -134,7 +140,9 @@ function main() {
             code,
             name: item.name,
             kind: itemBuildToKind(item),
-            locations: (item.locations || []).filter((l) => locations.includes(l)).join(', '),
+            locations: locations.length
+                ? (item.locations || []).filter((l) => locations.includes(l)).join(', ')
+                : (item.locations || []).join(', '),
             iseKey,
             iseDesc: iseRow?.description || '',
             nameScore: nameHit?.score || 0,
@@ -147,7 +155,8 @@ function main() {
         });
     }
 
-    console.log(`\n=== Catalog vs ISE — store ${storeNumber} (${locations.join(' + ')}) ===`);
+    const locLabel = locations.length ? locations.join(' + ') : 'all locations';
+    console.log(`\n=== ${catalog.label || vendor} — store ${storeNumber} (${locLabel}) ===`);
     console.log(`ISE: ${path.basename(files.inventorySpecialEvent)}`);
     console.log(`SOH: ${files.stockOnHand ? path.basename(files.stockOnHand) : '(missing)'}`);
     console.log('');

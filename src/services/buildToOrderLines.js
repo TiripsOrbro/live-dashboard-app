@@ -135,13 +135,15 @@ async function buildOrderManualEntriesFromCounts(
                 item.buildToFixed != null && Number.isFinite(item.buildToFixed)
                     ? item.buildToFixed
                     : 0;
-            if (options.preferReportOnHand && reportCtx) {
+            // manual= / order=N: build-to − dashboard count − on-order (VENDOR-FORMAT.md).
+            // Stock counts always win over SOH — SOH is often missing or stale for these lines.
+            if (countEntry) {
+                onHandCartons = manualCountToCartons({ columns: countEntry.columns }, item, 1);
+            } else if (options.preferReportOnHand && reportCtx) {
                 const fromReport = onHandCartonsForCatalogItem(code, item, reportCtx);
                 if (Number.isFinite(fromReport)) {
                     onHandCartons = fromReport;
                 }
-            } else if (countEntry) {
-                onHandCartons = manualCountToCartons({ columns: countEntry.columns }, item, 1);
             }
         } else if (
             hasUncountedDefault &&

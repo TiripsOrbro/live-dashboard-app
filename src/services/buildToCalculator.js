@@ -25,6 +25,10 @@ const {
 } = require('./itemCodes');
 const { buildToOverridesForStore, mergeBuildToRules } = require('./buildToStoreOverrides');
 const {
+    calculateWorkbookBuildToOrders,
+    workbookEngineEnabled,
+} = require('./buildToWorkbookEngine');
+const {
     findIseRowForCatalogItem,
     resolveCatalogItemForIseRow,
     findInReportMapWithNameFallback,
@@ -333,6 +337,10 @@ function onOrderCartonsForCatalogItem(itemCode, catalogItem, ctx) {
 }
 
 async function calculateBuildToOrders(storeNumber, options = {}) {
+    if (workbookEngineEnabled(options)) {
+        return calculateWorkbookBuildToOrders(storeNumber, options);
+    }
+
     const reportsRoot = options.reportsDir || REPORTS_DIR;
     const dateKey = options.dateKey || melbourneDateKey();
     const files = resolveStoreReports(storeNumber, reportsRoot);

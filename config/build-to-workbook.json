@@ -1,0 +1,1428 @@
+{
+  "version": 1,
+  "source": "buildto-3811-copy.xlsx",
+  "rows": [
+    {
+      "sheet": "DRY",
+      "name": "BOX CLAMSHELL MINI",
+      "orderCode": "100358",
+      "sohLabel": "BOX CLAMSHELL MINI",
+      "mmxCode": "100358",
+      "perPack": 500.0,
+      "dailyManual": 0.0,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "FIRE SAUCE",
+      "orderCode": "100457",
+      "sohLabel": "SAUCE FIRE 10X1KG",
+      "mmxCode": "100457",
+      "perPack": 10.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "SMALL GLOVES (PACKS)",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "100480",
+      "perPack": 1000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "pack10",
+        "innerPerCarton": 10,
+        "onOrderCartonFactor": 10
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "MEDIUM GLOVES (PACKS)",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "100481",
+      "perPack": 1000.0,
+      "dailyManual": 0.2,
+      "buildToRule": {
+        "type": "pack10",
+        "innerPerCarton": 10,
+        "onOrderCartonFactor": 10
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "LARGE GLOVES (PACKS)",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "100482",
+      "perPack": 1000.0,
+      "dailyManual": 0.2,
+      "buildToRule": {
+        "type": "pack10",
+        "innerPerCarton": 10,
+        "onOrderCartonFactor": 10
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "X-LARGE GLOVES (PACKS)",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "100483",
+      "perPack": 1000.0,
+      "dailyManual": 0.2,
+      "buildToRule": {
+        "type": "pack10",
+        "innerPerCarton": 10,
+        "onOrderCartonFactor": 10
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "CARAMEL PUMP",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "106251",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "PAPER TOWEL (ROLLS)",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "38076",
+      "perPack": 6.0,
+      "dailyManual": 0.1,
+      "buildToRule": {
+        "type": "pack10",
+        "innerPerCarton": 6,
+        "onOrderCartonFactor": 12
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "TOILET PAPER (ROLLS)",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "38078",
+      "perPack": 12.0,
+      "dailyManual": 0.1,
+      "buildToRule": {
+        "type": "pack10",
+        "innerPerCarton": 12,
+        "onOrderCartonFactor": 6
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "BLUE PAPER TOWEL",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "38686",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "pack10",
+        "innerPerCarton": 6,
+        "onOrderCartonFactor": 12
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "CARAMEL PUMP",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "76600",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "LARGE CHIP BAGS",
+      "orderCode": "37995",
+      "sohLabel": "BAG CHIPS LARGE",
+      "mmxCode": "39944",
+      "perPack": 3000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "REGULAR CHIP BAGS",
+      "orderCode": "37993",
+      "sohLabel": "BAG CHIPS REGULAR",
+      "mmxCode": "39943",
+      "perPack": 3000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "CRUNCHWRAP BAGS",
+      "orderCode": "37893",
+      "sohLabel": "BAG CRUNCHWRAP",
+      "mmxCode": "39942",
+      "perPack": 2000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "CARRY OVER BAGS (BOX)",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "505253",
+      "perPack": 5000.0,
+      "dailyManual": 0.02,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "NACHO CHIP BAGS",
+      "orderCode": "37997",
+      "sohLabel": "BAG NACHO CHIPS LARGE",
+      "mmxCode": "39945",
+      "perPack": 2000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "LARGE TAKEAWAY BAGS",
+      "orderCode": "37991",
+      "sohLabel": "BAG TAKEAWAY BROWN LARGE 2",
+      "mmxCode": "37991",
+      "perPack": 250.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "MEDIUM TAKEAWAY BAGS",
+      "orderCode": "37989",
+      "sohLabel": "BAG TAKEAWAY BROWN MEDIUM",
+      "mmxCode": "37989",
+      "perPack": 1000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "SMALL TAKEAWAY BAGS",
+      "orderCode": "37987",
+      "sohLabel": "BAG TAKEAWAY BROWN SMALL",
+      "mmxCode": "37987",
+      "perPack": 1000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "BIG BELL BOX",
+      "orderCode": "38892",
+      "sohLabel": "BIG BELL BOX 2",
+      "mmxCode": "38892",
+      "perPack": 250.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10add2",
+        "add": 2
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "BIN LINERS (BOX)",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "38542",
+      "perPack": null,
+      "dailyManual": 0.2,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "CANTINA BOX",
+      "orderCode": "37872",
+      "sohLabel": "CANTINA BROWN BOX",
+      "mmxCode": "40014",
+      "perPack": 200.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "CINNAMON TWISTS",
+      "orderCode": "38352",
+      "sohLabel": "CINNAMON TWISTS",
+      "mmxCode": "40062",
+      "perPack": 10.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "FROZEN CUPS",
+      "orderCode": "37378",
+      "sohLabel": "CUP FCB 590 ML CH",
+      "mmxCode": "507876",
+      "perPack": 1000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "fixed",
+        "value": 0.08571428571428572
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "LARGE CUPS",
+      "orderCode": "37856",
+      "sohLabel": "CUP POSTMIX LARGE",
+      "mmxCode": "38891",
+      "perPack": 1000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "REGULAR CUPS",
+      "orderCode": "37854",
+      "sohLabel": "CUP POSTMIX REGULAR",
+      "mmxCode": "38890",
+      "perPack": 1000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "CHOC CHIPS",
+      "orderCode": "11172",
+      "sohLabel": "DESSERT CHOCETTES",
+      "mmxCode": "38088",
+      "perPack": 5.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "EVOLUTION FILTER PAPER",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "38464",
+      "perPack": 100.0,
+      "dailyManual": 0.01,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "JALAPENOS",
+      "orderCode": "20295",
+      "sohLabel": "JALAPENO",
+      "mmxCode": "40003",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "LIDS POSTMIX",
+      "orderCode": "13735",
+      "sohLabel": "LID POSTMIX",
+      "mmxCode": "38894",
+      "perPack": 1000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "LIDS FROZEN",
+      "orderCode": "37380",
+      "sohLabel": "LID FCB DOME 590 ML CH",
+      "mmxCode": "507877",
+      "perPack": 1000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "fixed",
+        "value": 0.08571428571428572
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "NAPKINS",
+      "orderCode": "36549",
+      "sohLabel": "NAPKINS BROWN RECYCLE",
+      "mmxCode": "38050",
+      "perPack": 6000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "CHOC SAUCE PUMPS",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "38469",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "CHOC SAUCE PUMPS",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "38469",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "RICE",
+      "orderCode": "37915",
+      "sohLabel": "RICE LONG GRAIN WHITE",
+      "mmxCode": "37915",
+      "perPack": 10.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "MILD SAUCE",
+      "orderCode": "37870",
+      "sohLabel": "SAUCE CHILLI MILD",
+      "mmxCode": "37870",
+      "perPack": 10.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "CHOC SAUCE",
+      "orderCode": "37883",
+      "sohLabel": "SAUCE CHOCOLATE DA VINCI",
+      "mmxCode": "38163",
+      "perPack": 6.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "CHOC SAUCE",
+      "orderCode": "37883",
+      "sohLabel": "SAUCE CHOCOLATE DA VINCI",
+      "mmxCode": "38163",
+      "perPack": 6.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "TOMATO SAUCE",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "17903",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "SCOURERS",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "504245",
+      "perPack": 300.0,
+      "dailyManual": 0.1,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "MEX SEASONING",
+      "orderCode": "37907",
+      "sohLabel": "SEASONING MEXICAN RICE",
+      "mmxCode": "39054",
+      "perPack": 10.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "STRAWS",
+      "orderCode": "39185",
+      "sohLabel": "STRAW PAPER KFC",
+      "mmxCode": "507516",
+      "perPack": 4000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "CINNAMON SUGAR",
+      "orderCode": "34210",
+      "sohLabel": "SUGAR CINNAMON 5KG",
+      "mmxCode": "40037",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "DIPPING CUPS",
+      "orderCode": "39744",
+      "sohLabel": "DIPPING CUP 60ML",
+      "mmxCode": "39744",
+      "perPack": 1000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "DIPPING CUP LIDS",
+      "orderCode": "39746",
+      "sohLabel": "LID CLEAR 60ML DIPPING CUP",
+      "mmxCode": "39746",
+      "perPack": 1000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "FORKS",
+      "orderCode": "39769",
+      "sohLabel": "WOODEN FORK",
+      "mmxCode": "39748",
+      "perPack": 1000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "DRINK TRAYS",
+      "orderCode": "13529",
+      "sohLabel": "TRAYS DRINKS 4 CUP",
+      "mmxCode": "505798",
+      "perPack": 100.0,
+      "dailyManual": 0.01,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "BLUE CLOTHS",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "504372",
+      "perPack": 350.0,
+      "dailyManual": 0.1,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "YELLOW CLOTHS",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "505796",
+      "perPack": 350.0,
+      "dailyManual": 0.1,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "LARGE WRAPS",
+      "orderCode": "37901",
+      "sohLabel": "WRAP LARGE WHITE PRINTED",
+      "mmxCode": "37901",
+      "perPack": 3000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "SMALL WRAPS",
+      "orderCode": "37921",
+      "sohLabel": "WRAP SMALL WHITE PRINTED",
+      "mmxCode": "37921",
+      "perPack": 3000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "DRY",
+      "name": "WASTE WRAPS",
+      "orderCode": "37999",
+      "sohLabel": "WRAP WASTE WHITE UNPRINTED",
+      "mmxCode": "37999",
+      "perPack": 5000.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "CRISPY CHICKEN",
+      "orderCode": "40303",
+      "sohLabel": "",
+      "mmxCode": "40303",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "BLACK BEAN",
+      "orderCode": "37862",
+      "sohLabel": "",
+      "mmxCode": "38246",
+      "perPack": 12.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "NACHO CHIPS (Inc Thawed)",
+      "orderCode": "37887",
+      "sohLabel": "",
+      "mmxCode": "39009",
+      "perPack": 4.5,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10",
+        "skipDaysHoldingCap": true
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "CHURROS",
+      "orderCode": "37897",
+      "sohLabel": "",
+      "mmxCode": "37897",
+      "perPack": 72.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "FLAT BREAD (Inc Thawed)",
+      "orderCode": "37895",
+      "sohLabel": "",
+      "mmxCode": "38620",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10",
+        "skipDaysHoldingCap": true
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "FRIES SUPERCRISP",
+      "orderCode": "15049",
+      "sohLabel": "",
+      "mmxCode": "40109",
+      "perPack": 12.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "GUACAMOLE",
+      "orderCode": "14791",
+      "sohLabel": "",
+      "mmxCode": "14791",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "BEEF (Inc Thawed)",
+      "orderCode": "39520",
+      "sohLabel": "",
+      "mmxCode": "39520",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10",
+        "skipDaysHoldingCap": true
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "CHICKEN",
+      "orderCode": "39139",
+      "sohLabel": "",
+      "mmxCode": "39867",
+      "perPack": 6.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "TOSTADAS (Inc Thawed)",
+      "orderCode": "37891",
+      "sohLabel": "",
+      "mmxCode": "37891",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10",
+        "skipDaysHoldingCap": true
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "10.25\" TORTS (Inc Thawed)",
+      "orderCode": "37923",
+      "sohLabel": "",
+      "mmxCode": "37923",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10",
+        "skipDaysHoldingCap": true
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "12\" TORTS (Inc Thawed)",
+      "orderCode": "37925",
+      "sohLabel": "",
+      "mmxCode": "37925",
+      "perPack": 144.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10",
+        "skipDaysHoldingCap": true
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "6.5\" TORTS (Inc Thawed)",
+      "orderCode": "37927",
+      "sohLabel": "",
+      "mmxCode": "37927",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10",
+        "skipDaysHoldingCap": true
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "FRIDGE BUILD TO GUIDE",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "CHEESE BLEND",
+      "orderCode": "37876",
+      "sohLabel": "",
+      "mmxCode": "40266",
+      "perPack": 12.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "ANGEL CHEESE",
+      "orderCode": "37911",
+      "sohLabel": "",
+      "mmxCode": "37911",
+      "perPack": 12.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "LAVA SAUCE",
+      "orderCode": "38701",
+      "sohLabel": "",
+      "mmxCode": "38701",
+      "perPack": 10.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "FRY OIL",
+      "orderCode": "33312",
+      "sohLabel": "",
+      "mmxCode": "507825",
+      "perPack": 15.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "CHIPOTLE MAYO",
+      "orderCode": "38493",
+      "sohLabel": "",
+      "mmxCode": "38493",
+      "perPack": 15.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "CREAMY JALAPENO",
+      "orderCode": "38722",
+      "sohLabel": "",
+      "mmxCode": "38722",
+      "perPack": 10.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "NACHO CHEESE SAUCE",
+      "orderCode": "37909",
+      "sohLabel": "",
+      "mmxCode": "37909",
+      "perPack": null,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "PICO DE GALLO",
+      "orderCode": "37913",
+      "sohLabel": "",
+      "mmxCode": "37913",
+      "perPack": 6.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "FRIDGE & FREEZER",
+      "name": "ZESTY RANCH",
+      "orderCode": "38414",
+      "sohLabel": "",
+      "mmxCode": "38414",
+      "perPack": 15.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "SPARKLING WATER",
+      "orderCode": "100402",
+      "sohLabel": "",
+      "mmxCode": "10005242",
+      "perPack": 24.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "RED BULL",
+      "orderCode": "100403",
+      "sohLabel": "",
+      "mmxCode": "10006909",
+      "perPack": 24.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "RED BULL S/FREE",
+      "orderCode": "100404",
+      "sohLabel": "",
+      "mmxCode": "10006936",
+      "perPack": 24.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "RED BULL TROPICAL",
+      "orderCode": "100405",
+      "sohLabel": "",
+      "mmxCode": "10006942",
+      "perPack": 12.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "POP TOP - APPLE",
+      "orderCode": "100400",
+      "sohLabel": "",
+      "mmxCode": "10007182",
+      "perPack": 24.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "POP TOP - ORANGE",
+      "orderCode": "100401",
+      "sohLabel": "",
+      "mmxCode": "10007184",
+      "perPack": 24.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "SPRING VALLEY APPLE",
+      "orderCode": "100399",
+      "sohLabel": "",
+      "mmxCode": "10008418",
+      "perPack": 12.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "7UP BOTTLE",
+      "orderCode": "16520",
+      "sohLabel": "",
+      "mmxCode": "3227",
+      "perPack": 24.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "7UP CAN",
+      "orderCode": "14602",
+      "sohLabel": "",
+      "mmxCode": "10007576",
+      "perPack": 30.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "7UP BIB",
+      "orderCode": "12153",
+      "sohLabel": "",
+      "mmxCode": "3939",
+      "perPack": 15.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "fixed",
+        "value": 3.0
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "FROZEN MOUNTAIN DEW",
+      "orderCode": "36224",
+      "sohLabel": "",
+      "mmxCode": "10005562",
+      "perPack": 10.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "fixed",
+        "value": 1.0
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "FROZEN PEPSI",
+      "orderCode": "36128",
+      "sohLabel": "",
+      "mmxCode": "4095",
+      "perPack": 10.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "fixed",
+        "value": 1.0
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "FROZEN RASPBERRY",
+      "orderCode": "38531",
+      "sohLabel": "",
+      "mmxCode": "4091",
+      "perPack": 10.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "fixed",
+        "value": 1.0
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "LEMON ICED TEA",
+      "orderCode": "38704",
+      "sohLabel": "",
+      "mmxCode": "10006824",
+      "perPack": 24.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "PEACH ICED TEA",
+      "orderCode": "38705",
+      "sohLabel": "",
+      "mmxCode": "10006826",
+      "perPack": 24.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "MOUNTAIN DEW BOTTLE",
+      "orderCode": "16521",
+      "sohLabel": "",
+      "mmxCode": "10004815",
+      "perPack": 24.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "MOUNTAIN DEW CAN",
+      "orderCode": "14603",
+      "sohLabel": "",
+      "mmxCode": "10007191",
+      "perPack": 30.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "MOUNTAIN DEW BIB",
+      "orderCode": "14606",
+      "sohLabel": "",
+      "mmxCode": "10005385",
+      "perPack": 15.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "fixed",
+        "value": 4.0
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "PEPSI BOTTLE",
+      "orderCode": "14648",
+      "sohLabel": "",
+      "mmxCode": "10008623",
+      "perPack": 24.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "PEPSI CAN",
+      "orderCode": "12150",
+      "sohLabel": "",
+      "mmxCode": "10004724",
+      "perPack": 30.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "PEPSI MAX BOTTLE",
+      "orderCode": "12128",
+      "sohLabel": "",
+      "mmxCode": "3226",
+      "perPack": 24.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "PEPSI MAX CAN",
+      "orderCode": "14601",
+      "sohLabel": "",
+      "mmxCode": "10004423",
+      "perPack": 30.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "PEPSI MAX BIB",
+      "orderCode": "16235",
+      "sohLabel": "",
+      "mmxCode": "3478",
+      "perPack": 10.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "fixed",
+        "value": 6.0
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "PEPSI BIB",
+      "orderCode": "12151",
+      "sohLabel": "",
+      "mmxCode": "3912",
+      "perPack": 15.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "fixed",
+        "value": 4.0
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "SOLO BOTTLE",
+      "orderCode": "16522",
+      "sohLabel": "",
+      "mmxCode": "2918",
+      "perPack": 24.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "SOLO CAN",
+      "orderCode": "15735",
+      "sohLabel": "",
+      "mmxCode": "10004425",
+      "perPack": 30.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "SOLO BIB",
+      "orderCode": "16525",
+      "sohLabel": "",
+      "mmxCode": "4068",
+      "perPack": 15.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "fixed",
+        "value": 3.0
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "SUNKIST BOTTLE",
+      "orderCode": "16523",
+      "sohLabel": "",
+      "mmxCode": "2938",
+      "perPack": 24.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "SUNKIST CAN",
+      "orderCode": "15733",
+      "sohLabel": "",
+      "mmxCode": "10006573",
+      "perPack": 30.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "SUNKIST BIB",
+      "orderCode": "16524",
+      "sohLabel": "",
+      "mmxCode": "4075",
+      "perPack": 15.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "fixed",
+        "value": 3.0
+      }
+    },
+    {
+      "sheet": "SCHWEPPES",
+      "name": "WATER",
+      "orderCode": "13839",
+      "sohLabel": "",
+      "mmxCode": "10006282",
+      "perPack": 24.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "BEGA",
+      "name": "SOUR CREAM 2KG",
+      "orderCode": "",
+      "sohLabel": "",
+      "mmxCode": "8418",
+      "perPack": 2.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "BEGA",
+      "name": "SOUR CREAM 5KG",
+      "orderCode": "12945",
+      "sohLabel": "",
+      "mmxCode": "8419",
+      "perPack": 5.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "BEGA",
+      "name": "DARE ICED COFFEE",
+      "orderCode": "38239",
+      "sohLabel": "",
+      "mmxCode": "7769",
+      "perPack": 1.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "days10"
+      }
+    },
+    {
+      "sheet": "CUTFRESH",
+      "name": "LETTUCE",
+      "orderCode": "13016",
+      "sohLabel": "",
+      "mmxCode": "SLETT",
+      "perPack": 8.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "cutfresh"
+      }
+    },
+    {
+      "sheet": "CUTFRESH",
+      "name": "ONION",
+      "orderCode": "15659",
+      "sohLabel": "",
+      "mmxCode": "4",
+      "perPack": 4.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "cutfresh"
+      }
+    },
+    {
+      "sheet": "CUTFRESH",
+      "name": "CORIANDER",
+      "orderCode": "38670",
+      "sohLabel": "",
+      "mmxCode": "CHOPC",
+      "perPack": 0.5,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "cutfresh"
+      }
+    },
+    {
+      "sheet": "CUTFRESH",
+      "name": "TOMATO",
+      "orderCode": "15112",
+      "sohLabel": "",
+      "mmxCode": "4",
+      "perPack": 4.0,
+      "dailyManual": null,
+      "buildToRule": {
+        "type": "cutfresh"
+      }
+    }
+  ],
+  "cutfreshCalendar": {
+    "MONDAY": {
+      "LETTUCE": 8.0,
+      "ONION": 1.75,
+      "CORIANDER": 2.08,
+      "TOMATO": 8.0
+    },
+    "WEDNESDAY": {
+      "LETTUCE": 9.0,
+      "ONION": 2.0,
+      "CORIANDER": 2.38,
+      "TOMATO": 9.0
+    },
+    "SATURDAY": {
+      "LETTUCE": 8.0,
+      "ONION": 1.57,
+      "CORIANDER": 1.8699999999999999,
+      "TOMATO": 7.0
+    },
+    "TUESDAY": {
+      "LETTUCE": 9.0,
+      "ONION": 2.0,
+      "CORIANDER": 2.38,
+      "TOMATO": 9.0
+    },
+    "THURSDAY": {
+      "LETTUCE": 9.0,
+      "ONION": 2.0,
+      "CORIANDER": 2.38,
+      "TOMATO": 9.0
+    },
+    "SUNDAY": {}
+  }
+}

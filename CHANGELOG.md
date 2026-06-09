@@ -2,7 +2,7 @@
 
 Plain-English summary of what changed in each release — written for store managers and admins, not developers.
 
-**Current live branch:** `Version-0.3.4`
+**Current live branch:** `Version-0.3.5`
 
 ---
 
@@ -25,6 +25,35 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ---
 
 ## Release history
+
+### Version 0.3.5 — June 2026
+
+**Added**
+
+- **Vendor catalog in git** — `vendors/` (Americold, item codes, ConvertToBox) is tracked so Pi deploys match your catalog.
+- **ISE spot-check logging** — after each Inventory Special Event download, pm2 logs cheese and nacho day-by-day usage for build-to audits.
+- **Catalog ISE audit script** — `npm run audit-catalog-ise -- 3811` checks fridge/freezer/dry coverage against reports.
+
+**Changed**
+
+- **Build-to order rounding** — shortages round to the nearest whole carton (not always up). Small gaps under 1 carton no longer trigger an order.
+- **Oil `order=8` lines** — scheduled orders use Stock On Hand from reports (not just manual count) when reports are available, so overstocked stores get zero order.
+- **Cheese blend item code** — canonical code is **37876** (40255 / 40266 remain aliases for MMX forms).
+- **MMX wait overlay** — single fading progress stream during stock count / report download (no dot checklist).
+
+**Fixed**
+
+- **Fridge build-to orders** — cheese blend orders 2 instead of 3 when shortage is ~2.2; oil no longer orders when SOH is above the fixed target.
+- **Dry supplies** — Mexican seasoning and straws no longer order 1 when on-hand is within ~0.03 of build-to.
+- **Stock count → MMX** — more reliable tab detection, pipeline recovery after idle/restart, and clearer progress on phones.
+- **ISE name-match fallback** — build-to can match items by name when item codes differ between catalog and reports.
+
+**What you need to do**
+
+- On the Pi: `git pull origin Version-0.3 && pm2 restart dashboard`
+- Hard refresh once on tablets after deploy.
+
+---
 
 ### Version 0.3.4 — June 2026
 

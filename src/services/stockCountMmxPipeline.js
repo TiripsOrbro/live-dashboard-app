@@ -31,6 +31,7 @@ const {
     releaseMmxResource,
     refreshScrapePauseTimeout,
     abortCompetingMmxWork,
+    isMmxResourceBusy,
 } = require('./mmxResourceGate');
 const { setCheckpoint, getCheckpoint, clearCheckpoint } = require('./mmxPipelineCheckpoint');
 
@@ -38,10 +39,35 @@ function touchStockCountWork() {
     refreshScrapePauseTimeout();
 }
 
+const STAGE_STEP_LABELS = {
+    preparing: 'Opening Key Item Count in Macromatix',
+    prepared: 'Variances ready for review',
+    applying: 'Applying count in Macromatix',
+    'applied-orders-pending': 'Preparing scheduled orders',
+    'downloading-reports': 'Downloading stock reports',
+    'filling-orders': 'Placing scheduled orders',
+    completed: 'Complete',
+    'prepare-failed': 'Key Item Count prepare failed',
+    'apply-failed': 'Apply or orders failed',
+};
+
+function defaultStepLabel(stage) {
+    return STAGE_STEP_LABELS[stage] || 'Sending to Macromatix';
+}
+
 async function updateCheckpoint(storeNumber, patch) {
-    const checkpoint = await setCheckpoint(storeNumber, patch);
+    const next = { ...patch };
+    if (next.stage && !next.stepLabel) {
+        next.stepLabel = defaultStepLabel(next.stage);
+    }
+    const checkpoint = await setCheckpoint(storeNumber, next);
     touchStockCountWork();
     return checkpoint;
+}
+
+async function touchPipelineStep(storeNumber, stepLabel) {
+    if (!storeNumber || !stepLabel) return;
+    await updateCheckpoint(storeNumber, { stepLabel: String(stepLabel).trim() });
 }
 
 function beginStockCountMmxWork(reason, storeNumber) {
@@ -57,6 +83,7 @@ function endStockCountMmxWork(storeNumber, reason) {
 async function discardStockCountMmxWork(storeNumber, reason = 'discarded') {
     await destroySessionsForStore(storeNumber, reason);
     await clearCheckpoint(storeNumber);
+    endStockCountMmxWork(storeNumber, `prior MMX work ${reason} (store ${storeNumber})`);
 }
 
 const { runStoreOrdersCompleteCleanup } = require('./storeOrdersCompleteCleanup');
@@ -205,6 +232,7 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
         );
         await updateCheckpoint(storeNumber, {
             stage: 'downloading-reports',
+            stepLabel: 'Downloading stock reports (inventory, on-hand, on-order)',
             dateKey,
             vendorSlugs: toSend.map((row) => row.slug),
             lastError: '',
@@ -310,6 +338,7 @@ async function runVendorOrdersForStore(page, storeNumber, dateKey, orderPack = n
             selectStore: async (p) => selectStore(p, storeNumber),
         },
         orderLinesByVendorId: byVendorId,
+        onOrderStep: (label) => touchPipelineStep(storeNumber, label),
     };
 
     log.info(`Store ${storeNumber}: scheduled order entry only — no report downloads or other MMX tasks`);
@@ -346,6 +375,7 @@ function reportsReadyForStore(storeNumber, reportsDir) {
 
 async function ensureReportsForOrders(storeNumber, options = {}) {
     touchStockCountWork();
+    await touchPipelineStep(storeNumber, 'Downloading stock reports (on-hand, on-order, inventory)');
     const { REPORTS_DIR } = require('./buildToCalculator');
     const reportsDir = options.reportsDir || REPORTS_DIR;
     const { ready, files, validation } = reportsReadyForStore(storeNumber, reportsDir);
@@ -367,6 +397,7 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
             ...downloadOpts,
             page: options.page,
             browser: options.browser || null,
+            onReportStep: (label) => touchPipelineStep(storeNumber, label),
         });
     } else {
         log.info(
@@ -378,7 +409,12 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         let page;
         try {
             ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
-            await downloadReportsForStores({ ...downloadOpts, page, browser });
+            await downloadReportsForStores({
+                ...downloadOpts,
+                page,
+                browser,
+                onReportStep: (label) => touchPipelineStep(storeNumber, label),
+            });
         } finally {
             await closeBrowserQuietly(browser, 'pre-order report download');
         }
@@ -637,32 +673,27 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
             const vendorLabels = vendorEntries.map((e) => e.catalog.label).join(', ');
             log.info(`Preparing combined Key Item Count for store ${storeNumber}: ${vendorLabels}`);
 
+            const onPipelineStep = (label) => touchPipelineStep(storeNumber, label);
             const stockCountResult = await enterCombinedStockCount(page, {
                 storeNumber,
                 vendorEntries,
                 navTimeoutMs: Number(process.env.MMX_NAV_TIMEOUT_MS || 45000),
                 selectStore,
                 stopAtConfirm: true,
+                onPipelineStep,
             });
 
+            const redVariances = stockCountResult.variances || [];
             const session = await createSession({
                 storeNumber,
                 dateKey,
                 vendorSlugs: toSend.map((row) => row.slug),
                 browser,
                 page,
-                variances: stockCountResult.variances || [],
+                variances: redVariances,
             });
             sessionStarted = true;
-            await updateCheckpoint(storeNumber, {
-                stage: 'prepared',
-                dateKey,
-                sessionId: session.sessionId,
-                vendorSlugs: toSend.map((row) => row.slug),
-                lastError: '',
-            });
 
-            const redVariances = session.variances || [];
             if (!redVariances.length) {
                 log.info(
                     `Store ${storeNumber}: no red variances — applying count and filling scheduled orders in one run`
@@ -688,6 +719,14 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
                     orderFailures: applyResult.orderFailures || null,
                 };
             }
+
+            await updateCheckpoint(storeNumber, {
+                stage: 'prepared',
+                dateKey,
+                sessionId: session.sessionId,
+                vendorSlugs: toSend.map((row) => row.slug),
+                lastError: '',
+            });
 
             browser = null;
             page = null;
@@ -758,6 +797,8 @@ async function getStockCountPipelineStatus(storeNumber) {
         inProgress: PIPELINE_IN_PROGRESS_STAGES.has(stage),
         ordersComplete: stage === 'completed',
         lastError: checkpoint?.lastError || null,
+        failedAtStep: checkpoint?.failedAtStep || null,
+        stepLabel: checkpoint?.stepLabel || defaultStepLabel(stage),
         dateKey,
         sessionId,
         updatedAt: checkpoint?.updatedAt || null,
@@ -775,10 +816,17 @@ async function getStockCountPipelineStatus(storeNumber) {
         }
     }
 
-    if (!payload.ordersComplete && (await stockCountMmxOrdersComplete(storeNumber, dateKey))) {
+    // mmxSentAt is set when the count is applied, not when scheduled orders finish — only
+    // treat all-vendors-sent as orders complete when the pipeline is not actively running.
+    if (
+        !payload.ordersComplete &&
+        !payload.inProgress &&
+        (await stockCountMmxOrdersComplete(storeNumber, dateKey))
+    ) {
         payload.ordersComplete = true;
-        payload.stage = 'completed';
-        payload.inProgress = false;
+        if (stage === 'idle') {
+            payload.stage = 'completed';
+        }
     }
 
     return payload;
@@ -794,6 +842,7 @@ async function recordStockCountPrepareFailure(storeNumber, error) {
     await updateCheckpoint(storeNumber, {
         stage: 'prepare-failed',
         lastError: error?.message || String(error || 'Prepare failed'),
+        failedAtStep: cp?.stepLabel || defaultStepLabel(cp?.stage || 'preparing'),
         sessionId: null,
     });
 }
@@ -802,6 +851,13 @@ async function recordStockCountPrepareFailure(storeNumber, error) {
  * Apply confirmed count in Macromatix, then download reports and enter orders.
  */
 async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) {
+    if (!isMmxResourceBusy()) {
+        beginStockCountMmxWork(`stock count apply (store ${storeNumber})`, storeNumber);
+    } else {
+        touchStockCountWork();
+    }
+
+    try {
         let session = getSession(storeNumber, sessionId);
         const checkpoint = await getCheckpoint(storeNumber);
         if (!session) {
@@ -878,6 +934,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
                 vendorSlugs,
                 lastError: '',
             });
+            await touchPipelineStep(storeNumber, 'Applying count in Macromatix');
             const { loadMmxStockCountConfig } = require('./mmxReports/mmx-stock-count');
             const applyResult = await applyKeyItemCount(page, loadMmxStockCountConfig());
             appliedInMmx = applyResult.applied || applyResult.alreadyApplied;
@@ -905,6 +962,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
                     vendorSlugs,
                     lastError: '',
                 });
+                await touchPipelineStep(storeNumber, 'Placing scheduled orders in Macromatix');
                 orderPipelineResult = await runOrdersAfterApply(storeNumber, dateKey, { page, browser });
                 if (ordersAllSuccessful(orderPipelineResult)) {
                     await runStoreOrdersCompleteCleanup(storeNumber, dateKey);
@@ -924,12 +982,14 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
             }
             await clearCheckpoint(storeNumber);
         } catch (error) {
+            const cp = await getCheckpoint(storeNumber);
             await updateCheckpoint(storeNumber, {
                 stage: appliedInMmx ? 'applied-orders-pending' : 'apply-failed',
                 dateKey,
                 sessionId,
                 vendorSlugs,
                 lastError: error.message || String(error),
+                failedAtStep: cp?.stepLabel || defaultStepLabel(cp?.stage || 'applying'),
             });
             throw error;
         } finally {
@@ -948,6 +1008,9 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
             orders: orderPipelineResult,
             orderFailures: orderFailures || null,
         };
+    } finally {
+        endStockCountMmxWork(storeNumber, `stock count apply finished (store ${storeNumber})`);
+    }
 }
 
 async function applyStockCountSession(storeNumber, sessionId, options = {}) {
@@ -968,6 +1031,7 @@ async function cancelStockCountSession(storeNumber, sessionId) {
         cancelled = await destroySessionsForStore(storeNumber, 'cancelled');
     }
     await clearCheckpoint(storeNumber);
+    endStockCountMmxWork(storeNumber, `stock count session cancelled (store ${storeNumber})`);
     return { success: true, cancelled };
 }
 

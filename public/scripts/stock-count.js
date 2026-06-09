@@ -24,6 +24,26 @@ let saving = false;
 let autoSaveTimer = null;
 let processing = false;
 let processingStageLabel = 'Preparing MMX';
+let mmxNotifyEnabled = false;
+let mmxNotifyDenied = false;
+let mmxProcessingError = null;
+let mmxProcessingSuccess = null;
+let mmxProcessingComplete = false;
+let mmxProcessingStepId = 'save';
+let mmxProcessingDetail = '';
+let mmxLastPipelineStep = '';
+let mmxPipelineManualOnly = false;
+let mmxActivityLog = [];
+
+const MMX_PIPELINE_STEPS = [
+    { id: 'save', label: 'Saving your counts' },
+    { id: 'open-kic', label: 'Opening Key Item Count' },
+    { id: 'fill-locations', label: 'Entering counts by location' },
+    { id: 'variances', label: 'Checking variances' },
+    { id: 'apply', label: 'Applying count' },
+    { id: 'reports', label: 'Downloading stock reports' },
+    { id: 'orders', label: 'Placing scheduled orders' },
+];
 
 function dashboardPath() {
     if (!STORE_NUMBER) return '/';
@@ -1064,22 +1084,57 @@ async function saveAndSubmitVendor() {
     return true;
 }
 
+function pushMmxActivity(label) {
+    const text = String(label || '').trim();
+    if (!text) return;
+    const last = mmxActivityLog[mmxActivityLog.length - 1];
+    if (last?.text === text) return;
+    mmxActivityLog.push({ text, at: Date.now() });
+    if (mmxActivityLog.length > 40) mmxActivityLog.shift();
+}
+
 function finishMmxOrdersSuccess(data) {
-    processing = false;
     mmxSessionId = '';
+    mmxProcessingComplete = true;
+    mmxProcessingStepId = 'orders';
+    mmxProcessingSuccess = {
+        partial: Boolean(data?.orderFailures),
+        orderFailures: data?.orderFailures || null,
+    };
+    processing = true;
+    processingStageLabel = data?.orderFailures
+        ? 'Finished — some scheduled orders need review in MMX'
+        : 'All scheduled orders updated in Macromatix';
+    pushMmxActivity(processingStageLabel);
+    document.body.classList.add('stock-count-mmx-wait-active');
     window.StockCountNotify?.notifyOrdersReady?.(STORE_NUMBER, VENDOR_SLUG, {
         partial: Boolean(data?.orderFailures),
     });
-    if (data?.orderFailures) {
-        setStatus(`Some scheduled orders could not be filled: ${data.orderFailures}`, 'error');
+    setStatus('', '');
+    render();
+}
+
+function dismissMmxProcessingSuccess() {
+    if (mmxProcessingSuccess?.partial) {
+        setStatus(
+            `Some scheduled orders could not be filled: ${mmxProcessingSuccess.orderFailures}`,
+            'error'
+        );
     } else {
         setStatus('Counts sent — scheduled orders updated in Macromatix.', 'success');
     }
+    mmxProcessingSuccess = null;
+    mmxProcessingComplete = false;
+    endMmxProcessing();
+    render();
 }
 
 async function showPreparedVariancesFromStatus(status) {
     mmxSessionId = status.sessionId || '';
     mmxVariances = Array.isArray(status.variances) ? status.variances : [];
+    if (!mmxVariances.length) {
+        return false;
+    }
     mmxVendorSlugs =
         Array.isArray(status.vendorsSent) && status.vendorsSent.length ? status.vendorsSent : [VENDOR_SLUG];
     await loadVendorCatalogsForSlugs(mmxVendorSlugs, { fullCatalog: true });
@@ -1093,6 +1148,17 @@ async function showPreparedVariancesFromStatus(status) {
         recountCatalog = null;
     }
     viewMode = 'variances';
+    return true;
+}
+
+function pipelineNeedsVarianceReview(status) {
+    const count = Number(status?.redVarianceCount);
+    const variances = Array.isArray(status?.variances) ? status.variances : [];
+    return Boolean(
+        status?.sessionId &&
+        status?.stage === 'prepared' &&
+        (count > 0 || variances.length > 0)
+    );
 }
 
 function pipelineStageLabel(stage) {
@@ -1104,26 +1170,89 @@ function pipelineStageLabel(stage) {
         case 'applying':
             return 'Applying count in Macromatix…';
         case 'downloading-reports':
-            return 'Downloading reports…';
+            return 'Downloading stock reports…';
         case 'filling-orders':
         case 'applied-orders-pending':
             return 'Placing scheduled orders…';
+        case 'prepare-failed':
+        case 'apply-failed':
+            return 'Macromatix step failed';
         default:
             return 'Still sending to Macromatix…';
     }
 }
 
+function visibleMmxPipelineSteps() {
+    if (mmxPipelineManualOnly) {
+        return MMX_PIPELINE_STEPS.filter((s) => ['save', 'reports', 'orders'].includes(s.id));
+    }
+    return MMX_PIPELINE_STEPS;
+}
+
+function resolveMmxStepIdFromStatus(status) {
+    const stage = status?.stage;
+    const detail = String(status?.stepLabel || '').toLowerCase();
+    if (stage === 'downloading-reports' || /download|report|on-hand|inventory|on-order/i.test(detail)) {
+        return 'reports';
+    }
+    if (
+        stage === 'filling-orders' ||
+        stage === 'applied-orders-pending' ||
+        /placing order|scheduled order/i.test(detail)
+    ) {
+        return 'orders';
+    }
+    if (stage === 'applying' || /applying count/i.test(detail)) return 'apply';
+    if (stage === 'prepared' || /variance|confirm count/i.test(detail)) return 'variances';
+    if (stage === 'preparing') {
+        if (/entering counts|filling/i.test(detail)) return 'fill-locations';
+        if (/variance|confirm|continue/i.test(detail)) return 'variances';
+        return 'open-kic';
+    }
+    return 'save';
+}
+
+function resolveMmxStepIdFromLabel(label) {
+    return resolveMmxStepIdFromStatus({ stage: 'preparing', stepLabel: label });
+}
+
+function applyPipelineStatusToUi(status) {
+    if (!status) return;
+    const label = status.stepLabel || pipelineStageLabel(status.stage);
+    mmxProcessingDetail = status.stepLabel || '';
+    mmxLastPipelineStep = label || mmxLastPipelineStep;
+    mmxProcessingStepId = resolveMmxStepIdFromStatus(status);
+    processingStageLabel = label;
+    pushMmxActivity(label);
+}
+
+function pipelineFailureFromStatus(status) {
+    if (!status?.lastError) return null;
+    if (status.stage !== 'prepare-failed' && status.stage !== 'apply-failed') return null;
+    return {
+        message: status.lastError,
+        failedAtStep: status.failedAtStep || status.stepLabel || pipelineStageLabel(status.stage),
+    };
+}
+
+/** ordersComplete must not fire while apply / reports / orders are still running server-side. */
+function pipelineOrdersActuallyComplete(status) {
+    if (!status?.ordersComplete) return false;
+    if (status.inProgress) return false;
+    const stage = status.stage || 'idle';
+    if (stage === 'completed' || stage === 'idle') return true;
+    return false;
+}
+
 async function waitForPipelinePrepareComplete() {
-    processing = true;
-    processingStageLabel = 'Sending to Macromatix…';
-    setStatus(
-        'Sending to Macromatix — this can take several minutes on mobile. You can leave this page; we will notify you when ready.',
-        ''
-    );
+    if (!processing) {
+        beginMmxProcessing('Sending to Macromatix…');
+    }
+    setStatus('', '');
     render();
 
     for (let attempt = 0; attempt < 120; attempt++) {
-        await sleep(5000);
+        await sleep(2000);
         try {
             const { res: statusRes, data: status } = await fetchJson(
                 apiQuery('/api/stock-count/pipeline-status')
@@ -1131,22 +1260,27 @@ async function waitForPipelinePrepareComplete() {
             if (!statusRes.ok) continue;
 
             if (status.stage && status.stage !== 'idle') {
-                processingStageLabel = pipelineStageLabel(status.stage);
+                applyPipelineStatusToUi(status);
+                render();
+            } else if (status.stepLabel) {
+                applyPipelineStatusToUi(status);
                 render();
             }
 
-            if (status.stage === 'prepare-failed' && status.lastError) {
-                throw new Error(status.lastError);
+            const pipelineFail = pipelineFailureFromStatus(status);
+            if (pipelineFail) {
+                showMmxProcessingError(pipelineFail.message, pipelineFail.failedAtStep);
+                throw new Error(pipelineFail.message);
             }
-            if (status.stage === 'apply-failed' && status.lastError) {
-                throw new Error(status.lastError);
-            }
-            if (status.ordersComplete) {
+            if (pipelineOrdersActuallyComplete(status)) {
                 finishMmxOrdersSuccess({ orderFailures: status.lastError || null });
                 return { autoApplied: true };
             }
-            if (status.stage === 'prepared' && status.sessionId) {
+            if (pipelineNeedsVarianceReview(status)) {
                 return { prepared: true, status };
+            }
+            if (status.stage === 'prepared' && status.sessionId) {
+                continue;
             }
             if (
                 status.stage === 'preparing' ||
@@ -1187,18 +1321,26 @@ async function acceptSendToMmx() {
 
 async function waitForPipelineApplyComplete(sessionId) {
     const sid = sessionId || mmxSessionId;
-    processing = true;
-    processingStageLabel = 'Placing scheduled orders';
-    setStatus('Still placing orders in Macromatix…', '');
+    beginMmxProcessing('Placing scheduled orders…');
+    setStatus('', '');
     render();
 
     for (let attempt = 0; attempt < 90; attempt++) {
-        await sleep(5000);
+        await sleep(2000);
         try {
             const { res: statusRes, data: status } = await fetchJson(
                 apiQuery('/api/stock-count/pipeline-status')
             );
-            if (statusRes.ok && status.ordersComplete) {
+            if (statusRes.ok && (status.stage !== 'idle' || status.stepLabel)) {
+                applyPipelineStatusToUi(status);
+                render();
+            }
+            const pipelineFail = pipelineFailureFromStatus(status);
+            if (pipelineFail) {
+                showMmxProcessingError(pipelineFail.message, pipelineFail.failedAtStep);
+                throw new Error(pipelineFail.message);
+            }
+            if (statusRes.ok && pipelineOrdersActuallyComplete(status)) {
                 finishMmxOrdersSuccess({ orderFailures: status.lastError || null });
                 return true;
             }
@@ -1212,7 +1354,10 @@ async function waitForPipelineApplyComplete(sessionId) {
                     body: JSON.stringify({ sessionId: sid || status.sessionId || '' }),
                 });
                 if (res.ok && data.success) {
-                    finishMmxOrdersSuccess(data);
+                    if (!data.ordersRan && !pipelineOrdersActuallyComplete(status)) {
+                        continue;
+                    }
+                    finishMmxOrdersSuccess({ orderFailures: data.orderFailures || null });
                     return true;
                 }
             }
@@ -1270,23 +1415,26 @@ async function sendToMmx() {
     }
 
     saving = true;
-    processing = true;
-    processingStageLabel = 'Checking counts…';
-    void window.StockCountNotify?.requestPermission?.();
-    window.StockCountNotify?.setWatch?.(STORE_NUMBER, VENDOR_SLUG);
-    window.StockCountNotify?.startPolling?.(STORE_NUMBER);
-    setStatus('Sending to Macromatix — you can leave this page; we will notify you when ready.', '');
+    mmxPipelineManualOnly = false;
+    beginMmxProcessing('Saving your counts…');
+    mmxProcessingStepId = 'save';
+    pushMmxActivity('Saving your counts');
+    setStatus('', '');
     render();
     try {
         const { res: planRes, data: plan } = await fetchJson(apiQuery('/api/stock-count/send-plan'));
         if (planRes.ok && plan.success && plan.manualOnly) {
+            mmxPipelineManualOnly = true;
+            mmxProcessingStepId = 'reports';
             processingStageLabel = 'Skipping Key Item Count — downloading reports…';
             render();
         } else if (planRes.ok && plan.success && plan.needsKeyItemCount) {
+            mmxProcessingStepId = 'open-kic';
             processingStageLabel = 'Opening Key Item Count in Macromatix…';
             render();
         } else {
-            processingStageLabel = 'Downloading reports and placing orders';
+            mmxProcessingStepId = 'reports';
+            processingStageLabel = 'Downloading reports and placing orders…';
             render();
         }
 
@@ -1297,39 +1445,27 @@ async function sendToMmx() {
                 preparedAutoApplied = true;
                 return;
             }
-            if (outcome?.prepared) {
-                await showPreparedVariancesFromStatus(outcome.status);
-                processing = false;
+            if (outcome?.prepared && (await showPreparedVariancesFromStatus(outcome.status))) {
+                endMmxProcessing();
                 window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
                 setStatus('Review variances below, then confirm to place scheduled orders.', '');
                 return;
             }
         }
         if (accepted.keyItemCountSkipped || accepted.autoApplied) {
-            preparedAutoApplied = true;
-            processing = false;
-            mmxSessionId = '';
-            window.StockCountNotify?.notifyOrdersReady?.(STORE_NUMBER, VENDOR_SLUG, {
-                partial: Boolean(accepted.orderFailures),
-            });
-            if (accepted.orderFailures) {
-                setStatus(`Some scheduled orders could not be filled: ${accepted.orderFailures}`, 'error');
-            } else if (accepted.keyItemCountSkipped) {
-                setStatus(
-                    'Manual counts sent — reports downloaded (ISE, on-hand, on-order); scheduled orders updated.',
-                    'success'
-                );
-            } else {
-                setStatus('Counts sent — scheduled orders updated in Macromatix.', 'success');
+            const outcome = await waitForPipelinePrepareComplete();
+            if (outcome?.autoApplied) {
+                preparedAutoApplied = true;
+                return;
             }
-            return;
         }
-        if (accepted.sessionId) {
-            await showPreparedVariancesFromStatus(accepted);
-            processing = false;
-            window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
-            setStatus('Review variances below, then confirm to place scheduled orders.', '');
-            return;
+        if (accepted.sessionId && pipelineNeedsVarianceReview(accepted)) {
+            if (await showPreparedVariancesFromStatus(accepted)) {
+                endMmxProcessing();
+                window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
+                setStatus('Review variances below, then confirm to place scheduled orders.', '');
+                return;
+            }
         }
         throw new Error('Send to Macromatix did not start. Try again.');
     } catch (error) {
@@ -1340,9 +1476,8 @@ async function sendToMmx() {
                     preparedAutoApplied = true;
                     return;
                 }
-                if (outcome?.prepared) {
-                    await showPreparedVariancesFromStatus(outcome.status);
-                    processing = false;
+                if (outcome?.prepared && (await showPreparedVariancesFromStatus(outcome.status))) {
+                    endMmxProcessing();
                     window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
                     setStatus('Review variances below, then confirm to place scheduled orders.', '');
                     return;
@@ -1350,6 +1485,7 @@ async function sendToMmx() {
             } catch (recoverError) {
                 window.StockCountNotify?.clearWatch?.(STORE_NUMBER);
                 window.StockCountNotify?.stopPolling?.();
+                showMmxProcessingError(recoverError.message, mmxLastPipelineStep);
                 setStatus(recoverError.message, 'error');
                 render();
                 return;
@@ -1365,17 +1501,20 @@ async function sendToMmx() {
             } catch (recoverError) {
                 window.StockCountNotify?.clearWatch?.(STORE_NUMBER);
                 window.StockCountNotify?.stopPolling?.();
+                showMmxProcessingError(recoverError.message, mmxLastPipelineStep);
                 setStatus(recoverError.message, 'error');
+                render();
+                return;
             }
-        } else {
-            window.StockCountNotify?.clearWatch?.(STORE_NUMBER);
-            window.StockCountNotify?.stopPolling?.();
-            setStatus(error.message, 'error');
         }
+        window.StockCountNotify?.clearWatch?.(STORE_NUMBER);
+        window.StockCountNotify?.stopPolling?.();
+        showMmxProcessingError(error.message, mmxLastPipelineStep);
+        setStatus(error.message, 'error');
     } finally {
         saving = false;
-        if (!preparedAutoApplied && processing) {
-            processing = false;
+        if (!preparedAutoApplied && !mmxProcessingSuccess && processing && !mmxProcessingError) {
+            endMmxProcessing();
         }
         render();
     }
@@ -1384,9 +1523,9 @@ async function sendToMmx() {
 async function applyMmxCount() {
     if (!mmxSessionId || saving) return;
     saving = true;
-    processing = true;
-    processingStageLabel = 'Placing scheduled orders';
-    setStatus('Placing scheduled orders in Macromatix…', '');
+    beginMmxProcessing('Placing scheduled orders…');
+    mmxProcessingStepId = 'orders';
+    setStatus('', '');
     render();
     try {
         const { res, data } = await fetchJson(apiQuery('/api/stock-count/send-to-mmx/apply'), {
@@ -1398,11 +1537,11 @@ async function applyMmxCount() {
             const msg = data.error || 'Apply failed.';
             if (/already applied|nothing to apply/i.test(msg)) {
                 mmxSessionId = '';
-                processing = false;
-                window.StockCountNotify?.notifyOrdersReady?.(STORE_NUMBER, VENDOR_SLUG);
-                setStatus('Counts sent — scheduled orders updated in Macromatix.', 'success');
-                render();
-                return;
+                const recovered = await waitForPipelineApplyComplete('');
+                if (recovered) {
+                    saving = false;
+                    return;
+                }
             }
             if (shouldRecoverApplyError(msg)) {
                 const recovered = await waitForPipelineApplyComplete(mmxSessionId);
@@ -1414,26 +1553,18 @@ async function applyMmxCount() {
             }
             throw new Error(msg);
         }
-        mmxSessionId = '';
-        processing = false;
-        window.StockCountNotify?.notifyOrdersReady?.(STORE_NUMBER, VENDOR_SLUG, {
-            partial: Boolean(data.orderFailures),
-        });
-        if (data.orderFailures) {
-            setStatus(`Some scheduled orders could not be filled: ${data.orderFailures}`, 'error');
-        } else {
-            setStatus('Counts sent — scheduled orders updated in Macromatix.', 'success');
-        }
-        render();
+        finishMmxOrdersSuccess({ orderFailures: data.orderFailures || null });
+        saving = false;
+        return;
     } catch (error) {
         const msg = error.message || '';
         if (/already applied|nothing to apply/i.test(msg)) {
             mmxSessionId = '';
-            processing = false;
-            window.StockCountNotify?.notifyOrdersReady?.(STORE_NUMBER, VENDOR_SLUG);
-            setStatus('Counts sent — scheduled orders updated in Macromatix.', 'success');
-            render();
-            return;
+            const recovered = await waitForPipelineApplyComplete('');
+            if (recovered) {
+                saving = false;
+                return;
+            }
         }
         if (shouldRecoverApplyError(msg)) {
             try {
@@ -1444,21 +1575,21 @@ async function applyMmxCount() {
                     return;
                 }
             } catch (recoverError) {
+                showMmxProcessingError(recoverError.message, mmxLastPipelineStep);
                 setStatus(recoverError.message, 'error');
                 saving = false;
-                processing = false;
                 render();
                 return;
             }
         }
-        setStatus(msg, 'error');
         window.StockCountNotify?.clearWatch?.(STORE_NUMBER);
         window.StockCountNotify?.stopPolling?.();
+        showMmxProcessingError(msg, mmxLastPipelineStep);
+        setStatus(msg, 'error');
         saving = false;
-        processing = false;
         render();
     } finally {
-        if (!processing) saving = false;
+        if (!processing && !mmxProcessingError && !mmxProcessingSuccess) saving = false;
     }
 }
 
@@ -1561,15 +1692,198 @@ function formatQtyWithUnit(value, unitLabel) {
     return unitLabel ? `${qty} ${unitLabel}` : qty;
 }
 
-function buildProcessingBanner() {
-    if (!processing) return '';
+function mmxProcessingTitle() {
+    if (/placing scheduled|downloading reports|filling orders|applying count/i.test(processingStageLabel)) {
+        return 'Finishing in Macromatix';
+    }
+    return 'Sending to Macromatix';
+}
+
+function buildMmxStepListHtml() {
+    const steps = visibleMmxPipelineSteps();
+    const activeId = mmxProcessingStepId;
+    const failedId = mmxProcessingError
+        ? resolveMmxStepIdFromLabel(mmxProcessingError.failedAtStep)
+        : null;
+    const activeIdx = steps.findIndex((s) => s.id === activeId);
+    const failedIdx = failedId != null ? steps.findIndex((s) => s.id === failedId) : -1;
+
+    const items = steps
+        .map((step, idx) => {
+            let state = 'pending';
+            if (mmxProcessingError && failedIdx >= 0) {
+                if (idx < failedIdx) state = 'done';
+                else if (idx === failedIdx) state = 'error';
+            } else if (mmxProcessingComplete || mmxProcessingSuccess) {
+                state = 'done';
+            } else if (activeIdx >= 0) {
+                if (idx < activeIdx) state = 'done';
+                else if (idx === activeIdx) state = 'active';
+            } else if (idx === 0) {
+                state = 'active';
+            }
+            const detail =
+                state === 'active' && mmxProcessingDetail && step.id === activeId
+                    ? `<span class="stock-count-mmx-step-detail">${escapeHtml(mmxProcessingDetail)}</span>`
+                    : '';
+            return `<li class="stock-count-mmx-step stock-count-mmx-step--${state}">
+                <span class="stock-count-mmx-step-marker" aria-hidden="true"></span>
+                <span class="stock-count-mmx-step-text">${escapeHtml(step.label)}${detail}</span>
+            </li>`;
+        })
+        .join('');
+
+    return `<ol class="stock-count-mmx-steps" aria-label="Macromatix progress">${items}</ol>`;
+}
+
+function buildMmxActivityLogHtml() {
+    if (!mmxActivityLog.length) return '';
+    const items = mmxActivityLog
+        .map((entry, idx) => {
+            const isLatest = idx === mmxActivityLog.length - 1 && !mmxProcessingSuccess;
+            const cls = isLatest ? 'stock-count-mmx-activity-item--current' : 'stock-count-mmx-activity-item--done';
+            return `<li class="stock-count-mmx-activity-item ${cls}">${escapeHtml(entry.text)}</li>`;
+        })
+        .join('');
     return `
-        <div class="stock-count-processing-banner" role="status" aria-live="polite">
-            <p class="stock-count-processing-banner-label">${escapeHtml(processingStageLabel)}</p>
-            <div class="stock-count-progress-shell" aria-hidden="true">
-                <div class="stock-count-progress-bar"></div>
+        <div class="stock-count-mmx-activity-wrap">
+            <p class="stock-count-mmx-activity-heading">Current progress</p>
+            <ol class="stock-count-mmx-activity" aria-live="polite">${items}</ol>
+        </div>`;
+}
+
+function buildMmxNotifySection() {
+    if (mmxProcessingError || mmxProcessingSuccess) return '';
+    const notify = window.StockCountNotify;
+    if (mmxNotifyEnabled || notify?.permissionState?.() === 'granted') {
+        return `<p class="stock-count-mmx-notify-hint stock-count-mmx-notify-hint--ok">Notifications on — we'll alert you when it's ready to review.</p>`;
+    }
+    if (mmxNotifyDenied || notify?.permissionState?.() === 'denied') {
+        return `<p class="stock-count-mmx-notify-hint stock-count-mmx-notify-hint--denied">Notifications are blocked in your browser. Keep this page open, or enable alerts in site settings.</p>`;
+    }
+    if (notify?.permissionState?.() === 'unsupported') {
+        return `<p class="stock-count-mmx-notify-hint">Keep this page open — your browser can't show background alerts.</p>`;
+    }
+    return `
+        <p class="stock-count-mmx-notify-hint">Leaving? Tap below and allow notifications when prompted — we'll tell you when it's ready to review.</p>
+        <button type="button" class="stock-count-btn stock-count-btn--notify" id="sc-mmx-notify-btn">Notify me when ready</button>`;
+}
+
+function buildMmxProcessingOverlay() {
+    if (!processing && !mmxProcessingError && !mmxProcessingSuccess) return '';
+
+    if (mmxProcessingSuccess) {
+        const msg = mmxProcessingSuccess.partial
+            ? `Counts were sent, but some scheduled orders could not be filled. Review them in Macromatix.${mmxProcessingSuccess.orderFailures ? ` (${mmxProcessingSuccess.orderFailures})` : ''}`
+            : 'Counts sent — all scheduled orders have been updated in Macromatix.';
+        return `
+        <div class="stock-count-processing stock-count-processing--fullscreen" role="alertdialog" aria-modal="true" aria-labelledby="sc-mmx-success-title">
+            <div class="stock-count-processing-card stock-count-processing-card--wait stock-count-processing-card--success stock-count-processing-card--fullscreen">
+                <h2 id="sc-mmx-success-title" class="stock-count-processing-label stock-count-processing-label--success">${mmxProcessingSuccess.partial ? 'Finished with issues' : 'Complete'}</h2>
+                <p class="stock-count-mmx-success-msg">${escapeHtml(msg)}</p>
+                ${buildMmxStepListHtml()}
+                ${buildMmxActivityLogHtml()}
+                <button type="button" class="stock-count-btn stock-count-btn--primary stock-count-mmx-dismiss" id="sc-mmx-dismiss-success">Close</button>
             </div>
         </div>`;
+    }
+
+    if (mmxProcessingError) {
+        return `
+        <div class="stock-count-processing stock-count-processing--fullscreen" role="alertdialog" aria-modal="true" aria-labelledby="sc-mmx-error-title">
+            <div class="stock-count-processing-card stock-count-processing-card--wait stock-count-processing-card--error stock-count-processing-card--fullscreen">
+                <h2 id="sc-mmx-error-title" class="stock-count-processing-label stock-count-processing-label--error">Send to Macromatix failed</h2>
+                <p class="stock-count-mmx-error-step">Failed at: <strong>${escapeHtml(mmxProcessingError.failedAtStep)}</strong></p>
+                <p class="stock-count-mmx-error-msg">${escapeHtml(mmxProcessingError.message)}</p>
+                ${buildMmxStepListHtml()}
+                ${buildMmxActivityLogHtml()}
+                <button type="button" class="stock-count-btn stock-count-btn--secondary stock-count-mmx-dismiss" id="sc-mmx-dismiss-error">Close</button>
+            </div>
+        </div>`;
+    }
+
+    const markSvg = window.TbaBrandMark?.svg?.('stock-count-mmx-wait') || '';
+    return `
+        <div class="stock-count-processing stock-count-processing--fullscreen" role="dialog" aria-modal="true" aria-labelledby="sc-mmx-wait-title">
+            <div class="stock-count-processing-card stock-count-processing-card--wait stock-count-processing-card--fullscreen">
+                ${markSvg ? `<div class="stock-count-processing-mark" aria-hidden="true">${markSvg}</div>` : ''}
+                <h2 id="sc-mmx-wait-title" class="stock-count-processing-label">${escapeHtml(mmxProcessingTitle())}</h2>
+                <p class="stock-count-mmx-wait-body">This usually takes several minutes. The list below updates as each Macromatix step runs — do not close until you see <strong>Complete</strong>.</p>
+                ${buildMmxStepListHtml()}
+                ${buildMmxActivityLogHtml()}
+                <p class="stock-count-processing-stage" role="status" aria-live="polite">${escapeHtml(processingStageLabel)}<span class="stock-count-processing-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></p>
+                <div class="stock-count-progress-shell" aria-hidden="true">
+                    <div class="stock-count-progress-bar"></div>
+                </div>
+                ${buildMmxNotifySection()}
+            </div>
+        </div>`;
+}
+
+function beginMmxProcessing(stageLabel) {
+    processing = true;
+    mmxProcessingError = null;
+    mmxProcessingSuccess = null;
+    mmxProcessingComplete = false;
+    processingStageLabel = stageLabel || 'Sending to Macromatix…';
+    mmxLastPipelineStep = processingStageLabel;
+    mmxProcessingDetail = '';
+    mmxActivityLog = [];
+    pushMmxActivity(processingStageLabel);
+    mmxNotifyEnabled = Boolean(window.StockCountNotify?.isWatching?.(STORE_NUMBER));
+    mmxNotifyDenied = false;
+    document.body.classList.add('stock-count-mmx-wait-active');
+}
+
+function endMmxProcessing() {
+    processing = false;
+    mmxProcessingError = null;
+    mmxProcessingSuccess = null;
+    mmxProcessingComplete = false;
+    mmxProcessingDetail = '';
+    mmxActivityLog = [];
+    document.body.classList.remove('stock-count-mmx-wait-active');
+}
+
+function showMmxProcessingError(message, failedAtStep) {
+    mmxProcessingError = {
+        message: String(message || 'Something went wrong').trim(),
+        failedAtStep: String(
+            failedAtStep || mmxLastPipelineStep || processingStageLabel || 'Unknown step'
+        ).trim(),
+    };
+    processing = false;
+    document.body.classList.add('stock-count-mmx-wait-active');
+}
+
+function dismissMmxProcessingError() {
+    mmxProcessingError = null;
+    document.body.classList.remove('stock-count-mmx-wait-active');
+    render();
+}
+
+async function enableMmxNotifications() {
+    const notify = window.StockCountNotify;
+    if (!notify) return;
+
+    if (notify.permissionState?.() === 'unsupported') {
+        mmxNotifyDenied = true;
+        render();
+        return;
+    }
+
+    const granted = await notify.requestPermission();
+    if (granted) {
+        mmxNotifyEnabled = true;
+        mmxNotifyDenied = false;
+        notify.setWatch(STORE_NUMBER, VENDOR_SLUG);
+        notify.startPolling(STORE_NUMBER);
+        render();
+        return;
+    }
+
+    mmxNotifyDenied = true;
+    render();
 }
 
 const VARIANCE_TABLE_HEADERS = [
@@ -1836,19 +2150,24 @@ function render() {
                 </div>
             </header>
             ${statusHtml}
-            ${buildProcessingBanner()}
             ${viewMode === 'variances' ? buildVarianceView() : buildView()}
         </div>
+        ${buildMmxProcessingOverlay()}
     `;
 
     window.DashboardNavBack?.mountBackButton(document.getElementById('stock-nav-back'), {
         fallback: dashboardPath(),
     });
 
-    if (processing) {
+    if (processing || mmxProcessingSuccess) {
         window.TbaBrandMark?.setBusy(true);
     } else {
         window.TbaBrandMark?.setBusy(false);
+    }
+
+    const activityEl = document.querySelector('.stock-count-mmx-activity');
+    if (activityEl) {
+        activityEl.scrollTop = activityEl.scrollHeight;
     }
 
     if (viewMode === 'entry' || viewMode === 'recount') {
@@ -1876,6 +2195,9 @@ function bindEvents() {
 
     document.getElementById('sc-clear-page')?.addEventListener('click', () => void clearCurrentLocationPage());
     document.getElementById('sc-send-mmx')?.addEventListener('click', () => void sendToMmx());
+    document.getElementById('sc-mmx-notify-btn')?.addEventListener('click', () => void enableMmxNotifications());
+    document.getElementById('sc-mmx-dismiss-error')?.addEventListener('click', () => dismissMmxProcessingError());
+    document.getElementById('sc-mmx-dismiss-success')?.addEventListener('click', () => dismissMmxProcessingSuccess());
     app.querySelectorAll('.stock-count-input').forEach((input) => {
         input.addEventListener('input', scheduleAutoSave);
     });

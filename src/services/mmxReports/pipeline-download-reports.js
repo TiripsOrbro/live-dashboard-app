@@ -5,6 +5,7 @@ const { withPageContextRetry } = require('./mmx-context-retry');
 const { ensureDir, waitForNewDownload, timestampSlug } = require('./util-files');
 const log = require('./util-logging');
 const { navigateToSupplyChainReports } = require('./mmx-navigation');
+const { refreshScrapePauseTimeout } = require('../mmxResourceGate');
 const { runSupplyChainReport, isSupplyChainReport } = require('./pipeline-supply-chain-reports');
 const { runStoreReport, isStoreReport } = require('./pipeline-store-reports');
 const { filterSpreadsheetByStoreColumn } = require('../reportReader');
@@ -79,7 +80,12 @@ async function waitForReportDownload(downloadDir, timeoutMs, preferredExt) {
         : DOWNLOAD_EXTS;
     for (const ext of order) {
         try {
-            return await waitForNewDownload(downloadDir, { timeoutMs, ext });
+            return await waitForNewDownload(downloadDir, {
+                timeoutMs,
+                ext,
+                touchEveryMs: 60000,
+                onPoll: refreshScrapePauseTimeout,
+            });
         } catch (e) {
             if (ext === order[order.length - 1]) throw e;
         }
@@ -118,6 +124,7 @@ async function downloadSupplyChainReport(page, report, settings) {
     }
 
     log.info(`Saved ${report.id} → ${path.basename(dest)}`);
+    refreshScrapePauseTimeout();
     return dest;
 }
 
@@ -135,6 +142,7 @@ async function downloadStoreReport(page, report, settings) {
         fs.renameSync(downloaded, dest);
     }
     log.info(`Saved ${report.id} → ${path.basename(dest)}`);
+    refreshScrapePauseTimeout();
     return dest;
 }
 
@@ -168,13 +176,19 @@ async function downloadReports(page, settings) {
         if (report.skip) continue;
 
         try {
+            if (typeof settings.onReportStep === 'function') {
+                const reportLabel = report.label || report.reportName || report.id || 'report';
+                await settings.onReportStep(`Downloading ${reportLabel}…`);
+            }
             if (isSupplyChainReport(report)) {
                 paths[report.id] = await downloadSupplyChainReport(page, report, settings);
+                refreshScrapePauseTimeout();
                 continue;
             }
 
             if (isStoreReport(report)) {
                 paths[report.id] = await downloadStoreReport(page, report, settings);
+                refreshScrapePauseTimeout();
                 continue;
             }
 

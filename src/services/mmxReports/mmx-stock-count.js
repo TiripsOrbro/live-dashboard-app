@@ -5,6 +5,12 @@ const { lookupKeysForMmx } = require('../itemCodes');
 const { enrichVariancesWithFilledItems } = require('../varianceCatalogMatch');
 const { getVendorCatalog } = require('../vendorCatalog');
 const { GOTO_OPTS } = require('./mmx-browser');
+const {
+    stockCountUrlTest,
+    waitForAspPostback,
+    waitForEnabledButton,
+    clickAndWaitForPostback,
+} = require('./mmx-postback');
 const { refreshScrapePauseTimeout } = require('../mmxResourceGate');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
@@ -273,7 +279,6 @@ async function waitForStockCountPageReady(page, cfg) {
             selectIds
         )
         .catch(() => {});
-    await page.waitForTimeout(1000);
 }
 
 async function isNewCountPanelReady(page, cfg) {
@@ -415,11 +420,8 @@ async function clickMainTab(page, tabLabel, options = {}) {
         throw new Error(`Main tab not found: ${tabLabel} (seen: ${seen})`);
     }
 
-    await Promise.all([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {}),
-        page.waitForTimeout(500),
-    ]);
-    await page.waitForTimeout(1500);
+    await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+    await waitForAspPostback(page, { urlTest: stockCountUrlTest, timeoutMs: 10000 });
     log.info(`Opened stock count main tab: ${clicked.text}`);
     return clicked.text;
 }
@@ -446,7 +448,6 @@ async function waitForInProgressCountPanel(page, cfg, timeoutMs = 20000) {
             selId
         )
         .catch(() => {});
-    await page.waitForTimeout(800);
 }
 
 async function waitForNewCountPanel(page, cfg, timeoutMs = 20000) {
@@ -460,7 +461,6 @@ async function waitForNewCountPanel(page, cfg, timeoutMs = 20000) {
             cfg.countTypeSelectId
         )
         .catch(() => {});
-    await page.waitForTimeout(800);
 }
 
 async function isOnInProgressCountPanel(page, cfg) {
@@ -519,18 +519,21 @@ async function selectCountType(page, cfg) {
         },
         { id: selId, value: cfg.countTypeValue, text: cfg.countTypeText }
     );
-    await page.waitForTimeout(800);
+    await waitForEnabledButton(page, cfg.createCountButtonId, 10000);
 }
 
-async function clickButtonById(page, id) {
+async function clickButtonById(page, id, options = {}) {
     const selector = `#${String(id).replace(/:/g, '\\:')}`;
     const handle = await page.$(selector);
     if (!handle) throw new Error(`Button not found: #${id}`);
-    await Promise.all([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {}),
-        handle.click(),
-    ]);
-    await page.waitForTimeout(2000);
+    await clickAndWaitForPostback(page, () => handle.click(), {
+        urlTest: stockCountUrlTest,
+        timeoutMs: options.timeoutMs ?? 45000,
+        elementId: options.waitForElementId,
+    });
+    if (options.waitForReenabled) {
+        await waitForEnabledButton(page, id, options.timeoutMs ?? 15000);
+    }
 }
 
 async function clickEnabledSave(page, cfg) {
@@ -542,7 +545,7 @@ async function clickEnabledSave(page, cfg) {
         }, id);
         if (!enabled) continue;
         log.info(`Saving stock count tab via #${id}`);
-        await clickButtonById(page, id);
+        await clickButtonById(page, id, { waitForReenabled: true });
         return id;
     }
     throw new Error('No enabled Save button on stock count tab');
@@ -592,19 +595,34 @@ async function selectInProgressCountOption(page, cfg, optionValue) {
     );
     if (alreadySelected) return;
 
-    await Promise.all([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {}),
-        page.evaluate(
-            ({ id, value }) => {
-                const sel = document.getElementById(id);
-                if (!sel) throw new Error(`In-progress count select missing: ${id}`);
-                sel.value = String(value);
-                sel.dispatchEvent(new Event('change', { bubbles: true }));
+    const batchId = cfg.batchNumberInputId || DEFAULT_CONFIG.batchNumberInputId;
+    const prevBatch = await readBatchNumber(page, cfg);
+
+    await clickAndWaitForPostback(
+        page,
+        () =>
+            page.evaluate(
+                ({ id, value }) => {
+                    const sel = document.getElementById(id);
+                    if (!sel) throw new Error(`In-progress count select missing: ${id}`);
+                    sel.value = String(value);
+                    sel.dispatchEvent(new Event('change', { bubbles: true }));
+                },
+                { id: selId, value: optionValue }
+            ),
+        { urlTest: stockCountUrlTest, timeoutMs: 45000, elementId: batchId }
+    );
+    await page
+        .waitForFunction(
+            ({ id, prev }) => {
+                const batch = document.getElementById(id);
+                const val = (batch?.value || '').trim();
+                return batch?.offsetParent !== null && (val.length > 0 ? val !== prev : true);
             },
-            { id: selId, value: optionValue }
-        ),
-    ]);
-    await page.waitForTimeout(2000);
+            { timeout: 15000, polling: 100 },
+            { id: batchId, prev: prevBatch }
+        )
+        .catch(() => {});
 }
 
 function isKeyItemCountOption(cfg, optionText) {
@@ -668,7 +686,15 @@ async function ensureKeyItemCountEditable(page, cfg) {
         );
     }
     await selectCountType(page, cfg);
+    const batchId = cfg.batchNumberInputId || DEFAULT_CONFIG.batchNumberInputId;
     await clickButtonById(page, cfg.createCountButtonId);
+    await page
+        .waitForFunction(
+            (id) => (document.getElementById(id)?.value || '').trim().length > 0,
+            { timeout: 15000, polling: 100 },
+            batchId
+        )
+        .catch(() => {});
 
     const created = {
         mode: 'created',
@@ -1199,8 +1225,9 @@ async function verifyKeyItemCountCatalog(page, catalog, cfg, options = {}) {
     return results;
 }
 
-async function fillLocationTab(page, cfg, catalog, locationName, itemsAtLocation) {
+async function fillLocationTab(page, cfg, catalog, locationName, itemsAtLocation, onPipelineStep) {
     const mmxTab = mmxTabForLocation(cfg, locationName);
+    if (onPipelineStep) await onPipelineStep(`Filling ${locationName} tab`);
     await clickRadTab(page, mmxTab.toLowerCase());
 
     let grid = await scrapeCountGrid(page);
@@ -1341,11 +1368,7 @@ async function clickButtonByValue(page, label) {
         return null;
     }, want);
     if (!clicked) return false;
-    await Promise.all([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {}),
-        page.waitForTimeout(500),
-    ]);
-    await page.waitForTimeout(2000);
+    await waitForAspPostback(page, { urlTest: stockCountUrlTest, timeoutMs: 45000 });
     return true;
 }
 
@@ -1653,15 +1676,17 @@ async function enterCombinedStockCount(page, opts) {
     log.info(
         `Opening stock count page for store ${opts.storeNumber} — ${vendorEntries.length} vendor(s), ${locationsToFill.length} location tab(s)`
     );
+    if (opts.onPipelineStep) await opts.onPipelineStep('Opening stock count in Macromatix');
     await page.goto(cfg.url, { ...GOTO_OPTS, timeout: navTimeoutMs });
-    await page.waitForTimeout(2000);
+    await waitForStockCountPageReady(page, cfg);
 
     if (opts.selectStore) {
+        if (opts.onPipelineStep) await opts.onPipelineStep('Selecting store in Macromatix');
         await opts.selectStore(page, opts.storeNumber);
-        await page.waitForTimeout(2500);
         await waitForStockCountPageReady(page, cfg);
     }
 
+    if (opts.onPipelineStep) await opts.onPipelineStep('Starting or resuming Key Item Count');
     const countMode = await ensureKeyItemCountEditable(page, cfg);
 
     const filledItems = [];
@@ -1682,7 +1707,14 @@ async function enterCombinedStockCount(page, opts) {
         const label =
             locationNames.length > 1 ? `${locationNames.join(' + ')} → ${mmxTab}` : locationNames[0];
         log.info(`Filling ${label} (${itemsAtLocation.length} item(s))`);
-        const result = await fillLocationTab(page, cfg, null, locationNames[0], itemsAtLocation);
+        const result = await fillLocationTab(
+            page,
+            cfg,
+            null,
+            locationNames[0],
+            itemsAtLocation,
+            opts.onPipelineStep
+        );
         result.locationName = label;
         result.dashboardLocations = locationNames;
         result.mmxTab = mmxTab;
@@ -1694,6 +1726,7 @@ async function enterCombinedStockCount(page, opts) {
     }
 
     if (opts.stopAtConfirm) {
+        if (opts.onPipelineStep) await opts.onPipelineStep('Checking variances');
         await clickContinueFromFilledTab(page, cfg, results);
         const rawVariances = await scrapeConfirmCountVariances(page);
         const catalogsBySlug = new Map(

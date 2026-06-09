@@ -4,6 +4,7 @@ const {
     canUserCreateAccounts,
     isAdminUser,
     parseCookies,
+    cookieClearOptions,
 } = require('./dashboardUsers');
 
 const CREATE_ACCOUNT_GATE_COOKIE = 'account_create_gate';
@@ -77,7 +78,7 @@ function readGateFromRequest(req) {
 }
 
 function clearAccountGateCookie(res) {
-    res.clearCookie(CREATE_ACCOUNT_GATE_COOKIE, gateCookieOptions());
+    res.clearCookie(CREATE_ACCOUNT_GATE_COOKIE, cookieClearOptions(gateCookieOptions()));
 }
 
 function setAccountGateCookie(res, user) {

@@ -148,10 +148,15 @@
             return;
         }
         const status = await fetchPipelineStatus(store);
-        if (status.stage === 'prepared' && status.sessionId) {
+        const varianceCount = Number(status.redVarianceCount) || (status.variances?.length ?? 0);
+        if (status.stage === 'prepared' && status.sessionId && varianceCount > 0) {
             notifyVariancesReady(store, watch.vendorSlug);
         }
-        if (status.ordersComplete) {
+        const ordersDone =
+            status.ordersComplete &&
+            !status.inProgress &&
+            (status.stage === 'completed' || status.stage === 'idle');
+        if (ordersDone) {
             notifyOrdersReady(store, watch.vendorSlug, {
                 partial: Boolean(status.lastError),
             });
@@ -185,8 +190,20 @@
         startPolling(store);
     }
 
+    function permissionState() {
+        if (!('Notification' in window)) return 'unsupported';
+        return Notification.permission;
+    }
+
+    function isWatching(store) {
+        const watch = readWatch();
+        return Boolean(watch && String(watch.store) === String(store));
+    }
+
     window.StockCountNotify = {
         requestPermission,
+        permissionState,
+        isWatching,
         setWatch,
         clearWatch,
         notifyVariancesReady,

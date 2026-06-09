@@ -1176,11 +1176,27 @@ function sessionCookieOptions(options = {}) {
         httpOnly: true,
         sameSite: 'strict',
         secure: secureCookie,
+        path: '/',
     };
     if (remember) {
         return { ...base, maxAge: SESSION_MAX_AGE_MS };
     }
     return base;
+}
+
+/** res.clearCookie options — same path/domain/flags as set, without maxAge (Express 5 deprecates maxAge on clear). */
+function cookieClearOptions(setOptions) {
+    if (!setOptions || typeof setOptions !== 'object') return { path: '/' };
+    const { maxAge, expires, ...rest } = setOptions;
+    return rest;
+}
+
+function sessionCookieClearOptions(options = {}) {
+    return cookieClearOptions(sessionCookieOptions(options));
+}
+
+function nologinCookieClearOptions() {
+    return cookieClearOptions(nologinCookieOptions());
 }
 
 function userProfileForClient(user) {
@@ -1274,6 +1290,8 @@ module.exports = {
     isNologinStoreAllowed,
     verifyNologinSecret,
     nologinCookieOptions,
+    nologinCookieClearOptions,
+    cookieClearOptions,
     resolveNologinToken,
     userCanAccessStore,
     filterStoresForUser,
@@ -1285,6 +1303,7 @@ module.exports = {
     getAdminAreaPath,
     singleStoreForUser,
     sessionCookieOptions,
+    sessionCookieClearOptions,
     userProfileForClient,
     timingSafeEqualString,
     invalidateUsersCache,

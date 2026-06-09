@@ -4,12 +4,19 @@ const { setReportStartDate, setReportEndDate, waitForDateFieldSettle } = require
 const { resolveReportDate } = require('./util-dates');
 const { getStoreConfig } = require('../storeList');
 const { selectStoreOnPage, assertMacromatixAuthenticated } = require('../macromatixScraper');
+const {
+    waitForAspPostback,
+    waitForReportFormatControls,
+    waitForReportSelectionPage,
+    waitForScmReportList,
+} = require('./mmx-postback');
+const { refreshScrapePauseTimeout } = require('../mmxResourceGate');
 const log = require('./util-logging');
 
 async function openReportSelectionPage(page, reportNav, navTimeoutMs) {
     log.info(`Opening Report Selection: ${reportNav.url}`);
     await page.goto(reportNav.url, { ...GOTO_OPTS, timeout: navTimeoutMs });
-    await page.waitForTimeout(reportNav.waitAfterNavigateMs || 2000);
+    await waitForReportSelectionPage(page, navTimeoutMs);
     await assertMacromatixAuthenticated(page, 'Report Selection');
 }
 
@@ -43,8 +50,8 @@ async function setGroupDropdown(page, groupName) {
 
     if (!set) throw new Error(`Group dropdown: could not select "${groupName}"`);
     log.info(`Group set to: ${set}`);
-    const settleMs = Number(process.env.MMX_REPORT_GROUP_SETTLE_MS || 3000);
-    await page.waitForTimeout(settleMs);
+    await waitForAspPostback(page, { timeoutMs: 15000 });
+    await waitForScmReportList(page);
 }
 
 async function listReportOptions(page, opts = {}) {
@@ -142,7 +149,8 @@ async function selectReportInList(page, reportName, opts = {}) {
         throw new Error(`Reports list: could not select "${reportName}"`);
     }
     log.info(`Report selected: ${picked}`);
-    await page.waitForTimeout(2000);
+    await waitForAspPostback(page, { timeoutMs: 15000 });
+    await waitForReportFormatControls(page);
 }
 
 function formatNeedles(formatText) {
@@ -221,7 +229,6 @@ async function setReportFormat(page, formatText) {
             { timeout: 20000 }
         )
         .catch(() => null);
-    await page.waitForTimeout(1500);
 
     const maxAttempts = Math.max(4, Number(process.env.MMX_REPORT_FORMAT_ATTEMPTS || 8));
     const attemptDelayMs = Number(process.env.MMX_REPORT_FORMAT_RETRY_MS || 2000);
@@ -249,7 +256,7 @@ async function setReportFormat(page, formatText) {
         );
     }
     log.info(`Report format: ${picked}`);
-    await page.waitForTimeout(500);
+    await waitForAspPostback(page, { timeoutMs: 8000 });
 }
 
 async function setStartDate(page, dateText) {
@@ -1049,8 +1056,9 @@ async function waitForStoreReportDropdownReady(page, storeName, storeNumber, tim
 /** Store Reports → Inventory Special Event uses DropDownListStore (RadCombo). */
 async function selectStoreForStoreReport(page, storeName, opts = {}) {
     const storeNumber = String(opts.storeNumber || storeName.match(/\b(\d{4})\b/)?.[1] || '').trim();
-    const settleMs = Number(opts.waitMs ?? process.env.MMX_REPORT_STORE_SETTLE_MS ?? 2000);
-    if (settleMs > 0) await page.waitForTimeout(settleMs);
+    await page
+        .waitForFunction(() => document.readyState === 'complete', { timeout: 15000, polling: 100 })
+        .catch(() => {});
 
     log.info(`Selecting store for store report: ${storeNumber || storeName}`);
 
@@ -1058,7 +1066,6 @@ async function selectStoreForStoreReport(page, storeName, opts = {}) {
         const fromCombo = await selectStoreOnPage(page, storeNumber);
         if (fromCombo) {
             log.info(`Store selected (RadCombo): ${fromCombo}`);
-            await page.waitForTimeout(500);
             return;
         }
     }
@@ -1075,7 +1082,7 @@ async function selectStoreForStoreReport(page, storeName, opts = {}) {
     const fromDropdown = await tryStoreReportDropdown(page, storeNumber, storeName);
     if (fromDropdown) {
         log.info(`Store selected (report dropdown): ${fromDropdown}`);
-        await page.waitForTimeout(500);
+        await waitForAspPostback(page, { timeoutMs: 10000 });
         return;
     }
 
@@ -1084,7 +1091,7 @@ async function selectStoreForStoreReport(page, storeName, opts = {}) {
         const fromCombo = await tryStoreRadCombo(page, needle);
         if (fromCombo) {
             log.info(`Store selected (combo): ${fromCombo}`);
-            await page.waitForTimeout(500);
+            await waitForAspPostback(page, { timeoutMs: 10000 });
             return;
         }
     }
@@ -1180,8 +1187,9 @@ async function selectStore(page, storeName, opts = {}) {
     const storeNumber = String(opts.storeNumber || storeName.match(/\b(\d{4})\b/)?.[1] || '').trim();
     const treeHints = storeTreeHints(storeName, storeNumber);
     const needles = storeNeedles(storeName);
-    const settleMs = Number(opts.waitMs ?? process.env.MMX_REPORT_STORE_SETTLE_MS ?? 2500);
-    if (settleMs > 0) await page.waitForTimeout(settleMs);
+    await page
+        .waitForFunction(() => document.readyState === 'complete', { timeout: 15000, polling: 100 })
+        .catch(() => {});
 
     log.info(`Selecting store for report: ${storeNumber || storeName}`);
 
@@ -1189,7 +1197,6 @@ async function selectStore(page, storeName, opts = {}) {
         const fromCombo = await selectStoreOnPage(page, storeNumber);
         if (fromCombo) {
             log.info(`Store selected (RadCombo): ${fromCombo}`);
-            await page.waitForTimeout(500);
             return;
         }
     }
@@ -1211,7 +1218,7 @@ async function selectStore(page, storeName, opts = {}) {
     const fromReportDropdown = await tryStoreReportDropdown(page, storeNumber, storeName);
     if (fromReportDropdown) {
         log.info(`Store selected (report dropdown): ${fromReportDropdown}`);
-        await page.waitForTimeout(500);
+        await waitForAspPostback(page, { timeoutMs: 10000 });
         return;
     }
 
@@ -1219,7 +1226,7 @@ async function selectStore(page, storeName, opts = {}) {
         const fromRadCombo = await tryStoreRadCombo(page, needle);
         if (fromRadCombo) {
             log.info(`Store selected (combo): ${fromRadCombo}`);
-            await page.waitForTimeout(500);
+            await waitForAspPostback(page, { timeoutMs: 10000 });
             return;
         }
     }
@@ -1228,7 +1235,7 @@ async function selectStore(page, storeName, opts = {}) {
         const fromDropdown = await tryStoreDropdown(page, needle);
         if (fromDropdown) {
             log.info(`Store selected (dropdown): ${fromDropdown}`);
-            await page.waitForTimeout(500);
+            await waitForAspPostback(page, { timeoutMs: 10000 });
             return;
         }
     }
@@ -1243,7 +1250,7 @@ async function selectStore(page, storeName, opts = {}) {
             const fromTree = await tryStoreTree(page, needle, treeHints);
             if (fromTree) {
                 log.info(`Store selected (tree): ${fromTree}`);
-                await page.waitForTimeout(500);
+                await waitForAspPostback(page, { timeoutMs: 10000 });
                 return;
             }
         }
@@ -1252,7 +1259,7 @@ async function selectStore(page, storeName, opts = {}) {
     const fromTextbox = await tryStoreReportTextboxes(page, storeNumber, storeName);
     if (fromTextbox) {
         log.info(`Store selected (textbox): ${fromTextbox}`);
-        await page.waitForTimeout(500);
+        await waitForAspPostback(page, { timeoutMs: 10000 });
         return;
     }
 
@@ -1260,7 +1267,7 @@ async function selectStore(page, storeName, opts = {}) {
         const clicked = await tryStoreClickByText(page, needle);
         if (clicked) {
             log.info(`Store selected (click): ${clicked}`);
-            await page.waitForTimeout(500);
+            await waitForAspPostback(page, { timeoutMs: 10000 });
             return;
         }
     }
@@ -1268,7 +1275,7 @@ async function selectStore(page, storeName, opts = {}) {
     const fromFrame = await tryStoreInFrames(page, needles);
     if (fromFrame) {
         log.info(`Store selected (frame): ${fromFrame}`);
-        await page.waitForTimeout(500);
+        await waitForAspPostback(page, { timeoutMs: 10000 });
         return;
     }
 
@@ -1313,7 +1320,6 @@ async function configureAndGenerateReport(page, report, reportNav) {
 
     // Format before dates — SOH/SOO date inputs are often hidden until format is chosen (especially on Pi/Chromium).
     await setReportFormat(page, formatText);
-    await page.waitForTimeout(500);
 
     await setStartDate(page, startDate);
 
@@ -1333,6 +1339,7 @@ async function configureAndGenerateReport(page, report, reportNav) {
     }
 
     await clickGenerate(page, report.generateButtonText || 'Generate');
+    refreshScrapePauseTimeout();
 }
 
 async function runSupplyChainReport(page, report, settings) {

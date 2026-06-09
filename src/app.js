@@ -191,7 +191,10 @@ const {
     getAdminAreaPath,
     singleStoreForUser,
     sessionCookieOptions,
+    sessionCookieClearOptions,
     nologinCookieOptions,
+    nologinCookieClearOptions,
+    isNologinUser,
     isNologinStoreAllowed,
     verifyNologinSecret,
     userProfileForClient,
@@ -355,7 +358,7 @@ function setEntryCookie(res, entry, remember = true) {
 
 function setSessionCookie(res, user, remember = true, entry = '') {
     res.cookie(SESSION_COOKIE, createSessionToken(user), sessionCookieOptions({ remember }));
-    res.clearCookie(LEGACY_COOKIE, sessionCookieOptions({ remember }));
+    res.clearCookie(LEGACY_COOKIE, sessionCookieClearOptions({ remember }));
     if (entry) setEntryCookie(res, entry, remember);
 }
 
@@ -391,7 +394,7 @@ function sendLoginFailure(req, res, message = 'Incorrect username or password.',
 
 function setLegacyAccessCookie(res, remember = true) {
     res.cookie(LEGACY_COOKIE, legacyAccessToken(DASHBOARD_ACCESS_KEY), sessionCookieOptions({ remember }));
-    res.clearCookie(SESSION_COOKIE, sessionCookieOptions({ remember }));
+    res.clearCookie(SESSION_COOKIE, sessionCookieClearOptions({ remember }));
 }
 
 function logAuthLogin(req, user) {
@@ -739,10 +742,10 @@ app.post('/unlock', (req, res) => {
 });
 
 app.get('/logout', (req, res) => {
-    res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
-    res.clearCookie(LEGACY_COOKIE, sessionCookieOptions());
-    res.clearCookie(NOLOGIN_COOKIE, nologinCookieOptions());
-    res.clearCookie(ENTRY_COOKIE, sessionCookieOptions());
+    res.clearCookie(SESSION_COOKIE, sessionCookieClearOptions());
+    res.clearCookie(LEGACY_COOKIE, sessionCookieClearOptions());
+    res.clearCookie(NOLOGIN_COOKIE, nologinCookieClearOptions());
+    res.clearCookie(ENTRY_COOKIE, sessionCookieClearOptions());
     res.redirect('/login');
 });
 
@@ -781,8 +784,8 @@ app.get(/^\/nologin\/(\d{3,6})\/?$/i, async (req, res) => {
 
     const token = createNologinToken(storeNumber, storeEntry.storeName || '');
 
-    res.clearCookie(SESSION_COOKIE, sessionCookieOptions());
-    res.clearCookie(LEGACY_COOKIE, sessionCookieOptions());
+    res.clearCookie(SESSION_COOKIE, sessionCookieClearOptions());
+    res.clearCookie(LEGACY_COOKIE, sessionCookieClearOptions());
     res.cookie(NOLOGIN_COOKIE, token, nologinCookieOptions());
     console.log(`[Auth] Nologin: store ${storeNumber} from ${getRequestIp(req)}`);
     try {
@@ -1927,6 +1930,11 @@ app.post('/api/account/change-password', (req, res) => {
     if (!result.ok) {
         res.status(400).json({ success: false, error: result.error });
         return;
+    }
+    const entry = dashboardEntryFromRequest(req) || (isAdminUser(user) ? 'admin' : 'store');
+    const refreshed = authenticate(user.username, newPassword);
+    if (refreshed) {
+        setSessionCookie(res, refreshed, true, entry);
     }
     res.json({ success: true });
 });

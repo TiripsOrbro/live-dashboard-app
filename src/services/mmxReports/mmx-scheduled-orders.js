@@ -6,20 +6,15 @@ const { GOTO_OPTS } = require('./mmx-browser');
 const { withPageContextRetry } = require('./mmx-context-retry');
 const { setReportListDate } = require('./mmx-rad-date-picker');
 const { resolveReportDate } = require('./util-dates');
+const { waitForAspPostback } = require('./mmx-postback');
 const log = require('./util-logging');
 
 const DEFAULT_URL = 'https://tacobellau.macromatix.net/mms_stores_scheduledorders.aspx';
 
-const POST_DATE_SETTLE_MS = Number(process.env.MMX_POST_DATE_SETTLE_MS || 1200);
 const SCHEDULED_TABLE_WAIT_MS = Number(process.env.MMX_SCHEDULED_TABLE_WAIT_MS || 12000);
-const STORE_SELECT_SETTLE_MS = Number(process.env.MMX_STORE_SELECT_SETTLE_MS || 2500);
 
-async function waitForAspNetSettle(page, settleMs = STORE_SELECT_SETTLE_MS) {
-    await Promise.race([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 12000 }).catch(() => {}),
-        page.waitForTimeout(settleMs),
-    ]);
-    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 15000 }).catch(() => {});
+async function waitForAspNetSettle(page) {
+    await waitForAspPostback(page, { timeoutMs: 12000 });
 }
 
 function pageHasScheduledOrderRows() {
@@ -38,7 +33,6 @@ function pageHasScheduledOrderRows() {
 
 async function waitForScheduledOrdersTable(page, timeoutMs = SCHEDULED_TABLE_WAIT_MS) {
     await page.waitForFunction(() => pageHasScheduledOrderRows(), { timeout: timeoutMs }).catch(() => null);
-    await page.waitForTimeout(300);
 }
 
 async function isListDateAlready(page, display) {
@@ -60,11 +54,7 @@ async function isListDateAlready(page, display) {
 }
 
 async function waitAfterListDateChange(page) {
-    await Promise.race([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {}),
-        page.waitForTimeout(POST_DATE_SETTLE_MS),
-    ]);
-    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
+    await waitForAspPostback(page, { timeoutMs: 10000 });
     await waitForScheduledOrdersTable(page, SCHEDULED_TABLE_WAIT_MS);
 }
 
@@ -234,7 +224,6 @@ async function scrapeScheduledOrders(page) {
         });
         if (parsed.rows.length) break;
         log.warn(`Scheduled orders table empty (attempt ${attempt}/3), waiting…`);
-        await page.waitForTimeout(800);
         await waitForScheduledOrdersTable(page, 6000);
     }
 
@@ -383,12 +372,19 @@ async function clickCreateForVendorRow(page, vendorCfg) {
 
     if (!clicked) throw new Error(`Could not open order for ${vendorCfg.label}`);
     log.info(`Clicked "${clicked}" for ${vendorCfg.label}`);
-    await Promise.race([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {}),
-        page.waitForTimeout(3000),
-    ]);
-    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 25000 }).catch(() => {});
-    await page.waitForTimeout(1000);
+    await waitForAspPostback(page, { timeoutMs: 30000 });
+    await page
+        .waitForFunction(
+            () => {
+                const t = (document.body?.innerText || '').toLowerCase();
+                return (
+                    document.querySelectorAll('input[id*="tbOH"], input[type="text"]').length > 3 ||
+                    /order detail|purchase order|vendor order/i.test(t)
+                );
+            },
+            { timeout: 25000, polling: 100 }
+        )
+        .catch(() => {});
 
     return { row, parsed };
 }

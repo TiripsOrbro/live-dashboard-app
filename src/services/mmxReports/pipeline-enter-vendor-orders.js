@@ -1,4 +1,6 @@
 const { withPageContextRetry } = require('./mmx-context-retry');
+const { waitForAspPostback } = require('./mmx-postback');
+const { refreshScrapePauseTimeout } = require('../mmxResourceGate');
 const {
     openScheduledOrders,
     returnToScheduledOrders,
@@ -25,7 +27,6 @@ async function waitForOrderItemsGrid(page, timeoutMs = 30000) {
         },
         { timeout: timeoutMs }
     );
-    await page.waitForTimeout(500);
 }
 
 /** Register before the click that triggers a native `window.confirm`. */
@@ -78,12 +79,7 @@ async function clickButtonByLabel(page, label, { required = true, waitAfterMs = 
     }
     log.info(`Clicked "${clicked}"`);
     if (waitAfterMs > 0) {
-        await page.waitForTimeout(waitAfterMs);
-        try {
-            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
-        } catch {
-            /* postback optional */
-        }
+        await waitForAspPostback(page, { timeoutMs: Math.max(waitAfterMs, 10000) });
     }
     return true;
 }
@@ -96,7 +92,6 @@ async function clickClearQuantities(page, orderEntryCfg) {
     const dialogPromise = waitForNativeDialogAccept(page, { messageIncludes: confirmText });
     await clickButtonByLabel(page, label, { required: true, waitAfterMs: 0 });
     await dialogPromise;
-    await page.waitForTimeout(1000);
     await waitForOrderItemsGrid(page);
 }
 
@@ -371,6 +366,10 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
     for (let i = 0; i < queue.length; i++) {
         const { vendor, buildToEntries } = queue[i];
         log.info(`--- Order ${i + 1}/${queue.length}: ${vendor.label} ---`);
+        refreshScrapePauseTimeout();
+        if (settings.onOrderStep) {
+            await settings.onOrderStep(`Placing order — ${vendor.label} (${i + 1}/${queue.length})`);
+        }
 
         if (i > 0) {
             await returnToScheduledOrders(page, vendorOrdersCfg, settings.navTimeoutMs, storeContext);
@@ -378,6 +377,7 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
 
         try {
             await processOneVendorOrder(page, settings, vendor, buildToEntries);
+            refreshScrapePauseTimeout();
             processed.push({
                 vendorId: vendor.id,
                 label: vendor.label,

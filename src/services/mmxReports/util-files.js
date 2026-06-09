@@ -33,8 +33,18 @@ async function waitForNewDownload(dir, opts = {}) {
     const pollMs = opts.pollMs || 500;
     const before = new Set(listFiles(dir, ext));
     const start = Date.now();
+    const touchEveryMs = Number(opts.touchEveryMs || 0);
+    let lastTouch = start;
 
     while (Date.now() - start < timeoutMs) {
+        if (touchEveryMs > 0 && typeof opts.onPoll === 'function' && Date.now() - lastTouch >= touchEveryMs) {
+            try {
+                opts.onPoll();
+            } catch {
+                /* ignore */
+            }
+            lastTouch = Date.now();
+        }
         const now = listFiles(dir, ext);
         for (const f of now) {
             if (!before.has(f)) {

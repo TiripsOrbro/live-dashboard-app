@@ -21,12 +21,20 @@ async function destroySession(session, reason = 'closed') {
         sessionIdByStore.delete(String(session.storeNumber));
     }
     await closeBrowserQuietly(session.browser, `mmx count session ${reason}`);
-    releaseMmxResource(`mmx session ${reason} (store ${session.storeNumber})`);
 }
 
 async function cleanupExpiredSessions() {
     for (const session of [...sessionsById.values()]) {
-        if (isExpired(session)) await destroySession(session, 'expired');
+        if (!isExpired(session)) continue;
+        const storeNumber = session.storeNumber;
+        await destroySession(session, 'expired');
+        try {
+            const { endStockCountMmxWork } = require('./stockCountMmxPipeline');
+            endStockCountMmxWork(storeNumber, `session expired (store ${storeNumber})`);
+        } catch (err) {
+            releaseMmxResource(`session expired fallback (store ${storeNumber})`);
+            console.warn('[MMX Session] Expired cleanup release fallback:', err.message);
+        }
     }
 }
 

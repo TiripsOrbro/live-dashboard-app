@@ -318,6 +318,9 @@ async function downloadReportsForStores(options = {}) {
                 reports,
             };
             const settings = buildSettings(storePipeline, storeDir);
+            if (typeof options.onReportStep === 'function') {
+                settings.onReportStep = options.onReportStep;
+            }
 
             log.info(`Store ${store.storeNumber} (${store.storeName}) → ${storeDir}`);
 

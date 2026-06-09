@@ -836,12 +836,8 @@ async function enumerateStores(page) {
  * ASP.NET postback after RadCombo store change — wait before the next page.evaluate.
  */
 async function waitForStoreSelectionPostback(page) {
-    await Promise.race([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 12000 }).catch(() => {}),
-        page.waitForTimeout(2500),
-    ]);
-    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
-    await page.waitForTimeout(300);
+    const { waitForAspPostback } = require('./mmxReports/mmx-postback');
+    await waitForAspPostback(page, { timeoutMs: 12000 });
 }
 
 /**

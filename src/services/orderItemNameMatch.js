@@ -1,7 +1,7 @@
 /** Match MMX order-form item names to ISE / catalog names (codes often differ). */
 
 const { normalizeItemCode } = require('./reportReader');
-const { allLookupKeys } = require('./itemCodes');
+const { allLookupKeys, canonicalItemCode, findInReportMap } = require('./itemCodes');
 
 const MIN_NAME_MATCH_SCORE = 25;
 
@@ -110,6 +110,114 @@ function catalogLineCodeMatch(catalogCode, lineCode) {
     return allLookupKeys(line).some((k) => keys.has(normalizeItemCode(k)));
 }
 
+/** True when a build-to line belongs to a catalog item (code, ISE code, or name). */
+function lineCoversCatalogItem(line, catalogItem) {
+    if (!line || !catalogItem) return false;
+    const code = normalizeItemCode(catalogItem.itemCode);
+    if (!code) return false;
+    if (catalogLineCodeMatch(code, line.itemCode)) return true;
+    if (line.iseItemCode && catalogLineCodeMatch(code, line.iseItemCode)) return true;
+    return buildToLineMatchScore(catalogItem.name, line) >= MIN_NAME_MATCH_SCORE;
+}
+
+/** ISE usage row for a catalog item — code/alias first, then name match. */
+function findIseRowForCatalogItem(catalogItem, usage, usedIseCodes = new Set()) {
+    if (!catalogItem || !usage) return null;
+    const code = normalizeItemCode(catalogItem.itemCode);
+    if (code) {
+        for (const key of allLookupKeys(code)) {
+            const hit = usage.get(normalizeItemCode(key));
+            if (hit) {
+                return {
+                    reportItemCode: normalizeItemCode(key),
+                    ise: hit,
+                    matchSource: 'code',
+                    matchScore: 100,
+                };
+            }
+        }
+        const target = code;
+        for (const [reportItemCode, ise] of usage.entries()) {
+            const canon = canonicalItemCode(reportItemCode) || normalizeItemCode(reportItemCode);
+            if (canon === target) {
+                return { reportItemCode, ise, matchSource: 'code', matchScore: 100 };
+            }
+        }
+    }
+
+    let best = null;
+    let bestScore = 0;
+    for (const [reportItemCode, ise] of usage.entries()) {
+        if (usedIseCodes.has(reportItemCode)) continue;
+        const score = buildToLineMatchScore(catalogItem.name, ise);
+        if (score > bestScore) {
+            bestScore = score;
+            best = { reportItemCode, ise, matchSource: 'name', matchScore: score };
+        }
+    }
+    if (best && bestScore >= MIN_NAME_MATCH_SCORE) return best;
+    return null;
+}
+
+/**
+ * Catalog item for an ISE report row — canonical code first, then name match.
+ * Used when .item-codes has no alias for the ISE item code.
+ */
+function resolveCatalogItemForIseRow(iseEntry, reportItemCode, catalogItems) {
+    const canon = canonicalItemCode(reportItemCode) || normalizeItemCode(reportItemCode);
+    if (canon) {
+        const byCode = (catalogItems || []).find(
+            (item) => normalizeItemCode(item.itemCode) === canon
+        );
+        if (byCode) {
+            return { item: byCode, matchSource: 'code', matchScore: 100 };
+        }
+        for (const item of catalogItems || []) {
+            if (catalogLineCodeMatch(item.itemCode, canon)) {
+                return { item, matchSource: 'code', matchScore: 100 };
+            }
+        }
+    }
+
+    let best = null;
+    let bestScore = 0;
+    for (const item of catalogItems || []) {
+        if (item.buildToManual && !item.buildToOrderManual) continue;
+        const score = buildToLineMatchScore(item.name, iseEntry);
+        if (score > bestScore) {
+            bestScore = score;
+            best = item;
+        }
+    }
+    if (best && bestScore >= MIN_NAME_MATCH_SCORE) {
+        return { item: best, matchSource: 'name', matchScore: bestScore };
+    }
+    return null;
+}
+
+/** SOH/SOO row — code/alias first, then name match against catalog label. */
+function findInReportMapWithNameFallback(itemCode, itemName, reportMap) {
+    const codeHit = findInReportMap(reportMap, itemCode);
+    if (codeHit) return { ...codeHit, matchSource: 'code', matchScore: 100 };
+    if (!itemName || !reportMap) return null;
+
+    let bestKey = null;
+    let bestRow = null;
+    let bestScore = 0;
+    for (const [key, row] of reportMap.entries()) {
+        const score = nameMatchScore(itemName, row.description);
+        if (score > bestScore) {
+            bestScore = score;
+            bestKey = key;
+            bestRow = row;
+        }
+    }
+    if (bestRow && bestScore >= MIN_NAME_MATCH_SCORE) {
+        return { key: bestKey, row: bestRow, matchSource: 'name', matchScore: bestScore };
+    }
+    return null;
+}
+
 function buildToLineMatchScore(catalogName, line) {
     let score = nameMatchScore(catalogName, line.description);
     const desc = String(line.description || '').toUpperCase();
@@ -141,12 +249,18 @@ function buildBuildToEntriesForVendor(vendorCfg, buildToLines, catalogItems, ite
         let bestLine = null;
         let bestScore = 0;
 
-        if (catalogCode) {
-            for (const line of buildToLines || []) {
-                const iseKey = String(line.itemCode || '').trim().toUpperCase();
-                if (usedIse.has(iseKey)) continue;
-                if (!catalogLineCodeMatch(catalogCode, line.itemCode)) continue;
-                if (line.buildToManual) continue;
+        for (const line of buildToLines || []) {
+            const iseKey = String(line.iseItemCode || line.itemCode || '')
+                .trim()
+                .toUpperCase();
+            if (usedIse.has(iseKey)) continue;
+            if (line.buildToManual) continue;
+            if (catalogLineCodeMatch(catalogCode, line.itemCode)) {
+                bestLine = line;
+                bestScore = 100;
+                break;
+            }
+            if (line.iseItemCode && catalogLineCodeMatch(catalogCode, line.iseItemCode)) {
                 bestLine = line;
                 bestScore = 100;
                 break;
@@ -155,7 +269,9 @@ function buildBuildToEntriesForVendor(vendorCfg, buildToLines, catalogItems, ite
 
         if (!bestLine) {
             for (const line of buildToLines || []) {
-                const iseKey = String(line.itemCode || '').trim().toUpperCase();
+                const iseKey = String(line.iseItemCode || line.itemCode || '')
+                    .trim()
+                    .toUpperCase();
                 if (usedIse.has(iseKey)) continue;
                 if (line.buildToManual) continue;
                 const score = buildToLineMatchScore(item.name, line);
@@ -168,14 +284,18 @@ function buildBuildToEntriesForVendor(vendorCfg, buildToLines, catalogItems, ite
 
         if (!bestLine || bestScore < MIN_NAME_MATCH_SCORE) continue;
 
-        usedIse.add(String(bestLine.itemCode || '').trim().toUpperCase());
+        const iseKey = String(bestLine.iseItemCode || bestLine.itemCode || '')
+            .trim()
+            .toUpperCase();
+        usedIse.add(iseKey);
         entries.push({
             catalogName: item.name,
             catalogItemCode: item.itemCode,
             description: bestLine.description || '',
             orderQty: bestLine.orderQty,
-            iseItemCode: bestLine.itemCode,
+            iseItemCode: bestLine.iseItemCode || bestLine.itemCode,
             matchScore: bestScore,
+            matchSource: bestScore >= 100 ? 'code' : 'name',
         });
     }
 
@@ -259,6 +379,11 @@ module.exports = {
     nameMatchScore,
     bestNameMatchScore,
     catalogLineCodeMatch,
+    lineCoversCatalogItem,
+    findIseRowForCatalogItem,
+    resolveCatalogItemForIseRow,
+    findInReportMapWithNameFallback,
+    buildToLineMatchScore,
     buildBuildToEntriesForVendor,
     linesFromOrderGridByName,
 };

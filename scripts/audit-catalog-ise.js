@@ -1,0 +1,207 @@
+#!/usr/bin/env node
+/**
+ * Audit catalog items vs ISE / SOH / SOO for a store.
+ * Usage: node scripts/audit-catalog-ise.js 3811 [--location Freezer] [--location Fridge]
+ */
+const path = require('path');
+const { getVendorCatalog } = require('../src/services/vendorCatalog');
+const {
+    parseInventorySpecialEvent,
+    parseStockOnHand,
+    parseStockOnOrder,
+    resolveStoreReports,
+    normalizeItemCode,
+} = require('../src/services/reportReader');
+const { allLookupKeys } = require('../src/services/itemCodes');
+const { nameMatchScore } = require('../src/services/orderItemNameMatch');
+
+const REPORTS_DIR = path.join(__dirname, '..', 'Reports');
+const MIN_NAME_SCORE = 25;
+
+function parseArgs(argv) {
+    const storeNumber = (argv[2] || '').replace(/\D/g, '');
+    const locations = [];
+    for (let i = 3; i < argv.length; i++) {
+        if (argv[i] === '--location' && argv[i + 1]) {
+            locations.push(argv[++i]);
+        }
+    }
+    return { storeNumber, locations: locations.length ? locations : ['Freezer', 'Fridge'] };
+}
+
+function findInMap(keys, map) {
+    if (!map) return null;
+    for (const key of keys) {
+        const hit = map.get(normalizeItemCode(key));
+        if (hit) return { key: normalizeItemCode(key), row: hit };
+    }
+    return null;
+}
+
+function bestIseByName(name, ise, usedCodes) {
+    let best = null;
+    let bestScore = 0;
+    for (const [code, row] of ise.entries()) {
+        if (usedCodes.has(code)) continue;
+        const score = nameMatchScore(name, row.description);
+        if (score > bestScore) {
+            bestScore = score;
+            best = { code, row, score };
+        }
+    }
+    return best;
+}
+
+function itemInLocations(item, locations) {
+    const locs = item.locations || [];
+    return locs.some((l) => locations.includes(l));
+}
+
+function shouldAuditItem(item) {
+    if (item.buildToManual && !item.buildToOrderManual) return false;
+    if (item.skipStockCount) return false;
+    if (item.buildToFixed != null || item.buildToOrderManual) return false;
+    return Boolean(item.itemCode);
+}
+
+function main() {
+    const { storeNumber, locations } = parseArgs(process.argv);
+    if (!storeNumber) {
+        console.error('Usage: node scripts/audit-catalog-ise.js <store> [--location Freezer] ...');
+        process.exit(1);
+    }
+
+    const catalog = getVendorCatalog('americold');
+    if (!catalog) {
+        console.error('Americold catalog not found');
+        process.exit(1);
+    }
+
+    const files = resolveStoreReports(storeNumber, REPORTS_DIR);
+    if (!files.inventorySpecialEvent) {
+        console.error(`No ISE report in ${files.storeDir}`);
+        process.exit(1);
+    }
+
+    const ise = parseInventorySpecialEvent(files.inventorySpecialEvent);
+    const soh = files.stockOnHand ? parseStockOnHand(files.stockOnHand, storeNumber) : null;
+    const soo = files.stockOnOrder ? parseStockOnOrder(files.stockOnOrder, storeNumber) : null;
+
+    const usedNameFallback = new Set();
+    const rows = [];
+
+    for (const item of catalog.items || []) {
+        if (!itemInLocations(item, locations)) continue;
+        if (!shouldAuditItem(item)) continue;
+
+        const code = normalizeItemCode(item.itemCode);
+        const keys = allLookupKeys(code);
+        const iseHit = findInMap(keys, ise);
+        const sohHit = findInMap(keys, soh);
+        const sooHit = findInMap(keys, soo);
+
+        let nameHit = null;
+        if (!iseHit) {
+            nameHit = bestIseByName(item.name, ise, usedNameFallback);
+            if (nameHit && nameHit.score >= MIN_NAME_SCORE) {
+                usedNameFallback.add(nameHit.code);
+            } else {
+                nameHit = null;
+            }
+        }
+
+        let status = 'missing';
+        if (iseHit) status = 'code';
+        else if (nameHit) status = 'name-fallback';
+
+        const iseRow = iseHit?.row || nameHit?.row;
+        const iseKey = iseHit?.key || nameHit?.code || '';
+        const codeAlias = iseHit && iseKey && iseKey !== code;
+        const daySum = iseRow?.daySum ?? null;
+        const avg = iseRow?.avgDaily ?? null;
+
+        rows.push({
+            status,
+            code,
+            name: item.name,
+            locations: (item.locations || []).filter((l) => locations.includes(l)).join(', '),
+            iseKey,
+            iseDesc: iseRow?.description || '',
+            nameScore: nameHit?.score || 0,
+            daySum,
+            avg,
+            soh: Boolean(sohHit),
+            soo: Boolean(sooHit),
+            lookupKeys: keys,
+            codeAlias,
+        });
+    }
+
+    console.log(`\n=== Catalog vs ISE — store ${storeNumber} (${locations.join(' + ')}) ===`);
+    console.log(`ISE: ${path.basename(files.inventorySpecialEvent)}`);
+    console.log(`SOH: ${files.stockOnHand ? path.basename(files.stockOnHand) : '(missing)'}`);
+    console.log('');
+
+    for (const r of rows) {
+        const tag =
+            r.status === 'code'
+                ? 'OK  '
+                : r.status === 'name-fallback'
+                  ? 'NAME'
+                  : 'MISS';
+        const usage =
+            r.daySum != null ? ` avg=${Number(r.avg).toFixed(4)} sum=${Number(r.daySum).toFixed(2)}` : '';
+        const iseInfo = r.iseKey ? ` → ISE ${r.iseKey} "${r.iseDesc}"${usage}` : '';
+        const nameNote = r.status === 'name-fallback' ? ` (name score ${r.nameScore})` : '';
+        const reports = ` SOH:${r.soh ? 'Y' : 'n'} SOO:${r.soo ? 'Y' : 'n'}`;
+        console.log(`${tag} ${r.code}\t${r.name}${iseInfo}${nameNote}${reports}`);
+    }
+
+    const aliases = rows.filter((r) => r.codeAlias);
+    if (aliases.length) {
+        console.log('\n--- Code aliases in use (.item-codes) ---');
+        for (const r of aliases) {
+            console.log(`  catalog ${r.code} → ISE/SOH ${r.iseKey}  (${r.name.slice(0, 40)})`);
+        }
+    }
+
+    const summary = {
+        total: rows.length,
+        codeMatch: rows.filter((r) => r.status === 'code').length,
+        viaAlias: aliases.length,
+        nameFallback: rows.filter((r) => r.status === 'name-fallback').length,
+        missing: rows.filter((r) => r.status === 'missing').length,
+    };
+    console.log('\nSummary:', summary);
+
+    const missing = rows.filter((r) => r.status === 'missing');
+    if (missing.length) {
+        console.log('\n--- Missing items — top ISE name candidates ---');
+        for (const m of missing) {
+            const candidates = [];
+            for (const [c, row] of ise.entries()) {
+                const score = nameMatchScore(m.name, row.description);
+                if (score >= 15) candidates.push({ code: c, desc: row.description, score });
+            }
+            candidates.sort((a, b) => b.score - a.score);
+            const top = candidates.slice(0, 3);
+            console.log(`\n${m.code} ${m.name}`);
+            console.log(`  keys: ${m.lookupKeys.join(', ')}`);
+            if (!top.length) console.log('  (no name candidates ≥15)');
+            for (const t of top) {
+                console.log(`  ? ${t.code} "${t.desc}" score=${t.score}`);
+            }
+        }
+    }
+
+    const nameFallback = rows.filter((r) => r.status === 'name-fallback');
+    if (nameFallback.length) {
+        console.log('\n--- Suggested .item-codes aliases (name fallback) ---');
+        for (const r of nameFallback) {
+            if (r.code === r.iseKey) continue;
+            console.log(`${r.name.split(/\s+/).slice(0, 4).join(' ')} | ${r.code} | ${r.iseKey}`);
+        }
+    }
+}
+
+main();

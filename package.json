@@ -19,6 +19,7 @@
     "download-reports-order-day": "node scripts/download-reports.js --order-day",
     "report-download-scheduler": "node scripts/run-report-download-scheduler.js",
     "build-to-order": "node scripts/build-to-order.js",
+    "audit-catalog-ise": "node scripts/audit-catalog-ise.js",
     "verify-mmx-count": "node scripts/verify-mmx-key-item-count.js",
     "verify-mmx-session": "node scripts/verify-mmx-session.js",
     "diagnose-mmx-env": "node scripts/diagnose-mmx-env.js",

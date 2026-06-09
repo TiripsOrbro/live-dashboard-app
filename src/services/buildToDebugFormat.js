@@ -78,8 +78,9 @@ function printBuildToDebug({
             `  Stock on hand: ${round4(line.onHandCartons)} (${line.onHandSource || '—'})  |  on order: ${round4(line.onOrderCartons)}`
         );
         const rawOrder = round4((line.buildTo || 0) - (line.onHandCartons || 0) - (line.onOrderCartons || 0));
+        const matchNote = line.iseMatchSource === 'name' ? ' (ISE matched by name)' : '';
         console.log(
-            `  Order (build-to − on-hand − on-order): ${rawOrder}  →  qty used: ${round4(line.orderQty)}  [${line.buildToSource || ''}]`
+            `  Order (build-to − on-hand − on-order): ${rawOrder}  →  qty used: ${round4(line.orderQty)}  [${line.buildToSource || ''}]${matchNote}`
         );
     }
 

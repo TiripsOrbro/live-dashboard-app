@@ -24,6 +24,12 @@ const {
     allLookupKeys,
 } = require('./itemCodes');
 const { buildToOverridesForStore, mergeBuildToRules } = require('./buildToStoreOverrides');
+const {
+    findIseRowForCatalogItem,
+    resolveCatalogItemForIseRow,
+    findInReportMapWithNameFallback,
+    lineCoversCatalogItem,
+} = require('./orderItemNameMatch');
 
 const REPORTS_DIR = path.join(__dirname, '..', '..', 'Reports');
 
@@ -227,8 +233,25 @@ function resolveOnOrderCartons(onOrderReport, itemCode, iseUnit, isePack) {
     };
 }
 
-function findIseUsageForItemCode(itemCode, usage) {
+function allBuildToCatalogItems() {
+    const items = [];
+    for (const vendor of listConfiguredVendors()) {
+        const catalog = getVendorCatalog(vendor.slug);
+        if (!catalog) continue;
+        for (const item of catalog.items || []) {
+            if (item.buildToManual && !item.buildToOrderManual) continue;
+            items.push(item);
+        }
+    }
+    return items;
+}
+
+function findIseUsageForItemCode(itemCode, usage, catalogItem = null) {
     if (!usage) return null;
+    if (catalogItem) {
+        const hit = findIseRowForCatalogItem(catalogItem, usage);
+        return hit?.ise || null;
+    }
     const target = normalizeItemCode(itemCode);
     for (const key of allLookupKeys(itemCode)) {
         if (usage.has(key)) return usage.get(key);
@@ -307,16 +330,33 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
     const storeOverrideMap = buildToOverridesForStore(storeNumber);
     const manualCounts = await loadManualCountsForStore(storeNumber, dateKey);
     let manualCountItems = 0;
+    const catalogItems = allBuildToCatalogItems();
 
     const lines = [];
+    const usedIseCodes = new Set();
 
-    for (const [reportItemCode, ise] of usage.entries()) {
-        const itemCode = canonicalItemCode(reportItemCode) || reportItemCode;
-        const onHandHit = findInReportMap(onHandReport, reportItemCode);
+    const appendLineFromIse = (reportItemCode, ise, catalogItem, iseMatchSource) => {
+        const resolved = catalogItem
+            ? { item: catalogItem, matchSource: iseMatchSource || 'code' }
+            : resolveCatalogItemForIseRow(ise, reportItemCode, catalogItems);
+        const matchedCatalog = resolved?.item || null;
+        const itemCode = matchedCatalog
+            ? normalizeItemCode(matchedCatalog.itemCode)
+            : canonicalItemCode(reportItemCode) || reportItemCode;
+        const matchSource = resolved?.matchSource || iseMatchSource || 'code';
+        const catalogName = matchedCatalog?.name || ise.description || '';
+
+        let onHandHit = findInReportMap(onHandReport, reportItemCode);
+        if (!onHandHit && catalogName) {
+            onHandHit = findInReportMapWithNameFallback(itemCode, catalogName, onHandReport);
+        }
         const onHandRow = onHandHit?.row || null;
         const isePack = ise.packSize || packSizeFromUnit(ise.unit);
 
         let manualEntry = manualCounts.get(normalizeItemCode(reportItemCode)) || null;
+        if (!manualEntry && matchedCatalog) {
+            manualEntry = manualCounts.get(normalizeItemCode(matchedCatalog.itemCode)) || null;
+        }
         if (!manualEntry) {
             for (const key of allLookupKeys(reportItemCode)) {
                 manualEntry = manualCounts.get(normalizeItemCode(key)) || null;
@@ -353,6 +393,8 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         if (catalogRule?.buildToManual) {
             lines.push({
                 itemCode,
+                iseItemCode: normalizeItemCode(reportItemCode),
+                iseMatchSource: matchSource,
                 description,
                 unit: ise.unit,
                 avgDaily: round4(ise.avgDaily),
@@ -366,7 +408,8 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
                 buildToSource: 'catalog-manual',
                 manualColumns: null,
             });
-            continue;
+            usedIseCodes.add(normalizeItemCode(reportItemCode));
+            return;
         }
 
         const buildToDays = buildToDaysForItem(itemCode, description, catalogRules, storeOverrideMap);
@@ -386,6 +429,7 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         lines.push({
             itemCode,
             iseItemCode: normalizeItemCode(reportItemCode),
+            iseMatchSource: matchSource,
             description,
             unit: ise.unit,
             avgDaily: round4(ise.avgDaily),
@@ -399,6 +443,20 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
             buildToSource,
             manualColumns: null,
         });
+        usedIseCodes.add(normalizeItemCode(reportItemCode));
+    };
+
+    for (const [reportItemCode, ise] of usage.entries()) {
+        appendLineFromIse(reportItemCode, ise, null, 'code');
+    }
+
+    for (const item of catalogItems) {
+        if (item.skipStockCount) continue;
+        if (item.buildToFixed != null || item.buildToOrderManual) continue;
+        if (lines.some((line) => lineCoversCatalogItem(line, item))) continue;
+        const hit = findIseRowForCatalogItem(item, usage, usedIseCodes);
+        if (!hit) continue;
+        appendLineFromIse(hit.reportItemCode, hit.ise, item, hit.matchSource);
     }
 
     lines.sort((a, b) => {

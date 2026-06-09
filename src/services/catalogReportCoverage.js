@@ -7,6 +7,7 @@ const {
     normalizeItemCode,
 } = require('./reportReader');
 const { allLookupKeys } = require('./itemCodes');
+const { findIseRowForCatalogItem } = require('./orderItemNameMatch');
 
 function lookupKeysForCatalogItem(itemCode) {
     return allLookupKeys(itemCode);
@@ -21,12 +22,19 @@ function findInReportMap(keys, reportMap) {
     return { hit: false, key: null };
 }
 
-function diagnoseMissing(row, ise) {
+function diagnoseMissing(row, ise, catalogItem) {
     const reasons = [];
     if (row.needsIse && ise && (!row.ise || !row.ise.hit)) {
-        reasons.push(
-            'no ISE row with usage (add alias in .item-codes, or zero usage — compare app count to build-to)'
-        );
+        const nameHit = catalogItem ? findIseRowForCatalogItem(catalogItem, ise) : null;
+        if (nameHit && nameHit.matchSource === 'name') {
+            reasons.push(
+                `no code match — ISE name fallback: ${nameHit.reportItemCode} "${nameHit.ise.description}" (add "${nameHit.reportItemCode}" to .item-codes)`
+            );
+        } else {
+            reasons.push(
+                'no ISE row with usage (add alias in .item-codes, or zero usage — compare app count to build-to)'
+            );
+        }
     }
     return reasons;
 }
@@ -97,7 +105,17 @@ function verifyCatalogReportCoverage(storeNumber, catalog, reportsRoot) {
         if (needsIse && ise) row.ise = findInReportMap(keys, ise);
         if (onHand) row.onHand = findInReportMap(keys, onHand);
         if (onOrder) row.onOrder = findInReportMap(keys, onOrder);
-        row.diagnosis = diagnoseMissing(row, ise);
+        if (needsIse && ise && (!row.ise || !row.ise.hit)) {
+            const nameHit = findIseRowForCatalogItem(item, ise);
+            if (nameHit) {
+                row.iseNameFallback = {
+                    key: nameHit.reportItemCode,
+                    description: nameHit.ise.description,
+                    score: nameHit.matchScore,
+                };
+            }
+        }
+        row.diagnosis = diagnoseMissing(row, ise, item);
 
         if (!hasAnyReport) {
             row.noReports = true;

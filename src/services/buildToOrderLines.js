@@ -135,7 +135,13 @@ async function buildOrderManualEntriesFromCounts(
                 item.buildToFixed != null && Number.isFinite(item.buildToFixed)
                     ? item.buildToFixed
                     : 0;
-            if (options.preferReportOnHand && reportCtx) {
+            // manual= dry supplies: always build-to − stock count (never SOH).
+            // order= (e.g. oil): SOH when reports are available after count apply.
+            if (item.buildToManual) {
+                if (countEntry) {
+                    onHandCartons = manualCountToCartons({ columns: countEntry.columns }, item, 1);
+                }
+            } else if (options.preferReportOnHand && reportCtx) {
                 const fromReport = onHandCartonsForCatalogItem(code, item, reportCtx);
                 if (Number.isFinite(fromReport)) {
                     onHandCartons = fromReport;
@@ -155,7 +161,7 @@ async function buildOrderManualEntriesFromCounts(
         }
 
         const onOrderCartons =
-            item.buildToOrderManual && reportCtx
+            item.buildToOrderManual && !item.buildToManual && reportCtx
                 ? onOrderCartonsForCatalogItem(code, item, reportCtx)
                 : 0;
         const orderQty = finalizeOrderQty(buildTo - onHandCartons - onOrderCartons, options);

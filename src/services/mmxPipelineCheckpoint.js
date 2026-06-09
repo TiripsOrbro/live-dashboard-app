@@ -70,9 +70,15 @@ async function clearCheckpoint(storeNumber) {
     return true;
 }
 
+async function listAllCheckpoints() {
+    const all = await getState();
+    return { ...all.stores };
+}
+
 module.exports = {
     CHECKPOINT_FILE,
     setCheckpoint,
     getCheckpoint,
     clearCheckpoint,
+    listAllCheckpoints,
 };

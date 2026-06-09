@@ -33,7 +33,7 @@ const {
     abortCompetingMmxWork,
     isMmxResourceBusy,
 } = require('./mmxResourceGate');
-const { setCheckpoint, getCheckpoint, clearCheckpoint } = require('./mmxPipelineCheckpoint');
+const { setCheckpoint, getCheckpoint, clearCheckpoint, listAllCheckpoints } = require('./mmxPipelineCheckpoint');
 
 function touchStockCountWork() {
     refreshScrapePauseTimeout();
@@ -790,6 +790,82 @@ const PIPELINE_ACTIVE_WORK_STAGES = new Set([
     'filling-orders',
 ]);
 
+/** Active MMX work must hold the resource gate; if not, the checkpoint is stale after this grace. */
+const PIPELINE_ACTIVE_STALE_MS = Number(process.env.MMX_PIPELINE_ACTIVE_STALE_MS || 90 * 1000);
+
+function checkpointAgeMs(checkpoint) {
+    if (!checkpoint?.updatedAt) return Number.POSITIVE_INFINITY;
+    const updated = new Date(checkpoint.updatedAt).getTime();
+    if (!Number.isFinite(updated)) return Number.POSITIVE_INFINITY;
+    return Math.max(0, Date.now() - updated);
+}
+
+function preparedCheckpointHasLiveSession(storeNumber, checkpoint) {
+    if (!checkpoint?.sessionId || checkpoint.stage !== 'prepared') return false;
+    return Boolean(getSession(storeNumber, checkpoint.sessionId));
+}
+
+function isCheckpointStale(storeNumber, checkpoint, { onStartup = false } = {}) {
+    if (!checkpoint?.stage) return false;
+    const stage = checkpoint.stage;
+
+    if (stage === 'prepared') {
+        return !preparedCheckpointHasLiveSession(storeNumber, checkpoint);
+    }
+
+    if (!PIPELINE_ACTIVE_WORK_STAGES.has(stage)) return false;
+
+    if (isMmxResourceBusy()) return false;
+    if (onStartup) return true;
+    return checkpointAgeMs(checkpoint) >= PIPELINE_ACTIVE_STALE_MS;
+}
+
+async function clearStaleCheckpoint(storeNumber, checkpoint, reason) {
+    console.log(
+        `[StockCount] Clearing stale pipeline checkpoint — store ${storeNumber} stage ${checkpoint?.stage || 'unknown'} (${reason})`
+    );
+    await destroySessionsForStore(storeNumber, 'stale-checkpoint');
+    await clearCheckpoint(storeNumber);
+    endStockCountMmxWork(storeNumber, `stale checkpoint (${reason})`);
+}
+
+async function reconcileStaleCheckpoint(storeNumber) {
+    const checkpoint = await getCheckpoint(storeNumber);
+    if (!checkpoint || !isCheckpointStale(storeNumber, checkpoint)) return checkpoint;
+    await clearStaleCheckpoint(storeNumber, checkpoint, 'no live MMX work');
+    return null;
+}
+
+function pipelineWorkIsLive(storeNumber, checkpoint) {
+    if (!checkpoint?.stage) return false;
+    const stage = checkpoint.stage;
+    if (stage === 'prepared') {
+        return preparedCheckpointHasLiveSession(storeNumber, checkpoint);
+    }
+    if (PIPELINE_ACTIVE_WORK_STAGES.has(stage)) {
+        return isMmxResourceBusy();
+    }
+    return false;
+}
+
+async function resetStalePipelineCheckpointsOnStartup() {
+    const stores = await listAllCheckpoints();
+    const keys = Object.keys(stores);
+    if (!keys.length) return 0;
+
+    let cleared = 0;
+    for (const storeNumber of keys) {
+        const checkpoint = stores[storeNumber];
+        if (!checkpoint || !isCheckpointStale(storeNumber, checkpoint, { onStartup: true })) continue;
+        await clearStaleCheckpoint(storeNumber, checkpoint, 'server restart');
+        cleared++;
+    }
+    if (cleared) {
+        console.log(`[StockCount] Cleared ${cleared} stale MMX pipeline checkpoint(s) after startup`);
+    }
+    return cleared;
+}
+
 async function stockCountMmxOrdersComplete(storeNumber, dateKey = melbourneDateKey()) {
     const submitted = await getSubmittedVendorSlugs(storeNumber, dateKey);
     if (!submitted.length) return false;
@@ -798,15 +874,17 @@ async function stockCountMmxOrdersComplete(storeNumber, dateKey = melbourneDateK
 }
 
 async function getStockCountPipelineStatus(storeNumber) {
-    const checkpoint = await getCheckpoint(storeNumber);
+    const checkpoint = await reconcileStaleCheckpoint(storeNumber);
     const stage = checkpoint?.stage || 'idle';
     const sessionId = checkpoint?.sessionId || null;
     const dateKey = checkpoint?.dateKey || melbourneDateKey();
+    const workLive = pipelineWorkIsLive(storeNumber, checkpoint);
     const payload = {
         success: true,
         storeNumber: String(storeNumber),
         stage,
         inProgress: PIPELINE_IN_PROGRESS_STAGES.has(stage),
+        workLive,
         ordersComplete: stage === 'completed',
         lastError: checkpoint?.lastError || null,
         failedAtStep: checkpoint?.failedAtStep || null,
@@ -1055,6 +1133,7 @@ module.exports = {
     getStockCountPipelineStatus,
     isStockCountPipelineBusy,
     recordStockCountPrepareFailure,
+    resetStalePipelineCheckpointsOnStartup,
     runScheduledOrdersOnly,
     runStoreBuildToCycle,
     ensureReportsForOrders,

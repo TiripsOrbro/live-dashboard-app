@@ -38,6 +38,7 @@ let mmxLastKnownServerInProgress = false;
 let mmxPollInFlight = null;
 
 const MMX_UI_WATCH_KEY = 'stockCountMmxUiWatch';
+const MMX_UI_WATCH_MAX_MS = 15 * 60 * 1000;
 const MMX_PIPELINE_POLL_MS = 2000;
 const MMX_PIPELINE_MAX_MS = 55 * 60 * 1000;
 const MMX_PIPELINE_NETWORK_GRACE_POLLS = 200;
@@ -1131,6 +1132,7 @@ function readMmxUiWatch() {
         if (!raw) return null;
         const watch = JSON.parse(raw);
         if (String(watch.store) !== String(STORE_NUMBER)) return null;
+        if (Date.now() - Number(watch.at || 0) > MMX_UI_WATCH_MAX_MS) return null;
         return watch;
     } catch {
         return null;
@@ -1162,6 +1164,7 @@ function clearMmxUiWatch() {
 
 function pipelineLooksInProgress(status) {
     if (!status) return false;
+    if (typeof status.workLive === 'boolean') return status.workLive;
     if (status.inProgress) return true;
     return MMX_IN_PROGRESS_STAGES.has(status.stage);
 }
@@ -1449,11 +1452,14 @@ async function pollStockCountPipelineUntilDone() {
             continue;
         }
 
-        if (status.stage === 'prepared' && status.sessionId) {
-            sawInProgress = true;
-            mmxLastKnownServerInProgress = true;
-            idlePolls = 0;
-            continue;
+        if (sawInProgress && (status.stage === 'idle' || !status.inProgress)) {
+            clearMmxUiWatch();
+            mmxLastKnownServerInProgress = false;
+            endMmxProcessing();
+            viewMode = 'entry';
+            setStatus('Previous Macromatix run ended — your counts are still saved. Send again when ready.', '');
+            render();
+            return { reset: true };
         }
 
         idlePolls++;
@@ -1521,7 +1527,7 @@ async function waitForPipelineApplyComplete() {
 }
 
 async function handlePipelinePollOutcome(outcome) {
-    if (outcome?.autoApplied) return;
+    if (outcome?.autoApplied || outcome?.reset) return;
     if (outcome?.prepared && (await showPreparedVariancesFromStatus(outcome.status))) {
         endMmxProcessing();
         window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
@@ -1609,10 +1615,16 @@ async function refreshMmxPipelineUi() {
 
 async function tryResumePipelineOnLoad() {
     const result = await fetchPipelineStatusOrNull();
-    const uiWatch = readMmxUiWatch();
+    let uiWatch = readMmxUiWatch();
+    const status = result.ok ? result.status : null;
+
+    if (status && !status.workLive && !status.inProgress) {
+        clearMmxUiWatch();
+        uiWatch = null;
+    }
+
     if (!result.ok && !uiWatch) return false;
 
-    const status = result.ok ? result.status : null;
     if (status && pipelineNeedsVarianceReview(status)) {
         if (await showPreparedVariancesFromStatus(status)) {
             setStatus('Review variances below, then confirm to place scheduled orders.', '');
@@ -1633,19 +1645,23 @@ async function tryResumePipelineOnLoad() {
         }
     }
 
-    if ((status && pipelineLooksInProgress(status)) || uiWatch) {
-        if (status) {
-            beginMmxProcessing(status.stepLabel || pipelineStageLabel(status.stage));
-            applyPipelineStatusToUi(status);
-        } else {
-            beginMmxProcessing('Still sending to Macromatix…');
-            pushMmxActivityOnce('Reconnecting to check progress on the Pi…');
-        }
+    if (status && pipelineLooksInProgress(status)) {
+        beginMmxProcessing(status.stepLabel || pipelineStageLabel(status.stage));
+        applyPipelineStatusToUi(status);
         render();
         attachMmxPipelineBackgroundPoll();
         return true;
     }
 
+    if (!status && uiWatch) {
+        beginMmxProcessing('Still sending to Macromatix…');
+        pushMmxActivityOnce('Reconnecting to check progress on the Pi…');
+        render();
+        attachMmxPipelineBackgroundPoll();
+        return true;
+    }
+
+    if (uiWatch) clearMmxUiWatch();
     return false;
 }
 
@@ -2619,11 +2635,11 @@ function setupStockCountScrollbars() {
 }
 
 async function dismissStaleMmxSessionOnLoad() {
+    endMmxProcessing();
     viewMode = 'entry';
     mmxSessionId = '';
     mmxVariances = [];
     mmxVendorSlugs = [];
-    window.StockCountNotify?.clearWatch?.(STORE_NUMBER);
     try {
         await fetchJson(apiQuery('/api/stock-count/send-to-mmx/recount'), {
             method: 'POST',

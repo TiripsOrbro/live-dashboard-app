@@ -95,6 +95,7 @@ const {
     getStockCountPipelineStatus,
     isStockCountPipelineBusy,
     recordStockCountPrepareFailure,
+    resetStalePipelineCheckpointsOnStartup,
 } = require('./services/stockCountMmxPipeline');
 const {
     getDismissalPeriodKey,
@@ -3465,6 +3466,7 @@ function startBackgroundRefresh() {
 
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on http://0.0.0.0:${PORT}`);
+    void resetStalePipelineCheckpointsOnStartup();
     primeSalesCacheFromDisk();
     startBackgroundRefresh();
     upsellingSchedulerTimer = startUpsellingScheduler();

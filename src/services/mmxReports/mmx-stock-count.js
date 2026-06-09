@@ -666,8 +666,10 @@ async function findOpenKeyItemCount(page, cfg) {
     return null;
 }
 
-async function ensureKeyItemCountEditable(page, cfg) {
+async function ensureKeyItemCountEditable(page, cfg, { onPipelineStep } = {}) {
     await waitForStockCountPageReady(page, cfg);
+
+    if (onPipelineStep) await onPipelineStep('Checking for existing Key Item Count');
 
     const onInProgress = await openCountInProgressTab(page, cfg);
     if (onInProgress) {
@@ -676,6 +678,10 @@ async function ensureKeyItemCountEditable(page, cfg) {
             log.info(
                 `Using in-progress Key Item Count batch ${openCount.batch} (status: ${openCount.status}) — ${openCount.countTitle}`
             );
+            if (onPipelineStep) {
+                const batch = openCount.batch ? ` (batch ${openCount.batch})` : '';
+                await onPipelineStep(`Resuming existing Key Item Count${batch}`);
+            }
             return { mode: 'in-progress', ...openCount };
         }
         log.info('Count in Progress tab — no open Key Item Count batch found');
@@ -684,6 +690,7 @@ async function ensureKeyItemCountEditable(page, cfg) {
     }
 
     log.info('No open Key Item Count found — starting new count');
+    if (onPipelineStep) await onPipelineStep('Starting new count…');
     await openNewCountTab(page, cfg);
     if (!(await isNewCountPanelReady(page, cfg))) {
         const visible = await listVisibleMainStockCountTabs(page);
@@ -1242,8 +1249,13 @@ async function fillLocationTab(page, cfg, catalog, locationName, itemsAtLocation
 
     let grid = await scrapeCountGrid(page);
     if (!grid.length) {
-        await waitForLocationTabSettled(page, mmxTab.toLowerCase(), { timeoutMs: 8000, minInputs: 1 });
+        await waitForLocationTabSettled(page, mmxTab.toLowerCase(), { timeoutMs: 12000, minInputs: 1 });
         grid = await scrapeCountGrid(page);
+    }
+    if (!grid.length) {
+        throw new Error(
+            `Macromatix ${mmxTab} tab did not load — cannot enter ${locationName} counts. Try again or fill that tab in MMX manually.`
+        );
     }
     const byCode = buildGridLookup(grid);
     let filled = 0;
@@ -1311,9 +1323,22 @@ async function fillLocationTab(page, cfg, catalog, locationName, itemsAtLocation
         log.info(`MMX ${mmxTab}: could not match ${missed.length} item(s): ${missed.join(', ')}`);
     }
 
+    const expectedCount = itemsAtLocation.filter((item) =>
+        Object.values(item.counts || {}).some((v) => Number(v) > 0)
+    ).length;
+    if (expectedCount > 0 && filled === 0) {
+        throw new Error(
+            `No counts were entered on Macromatix ${mmxTab} (${locationName}). ${missed.length ? `Could not match: ${missed.slice(0, 8).join(', ')}` : 'Count grid was empty or unreadable.'}`
+        );
+    }
+
     await clickEnabledSave(page, cfg);
     refreshScrapePauseTimeout();
-    return { locationName, mmxTab, filled, missed };
+    await waitForLocationTabSettled(page, mmxTab.toLowerCase(), {
+        timeoutMs: Number(process.env.MMX_STOCK_COUNT_SAVE_SETTLE_MS || 15000),
+        minInputs: 1,
+    });
+    return { locationName, mmxTab, filled, missed, expectedCount };
 }
 
 function dashboardLocationOrder(cfg) {
@@ -1696,8 +1721,9 @@ async function enterCombinedStockCount(page, opts) {
         await waitForStockCountPageReady(page, cfg);
     }
 
-    if (opts.onPipelineStep) await opts.onPipelineStep('Starting or resuming Key Item Count');
-    const countMode = await ensureKeyItemCountEditable(page, cfg);
+    const countMode = await ensureKeyItemCountEditable(page, cfg, {
+        onPipelineStep: opts.onPipelineStep,
+    });
 
     const filledItems = [];
     const results = [];
@@ -1729,6 +1755,30 @@ async function enterCombinedStockCount(page, opts) {
         result.dashboardLocations = locationNames;
         result.mmxTab = mmxTab;
         results.push(result);
+
+        if (result.expectedCount > 0 && result.filled === 0) {
+            throw new Error(
+                `Macromatix did not accept counts for ${label}. ${(result.missed || []).slice(0, 6).join(', ')}`
+            );
+        }
+        if (result.missed?.length) {
+            log.warn(
+                `MMX ${result.mmxTab}: ${result.filled}/${result.expectedCount} line(s) entered; missed: ${result.missed.join(', ')}`
+            );
+        }
+    }
+
+    const tabsWithCounts = results.filter((tab) => tab.filled > 0);
+    if (!tabsWithCounts.length) {
+        throw new Error('No location counts were entered in Macromatix.');
+    }
+    const skippedTabs = locationsToFill.filter(
+        (loc) => !results.some((r) => (r.dashboardLocations || []).includes(loc) && r.filled > 0)
+    );
+    if (skippedTabs.length) {
+        log.warn(
+            `Store ${opts.storeNumber}: Macromatix skipped location(s) with no entered lines: ${skippedTabs.join(', ')}`
+        );
     }
 
     if (!results.length) {

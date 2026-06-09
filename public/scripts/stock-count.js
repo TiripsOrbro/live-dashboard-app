@@ -679,7 +679,9 @@ function readRecountFormValuesForLocation(locationName) {
         const slug = item.sourceVendorSlug || VENDOR_SLUG;
         const row = {};
         for (const col of item.columns) {
-            const input = document.querySelector(`input[data-item="${item.key}"][data-col="${col.key}"]`);
+            const input = document.querySelector(
+                `input[data-item="${CSS.escape(item.key)}"][data-col="${CSS.escape(col.key)}"]`
+            );
             if (!input) continue;
             const raw = String(input.value || '').trim();
             if (!raw) continue;
@@ -928,11 +930,9 @@ async function saveCurrentLocation(showFeedback = true, options = {}) {
     }
 }
 
-async function saveAllCombinedLocations() {
+async function saveAllLocationTabs() {
     const cat = getActiveCatalog();
-    if (!cat || !isCombinedMode()) {
-        return saveCurrentLocation(false, { force: true });
-    }
+    if (!cat) return false;
     const prevIndex = currentLocationIndex;
     let ok = true;
     if (!(await saveCurrentLocation(false, { force: true }))) ok = false;
@@ -946,6 +946,13 @@ async function saveAllCombinedLocations() {
     currentLocationIndex = prevIndex;
     render();
     return ok;
+}
+
+async function saveAllCombinedLocations() {
+    if (!isCombinedMode()) {
+        return saveCurrentLocation(false, { force: true });
+    }
+    return saveAllLocationTabs();
 }
 
 function vendorSlugsAtLocation(locationName) {
@@ -1028,26 +1035,10 @@ async function clearCurrentLocationPage() {
 }
 
 async function saveAllRecountLocations() {
-    const cat = getActiveCatalog();
-    if (!cat || viewMode !== 'recount') {
+    if (viewMode !== 'recount') {
         return saveCurrentLocation(false, { force: true });
     }
-    const prevIndex = currentLocationIndex;
-    let ok = true;
-
-    // Save the visible tab first — render() runs fillFormFromDraft and would wipe unsaved edits.
-    if (!(await saveCurrentLocation(false, { force: true }))) ok = false;
-
-    const tabs = getVisibleLocationTabs(cat);
-    for (let i = 0; i < tabs.length; i++) {
-        if (i === prevIndex) continue;
-        currentLocationIndex = i;
-        render();
-        if (!(await saveCurrentLocation(false, { force: true }))) ok = false;
-    }
-
-    currentLocationIndex = prevIndex;
-    render();
+    const ok = await saveAllLocationTabs();
     varianceDrafts = { ...varianceDrafts, ...recountDrafts };
     return ok;
 }
@@ -1090,7 +1081,7 @@ async function saveAndSubmitVendor() {
         return true;
     }
 
-    const ok = await saveCurrentLocation(false, { force: true });
+    const ok = await saveAllLocationTabs();
     if (!ok && currentLocationHasFormData()) {
         throw new Error('Could not save your counts — check the values and try again.');
     }
@@ -1242,6 +1233,9 @@ async function showPreparedVariancesFromStatus(status) {
     if (viewMode === 'recount') {
         recountCatalog = null;
     }
+    mmxPollInFlight = null;
+    mmxProcessingError = null;
+    endMmxProcessing();
     viewMode = 'variances';
     return true;
 }
@@ -1527,6 +1521,7 @@ async function waitForPipelineApplyComplete() {
 }
 
 async function handlePipelinePollOutcome(outcome) {
+    if (viewMode === 'variances' || viewMode === 'recount') return;
     if (outcome?.autoApplied || outcome?.reset) return;
     if (outcome?.prepared && (await showPreparedVariancesFromStatus(outcome.status))) {
         endMmxProcessing();
@@ -1688,6 +1683,11 @@ function shouldRecoverApplyError(message) {
 async function sendToMmx() {
     if (!canShowSendToMmx() || saving || processing) return;
     let preparedAutoApplied = false;
+
+    if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = null;
+    }
 
     try {
         if (viewMode === 'recount') {
@@ -1937,11 +1937,17 @@ async function applyMmxCount() {
 }
 
 async function recountMmx() {
+    mmxPollInFlight = null;
+    mmxProcessingError = null;
+    endMmxProcessing();
     if (saving) return;
     saving = true;
     setStatus('', '');
     render();
     try {
+        if (!mmxVariances.length) {
+            throw new Error('No variances to recount.');
+        }
         if (mmxSessionId) {
             try {
                 await fetchJson(apiQuery('/api/stock-count/send-to-mmx/recount'), {

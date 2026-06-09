@@ -57,11 +57,20 @@ function itemInLocations(item, locations) {
     return locs.some((l) => locations.includes(l));
 }
 
+/** Items that use ISE usage for build-to (KIC lines, oh:N supplies, day-prefixed). */
 function shouldAuditItem(item) {
+    if (!item.itemCode) return false;
     if (item.buildToManual && !item.buildToOrderManual) return false;
-    if (item.skipStockCount) return false;
-    if (item.buildToFixed != null || item.buildToOrderManual) return false;
-    return Boolean(item.itemCode);
+    if (item.buildToOrderManual || item.buildToFixed != null) return false;
+    if (item.skipStockCount && item.buildToDays == null) return false;
+    return true;
+}
+
+function itemBuildToKind(item) {
+    if (item.skipStockCount && item.buildToDays != null) return `oh:${item.buildToDays}`;
+    if (item.buildToDays != null && item.buildToAdd) return `${item.buildToDays}+${item.buildToAdd}`;
+    if (item.buildToDays != null) return String(item.buildToDays);
+    return 'default';
 }
 
 function main() {
@@ -124,6 +133,7 @@ function main() {
             status,
             code,
             name: item.name,
+            kind: itemBuildToKind(item),
             locations: (item.locations || []).filter((l) => locations.includes(l)).join(', '),
             iseKey,
             iseDesc: iseRow?.description || '',
@@ -154,7 +164,7 @@ function main() {
         const iseInfo = r.iseKey ? ` → ISE ${r.iseKey} "${r.iseDesc}"${usage}` : '';
         const nameNote = r.status === 'name-fallback' ? ` (name score ${r.nameScore})` : '';
         const reports = ` SOH:${r.soh ? 'Y' : 'n'} SOO:${r.soo ? 'Y' : 'n'}`;
-        console.log(`${tag} ${r.code}\t${r.name}${iseInfo}${nameNote}${reports}`);
+        console.log(`${tag} ${r.code}\t[${r.kind}]\t${r.name}${iseInfo}${nameNote}${reports}`);
     }
 
     const aliases = rows.filter((r) => r.codeAlias);

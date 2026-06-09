@@ -533,6 +533,18 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
         log.info(
             `Build-to for store ${storeNumber}: ${buildTo.lines?.length || 0} ISE line(s), ${onOrderLines.length} with on-order deducted`
         );
+        for (const auditCode of ['37876', '37909']) {
+            const line = (buildTo.lines || []).find(
+                (l) =>
+                    String(l.iseItemCode || l.itemCode || '') === auditCode ||
+                    String(l.itemCode || '') === auditCode
+            );
+            if (line) {
+                log.info(
+                    `Build-to audit ${storeNumber} ${line.iseItemCode || line.itemCode}: avg=${line.avgDaily} buildTo=${line.buildTo} onHand=${line.onHandCartons} order=${line.orderQty}`
+                );
+            }
+        }
         log.info(
             `On-hand sources: ${buildTo.onHandFromReportCount || 0} from SOH report (${buildTo.reportFiles?.stockOnHand ? path.basename(buildTo.reportFiles.stockOnHand) : 'missing'}), ${buildTo.onHandFromManualCount || 0} from stock-count (ignored in this cycle)`
         );

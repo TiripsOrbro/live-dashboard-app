@@ -385,6 +385,7 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
 
         lines.push({
             itemCode,
+            iseItemCode: normalizeItemCode(reportItemCode),
             description,
             unit: ise.unit,
             avgDaily: round4(ise.avgDaily),

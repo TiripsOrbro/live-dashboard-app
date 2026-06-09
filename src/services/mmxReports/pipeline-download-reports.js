@@ -8,7 +8,7 @@ const { navigateToSupplyChainReports } = require('./mmx-navigation');
 const { refreshScrapePauseTimeout } = require('../mmxResourceGate');
 const { runSupplyChainReport, isSupplyChainReport } = require('./pipeline-supply-chain-reports');
 const { runStoreReport, isStoreReport } = require('./pipeline-store-reports');
-const { filterSpreadsheetByStoreColumn } = require('../reportReader');
+const { filterSpreadsheetByStoreColumn, logIseSpotCheck } = require('../reportReader');
 
 const DOWNLOAD_EXTS = ['.xls', '.xlsx', '.csv'];
 
@@ -151,6 +151,9 @@ async function downloadStoreReport(page, report, settings) {
         fs.renameSync(downloaded, dest);
     }
     log.info(`Saved ${report.id} → ${path.basename(dest)}`);
+    if (report.id === 'report3' && report.storeNumber) {
+        logIseSpotCheck(dest, ['37876', '37909', '37609'], (msg) => log.info(msg));
+    }
     if (typeof settings.onReportStep === 'function') {
         const reportLabel = report.label || report.reportName || report.id || 'report';
         await settings.onReportStep(`Downloaded ${reportLabel} → ${path.basename(dest)}`);

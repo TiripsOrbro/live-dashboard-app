@@ -57,50 +57,98 @@ function iseDateCellLooksLikeDayLabel(cell) {
 }
 
 /** Day column headers from ISE export (date row under Item Code / Day1…Day7). */
-function parseIseDayLabelsFromGrid(grid) {
+const DEFAULT_ISE_LAYOUT = { codeCol: 10, descCol: 11, unitCol: 12, dayStart: 13, dayCount: 7 };
+
+/** ItemCode / Day1 column positions from the ISE export header row. */
+function detectIseGridLayout(grid) {
+    for (let r = 0; r < Math.min(12, grid?.length || 0); r++) {
+        const row = grid[r];
+        if (!row?.length) continue;
+
+        let codeCol = -1;
+        let descCol = -1;
+        let unitCol = -1;
+        let dayStart = -1;
+
+        for (let c = 0; c < row.length; c++) {
+            const raw = String(row[c] ?? '').trim();
+            const lower = raw.toLowerCase().replace(/\s+/g, ' ');
+            if (lower === 'itemcode' || lower === 'item code') codeCol = c;
+            else if (lower === 'description') descCol = c;
+            else if (lower === 'item' && descCol < 0) descCol = c;
+            else if (lower === 'unit') unitCol = c;
+            else if (dayStart < 0 && (/^day\s*1$/i.test(raw) || iseDateCellLooksLikeDayLabel(raw))) {
+                dayStart = c;
+            }
+        }
+
+        if (codeCol >= 0 && dayStart >= 0) {
+            return {
+                codeCol,
+                descCol: descCol >= 0 ? descCol : codeCol + 1,
+                unitCol: unitCol >= 0 ? unitCol : codeCol + 2,
+                dayStart,
+                dayCount: 7,
+            };
+        }
+    }
+    return { ...DEFAULT_ISE_LAYOUT };
+}
+
+function parseIseDayLabelsFromGrid(grid, layout = null) {
+    const cols = layout || detectIseGridLayout(grid);
     const fallback = (i) => `Day${i + 1}`;
     for (let r = 0; r < Math.min(10, grid?.length || 0); r++) {
         const row = grid[r];
-        if (!row || row.length < 20) continue;
-        if (iseDateCellLooksLikeDayLabel(row[13])) {
+        if (!row || row.length < cols.dayStart + cols.dayCount) continue;
+        if (iseDateCellLooksLikeDayLabel(row[cols.dayStart])) {
             const labels = [];
-            for (let c = 13; c < 20; c++) {
+            for (let c = cols.dayStart; c < cols.dayStart + cols.dayCount; c++) {
                 const raw = String(row[c] ?? '')
                     .replace(/\s+/g, ' ')
                     .trim();
-                labels.push(raw || fallback(c - 13));
+                labels.push(raw || fallback(c - cols.dayStart));
             }
             return labels;
         }
-        const col10 = String(row[10] ?? '').toLowerCase();
-        if (col10.includes('item') && col10.includes('code')) {
+        const headerCell = String(row[cols.codeCol] ?? '').toLowerCase();
+        if (headerCell.includes('item') && headerCell.includes('code')) {
             const labels = [];
-            for (let c = 13; c < 20; c++) {
+            for (let c = cols.dayStart; c < cols.dayStart + cols.dayCount; c++) {
                 const raw = String(row[c] ?? '')
                     .replace(/\s+/g, ' ')
                     .trim();
-                labels.push(raw || fallback(c - 13));
+                labels.push(raw || fallback(c - cols.dayStart));
             }
             if (labels.some((l) => l && !/^day\d$/i.test(l))) return labels;
         }
     }
     const row0 = grid?.[0];
-    if (row0 && /^day\s*1$/i.test(String(row0[13] || ''))) {
-        return row0.slice(13, 20).map((h, i) => String(h || fallback(i)).trim());
+    if (row0 && /^day\s*1$/i.test(String(row0[cols.dayStart] || ''))) {
+        return row0
+            .slice(cols.dayStart, cols.dayStart + cols.dayCount)
+            .map((h, i) => String(h || fallback(i)).trim());
     }
-    return Array.from({ length: 7 }, (_, i) => fallback(i));
+    return Array.from({ length: cols.dayCount }, (_, i) => fallback(i));
+}
+
+function isIseDataRow(row, layout) {
+    if (!row || !row.length) return false;
+    const code = normalizeItemCode(row[layout.codeCol] ?? row[10] ?? row[4] ?? row[7]);
+    return /^\d{3,10}[A-Z]?$/.test(code) || /^[A-Z0-9]{2,12}$/.test(code);
 }
 
 function parseInventorySpecialEventFromGrid(grid) {
-    const dayLabels = parseIseDayLabelsFromGrid(grid);
+    const layout = detectIseGridLayout(grid);
+    const dayLabels = parseIseDayLabelsFromGrid(grid, layout);
     const items = new Map();
 
     for (const row of grid) {
-        if (!isDataRow(row)) continue;
-        const itemCode = normalizeItemCode(row[10]);
-        const description = String(row[11] || '').trim();
-        const unit = String(row[12] || '').trim();
-        const dayValues = row.slice(13, 20).map(num);
+        if (!isIseDataRow(row, layout)) continue;
+        const itemCode = normalizeItemCode(row[layout.codeCol]);
+        const description = String(row[layout.descCol] || '').trim();
+        const unit = String(row[layout.unitCol] || '').trim();
+        const dayValues = row.slice(layout.dayStart, layout.dayStart + layout.dayCount).map(num);
         if (!dayValues.some((v) => v > 0)) continue;
 
         const daySum = dayValues.reduce((a, b) => a + b, 0);
@@ -118,7 +166,7 @@ function parseInventorySpecialEventFromGrid(grid) {
         });
     }
 
-    return { items, dayLabels };
+    return { items, dayLabels, layout };
 }
 
 /** Inventory Special Event CSV — usage is in cartons (or report unit). */
@@ -130,8 +178,45 @@ function parseInventorySpecialEvent(filePath) {
 /** ISE parse with day labels for debug output. */
 function parseInventorySpecialEventFile(filePath) {
     const { grid } = loadGrid(filePath);
-    const { items, dayLabels } = parseInventorySpecialEventFromGrid(grid);
-    return { items, dayLabels, filePath };
+    const { items, dayLabels, layout } = parseInventorySpecialEventFromGrid(grid);
+    return { items, dayLabels, layout, filePath };
+}
+
+/** Log parsed ISE usage for audit codes (pm2 / download verification). */
+function logIseSpotCheck(filePath, catalogCodes, logFn) {
+    const write = typeof logFn === 'function' ? logFn : () => {};
+    if (!filePath || !fs.existsSync(filePath)) return;
+    try {
+        const { items } = parseInventorySpecialEventFile(filePath);
+        const { allLookupKeys } = require('./itemCodes');
+        const name = path.basename(filePath);
+        for (const catalogCode of catalogCodes || []) {
+            let hit = null;
+            let hitKey = '';
+            for (const key of allLookupKeys(catalogCode)) {
+                const row = items.get(normalizeItemCode(key));
+                if (row) {
+                    hit = row;
+                    hitKey = key;
+                    break;
+                }
+            }
+            if (!hit) {
+                write(`ISE spot-check ${name}: ${catalogCode} — no row found`);
+                continue;
+            }
+            const days = (hit.dayValues || []).map((v) => round4(v)).join(', ');
+            write(
+                `ISE spot-check ${name}: ${hitKey} ${hit.description} — days [${days}] sum=${round4(hit.daySum)} avg=${round4(hit.avgDaily)}`
+            );
+        }
+    } catch (err) {
+        write(`ISE spot-check ${path.basename(filePath)} failed: ${err.message}`);
+    }
+}
+
+function round4(n) {
+    return Math.round(Number(n) * 10000) / 10000;
 }
 
 /** SCM Items On Hand (Flat) — filter to one store; qty col 7 in report unit col 6. */
@@ -624,6 +709,8 @@ module.exports = {
     parseInventorySpecialEvent,
     parseInventorySpecialEventFile,
     parseIseDayLabelsFromGrid,
+    detectIseGridLayout,
+    logIseSpotCheck,
     parseStockOnHand,
     parseStockOnOrder,
     findLatestReportFile,

@@ -54,7 +54,9 @@ function printBuildToDebug({
         const labels = ise?.dayLabels || iseDayLabels || [];
         const values = ise?.dayValues || [];
 
-        console.log(`\n--- ${code} ${String(line.description || ise?.description || '').trim()} ---`);
+        const iseCode = normalizeItemCode(line.iseItemCode || code);
+        const codeLabel = iseCode !== code ? `${iseCode} (catalog ${code})` : code;
+        console.log(`\n--- ${codeLabel} ${String(line.description || ise?.description || '').trim()} ---`);
         if (ise?.unit) console.log(`  Unit: ${ise.unit}`);
         if (values.length) {
             console.log('  ISE daily usage (cartons):');

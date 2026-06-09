@@ -1,8 +1,10 @@
 node_modules/
 
-# Vendor catalog dotfiles (vendors/.Americold etc.) — keep tracked for Pi deploys
+# Vendor catalog + config (vendors/.Americold, .item-codes, etc.) — always tracked for Pi deploys
 !vendors/
 !vendors/**
+!vendors/**/*
+!vendors/**/.*
 
 .env
 .env.*

@@ -1,0 +1,6 @@
+# Copy to vendors/.ConvertToBox — KG/LITRE/EACH → cartons for SOH/SOO reports.
+# Format: Code | Name | Unit | QtyPerBox
+
+37876 | CHEESE BLEND MOZZ/CHEDD (PIZZA) SHRED | KG | 12
+40255 | CHEESE BLEND MOZZ/CHEDD (PIZZA) SHRED | KG | 12
+37909 | SAUCE NACHO CHEESE | KG | 10.8

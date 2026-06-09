@@ -181,7 +181,7 @@ function orderRoundingDisabled(options = {}) {
 
 /**
  * Order qty from build-to − on-hand − on-order.
- * Default: order whole cartons only when shortage is ≥ 1 (avoids ordering a full box for a 0.03-carton gap).
+ * Default: skip when shortage < 1 carton; otherwise round to nearest whole carton.
  * Testing: raw (4 dp) via --no-order-rounding / ORDER_NO_ROUNDING.
  */
 function finalizeOrderQty(value, options = {}) {
@@ -189,7 +189,7 @@ function finalizeOrderQty(value, options = {}) {
     if (!Number.isFinite(n) || n <= 0) return 0;
     if (orderRoundingDisabled(options)) return round4(n);
     if (n < 1) return 0;
-    return Math.ceil(n);
+    return Math.round(n);
 }
 
 async function loadManualCountsForStore(storeNumber, dateKey = melbourneDateKey()) {
@@ -282,6 +282,7 @@ function ensureBuildToReportContext(storeNumber, options = {}) {
         }
         options._buildToReportCtx = {
             onOrderReport: parseStockOnOrder(files.stockOnOrder, storeNumber),
+            onHandReport: files.stockOnHand ? parseStockOnHand(files.stockOnHand, storeNumber) : null,
             usage: files.inventorySpecialEvent
                 ? parseInventorySpecialEvent(files.inventorySpecialEvent)
                 : null,
@@ -290,6 +291,26 @@ function ensureBuildToReportContext(storeNumber, options = {}) {
         options._buildToReportCtx = null;
     }
     return options._buildToReportCtx;
+}
+
+/** On-hand cartons from stock-on-hand report (alias-aware, same rules as ISE build-to lines). */
+function onHandCartonsForCatalogItem(itemCode, catalogItem, ctx) {
+    if (!ctx?.onHandReport) return null;
+    const ise = findIseUsageForItemCode(itemCode, ctx.usage);
+    const iseUnit = ise?.unit || '';
+    let isePack = ise?.packSize || packSizeFromUnit(iseUnit);
+    if (!Number.isFinite(isePack) || isePack <= 0) {
+        const inner = Number(catalogItem?.innerPerCarton);
+        isePack = Number.isFinite(inner) && inner > 0 ? inner : 0;
+    }
+    const keys = [...new Set([...allLookupKeys(itemCode), normalizeItemCode(itemCode)].filter(Boolean))];
+    for (const key of keys) {
+        const hit = findInReportMap(ctx.onHandReport, key);
+        if (hit?.row) {
+            return onHandToCartons(hit.row, iseUnit, isePack, key);
+        }
+    }
+    return null;
 }
 
 /** On-order cartons from stock-on-order report (same rules as ISE build-to lines). */
@@ -515,6 +536,7 @@ module.exports = {
     buildToDaysForItem,
     buildToTarget,
     ensureBuildToReportContext,
+    onHandCartonsForCatalogItem,
     onOrderCartonsForCatalogItem,
     BUILD_TO_13_DAY_ITEM_CODES,
     DEFAULT_BUILD_TO_DAYS,

@@ -7,6 +7,7 @@ const {
     finalizeOrderQty,
     orderRoundingDisabled,
     ensureBuildToReportContext,
+    onHandCartonsForCatalogItem,
     onOrderCartonsForCatalogItem,
 } = require('./buildToCalculator');
 const { melbourneDateKey } = require('./stockCountState');
@@ -130,13 +131,18 @@ async function buildOrderManualEntriesFromCounts(
         let onHandCartons = 0;
 
         if (item.buildToOrderManual) {
-            onHandCartons = countEntry
-                ? manualCountToCartons({ columns: countEntry.columns }, item, 1)
-                : 0;
             buildTo =
                 item.buildToFixed != null && Number.isFinite(item.buildToFixed)
                     ? item.buildToFixed
                     : 0;
+            if (options.preferReportOnHand && reportCtx) {
+                const fromReport = onHandCartonsForCatalogItem(code, item, reportCtx);
+                if (Number.isFinite(fromReport)) {
+                    onHandCartons = fromReport;
+                }
+            } else if (countEntry) {
+                onHandCartons = manualCountToCartons({ columns: countEntry.columns }, item, 1);
+            }
         } else if (
             hasUncountedDefault &&
             !countEntry &&
@@ -195,7 +201,7 @@ function mergeBuildToEntries(...entrySets) {
 
 /**
  * Final order quantity for MMX entry.
- * Default: always round up (ceil). Iced coffee (orderRoundToByItemCode): nearest pack multiple.
+ * Default: nearest whole carton (via finalizeOrderQty). Iced coffee: nearest pack multiple.
  */
 function roundOrderQtyForVendor(qty, vendorCfg, options = {}, ...itemCodes) {
     const n = Number(qty);
@@ -212,7 +218,7 @@ function roundOrderQtyForVendor(qty, vendorCfg, options = {}, ...itemCodes) {
         return Math.ceil(n / vendorStep) * vendorStep;
     }
 
-    return Math.ceil(n);
+    return finalizeOrderQty(n, options);
 }
 
 function vendorCatalogCodeSet(catalog, vendorCfg) {

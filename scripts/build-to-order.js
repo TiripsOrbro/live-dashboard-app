@@ -88,6 +88,7 @@ async function main() {
     if (debug) {
         const { byVendorId } = await buildOrderLinesByVendorId(storeNumber, {
             dateKey: result.dateKey || melbourneDateKey(),
+            preferReportOnHand: true,
             ...orderOpts,
         });
         const files = resolveStoreReports(storeNumber, REPORTS_DIR);

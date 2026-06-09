@@ -3,6 +3,7 @@
  * Typing the visible box alone does not commit — use calendar UI + hidden field sync (same as dashboard scraper).
  */
 const log = require('./util-logging');
+const { waitForAspPostback } = require('./mmx-postback');
 
 const MONTH_LONG_EN = [
     'January',
@@ -381,6 +382,8 @@ async function setPlainDateViaKeyboard(page, dateText, which = 'start') {
     await page.waitForTimeout(150);
     await page.keyboard.press('Tab');
     await page.waitForTimeout(400);
+    await waitForAspPostback(page, { timeoutMs: 20000 }).catch(() => {});
+    await waitForDateFieldSettle(page);
 
     const after = await el.evaluate((node) => (node.value || '').trim());
     return after;

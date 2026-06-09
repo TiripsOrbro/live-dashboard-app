@@ -517,33 +517,61 @@ async function waitForScmStoreTreeAfterDates(page) {
     await page.waitForTimeout(settleMs);
 }
 
-async function expandAreaNodeInTree(page, areaNeedle) {
-    const area = String(areaNeedle || 'area 22').trim().toLowerCase();
-    if (!area) return;
-    await page.evaluate((needle) => {
+/** Click .rtPlus on the first tree row whose label matches needle (not .rtSp — that is spacing only). */
+async function expandTreeNodeByNeedle(page, needle, opts = {}) {
+    const want = String(needle || '').trim().toLowerCase();
+    if (!want) return false;
+
+    const result = await page.evaluate((n) => {
         for (const mid of document.querySelectorAll('.rtMid')) {
-            const text = (mid.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-            if (!text.includes(needle)) continue;
-            const sp = mid.querySelector('.rtSp') || mid.querySelector('.rtPlus, .rtMinus');
-            if (sp) {
-                try {
-                    sp.click();
-                } catch (e) {
-                    /* ignore */
-                }
-            }
             const rtIn = mid.querySelector('.rtIn');
-            if (rtIn) {
-                try {
-                    rtIn.click();
-                } catch (e) {
-                    /* ignore */
-                }
+            const text = (rtIn?.textContent || mid.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+            if (!text.includes(n)) continue;
+            if (mid.querySelector('.rtMinus')) return { label: text, expanded: true };
+            const plus = mid.querySelector('.rtPlus');
+            if (plus) {
+                plus.click();
+                return { label: text, expanded: false };
             }
             break;
         }
-    }, area);
-    await page.waitForTimeout(800);
+        return null;
+    }, want);
+
+    if (!result) return false;
+    if (!result.expanded) {
+        log.info(`SCM store tree: expanding "${result.label}"`);
+        await waitForAspPostback(page, { timeoutMs: opts.postbackMs || 12000 }).catch(() => {});
+        await page.waitForTimeout(Number(opts.settleMs || 500));
+    }
+    return true;
+}
+
+async function expandAreaNodeInTree(page, areaNeedle) {
+    return expandTreeNodeByNeedle(page, areaNeedle || 'area 22');
+}
+
+/** Expand at most one level of visible collapsed nodes (avoids 30-round full-tree hammering). */
+async function expandScmTreeOneLevel(page) {
+    const clicked = await page.evaluate(() => {
+        let count = 0;
+        const max = 12;
+        for (const plus of document.querySelectorAll('.rtPlus')) {
+            if (count >= max) break;
+            try {
+                plus.click();
+                count++;
+            } catch (e) {
+                /* ignore */
+            }
+        }
+        return count;
+    });
+    if (clicked > 0) {
+        await waitForAspPostback(page, { timeoutMs: 10000 }).catch(() => {});
+        await page.waitForTimeout(350);
+    }
+    return clicked;
 }
 
 async function waitUntilStoreVisibleInTree(page, storeNumber, timeoutMs) {
@@ -551,11 +579,20 @@ async function waitUntilStoreVisibleInTree(page, storeNumber, timeoutMs) {
     const cfg = getStoreConfig(num) || {};
     const areaNeedle = String(cfg.area || 'area 22').trim();
     const started = Date.now();
+    let lastLog = 0;
+
     while (Date.now() - started < timeoutMs) {
-        if (await storeVisibleInTree(page, num)) return true;
-        await expandAllRtSpNodes(page);
-        await expandFullReportStoreTree(page);
-        await expandAreaNodeInTree(page, areaNeedle);
+        if (await storeVisibleInTree(page, num)) {
+            log.info(`SCM store tree: store ${num} visible in tree`);
+            return true;
+        }
+        if (Date.now() - lastLog >= 5000) {
+            log.info(`SCM store tree: waiting for store ${num} — expanding market/area nodes…`);
+            lastLog = Date.now();
+        }
+        await expandTreeNodeByNeedle(page, 'tba market');
+        await expandTreeNodeByNeedle(page, areaNeedle);
+        await expandScmTreeOneLevel(page);
         await page.waitForTimeout(500);
     }
     return storeVisibleInTree(page, num);
@@ -650,13 +687,16 @@ async function selectScmStoreCheckboxInTree(page, storeNumber, storeName) {
     const num = String(storeNumber || '').replace(/\D/g, '').trim();
     if (!num) throw new Error('SCM store tree: storeNumber is required');
 
+    log.info(`SCM store tree: selecting store ${num}${storeName ? ` (${storeName})` : ''}`);
     await waitForScmStoreTreeAfterDates(page);
 
     // Parent nodes (All / Market / Area) often stay checked and hide other stores — clear first.
+    log.info('SCM store tree: clearing prior selections');
     await clearScmTreeSelectedValuesLink(page);
     await clearAllReportTreeCheckboxes(page);
-    await expandAllRtSpNodes(page);
-    await expandAreaNodeInTree(page, String(getStoreConfig(num)?.area || 'area 22'));
+    const areaNeedle = String(getStoreConfig(num)?.area || 'area 22');
+    await expandTreeNodeByNeedle(page, 'tba market');
+    await expandTreeNodeByNeedle(page, areaNeedle);
     await page.waitForTimeout(Number(process.env.MMX_SCM_TREE_AFTER_CLEAR_MS || 2000));
 
     const waitMs = Number(process.env.MMX_SCM_TREE_WAIT_MS || 30000);
@@ -1138,10 +1178,10 @@ async function expandAllRtSpNodes(page) {
             for (const mid of document.querySelectorAll('.rtMid')) {
                 const text = (mid.textContent || '').replace(/\s+/g, ' ').trim();
                 if (/\b\d{4}\b/.test(text)) continue;
-                const sp = mid.querySelector('.rtSp') || mid.querySelector('.rtPlus');
-                if (sp) {
+                const plus = mid.querySelector('.rtPlus');
+                if (plus) {
                     try {
-                        sp.click();
+                        plus.click();
                         count++;
                     } catch (e) {
                         /* ignore */
@@ -1331,6 +1371,7 @@ async function configureAndGenerateReport(page, report, reportNav) {
     await waitForDateFieldSettle(page);
 
     if (report.scmTreeStoreNumber) {
+        log.info(`SCM store tree: loading store picker for ${report.scmTreeStoreNumber}`);
         await selectScmStoreCheckboxInTree(page, report.scmTreeStoreNumber, report.storeName);
     } else if (!report.skipStoreSelection && report.storeName) {
         await selectStore(page, report.storeName, {

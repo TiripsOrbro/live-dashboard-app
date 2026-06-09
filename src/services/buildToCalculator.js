@@ -23,6 +23,7 @@ const {
     findInReportMap,
     allLookupKeys,
 } = require('./itemCodes');
+const { buildToOverridesForStore, mergeBuildToRules } = require('./buildToStoreOverrides');
 
 const REPORTS_DIR = path.join(__dirname, '..', '..', 'Reports');
 
@@ -52,13 +53,15 @@ function isSaladItem(description) {
     return SALAD_NAME_RE.test(String(description || ''));
 }
 
-function catalogRuleForItem(itemCode, catalogRules) {
-    if (!catalogRules) return null;
-    return catalogRules.get(normalizeItemCode(itemCode)) || null;
+function catalogRuleForItem(itemCode, catalogRules, storeOverrideMap) {
+    if (!catalogRules && !storeOverrideMap) return null;
+    const base = catalogRules?.get(normalizeItemCode(itemCode)) || null;
+    const override = storeOverrideMap?.get(normalizeItemCode(itemCode)) || null;
+    return mergeBuildToRules(base, override);
 }
 
-function buildToDaysForItem(itemCode, description, catalogRules) {
-    const rule = catalogRuleForItem(itemCode, catalogRules);
+function buildToDaysForItem(itemCode, description, catalogRules, storeOverrideMap) {
+    const rule = catalogRuleForItem(itemCode, catalogRules, storeOverrideMap);
     if (rule?.buildToManual) return null;
     if (rule?.buildToFixed != null && Number.isFinite(rule.buildToFixed)) return null;
     if (rule?.buildToDays != null && Number.isFinite(rule.buildToDays)) {
@@ -70,12 +73,12 @@ function buildToDaysForItem(itemCode, description, catalogRules) {
         : DEFAULT_BUILD_TO_DAYS;
 }
 
-function buildToTarget(avgDaily, itemCode, description, catalogRules) {
-    const rule = catalogRuleForItem(itemCode, catalogRules);
+function buildToTarget(avgDaily, itemCode, description, catalogRules, storeOverrideMap) {
+    const rule = catalogRuleForItem(itemCode, catalogRules, storeOverrideMap);
     if (rule?.buildToFixed != null && Number.isFinite(rule.buildToFixed)) {
         return rule.buildToFixed;
     }
-    const days = buildToDaysForItem(itemCode, description, catalogRules);
+    const days = buildToDaysForItem(itemCode, description, catalogRules, storeOverrideMap);
     if (days == null) return 0;
     const add = rule?.buildToAdd != null && Number.isFinite(rule.buildToAdd) ? rule.buildToAdd : 0;
     return num(avgDaily) * days + add;
@@ -301,6 +304,7 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
 
     const countedCodes = allCountedItemCodes();
     const catalogRules = buildCatalogBuildToIndex();
+    const storeOverrideMap = buildToOverridesForStore(storeNumber);
     const manualCounts = await loadManualCountsForStore(storeNumber, dateKey);
     let manualCountItems = 0;
 
@@ -319,7 +323,7 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
                 if (manualEntry) break;
             }
         }
-        const catalogRule = catalogRuleForItem(itemCode, catalogRules);
+        const catalogRule = catalogRuleForItem(itemCode, catalogRules, storeOverrideMap);
         const onHandFromReport = onHandToCartons(onHandRow, ise.unit, isePack, reportItemCode);
         const onHandFromManual =
             manualEntry && manualEntry.catalogItem
@@ -365,16 +369,19 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
             continue;
         }
 
-        const buildToDays = buildToDaysForItem(itemCode, description, catalogRules);
-        const buildTo = buildToTarget(ise.avgDaily, itemCode, description, catalogRules);
+        const buildToDays = buildToDaysForItem(itemCode, description, catalogRules, storeOverrideMap);
+        const buildTo = buildToTarget(ise.avgDaily, itemCode, description, catalogRules, storeOverrideMap);
         const rawOrder = buildTo - onHandCartons - onOrderCartons;
         const orderQty = finalizeOrderQty(rawOrder, options);
+        const hasStoreOverride = storeOverrideMap.has(normalizeItemCode(itemCode));
         const buildToSource =
             catalogRule?.buildToFixed != null
                 ? 'catalog-fixed'
-                : catalogRule?.buildToDays != null
-                  ? 'catalog-days'
-                  : 'default';
+                : hasStoreOverride
+                  ? 'store-override'
+                  : catalogRule?.buildToDays != null
+                    ? 'catalog-days'
+                    : 'default';
 
         lines.push({
             itemCode,

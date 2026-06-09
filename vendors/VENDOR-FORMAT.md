@@ -119,6 +119,24 @@ Build-to and report matching try **every code in the group**; you do not need a 
 
 Do **not** add lines where Other equals Canonical (e.g. `| 40303 | 40303`) — the parser ignores them.
 
+## Per-store build-to overrides (optional)
+
+When one store needs different build-to days or extra cartons on top of the shared vendor catalog, add an entry in `config/build-to-store-overrides.json` (copy from `config/build-to-store-overrides.example.json`):
+
+```json
+{
+  "stores": {
+    "3811": {
+      "items": {
+        "38892": { "buildToDays": 10, "buildToAdd": 2 }
+      }
+    }
+  }
+}
+```
+
+Overrides merge onto the catalog rule for that item code only at that store — other stores keep the `vendors/.VendorName` line unchanged.
+
 Same `itemCode` on multiple tabs (e.g. beef on Freezer and Fridge): use **one catalog line** with `| Freezer | Fridge | In Use`, not two lines with the same code.
 
 If an item is missing from build-to, check the latest ISE CSV for the code in column `ItemCode` and add that value as an alias.

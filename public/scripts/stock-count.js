@@ -61,6 +61,8 @@ const MMX_PIPELINE_STEPS = [
     { id: 'orders', label: 'Placing scheduled orders' },
 ];
 
+const MMX_STEP_SEQUENCE = MMX_PIPELINE_STEPS.map((s) => s.id);
+
 /** Build-to reports downloaded before scheduled orders (Macromatix Report Selection). */
 const MMX_BUILD_TO_REPORTS = [
     { key: 'stock on hand', label: 'Stock On Hand', detail: 'SCM — Items On Hand (Flat), Excel' },
@@ -1278,27 +1280,36 @@ function visibleMmxPipelineSteps() {
     return MMX_PIPELINE_STEPS;
 }
 
+function mmxStepRank(stepId) {
+    const idx = MMX_STEP_SEQUENCE.indexOf(stepId);
+    return idx >= 0 ? idx : -1;
+}
+
+function advanceMmxStepId(nextId) {
+    if (!nextId) return mmxProcessingStepId;
+    const curRank = mmxStepRank(mmxProcessingStepId);
+    const nextRank = mmxStepRank(nextId);
+    if (nextRank < 0) return mmxProcessingStepId || nextId;
+    if (curRank < 0 || nextRank >= curRank) return nextId;
+    return mmxProcessingStepId;
+}
+
 function resolveMmxStepIdFromStatus(status) {
     const stage = status?.stage;
     const detail = String(status?.stepLabel || '').toLowerCase();
+
+    // Pipeline stage wins over step labels so order text cannot jump ahead of report downloads.
+    if (stage === 'filling-orders') return 'orders';
+    if (stage === 'downloading-reports' || stage === 'applied-orders-pending') return 'reports';
+
     const reportWork =
-        stage === 'downloading-reports' ||
         /download|downloaded|inventory special|stock on hand|stock on order|scm - items|build-to reports|calculating order/i.test(
             detail
         );
-    const orderWork =
-        /placing order —|placing scheduled orders in macromatix/i.test(detail) ||
-        (stage === 'filling-orders' && !reportWork);
+    const orderWork = /placing order —|placing scheduled orders in macromatix/i.test(detail);
 
-    if (reportWork && !orderWork) {
-        return 'reports';
-    }
-    if (orderWork || stage === 'filling-orders') {
-        return 'orders';
-    }
-    if (stage === 'applied-orders-pending') {
-        return 'reports';
-    }
+    if (orderWork && !reportWork) return 'orders';
+    if (reportWork) return 'reports';
     if (stage === 'applying' || /applying count/i.test(detail)) return 'apply';
     if (stage === 'prepared' || /variance|confirm count/i.test(detail)) return 'variances';
     if (stage === 'preparing') {
@@ -1318,7 +1329,7 @@ function applyPipelineStatusToUi(status) {
     const label = status.stepLabel || pipelineStageLabel(status.stage);
     mmxProcessingDetail = status.stepLabel || '';
     mmxLastPipelineStep = label || mmxLastPipelineStep;
-    mmxProcessingStepId = resolveMmxStepIdFromStatus(status);
+    mmxProcessingStepId = advanceMmxStepId(resolveMmxStepIdFromStatus(status));
     processingStageLabel = label;
     pushMmxActivity(label);
 }

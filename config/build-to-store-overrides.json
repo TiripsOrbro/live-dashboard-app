@@ -1,0 +1,14 @@
+{
+  "_comment": "Per-store build-to tweaks merged on top of vendors/.VendorName catalog rules. Item keys are catalog item codes.",
+  "stores": {
+    "3811": {
+      "items": {
+        "38892": {
+          "buildToDays": 10,
+          "buildToAdd": 2,
+          "_note": "TB BIG BELL BOX 250EA — 10-day usage build-to plus 2 extra cartons (3811 only)"
+        }
+      }
+    }
+  }
+}

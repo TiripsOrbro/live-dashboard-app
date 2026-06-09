@@ -56,12 +56,12 @@ async function configureAndGenerateStoreReport(page, report, reportNav) {
     // After store-triggered reload settles, apply date first.
     const startDate = resolveReportDate(report.startDate || 'yesterday', dateOpts(report));
     await setStartDate(page, startDate);
-    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 25000 }).catch(() => {});
-    await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_DATE_SETTLE_MS || 3000));
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_DATE_SETTLE_MS || 600));
 
     // Finally set report format/type so all report controls are in final state before generate.
     await setReportFormat(page, report.format || 'CSV');
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_FORMAT_MS || 350));
 
     await clickGenerate(page, report.generateButtonText || 'Generate');
 }

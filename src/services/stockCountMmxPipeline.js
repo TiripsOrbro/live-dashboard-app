@@ -375,7 +375,11 @@ function reportsReadyForStore(storeNumber, reportsDir) {
 
 async function ensureReportsForOrders(storeNumber, options = {}) {
     touchStockCountWork();
-    await touchPipelineStep(storeNumber, 'Downloading stock reports (on-hand, on-order, inventory)');
+    await updateCheckpoint(storeNumber, {
+        stage: 'downloading-reports',
+        stepLabel:
+            'Downloading build-to reports — Inventory Special Event, Stock On Hand, Stock On Order',
+    });
     const { REPORTS_DIR } = require('./buildToCalculator');
     const reportsDir = options.reportsDir || REPORTS_DIR;
     const { ready, files, validation } = reportsReadyForStore(storeNumber, reportsDir);
@@ -500,6 +504,10 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
                 reportsDir,
                 forceDownload: true,
             });
+            await touchPipelineStep(
+                storeNumber,
+                'All build-to reports downloaded — calculating order quantities'
+            );
         } else {
             const files = resolveStoreReports(storeNumber, reportsDir);
             const validation = validateStoreReports(storeNumber, files);
@@ -539,6 +547,10 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
             throw new Error('runStoreBuildToCycle requires an active MMX page to fill scheduled orders');
         }
 
+        await updateCheckpoint(storeNumber, {
+            stage: 'filling-orders',
+            stepLabel: 'Placing scheduled orders in Macromatix',
+        });
         const orders = await runVendorOrdersForStore(page, storeNumber, dateKey, orderPack);
         cycleSucceeded = true;
         return { dateKey, buildTo, orderPack, orders };
@@ -954,15 +966,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
             });
 
             if (await shouldRunOrderPipeline(storeNumber, dateKey)) {
-                log.info(`Key Item Count applied for store ${storeNumber} — entering scheduled orders`);
-                await updateCheckpoint(storeNumber, {
-                    stage: 'filling-orders',
-                    dateKey,
-                    sessionId,
-                    vendorSlugs,
-                    lastError: '',
-                });
-                await touchPipelineStep(storeNumber, 'Placing scheduled orders in Macromatix');
+                log.info(`Key Item Count applied for store ${storeNumber} — downloading reports, then scheduled orders`);
                 orderPipelineResult = await runOrdersAfterApply(storeNumber, dateKey, { page, browser });
                 if (ordersAllSuccessful(orderPipelineResult)) {
                     await runStoreOrdersCompleteCleanup(storeNumber, dateKey);

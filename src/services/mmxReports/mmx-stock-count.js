@@ -164,7 +164,9 @@ async function clickRadTab(page, tabLabel) {
     );
     if (!clicked) throw new Error(`MMX tab not found: ${tabLabel}`);
     log.info(`Opened MMX tab: ${clicked}`);
-    await waitForLocationTabSettled(page, want);
+    await waitForLocationTabSettled(page, want, {
+        timeoutMs: Number(process.env.MMX_COUNT_TAB_READY_MS || 12000),
+    });
     return clicked;
 }
 
@@ -174,15 +176,12 @@ async function waitForLocationTabSettled(page, tabLabel, options = {}) {
     const want = String(tabLabel || '').trim().toLowerCase();
     const start = Date.now();
 
-    await Promise.race([
-        page
-            .waitForResponse(
-                (res) => /stockcount|inventorycount/i.test(res.url() || '') && res.status() < 400,
-                { timeout: 8000 }
-            )
-            .catch(() => null),
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => null),
-    ]);
+    await page
+        .waitForResponse(
+            (res) => /stockcount|inventorycount/i.test(res.url() || '') && res.status() < 400,
+            { timeout: Math.min(timeoutMs, 8000) }
+        )
+        .catch(() => null);
 
     if (want) {
         await page
@@ -526,13 +525,22 @@ async function clickButtonById(page, id, options = {}) {
     const selector = `#${String(id).replace(/:/g, '\\:')}`;
     const handle = await page.$(selector);
     if (!handle) throw new Error(`Button not found: #${id}`);
+    const saveLike = Boolean(options.waitForReenabled);
+    const postbackMs = Number(
+        options.timeoutMs ?? (saveLike ? process.env.MMX_STOCK_COUNT_SAVE_MS || 12000 : 45000)
+    );
     await clickAndWaitForPostback(page, () => handle.click(), {
         urlTest: stockCountUrlTest,
-        timeoutMs: options.timeoutMs ?? 45000,
+        timeoutMs: postbackMs,
+        skipNavigationWait: saveLike,
+        skipPostbackWait: saveLike,
         elementId: options.waitForElementId,
     });
     if (options.waitForReenabled) {
-        await waitForEnabledButton(page, id, options.timeoutMs ?? 15000);
+        const reenableMs = Number(
+            options.reenableTimeoutMs ?? process.env.MMX_STOCK_COUNT_SAVE_REENABLE_MS ?? 20000
+        );
+        await waitForEnabledButton(page, id, reenableMs);
     }
 }
 
@@ -545,7 +553,9 @@ async function clickEnabledSave(page, cfg) {
         }, id);
         if (!enabled) continue;
         log.info(`Saving stock count tab via #${id}`);
+        const saveStarted = Date.now();
         await clickButtonById(page, id, { waitForReenabled: true });
+        log.info(`Stock count tab saved via #${id} (${Date.now() - saveStarted}ms)`);
         return id;
     }
     throw new Error('No enabled Save button on stock count tab');

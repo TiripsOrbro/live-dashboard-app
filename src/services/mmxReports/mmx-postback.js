@@ -67,14 +67,24 @@ async function waitForEnabledButton(page, buttonId, timeoutMs = DEFAULT_TIMEOUT_
 async function clickAndWaitForPostback(page, clickAction, options = {}) {
     const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const urlTest = options.urlTest ?? defaultUrlTest;
+    const skipNavigationWait = Boolean(options.skipNavigationWait);
 
-    await Promise.all([
+    const waiters = [
         page.waitForResponse((res) => urlTest(res), { timeout: timeoutMs }).catch(() => null),
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: timeoutMs }).catch(() => null),
         clickAction(),
-    ]);
+    ];
+    if (!skipNavigationWait) {
+        waiters.splice(
+            1,
+            0,
+            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: timeoutMs }).catch(() => null)
+        );
+    }
+    await Promise.all(waiters);
 
-    await waitForAspPostback(page, { ...options, timeoutMs, urlTest });
+    if (!options.skipPostbackWait) {
+        await waitForAspPostback(page, { ...options, timeoutMs, urlTest });
+    }
 }
 
 async function waitForReportFormatControls(page, timeoutMs = 20000) {

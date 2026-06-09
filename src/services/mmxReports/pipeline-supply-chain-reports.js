@@ -512,9 +512,15 @@ async function listScmStoreTreeLabels(page) {
 }
 
 async function waitForScmStoreTreeAfterDates(page) {
-    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 25000 }).catch(() => {});
-    const settleMs = Number(process.env.MMX_SCM_TREE_AFTER_DATE_MS || 5000);
-    await page.waitForTimeout(settleMs);
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
+    const treeMs = Number(process.env.MMX_SCM_TREE_AFTER_DATE_MS || 1200);
+    await page
+        .waitForFunction(
+            () => Boolean(document.querySelector('.RadTreeView .rtMid, .RadTreeView .rtPlus, .RadTreeView')),
+            { timeout: treeMs, polling: 80 }
+        )
+        .catch(() => {});
+    await page.waitForTimeout(Number(process.env.MMX_SCM_TREE_AFTER_DATE_PAD_MS || 200));
 }
 
 /** Click .rtPlus on the first tree row whose label matches needle (not .rtSp — that is spacing only). */
@@ -541,8 +547,8 @@ async function expandTreeNodeByNeedle(page, needle, opts = {}) {
     if (!result) return false;
     if (!result.expanded) {
         log.info(`SCM store tree: expanding "${result.label}"`);
-        await waitForAspPostback(page, { timeoutMs: opts.postbackMs || 12000 }).catch(() => {});
-        await page.waitForTimeout(Number(opts.settleMs || 500));
+        await waitForAspPostback(page, { timeoutMs: opts.postbackMs || 6000 }).catch(() => {});
+        await page.waitForTimeout(Number(opts.settleMs || 200));
     }
     return true;
 }
@@ -593,7 +599,7 @@ async function waitUntilStoreVisibleInTree(page, storeNumber, timeoutMs) {
         await expandTreeNodeByNeedle(page, 'tba market');
         await expandTreeNodeByNeedle(page, areaNeedle);
         await expandScmTreeOneLevel(page);
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(250);
     }
     return storeVisibleInTree(page, num);
 }
@@ -683,24 +689,39 @@ async function checkStoreCheckboxInTree(page, storeNumber) {
 /**
  * SCM Items On Hand / On Order: check one store in the RadTreeView (label > input.rtChk + span.rtIn).
  */
-async function selectScmStoreCheckboxInTree(page, storeNumber, storeName) {
+async function selectScmStoreCheckboxInTree(page, storeNumber, storeName, options = {}) {
     const num = String(storeNumber || '').replace(/\D/g, '').trim();
     if (!num) throw new Error('SCM store tree: storeNumber is required');
 
     log.info(`SCM store tree: selecting store ${num}${storeName ? ` (${storeName})` : ''}`);
-    await waitForScmStoreTreeAfterDates(page);
+    if (!options.skipDateWait) {
+        await waitForScmStoreTreeAfterDates(page);
+    }
 
-    // Parent nodes (All / Market / Area) often stay checked and hide other stores — clear first.
-    log.info('SCM store tree: clearing prior selections');
-    await clearScmTreeSelectedValuesLink(page);
-    await clearAllReportTreeCheckboxes(page);
+    const treeHasChecked = await page.evaluate(
+        () =>
+            [...document.querySelectorAll('.RadTreeView input[type="checkbox"], input.rtChk')].some(
+                (cb) => cb.checked
+            )
+    );
+    if (treeHasChecked) {
+        log.info('SCM store tree: clearing prior selections');
+        await clearScmTreeSelectedValuesLink(page);
+        await clearAllReportTreeCheckboxes(page);
+    }
     const areaNeedle = String(getStoreConfig(num)?.area || 'area 22');
     await expandTreeNodeByNeedle(page, 'tba market');
     await expandTreeNodeByNeedle(page, areaNeedle);
-    await page.waitForTimeout(Number(process.env.MMX_SCM_TREE_AFTER_CLEAR_MS || 2000));
+    await expandScmTreeOneLevel(page);
+    await page.waitForTimeout(Number(process.env.MMX_SCM_TREE_AFTER_CLEAR_MS || 300));
 
-    const waitMs = Number(process.env.MMX_SCM_TREE_WAIT_MS || 30000);
-    const visible = await waitUntilStoreVisibleInTree(page, num, waitMs);
+    const waitMs = Number(process.env.MMX_SCM_TREE_WAIT_MS || 15000);
+    let visible = await storeVisibleInTree(page, num);
+    if (!visible) {
+        visible = await waitUntilStoreVisibleInTree(page, num, waitMs);
+    } else {
+        log.info(`SCM store tree: store ${num} visible after market/area expand`);
+    }
     if (!visible) {
         log.warn(`SCM store tree: store ${num} not visible after ${Math.round(waitMs / 1000)}s — trying checkbox anyway`);
     }
@@ -723,7 +744,7 @@ async function selectScmStoreCheckboxInTree(page, storeNumber, storeName) {
         );
     }
     log.info(`SCM store tree: checked "${picked}"`);
-    await page.waitForTimeout(Number(process.env.MMX_SCM_TREE_SELECT_SETTLE_MS || 600));
+    await page.waitForTimeout(Number(process.env.MMX_SCM_TREE_SELECT_SETTLE_MS || 250));
 }
 
 /** SCM flat reports: store tree loads after dates — expand Area nodes until the store row appears. */
@@ -1147,7 +1168,8 @@ async function selectStoreForStoreReport(page, storeName, opts = {}) {
 /** Uncheck every report tree checkbox (stores, areas, markets) so bulk SCM is not area-filtered. */
 async function clearAllReportTreeCheckboxes(page) {
     let total = 0;
-    for (let pass = 0; pass < 12; pass++) {
+    const maxPasses = Number(process.env.MMX_REPORT_TREE_CLEAR_PASSES || 2);
+    for (let pass = 0; pass < maxPasses; pass++) {
         const cleared = await page.evaluate(() => {
             let count = 0;
             const root = document.querySelector('.RadTreeView') || document.body;
@@ -1161,12 +1183,15 @@ async function clearAllReportTreeCheckboxes(page) {
         });
         total += cleared;
         if (!cleared) break;
-        await page.waitForTimeout(250);
+        if (pass === 0) {
+            await waitForAspPostback(page, { timeoutMs: 6000 }).catch(() => {});
+        }
+        await page.waitForTimeout(150);
     }
     if (total > 0) {
         log.info(`Cleared ${total} report tree checkbox(es)`);
     }
-    const settleMs = Number(process.env.MMX_REPORT_TREE_CLEAR_SETTLE_MS || 500);
+    const settleMs = Number(process.env.MMX_REPORT_TREE_CLEAR_SETTLE_MS || 250);
     await page.waitForTimeout(settleMs);
 }
 
@@ -1341,8 +1366,8 @@ async function clickGenerate(page, buttonText = 'Generate') {
     }, buttonText);
 
     if (!clicked) throw new Error(`Generate button not found`);
-    log.info('Clicked Generate');
-    await page.waitForTimeout(1000);
+    log.info('Clicked Generate — waiting for report export');
+    await page.waitForTimeout(Number(process.env.MMX_REPORT_GENERATE_SETTLE_MS || 350));
 }
 
 function dateOpts(report) {
@@ -1368,11 +1393,11 @@ async function configureAndGenerateReport(page, report, reportNav) {
         await setEndDate(page, endDate);
     }
 
-    await waitForDateFieldSettle(page);
-
     if (report.scmTreeStoreNumber) {
         log.info(`SCM store tree: loading store picker for ${report.scmTreeStoreNumber}`);
-        await selectScmStoreCheckboxInTree(page, report.scmTreeStoreNumber, report.storeName);
+        await selectScmStoreCheckboxInTree(page, report.scmTreeStoreNumber, report.storeName, {
+            skipDateWait: true,
+        });
     } else if (!report.skipStoreSelection && report.storeName) {
         await selectStore(page, report.storeName, {
             storeNumber: report.storeNumber,

@@ -3,7 +3,6 @@
  * Typing the visible box alone does not commit — use calendar UI + hidden field sync (same as dashboard scraper).
  */
 const log = require('./util-logging');
-const { waitForAspPostback } = require('./mmx-postback');
 
 const MONTH_LONG_EN = [
     'January',
@@ -381,9 +380,8 @@ async function setPlainDateViaKeyboard(page, dateText, which = 'start') {
     await page.keyboard.type(dateText, { delay: 25 });
     await page.waitForTimeout(150);
     await page.keyboard.press('Tab');
-    await page.waitForTimeout(400);
-    await waitForAspPostback(page, { timeoutMs: 20000 }).catch(() => {});
-    await waitForDateFieldSettle(page);
+    await page.waitForTimeout(200);
+    await waitForReportPageAfterDateChange(page);
 
     const after = await el.evaluate((node) => (node.value || '').trim());
     return after;
@@ -432,9 +430,35 @@ async function findEndDatePickerMeta(page) {
     });
 }
 
+async function waitForReportPageAfterDateChange(page) {
+    const timeoutMs = Number(process.env.MMX_REPORT_DATE_POSTBACK_MS || 6000);
+    const started = Date.now();
+    await Promise.race([
+        page
+            .waitForResponse(
+                (res) => /macromatix/i.test(res.url() || '') && res.status() < 400,
+                { timeout: timeoutMs }
+            )
+            .catch(() => null),
+        page
+            .waitForFunction(
+                () =>
+                    Boolean(document.querySelector('.RadTreeView .rtMid, .RadTreeView .rtPlus')) ||
+                    document.readyState === 'complete',
+                { timeout: timeoutMs, polling: 80 }
+            )
+            .catch(() => null),
+    ]);
+    const settleMs = Number(process.env.MMX_REPORT_DATE_SETTLE_MS || 500);
+    const elapsed = Date.now() - started;
+    if (elapsed < settleMs) {
+        await page.waitForTimeout(settleMs - elapsed);
+    }
+}
+
 async function waitForDateFieldSettle(page) {
-    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 25000 }).catch(() => {});
-    const settleMs = Number(process.env.MMX_REPORT_DATE_SETTLE_MS || 2500);
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
+    const settleMs = Number(process.env.MMX_REPORT_DATE_SETTLE_MS || 500);
     await page.waitForTimeout(settleMs);
 }
 
@@ -529,7 +553,7 @@ async function setReportDateField(page, dateText, which = 'start') {
             }
         }
 
-        await waitForDateFieldSettle(page);
+        await waitForReportPageAfterDateChange(page);
         const actual = await readDateValueWithRetry(page, which, radMeta.dateInputId);
         if (!dateValueMatches(dateText, actual)) {
             throw new Error(`${fieldName} Date did not stick: expected "${dateText}", still "${actual || '(empty)'}"`);
@@ -567,4 +591,5 @@ module.exports = {
     parseMacromatixDateTime,
     findStartDatePickerMeta,
     waitForDateFieldSettle,
+    waitForReportPageAfterDateChange,
 };

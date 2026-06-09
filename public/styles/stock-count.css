@@ -1362,10 +1362,93 @@ body.stock-count-mmx-wait-active {
     word-break: break-word;
 }
 
+.stock-count-mmx-error-hint {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    text-align: left;
+    color: color-mix(in srgb, var(--charcoal, #231e1f) 65%, #fff);
+}
+
 .stock-count-mmx-dismiss {
     width: 100%;
     min-height: 2.75rem;
     margin-top: 4px;
+}
+
+.stock-count-mmx-reports-wrap {
+    text-align: left;
+    margin: 8px 0 4px;
+}
+
+.stock-count-mmx-reports-heading {
+    margin: 0 0 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--charcoal, #231e1f) 55%, #fff);
+}
+
+.stock-count-mmx-reports {
+    list-style: none;
+    margin: 0;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: color-mix(in srgb, var(--tb-purple, #702082) 4%, var(--blank, #fff));
+    border: 1px solid color-mix(in srgb, var(--tb-purple, #702082) 14%, var(--blank-border, #c8c0bc));
+}
+
+.stock-count-mmx-report {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.86rem;
+    line-height: 1.35;
+    color: color-mix(in srgb, var(--charcoal, #231e1f) 65%, #fff);
+}
+
+.stock-count-mmx-report-marker {
+    flex-shrink: 0;
+    width: 10px;
+    height: 10px;
+    margin-top: 4px;
+    border-radius: 50%;
+    border: 2px solid color-mix(in srgb, var(--charcoal, #231e1f) 35%, #fff);
+    background: transparent;
+}
+
+.stock-count-mmx-report--active {
+    color: var(--tb-purple, #702082);
+    font-weight: 600;
+}
+
+.stock-count-mmx-report--active .stock-count-mmx-report-marker {
+    border-color: var(--tb-purple, #702082);
+    background: color-mix(in srgb, var(--tb-purple, #702082) 35%, transparent);
+}
+
+.stock-count-mmx-report--done {
+    color: color-mix(in srgb, var(--charcoal, #231e1f) 55%, #fff);
+}
+
+.stock-count-mmx-report--done .stock-count-mmx-report-marker {
+    border-color: var(--good, #2e7d32);
+    background: var(--good, #2e7d32);
+}
+
+.stock-count-mmx-report-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.stock-count-mmx-report-detail {
+    font-size: 0.78rem;
+    font-weight: 400;
+    color: color-mix(in srgb, var(--charcoal, #231e1f) 50%, #fff);
 }
 
 .stock-count-mmx-activity-wrap {

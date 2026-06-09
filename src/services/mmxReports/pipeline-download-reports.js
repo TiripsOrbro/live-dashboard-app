@@ -124,6 +124,10 @@ async function downloadSupplyChainReport(page, report, settings) {
     }
 
     log.info(`Saved ${report.id} → ${path.basename(dest)}`);
+    if (typeof settings.onReportStep === 'function') {
+        const reportLabel = report.label || report.reportName || report.id || 'report';
+        await settings.onReportStep(`Downloaded ${reportLabel} → ${path.basename(dest)}`);
+    }
     refreshScrapePauseTimeout();
     return dest;
 }
@@ -142,6 +146,10 @@ async function downloadStoreReport(page, report, settings) {
         fs.renameSync(downloaded, dest);
     }
     log.info(`Saved ${report.id} → ${path.basename(dest)}`);
+    if (typeof settings.onReportStep === 'function') {
+        const reportLabel = report.label || report.reportName || report.id || 'report';
+        await settings.onReportStep(`Downloaded ${reportLabel} → ${path.basename(dest)}`);
+    }
     refreshScrapePauseTimeout();
     return dest;
 }
@@ -178,7 +186,8 @@ async function downloadReports(page, settings) {
         try {
             if (typeof settings.onReportStep === 'function') {
                 const reportLabel = report.label || report.reportName || report.id || 'report';
-                await settings.onReportStep(`Downloading ${reportLabel}…`);
+                const mmxName = report.reportName ? ` (${report.reportName})` : '';
+                await settings.onReportStep(`Downloading ${reportLabel}${mmxName}…`);
             }
             if (isSupplyChainReport(report)) {
                 paths[report.id] = await downloadSupplyChainReport(page, report, settings);

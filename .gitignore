@@ -1,4 +1,9 @@
 node_modules/
+
+# Vendor catalog dotfiles (vendors/.Americold etc.) — keep tracked for Pi deploys
+!vendors/
+!vendors/**
+
 .env
 .env.*
 !.env.example

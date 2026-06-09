@@ -63,17 +63,6 @@ const MMX_PIPELINE_STEPS = [
 
 const MMX_STEP_SEQUENCE = MMX_PIPELINE_STEPS.map((s) => s.id);
 
-/** Build-to reports downloaded before scheduled orders (Macromatix Report Selection). */
-const MMX_BUILD_TO_REPORTS = [
-    { key: 'stock on hand', label: 'Stock On Hand', detail: 'SCM — Items On Hand (Flat), Excel' },
-    { key: 'stock on order', label: 'Stock On Order', detail: 'SCM — Items On Order (Flat), Excel' },
-    {
-        key: 'inventory special',
-        label: 'Inventory Special Event',
-        detail: 'Store Reports — CSV (13-day usage)',
-    },
-];
-
 function dashboardPath() {
     if (!STORE_NUMBER) return '/';
     return `/${STORE_NUMBER}`;
@@ -2059,97 +2048,40 @@ function mmxProcessingTitle() {
     return 'Sending to Macromatix';
 }
 
-function buildMmxStepListHtml() {
-    const steps = visibleMmxPipelineSteps();
-    const activeId = mmxProcessingStepId;
-    const failedId = mmxProcessingError
-        ? resolveMmxStepIdFromLabel(mmxProcessingError.failedAtStep)
-        : null;
-    const activeIdx = steps.findIndex((s) => s.id === activeId);
-    const failedIdx = failedId != null ? steps.findIndex((s) => s.id === failedId) : -1;
+/** Single expanding progress stream — current step prominent, prior steps fade and compact. */
+function buildMmxProgressHtml({ showHeading = true } = {}) {
+    const entries = mmxActivityLog.length
+        ? mmxActivityLog.slice(-24)
+        : [{ text: processingStageLabel || 'Starting…' }];
+    const lastIdx = entries.length - 1;
 
-    const items = steps
-        .map((step, idx) => {
-            let state = 'pending';
-            if (mmxProcessingError && failedIdx >= 0) {
-                if (idx < failedIdx) state = 'done';
-                else if (idx === failedIdx) state = 'error';
-            } else if (mmxProcessingComplete || mmxProcessingSuccess) {
-                state = 'done';
-            } else if (activeIdx >= 0) {
-                if (idx < activeIdx) state = 'done';
-                else if (idx === activeIdx) state = 'active';
-            } else if (idx === 0) {
-                state = 'active';
-            }
-            const detail =
-                state === 'active' && mmxProcessingDetail && step.id === activeId
-                    ? `<span class="stock-count-mmx-step-detail">${escapeHtml(mmxProcessingDetail)}</span>`
-                    : '';
-            return `<li class="stock-count-mmx-step stock-count-mmx-step--${state}">
-                <span class="stock-count-mmx-step-marker" aria-hidden="true"></span>
-                <span class="stock-count-mmx-step-text">${escapeHtml(step.label)}${detail}</span>
-            </li>`;
-        })
-        .join('');
-
-    return `<ol class="stock-count-mmx-steps" aria-label="Macromatix progress">${items}</ol>`;
-}
-
-function resolveMmxReportChecklist() {
-    const logText = mmxActivityLog.map((e) => String(e.text || '').toLowerCase());
-    return MMX_BUILD_TO_REPORTS.map((report) => {
-        let state = 'pending';
-        for (const line of logText) {
-            const hit = line.includes(report.key);
-            if (!hit) continue;
-            if (/downloaded|→/.test(line)) state = 'done';
-            else if (/downloading/.test(line)) state = state === 'done' ? 'done' : 'active';
-        }
-        return { ...report, state };
-    });
-}
-
-function buildMmxReportsChecklistHtml() {
-    const reports = resolveMmxReportChecklist();
-    const allDone = reports.every((r) => r.state === 'done');
-    const anyStarted = reports.some((r) => r.state !== 'pending');
-    if (!anyStarted && mmxProcessingStepId !== 'reports') return '';
-    if (mmxProcessingStepId === 'orders' && allDone) return '';
-
-    const items = reports
-        .map((report) => {
-            const state = report.state;
-            return `<li class="stock-count-mmx-report stock-count-mmx-report--${state}">
-                <span class="stock-count-mmx-report-marker" aria-hidden="true"></span>
-                <span class="stock-count-mmx-report-text">
-                    <strong>${escapeHtml(report.label)}</strong>
-                    <span class="stock-count-mmx-report-detail">${escapeHtml(report.detail)}</span>
-                </span>
-            </li>`;
-        })
-        .join('');
-
-    return `
-        <div class="stock-count-mmx-reports-wrap">
-            <p class="stock-count-mmx-reports-heading">Reports for order quantities</p>
-            <ol class="stock-count-mmx-reports" aria-label="Report downloads">${items}</ol>
-        </div>`;
-}
-
-function buildMmxActivityLogHtml() {
-    if (!mmxActivityLog.length) return '';
-    const items = mmxActivityLog
+    const lines = entries
         .map((entry, idx) => {
-            const isLatest = idx === mmxActivityLog.length - 1 && !mmxProcessingSuccess;
-            const cls = isLatest ? 'stock-count-mmx-activity-item--current' : 'stock-count-mmx-activity-item--done';
-            return `<li class="stock-count-mmx-activity-item ${cls}">${escapeHtml(entry.text)}</li>`;
+            let state = 'past';
+            if (idx === lastIdx) state = mmxProcessingSuccess ? 'done-current' : 'current';
+            else if (idx === lastIdx - 1 && !mmxProcessingSuccess) state = 'exit';
+
+            const detail =
+                state === 'current' &&
+                mmxProcessingDetail &&
+                mmxProcessingDetail !== entry.text
+                    ? `<span class="stock-count-mmx-progress-detail">${escapeHtml(mmxProcessingDetail)}</span>`
+                    : '';
+
+            return `<p class="stock-count-mmx-progress-line stock-count-mmx-progress-line--${state}">${escapeHtml(entry.text)}${detail}</p>`;
         })
         .join('');
+
+    const heading = showHeading
+        ? '<p class="stock-count-mmx-progress-heading">Progress</p>'
+        : '';
+
     return `
-        <div class="stock-count-mmx-activity-wrap">
-            <p class="stock-count-mmx-activity-heading">Current progress</p>
-            <ol class="stock-count-mmx-activity" aria-live="polite">${items}</ol>
+        <div class="stock-count-mmx-progress-wrap">
+            ${heading}
+            <div class="stock-count-mmx-progress-scroll" aria-live="polite" aria-atomic="false">
+                <div class="stock-count-mmx-progress">${lines}</div>
+            </div>
         </div>`;
 }
 
@@ -2182,8 +2114,7 @@ function buildMmxProcessingOverlay() {
             <div class="stock-count-processing-card stock-count-processing-card--wait stock-count-processing-card--success stock-count-processing-card--fullscreen">
                 <h2 id="sc-mmx-success-title" class="stock-count-processing-label stock-count-processing-label--success">${mmxProcessingSuccess.partial ? 'Finished with issues' : 'Complete'}</h2>
                 <p class="stock-count-mmx-success-msg">${escapeHtml(msg)}</p>
-                ${buildMmxStepListHtml()}
-                ${buildMmxActivityLogHtml()}
+                ${buildMmxProgressHtml({ showHeading: false })}
                 <button type="button" class="stock-count-btn stock-count-btn--primary stock-count-mmx-dismiss" id="sc-mmx-dismiss-success">Close</button>
             </div>
         </div>`;
@@ -2197,8 +2128,7 @@ function buildMmxProcessingOverlay() {
                 <p class="stock-count-mmx-error-step">Failed at: <strong>${escapeHtml(mmxProcessingError.failedAtStep)}</strong></p>
                 <p class="stock-count-mmx-error-msg">${escapeHtml(mmxProcessingError.message)}</p>
                 ${mmxProcessingError.recoverable ? '<p class="stock-count-mmx-error-hint">The Pi may still be working — tap below to check again.</p>' : ''}
-                ${buildMmxStepListHtml()}
-                ${buildMmxActivityLogHtml()}
+                ${buildMmxProgressHtml({ showHeading: false })}
                 ${mmxProcessingError.recoverable ? '<button type="button" class="stock-count-btn stock-count-btn--primary stock-count-mmx-dismiss" id="sc-mmx-retry-poll">Check server again</button>' : ''}
                 <button type="button" class="stock-count-btn stock-count-btn--secondary stock-count-mmx-dismiss" id="sc-mmx-dismiss-error">Close</button>
             </div>
@@ -2211,11 +2141,8 @@ function buildMmxProcessingOverlay() {
             <div class="stock-count-processing-card stock-count-processing-card--wait stock-count-processing-card--fullscreen">
                 ${markSvg ? `<div class="stock-count-processing-mark" aria-hidden="true">${markSvg}</div>` : ''}
                 <h2 id="sc-mmx-wait-title" class="stock-count-processing-label">${escapeHtml(mmxProcessingTitle())}</h2>
-                <p class="stock-count-mmx-wait-body">This usually takes several minutes. The list below updates as each Macromatix step runs — do not close until you see <strong>Complete</strong>.</p>
-                ${buildMmxStepListHtml()}
-                ${buildMmxReportsChecklistHtml()}
-                ${buildMmxActivityLogHtml()}
-                <p class="stock-count-processing-stage" role="status" aria-live="polite">${escapeHtml(processingStageLabel)}<span class="stock-count-processing-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></p>
+                <p class="stock-count-mmx-wait-body">This usually takes several minutes. Stay on this screen until you see <strong>Complete</strong>.</p>
+                ${buildMmxProgressHtml()}
                 <div class="stock-count-progress-shell" aria-hidden="true">
                     <div class="stock-count-progress-bar"></div>
                 </div>
@@ -2578,9 +2505,9 @@ function render() {
         window.TbaBrandMark?.setBusy(false);
     }
 
-    const activityEl = document.querySelector('.stock-count-mmx-activity');
-    if (activityEl) {
-        activityEl.scrollTop = activityEl.scrollHeight;
+    const progressScroll = document.querySelector('.stock-count-mmx-progress-scroll');
+    if (progressScroll) {
+        progressScroll.scrollTop = progressScroll.scrollHeight;
     }
 
     if (viewMode === 'entry' || viewMode === 'recount') {

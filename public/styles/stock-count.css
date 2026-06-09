@@ -878,58 +878,12 @@ body.stock-count-page {
     color: color-mix(in srgb, var(--charcoal) 70%, var(--blank));
 }
 
-/* Page scroll — dashboard.css locks overflow on html/body/#app (mobile + desktop) */
-html.stock-count-page {
-    overflow-x: hidden;
-    overflow-y: auto;
-    height: 100%;
-    -webkit-overflow-scrolling: touch;
-}
-
-body.stock-count-page {
-    height: auto;
-    min-height: 100%;
-    overflow: visible;
-}
-
+/* Page scroll via html.page-scroll + page-scroll.css */
 body.stock-count-page #app {
-    height: auto;
-    min-height: 100%;
-    overflow: visible;
+    padding: 0;
 }
 
-/* Desktop — auto-hide scrollbar while scrolling */
 @media (min-width: 901px) {
-    html.stock-count-page {
-        scrollbar-width: thin;
-        scrollbar-color: transparent transparent;
-    }
-
-    html.stock-count-page:hover,
-    html.stock-count-page.stock-count-scroll-active {
-        scrollbar-color: color-mix(in srgb, var(--charcoal) 32%, transparent) transparent;
-    }
-
-    html.stock-count-page::-webkit-scrollbar {
-        width: 10px;
-    }
-
-    html.stock-count-page::-webkit-scrollbar-track {
-        background: transparent;
-    }
-
-    html.stock-count-page::-webkit-scrollbar-thumb {
-        background-color: transparent;
-        border-radius: 999px;
-        border: 2px solid transparent;
-        background-clip: padding-box;
-    }
-
-    html.stock-count-page:hover::-webkit-scrollbar-thumb,
-    html.stock-count-page.stock-count-scroll-active::-webkit-scrollbar-thumb {
-        background-color: color-mix(in srgb, var(--charcoal) 28%, transparent);
-    }
-
     .stock-count-panel {
         overflow: visible;
     }
@@ -1146,6 +1100,66 @@ body.stock-count-page #app {
         min-height: var(--sc-input-height);
         max-height: var(--sc-input-height);
         font-size: 1.05rem;
+    }
+}
+
+/* Phone landscape — compact rows (short viewport height) */
+@media (max-width: 900px) and (orientation: landscape) {
+    body.stock-count-page .stock-count {
+        padding-top: max(6px, env(safe-area-inset-top));
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+    }
+
+    body.stock-count-page .stock-count-header {
+        margin-bottom: 10px;
+    }
+
+    body.stock-count-page .stock-count-entry-cell,
+    body.stock-count-page .stock-count-entry-cell--variance {
+        --stock-count-gutter: 12px;
+        padding: 8px 12px;
+    }
+
+    body.stock-count-page .stock-count-entry-line {
+        --stock-count-field-height: 2.5rem;
+        grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+        column-gap: 8px;
+    }
+
+    body.stock-count-page .stock-count-item-box,
+    body.stock-count-page .stock-count-item-box--variance {
+        padding: 4px 10px;
+        font-size: 0.92rem;
+    }
+
+    body.stock-count-page .stock-count-input:not(.stock-count-table--connected .stock-count-input),
+    body.stock-count-page .stock-count-input--na,
+    body.stock-count-page .stock-count-value-box {
+        padding: 4px 8px;
+        font-size: 0.95rem;
+    }
+
+    body.stock-count-page .stock-count-table--connected:not(.stock-count-table--variances) {
+        --sc-slot-height: 2.2rem;
+        --sc-input-height: 1.85rem;
+    }
+
+    body.stock-count-page .stock-count-table--variances.stock-count-table--connected {
+        --sc-slot-height: 2.2rem;
+        --sc-input-height: 1.85rem;
+    }
+
+    body.stock-count-page .stock-count-grid-name {
+        font-size: 0.58rem;
+        padding: 2px 6px;
+    }
+
+    body.stock-count-page .stock-count-table--connected .stock-count-input {
+        font-size: 0.92rem;
+    }
+
+    body.stock-count-page .stock-count-unit-label {
+        font-size: 0.65rem;
     }
 }
 

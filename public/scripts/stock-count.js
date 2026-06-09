@@ -2546,38 +2546,6 @@ function bindEvents() {
     document.getElementById('sc-recount')?.addEventListener('click', () => void recountMmx());
 }
 
-let stockCountScrollHideTimer = null;
-
-function setupStockCountScrollbars() {
-    if (!window.matchMedia('(min-width: 901px)').matches) return;
-
-    const root = document.documentElement;
-    const reveal = () => root.classList.add('stock-count-scroll-active');
-    const scheduleHide = () => {
-        if (stockCountScrollHideTimer) clearTimeout(stockCountScrollHideTimer);
-        stockCountScrollHideTimer = setTimeout(() => {
-            root.classList.remove('stock-count-scroll-active');
-            stockCountScrollHideTimer = null;
-        }, 900);
-    };
-
-    window.addEventListener(
-        'scroll',
-        () => {
-            reveal();
-            scheduleHide();
-        },
-        { passive: true }
-    );
-
-    document.body.addEventListener('mouseenter', reveal);
-    document.body.addEventListener('mouseleave', () => {
-        if (!stockCountScrollHideTimer) {
-            root.classList.remove('stock-count-scroll-active');
-        }
-    });
-}
-
 async function dismissStaleMmxSessionOnLoad() {
     endMmxProcessing();
     viewMode = 'entry';
@@ -2598,7 +2566,6 @@ async function dismissStaleMmxSessionOnLoad() {
 async function init() {
     document.documentElement.classList.add('stock-count-page');
     document.body.classList.add('stock-count-page');
-    setupStockCountScrollbars();
     setupMmxPipelineVisibilityRecovery();
     if (!STORE_NUMBER || !VENDOR_SLUG) {
         app.textContent = 'Invalid stock count URL.';

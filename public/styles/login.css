@@ -41,7 +41,6 @@ body.login-body {
     font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
     background: var(--login-bg);
     color: var(--login-text);
-    overflow: hidden;
     overflow-x: clip;
     width: 100%;
     max-width: 100%;

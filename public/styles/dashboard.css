@@ -1212,11 +1212,19 @@ body.rotate-hint-active .dashboard {
    (no stacked footer / separate mobile grid; JS sets scale from viewport)
 ----------------------------------------------------------- */
 @media (max-width: 900px) {
-    html,
-    body {
+    html:not(.page-scroll),
+    html:not(.page-scroll) body {
         overflow: hidden;
         height: 100%;
         height: 100dvh;
+    }
+
+    html.page-scroll,
+    html.page-scroll body {
+        overflow-x: hidden;
+        overflow-y: auto;
+        height: auto;
+        min-height: 100dvh;
     }
 
     #app {
@@ -1230,6 +1238,12 @@ body.rotate-hint-active .dashboard {
         align-items: center;
         justify-content: flex-start;
         box-sizing: border-box;
+    }
+
+    html.page-scroll #app {
+        height: auto;
+        min-height: 100dvh;
+        overflow: visible;
     }
 
     .dashboard {
@@ -1383,7 +1397,8 @@ body.rotate-hint-active .dashboard {
         width: 100%;
     }
 
-    body.dashboard--portrait .pending-vendor-item--combined {
+    body.dashboard--portrait .pending-vendor-item--combined,
+    body.dashboard--mobile-landscape .pending-vendor-item--combined {
         display: block;
     }
 

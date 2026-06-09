@@ -1465,23 +1465,7 @@ html.mic-dark-mode .dfsc-step.is-done {
     color: #c4b5fd;
 }
 
-/* Page scroll — dashboard.css locks overflow on html/body/#app */
-html.dfsc-page {
-    overflow-x: hidden;
-    overflow-y: auto;
-    height: auto;
-    min-height: 100%;
-    -webkit-overflow-scrolling: touch;
-}
-
-body.dfsc-page {
-    overflow-x: hidden;
-    overflow-y: auto;
-    height: auto;
-    min-height: 100vh;
-    min-height: 100dvh;
-}
-
+/* Page scroll via html.page-scroll + page-scroll.css */
 body.dfsc-page #app {
     display: block;
     height: auto;

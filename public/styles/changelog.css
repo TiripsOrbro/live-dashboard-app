@@ -1,6 +1,5 @@
 .changelog-page .changelog-root {
     min-height: 100%;
-    overflow-y: auto;
 }
 
 .changelog-page .changelog-card {

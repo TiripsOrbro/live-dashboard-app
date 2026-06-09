@@ -2,7 +2,7 @@
 
 Plain-English summary of what changed in each release — written for store managers and admins, not developers.
 
-**Current live branch:** `Version-0.3.3`
+**Current live branch:** `Version-0.3.4`
 
 ---
 
@@ -25,6 +25,21 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ---
 
 ## Release history
+
+### Version 0.3.4 — June 2026
+
+**Changed**
+
+- All pages scroll when content overflows, with **hidden scrollbars** (login, create-account, dashboards, stock count, DFSC, etc.).
+- Sales dashboard still **scales to fit** the screen; scroll only kicks in when content is taller than the viewport.
+- **Stock count** chip (“Stock count”) now appears in **mobile landscape** on the sales dashboard, not only portrait.
+- Stock count **landscape layout**: tighter item boxes and input spacing on phones held sideways.
+
+**What you need to do**
+
+- Hard refresh once (Ctrl+F5) after deploy.
+
+---
 
 ### Version 0.3.3 — June 2026
 

@@ -5,6 +5,7 @@ const { lookupKeysForMmx } = require('../itemCodes');
 const { enrichVariancesWithFilledItems } = require('../varianceCatalogMatch');
 const { getVendorCatalog } = require('../vendorCatalog');
 const { GOTO_OPTS } = require('./mmx-browser');
+const { refreshScrapePauseTimeout } = require('../mmxResourceGate');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'mmx-stock-count.json');
@@ -157,31 +158,87 @@ async function clickRadTab(page, tabLabel) {
     );
     if (!clicked) throw new Error(`MMX tab not found: ${tabLabel}`);
     log.info(`Opened MMX tab: ${clicked}`);
-    await Promise.all([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {}),
-        page.waitForTimeout(500),
-    ]);
-    await waitForCountGridInputs(page);
+    await waitForLocationTabSettled(page, want);
     return clicked;
 }
 
-async function waitForCountGridInputs(page, timeoutMs = 25000) {
-    await page
+async function waitForLocationTabSettled(page, tabLabel, options = {}) {
+    const timeoutMs = options.timeoutMs ?? 15000;
+    const minInputs = options.minInputs ?? 1;
+    const want = String(tabLabel || '').trim().toLowerCase();
+    const start = Date.now();
+
+    await Promise.race([
+        page
+            .waitForResponse(
+                (res) => /stockcount|inventorycount/i.test(res.url() || '') && res.status() < 400,
+                { timeout: 8000 }
+            )
+            .catch(() => null),
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => null),
+    ]);
+
+    if (want) {
+        await page
+            .waitForFunction(
+                (label) => {
+                    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    for (const el of document.querySelectorAll(
+                        '.rtsLI.rtsSelected .rtsTxt, .rtsLI.rtsSelected .rtsLink, .rtsLI.rtsSelected'
+                    )) {
+                        const t = norm(el.textContent);
+                        if (t === label || t.startsWith(label) || label.startsWith(t)) return true;
+                    }
+                    return false;
+                },
+                { timeout: 5000, polling: 100 },
+                want
+            )
+            .catch(() => {});
+    }
+
+    const ready = await page
         .waitForFunction(
-            () => {
+            (min) => {
+                let n = 0;
                 for (const inp of document.querySelectorAll('input[id*="tbOH"]')) {
                     if (inp.disabled || inp.readOnly) continue;
                     const style = window.getComputedStyle(inp);
                     if (style.display === 'none' || style.visibility === 'hidden') continue;
                     const rect = inp.getBoundingClientRect();
-                    if (rect.width > 0 && rect.height > 0) return true;
+                    if (rect.width > 0 && rect.height > 0) n += 1;
                 }
-                return false;
+                return n >= min;
             },
-            { timeout: timeoutMs }
+            { timeout: timeoutMs, polling: 100 },
+            minInputs
         )
-        .catch(() => {});
-    await page.waitForTimeout(600);
+        .then(() => true)
+        .catch(() => false);
+
+    const inputCount = await page.evaluate(() => {
+        let n = 0;
+        for (const inp of document.querySelectorAll('input[id*="tbOH"]')) {
+            if (inp.disabled || inp.readOnly) continue;
+            const style = window.getComputedStyle(inp);
+            if (style.display === 'none' || style.visibility === 'hidden') continue;
+            const rect = inp.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) n += 1;
+        }
+        return n;
+    });
+
+    const elapsed = Date.now() - start;
+    if (ready) {
+        log.info(`Count grid ready — ${inputCount} input(s) in ${elapsed}ms (tab: ${want || tabLabel})`);
+    } else {
+        log.info(`Count grid not ready after ${elapsed}ms (tab: ${want || tabLabel}, saw ${inputCount} input(s))`);
+    }
+    return ready;
+}
+
+async function waitForCountGridInputs(page, timeoutMs = 15000) {
+    return waitForLocationTabSettled(page, '', { timeoutMs, minInputs: 1 });
 }
 
 const MAIN_STOCK_COUNT_TAB_ALIASES = {
@@ -1146,7 +1203,11 @@ async function fillLocationTab(page, cfg, catalog, locationName, itemsAtLocation
     const mmxTab = mmxTabForLocation(cfg, locationName);
     await clickRadTab(page, mmxTab.toLowerCase());
 
-    const grid = await scrapeCountGrid(page);
+    let grid = await scrapeCountGrid(page);
+    if (!grid.length) {
+        await waitForLocationTabSettled(page, mmxTab.toLowerCase(), { timeoutMs: 8000, minInputs: 1 });
+        grid = await scrapeCountGrid(page);
+    }
     const byCode = buildGridLookup(grid);
     let filled = 0;
     const missed = [];
@@ -1214,6 +1275,7 @@ async function fillLocationTab(page, cfg, catalog, locationName, itemsAtLocation
     }
 
     await clickEnabledSave(page, cfg);
+    refreshScrapePauseTimeout();
     return { locationName, mmxTab, filled, missed };
 }
 

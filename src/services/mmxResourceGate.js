@@ -44,6 +44,12 @@ function schedulePauseTimeout() {
     }, SCRAPE_PAUSE_MAX_MS);
 }
 
+/** Extend scrape-pause window while stock count / orders are still making progress. */
+function refreshScrapePauseTimeout() {
+    if (holdCount <= 0) return;
+    schedulePauseTimeout();
+}
+
 function acquireMmxResource(reason) {
     const wasIdle = holdCount === 0;
     holdCount++;
@@ -81,6 +87,7 @@ function waitUntilMmxResourceIdle() {
 module.exports = {
     acquireMmxResource,
     releaseMmxResource,
+    refreshScrapePauseTimeout,
     isMmxResourceBusy,
     waitUntilMmxResourceIdle,
     registerMmxAbortHandler,

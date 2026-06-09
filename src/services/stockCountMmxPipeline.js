@@ -26,53 +26,35 @@ const { buildOrderLinesByVendorId } = require('./buildToOrderLines');
 const { runVendorOrderEntry } = require('./mmxReports/pipeline-enter-vendor-orders');
 const { createSession, getSession, destroySession, destroySessionsForStore } = require('./mmxCountSession');
 require('./salesScrapeAbort');
-const { acquireMmxResource, releaseMmxResource, abortCompetingMmxWork } = require('./mmxResourceGate');
+const {
+    acquireMmxResource,
+    releaseMmxResource,
+    refreshScrapePauseTimeout,
+    abortCompetingMmxWork,
+} = require('./mmxResourceGate');
 const { setCheckpoint, getCheckpoint, clearCheckpoint } = require('./mmxPipelineCheckpoint');
 
-const STOCK_COUNT_WORK_MAX_MS = Number(process.env.MMX_STOCK_COUNT_MAX_MS || 5 * 60 * 1000);
-const staleWorkTimersByStore = new Map();
-
-function clearStaleStockCountWork(storeNumber) {
-    const key = String(storeNumber);
-    const timer = staleWorkTimersByStore.get(key);
-    if (timer) {
-        clearTimeout(timer);
-        staleWorkTimersByStore.delete(key);
-    }
+function touchStockCountWork() {
+    refreshScrapePauseTimeout();
 }
 
-function scheduleStaleStockCountWorkCleanup(storeNumber) {
-    clearStaleStockCountWork(storeNumber);
-    if (STOCK_COUNT_WORK_MAX_MS <= 0) return;
-    const key = String(storeNumber);
-    staleWorkTimersByStore.set(
-        key,
-        setTimeout(async () => {
-            staleWorkTimersByStore.delete(key);
-            const checkpoint = await getCheckpoint(storeNumber);
-            if (!checkpoint || checkpoint.stage === 'completed') return;
-            log.warn(
-                `Store ${storeNumber}: MMX stock count work exceeded ${Math.round(STOCK_COUNT_WORK_MAX_MS / 1000)}s — cancelling stale session`
-            );
-            await destroySessionsForStore(storeNumber, 'timed-out');
-            await clearCheckpoint(storeNumber);
-        }, STOCK_COUNT_WORK_MAX_MS)
-    );
+async function updateCheckpoint(storeNumber, patch) {
+    const checkpoint = await setCheckpoint(storeNumber, patch);
+    touchStockCountWork();
+    return checkpoint;
 }
 
 function beginStockCountMmxWork(reason, storeNumber) {
     abortCompetingMmxWork(reason);
     acquireMmxResource(reason);
-    if (storeNumber) scheduleStaleStockCountWorkCleanup(storeNumber);
+    if (storeNumber) touchStockCountWork();
 }
 
 function endStockCountMmxWork(storeNumber, reason) {
-    clearStaleStockCountWork(storeNumber);
     releaseMmxResource(reason);
 }
 
 async function discardStockCountMmxWork(storeNumber, reason = 'discarded') {
-    clearStaleStockCountWork(storeNumber);
     await destroySessionsForStore(storeNumber, reason);
     await clearCheckpoint(storeNumber);
 }
@@ -221,7 +203,7 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
         log.info(
             `Store ${storeNumber}: manual-only stock count — skipping Key Item Count; downloading ISE, SOH, and SOO, then filling scheduled orders from app counts`
         );
-        await setCheckpoint(storeNumber, {
+        await updateCheckpoint(storeNumber, {
             stage: 'downloading-reports',
             dateKey,
             vendorSlugs: toSend.map((row) => row.slug),
@@ -244,7 +226,6 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
         if (orderFailures) {
             log.warn(`Store ${storeNumber} scheduled order failures: ${orderFailures}`);
         }
-        clearStaleStockCountWork(storeNumber);
         await clearCheckpoint(storeNumber);
         return {
             success: true,
@@ -364,6 +345,7 @@ function reportsReadyForStore(storeNumber, reportsDir) {
 }
 
 async function ensureReportsForOrders(storeNumber, options = {}) {
+    touchStockCountWork();
     const { REPORTS_DIR } = require('./buildToCalculator');
     const reportsDir = options.reportsDir || REPORTS_DIR;
     const { ready, files, validation } = reportsReadyForStore(storeNumber, reportsDir);
@@ -632,7 +614,7 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
             return runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options);
         }
 
-        await setCheckpoint(storeNumber, {
+        await updateCheckpoint(storeNumber, {
             stage: 'preparing',
             dateKey,
             vendorSlugs: toSend.map((row) => row.slug),
@@ -672,7 +654,7 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
                 variances: stockCountResult.variances || [],
             });
             sessionStarted = true;
-            await setCheckpoint(storeNumber, {
+            await updateCheckpoint(storeNumber, {
                 stage: 'prepared',
                 dateKey,
                 sessionId: session.sessionId,
@@ -723,7 +705,7 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
         } catch (error) {
             await closeBrowserQuietly(browser, 'mmx count prepare failed');
             if (!sessionStarted) {
-                await setCheckpoint(storeNumber, {
+                await updateCheckpoint(storeNumber, {
                     stage: 'prepare-failed',
                     dateKey,
                     vendorSlugs: toSend.map((row) => row.slug),
@@ -807,7 +789,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
                     dateKey,
                     options
                 );
-                await setCheckpoint(storeNumber, {
+                await updateCheckpoint(storeNumber, {
                     stage: 'completed',
                     resumedFromCheckpoint: true,
                     dateKey,
@@ -853,7 +835,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
         let countAlreadyApplied = false;
 
         try {
-            await setCheckpoint(storeNumber, {
+            await updateCheckpoint(storeNumber, {
                 stage: 'applying',
                 dateKey,
                 sessionId,
@@ -869,7 +851,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
                 await markMmxSent(storeNumber, slug, dateKey);
             }
 
-            await setCheckpoint(storeNumber, {
+            await updateCheckpoint(storeNumber, {
                 stage: 'applied-orders-pending',
                 dateKey,
                 sessionId,
@@ -880,7 +862,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
 
             if (await shouldRunOrderPipeline(storeNumber, dateKey)) {
                 log.info(`Key Item Count applied for store ${storeNumber} — entering scheduled orders`);
-                await setCheckpoint(storeNumber, {
+                await updateCheckpoint(storeNumber, {
                     stage: 'filling-orders',
                     dateKey,
                     sessionId,
@@ -895,7 +877,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
                 if (orderFailures) {
                     log.warn(`Store ${storeNumber} scheduled order failures: ${orderFailures}`);
                 }
-                await setCheckpoint(storeNumber, {
+                await updateCheckpoint(storeNumber, {
                     stage: 'completed',
                     dateKey,
                     sessionId,
@@ -904,10 +886,9 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
                     lastError: orderFailures,
                 });
             }
-            clearStaleStockCountWork(storeNumber);
             await clearCheckpoint(storeNumber);
         } catch (error) {
-            await setCheckpoint(storeNumber, {
+            await updateCheckpoint(storeNumber, {
                 stage: appliedInMmx ? 'applied-orders-pending' : 'apply-failed',
                 dateKey,
                 sessionId,
@@ -940,7 +921,6 @@ async function applyStockCountSession(storeNumber, sessionId, options = {}) {
 }
 
 async function cancelStockCountSession(storeNumber, sessionId) {
-    clearStaleStockCountWork(storeNumber);
     let cancelled = false;
     if (sessionId) {
         const session = getSession(storeNumber, sessionId);

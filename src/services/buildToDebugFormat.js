@@ -73,7 +73,19 @@ function printBuildToDebug({
         }
 
         const days = line.buildToDays ?? '—';
-        console.log(`  Build-to: ${round4(line.avgDaily)} avg × ${days} days = ${round4(line.buildTo)} cartons`);
+        const usageTarget =
+            line.avgDaily != null && line.buildToDays != null
+                ? round4(line.avgDaily * line.buildToDays)
+                : null;
+        const buildToAdd =
+            usageTarget != null && line.buildTo != null
+                ? round4(line.buildTo - usageTarget)
+                : 0;
+        const buildToFormula =
+            buildToAdd > 0.0005
+                ? `${round4(line.avgDaily)} avg × ${days} days + ${buildToAdd} = ${round4(line.buildTo)} cartons`
+                : `${round4(line.avgDaily)} avg × ${days} days = ${round4(line.buildTo)} cartons`;
+        console.log(`  Build-to: ${buildToFormula}`);
         console.log(
             `  Stock on hand: ${round4(line.onHandCartons)} (${line.onHandSource || '—'})  |  on order: ${round4(line.onOrderCartons)}`
         );

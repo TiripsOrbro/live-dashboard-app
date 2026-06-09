@@ -179,11 +179,16 @@ function orderRoundingDisabled(options = {}) {
     return env === '1' || env === 'true' || env === 'yes';
 }
 
-/** Order qty from build-to − on-hand − on-order. Default: ceil up; testing: raw (4 dp). */
+/**
+ * Order qty from build-to − on-hand − on-order.
+ * Default: order whole cartons only when shortage is ≥ 1 (avoids ordering a full box for a 0.03-carton gap).
+ * Testing: raw (4 dp) via --no-order-rounding / ORDER_NO_ROUNDING.
+ */
 function finalizeOrderQty(value, options = {}) {
     const n = Number(value);
     if (!Number.isFinite(n) || n <= 0) return 0;
     if (orderRoundingDisabled(options)) return round4(n);
+    if (n < 1) return 0;
     return Math.ceil(n);
 }
 

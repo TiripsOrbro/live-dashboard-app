@@ -731,10 +731,26 @@ const PIPELINE_IN_PROGRESS_STAGES = new Set([
     'filling-orders',
 ]);
 
+const PIPELINE_ACTIVE_WORK_STAGES = new Set([
+    'preparing',
+    'applying',
+    'applied-orders-pending',
+    'downloading-reports',
+    'filling-orders',
+]);
+
+async function stockCountMmxOrdersComplete(storeNumber, dateKey = melbourneDateKey()) {
+    const submitted = await getSubmittedVendorSlugs(storeNumber, dateKey);
+    if (!submitted.length) return false;
+    const sent = await getMmxSentVendorSlugs(storeNumber, dateKey);
+    return submitted.every((slug) => sent.includes(slug));
+}
+
 async function getStockCountPipelineStatus(storeNumber) {
     const checkpoint = await getCheckpoint(storeNumber);
     const stage = checkpoint?.stage || 'idle';
     const sessionId = checkpoint?.sessionId || null;
+    const dateKey = checkpoint?.dateKey || melbourneDateKey();
     const payload = {
         success: true,
         storeNumber: String(storeNumber),
@@ -742,7 +758,7 @@ async function getStockCountPipelineStatus(storeNumber) {
         inProgress: PIPELINE_IN_PROGRESS_STAGES.has(stage),
         ordersComplete: stage === 'completed',
         lastError: checkpoint?.lastError || null,
-        dateKey: checkpoint?.dateKey || null,
+        dateKey,
         sessionId,
         updatedAt: checkpoint?.updatedAt || null,
         vendorsSent: checkpoint?.vendorSlugs || [],
@@ -759,7 +775,27 @@ async function getStockCountPipelineStatus(storeNumber) {
         }
     }
 
+    if (!payload.ordersComplete && (await stockCountMmxOrdersComplete(storeNumber, dateKey))) {
+        payload.ordersComplete = true;
+        payload.stage = 'completed';
+        payload.inProgress = false;
+    }
+
     return payload;
+}
+
+function isStockCountPipelineBusy(stage) {
+    return PIPELINE_ACTIVE_WORK_STAGES.has(stage);
+}
+
+async function recordStockCountPrepareFailure(storeNumber, error) {
+    const cp = await getCheckpoint(storeNumber);
+    if (!cp || cp.stage === 'completed' || cp.stage === 'prepare-failed') return;
+    await updateCheckpoint(storeNumber, {
+        stage: 'prepare-failed',
+        lastError: error?.message || String(error || 'Prepare failed'),
+        sessionId: null,
+    });
 }
 
 /**
@@ -949,6 +985,8 @@ module.exports = {
     sendStockCountToMmx,
     getStockCountSendPlan,
     getStockCountPipelineStatus,
+    isStockCountPipelineBusy,
+    recordStockCountPrepareFailure,
     runScheduledOrdersOnly,
     runStoreBuildToCycle,
     ensureReportsForOrders,

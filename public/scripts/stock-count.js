@@ -1095,16 +1095,34 @@ async function showPreparedVariancesFromStatus(status) {
     viewMode = 'variances';
 }
 
+function pipelineStageLabel(stage) {
+    switch (stage) {
+        case 'preparing':
+            return 'Opening Key Item Count in Macromatix…';
+        case 'prepared':
+            return 'Key Item Count ready — loading variances…';
+        case 'applying':
+            return 'Applying count in Macromatix…';
+        case 'downloading-reports':
+            return 'Downloading reports…';
+        case 'filling-orders':
+        case 'applied-orders-pending':
+            return 'Placing scheduled orders…';
+        default:
+            return 'Still sending to Macromatix…';
+    }
+}
+
 async function waitForPipelinePrepareComplete() {
     processing = true;
-    processingStageLabel = 'Still sending to Macromatix…';
+    processingStageLabel = 'Sending to Macromatix…';
     setStatus(
-        'Still sending to Macromatix — this can take a few minutes. You can leave this page; we will notify you when ready.',
+        'Sending to Macromatix — this can take several minutes on mobile. You can leave this page; we will notify you when ready.',
         ''
     );
     render();
 
-    for (let attempt = 0; attempt < 90; attempt++) {
+    for (let attempt = 0; attempt < 120; attempt++) {
         await sleep(5000);
         try {
             const { res: statusRes, data: status } = await fetchJson(
@@ -1112,7 +1130,15 @@ async function waitForPipelinePrepareComplete() {
             );
             if (!statusRes.ok) continue;
 
+            if (status.stage && status.stage !== 'idle') {
+                processingStageLabel = pipelineStageLabel(status.stage);
+                render();
+            }
+
             if (status.stage === 'prepare-failed' && status.lastError) {
+                throw new Error(status.lastError);
+            }
+            if (status.stage === 'apply-failed' && status.lastError) {
                 throw new Error(status.lastError);
             }
             if (status.ordersComplete) {
@@ -1122,21 +1148,41 @@ async function waitForPipelinePrepareComplete() {
             if (status.stage === 'prepared' && status.sessionId) {
                 return { prepared: true, status };
             }
-            if (status.stage === 'applying' || status.stage === 'filling-orders') {
-                const recovered = await waitForPipelineApplyComplete(status.sessionId || mmxSessionId);
-                if (recovered) return { autoApplied: true };
-            }
-            if (status.stage === 'preparing' || status.inProgress) {
+            if (
+                status.stage === 'preparing' ||
+                status.stage === 'applying' ||
+                status.stage === 'downloading-reports' ||
+                status.stage === 'filling-orders' ||
+                status.stage === 'applied-orders-pending' ||
+                status.inProgress
+            ) {
                 continue;
             }
         } catch (pollError) {
-            if (/prepare failed|apply failed/i.test(pollError.message) && attempt < 89) continue;
+            if (/prepare failed|apply failed/i.test(pollError.message)) throw pollError;
+            if (attempt < 119 && shouldRecoverGatewayError(pollError.message)) continue;
             throw pollError;
         }
     }
     throw new Error(
         'Timed out waiting for Macromatix stock count. Check pm2 logs — the count may still have completed.'
     );
+}
+
+async function acceptSendToMmx() {
+    try {
+        const { res, data } = await fetchJson(apiQuery('/api/stock-count/send-to-mmx'), { method: 'POST' });
+        if (!res.ok || !data.success) {
+            const detail = String(data.error || '').trim();
+            throw new Error(detail || `Send to Macromatix failed (HTTP ${res.status}).`);
+        }
+        return data;
+    } catch (error) {
+        if (shouldRecoverGatewayError(error.message)) {
+            return { accepted: true, inProgress: true };
+        }
+        throw error;
+    }
 }
 
 async function waitForPipelineApplyComplete(sessionId) {
@@ -1189,7 +1235,7 @@ function shouldRecoverApplyError(message) {
 }
 
 async function sendToMmx() {
-    if (!canShowSendToMmx() || saving) return;
+    if (!canShowSendToMmx() || saving || processing) return;
     let preparedAutoApplied = false;
 
     try {
@@ -1244,26 +1290,31 @@ async function sendToMmx() {
             render();
         }
 
-        const { res, data } = await fetchJson(apiQuery('/api/stock-count/send-to-mmx'), { method: 'POST' });
-        if (!res.ok || !data.success) {
-            const detail = String(data.error || '').trim();
-            throw new Error(
-                detail ||
-                    (res.ok
-                        ? 'Send to Macromatix failed.'
-                        : `Send to Macromatix failed (HTTP ${res.status}). Check pm2 logs dashboard on the server.`)
-            );
+        const accepted = await acceptSendToMmx();
+        if (accepted.accepted || accepted.inProgress) {
+            const outcome = await waitForPipelinePrepareComplete();
+            if (outcome?.autoApplied) {
+                preparedAutoApplied = true;
+                return;
+            }
+            if (outcome?.prepared) {
+                await showPreparedVariancesFromStatus(outcome.status);
+                processing = false;
+                window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
+                setStatus('Review variances below, then confirm to place scheduled orders.', '');
+                return;
+            }
         }
-        if (data.keyItemCountSkipped || data.autoApplied) {
+        if (accepted.keyItemCountSkipped || accepted.autoApplied) {
             preparedAutoApplied = true;
             processing = false;
             mmxSessionId = '';
             window.StockCountNotify?.notifyOrdersReady?.(STORE_NUMBER, VENDOR_SLUG, {
-                partial: Boolean(data.orderFailures),
+                partial: Boolean(accepted.orderFailures),
             });
-            if (data.orderFailures) {
-                setStatus(`Some scheduled orders could not be filled: ${data.orderFailures}`, 'error');
-            } else if (data.keyItemCountSkipped) {
+            if (accepted.orderFailures) {
+                setStatus(`Some scheduled orders could not be filled: ${accepted.orderFailures}`, 'error');
+            } else if (accepted.keyItemCountSkipped) {
                 setStatus(
                     'Manual counts sent — reports downloaded (ISE, on-hand, on-order); scheduled orders updated.',
                     'success'
@@ -1273,20 +1324,24 @@ async function sendToMmx() {
             }
             return;
         }
-        await showPreparedVariancesFromStatus(data);
-        processing = false;
-        window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
-        setStatus('Review variances below, then confirm to place scheduled orders.', '');
+        if (accepted.sessionId) {
+            await showPreparedVariancesFromStatus(accepted);
+            processing = false;
+            window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
+            setStatus('Review variances below, then confirm to place scheduled orders.', '');
+            return;
+        }
+        throw new Error('Send to Macromatix did not start. Try again.');
     } catch (error) {
         if (shouldRecoverGatewayError(error.message)) {
             try {
-                const prepared = await waitForPipelinePrepareComplete();
-                if (prepared?.autoApplied) {
+                const outcome = await waitForPipelinePrepareComplete();
+                if (outcome?.autoApplied) {
                     preparedAutoApplied = true;
                     return;
                 }
-                if (prepared?.prepared) {
-                    await showPreparedVariancesFromStatus(prepared.status);
+                if (outcome?.prepared) {
+                    await showPreparedVariancesFromStatus(outcome.status);
                     processing = false;
                     window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
                     setStatus('Review variances below, then confirm to place scheduled orders.', '');
@@ -1319,15 +1374,6 @@ async function sendToMmx() {
         }
     } finally {
         saving = false;
-        if (
-            !preparedAutoApplied &&
-            viewMode === 'variances' &&
-            mmxSessionId &&
-            mmxVariances.length === 0
-        ) {
-            await applyMmxCount();
-            return;
-        }
         if (!preparedAutoApplied && processing) {
             processing = false;
         }

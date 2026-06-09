@@ -93,6 +93,8 @@ const {
     runScheduledOrdersOnly,
     getStockCountSendPlan,
     getStockCountPipelineStatus,
+    isStockCountPipelineBusy,
+    recordStockCountPrepareFailure,
 } = require('./services/stockCountMmxPipeline');
 const {
     getDismissalPeriodKey,
@@ -2321,17 +2323,32 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
         const vendorSlug = stockCountVendorFromQuery(req);
         if (!store || !assertStoreAccess(req, res, store)) return;
 
+        const pipeline = await getStockCountPipelineStatus(store);
+        if (isStockCountPipelineBusy(pipeline.stage)) {
+            console.log(
+                `[StockCount] Send to MMX already in progress — store ${store} stage ${pipeline.stage}`
+            );
+            return res.json({
+                success: true,
+                accepted: true,
+                inProgress: true,
+                stage: pipeline.stage,
+                sessionId: pipeline.sessionId || null,
+            });
+        }
+
         console.log(`[StockCount] Send to MMX (prepare) — store ${store} vendor ${vendorSlug}`);
-        const result = await prepareStockCountForMmx(
-            store,
-            vendorSlug,
-            mmxAutomationOptions(req, store, {
-                pendingVendorLabels: pendingVendorLabelsForStockCount(req, store),
-            })
-        );
-        res.json({ success: true, ...result });
+        const mmxOpts = mmxAutomationOptions(req, store, {
+            pendingVendorLabels: pendingVendorLabelsForStockCount(req, store),
+        });
+        res.json({ success: true, accepted: true });
+
+        void prepareStockCountForMmx(store, vendorSlug, mmxOpts).catch(async (error) => {
+            console.error('API: Error preparing stock count for MMX:', error);
+            await recordStockCountPrepareFailure(store, error);
+        });
     } catch (error) {
-        console.error('API: Error preparing stock count for MMX:', error);
+        console.error('API: Error starting stock count for MMX:', error);
         const status = /No stock count draft|Submit at least one|not found|ready to send|Continue button/i.test(
             error.message
         )

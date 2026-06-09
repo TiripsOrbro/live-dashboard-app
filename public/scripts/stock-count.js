@@ -1869,15 +1869,20 @@ function setupStockCountScrollbars() {
     });
 }
 
-async function resumePreparedPipelineOnLoad() {
+async function dismissStaleMmxSessionOnLoad() {
+    viewMode = 'entry';
+    mmxSessionId = '';
+    mmxVariances = [];
+    mmxVendorSlugs = [];
+    window.StockCountNotify?.clearWatch?.(STORE_NUMBER);
     try {
-        const { res, data } = await fetchJson(apiQuery('/api/stock-count/pipeline-status'));
-        if (!res.ok || data.stage !== 'prepared' || !data.sessionId) return false;
-        await showPreparedVariancesFromStatus(data);
-        setStatus('Review variances below, then confirm to place scheduled orders.', '');
-        return true;
+        await fetchJson(apiQuery('/api/stock-count/send-to-mmx/recount'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
     } catch {
-        return false;
+        /* ignore — always start on the count entry tab */
     }
 }
 
@@ -1885,7 +1890,6 @@ async function init() {
     document.documentElement.classList.add('stock-count-page');
     document.body.classList.add('stock-count-page');
     setupStockCountScrollbars();
-    window.StockCountNotify?.initPipelineWatcher?.(STORE_NUMBER);
     if (!STORE_NUMBER || !VENDOR_SLUG) {
         app.textContent = 'Invalid stock count URL.';
         return;
@@ -1918,12 +1922,9 @@ async function init() {
                 })
             );
             draft = combinedVendorSlugs.length ? vendorDrafts[combinedVendorSlugs[0]] : null;
+            await dismissStaleMmxSessionOnLoad();
             await loadQueueStatus();
             document.title = `Stock Count — ${catalog.label}`;
-            if (await resumePreparedPipelineOnLoad()) {
-                render();
-                return;
-            }
             render();
             return;
         }
@@ -1938,12 +1939,9 @@ async function init() {
         if (!draftRes.ok || !draftData.success) throw new Error(draftData.error || 'Draft not found.');
         catalog = catData.catalog;
         draft = draftData;
+        await dismissStaleMmxSessionOnLoad();
         await loadQueueStatus();
         document.title = `Stock Count — ${catalog.label}`;
-        if (await resumePreparedPipelineOnLoad()) {
-            render();
-            return;
-        }
         render();
     } catch (error) {
         app.innerHTML = `<div class="stock-count"><p class="stock-count-status stock-count-status--error">${escapeHtml(error.message)}</p><p><a class="stock-count-back" href="${escapeHtml(dashboardPath())}">← Dashboard</a></p></div>`;

@@ -24,15 +24,59 @@ const {
 const { downloadReportsForStores } = require('./mmxReportDownloader');
 const { buildOrderLinesByVendorId } = require('./buildToOrderLines');
 const { runVendorOrderEntry } = require('./mmxReports/pipeline-enter-vendor-orders');
-const { createSession, getSession, destroySession } = require('./mmxCountSession');
+const { createSession, getSession, destroySession, destroySessionsForStore } = require('./mmxCountSession');
 require('./salesScrapeAbort');
 const { acquireMmxResource, releaseMmxResource, abortCompetingMmxWork } = require('./mmxResourceGate');
+const { setCheckpoint, getCheckpoint, clearCheckpoint } = require('./mmxPipelineCheckpoint');
 
-function beginStockCountMmxWork(reason) {
+const STOCK_COUNT_WORK_MAX_MS = Number(process.env.MMX_STOCK_COUNT_MAX_MS || 5 * 60 * 1000);
+const staleWorkTimersByStore = new Map();
+
+function clearStaleStockCountWork(storeNumber) {
+    const key = String(storeNumber);
+    const timer = staleWorkTimersByStore.get(key);
+    if (timer) {
+        clearTimeout(timer);
+        staleWorkTimersByStore.delete(key);
+    }
+}
+
+function scheduleStaleStockCountWorkCleanup(storeNumber) {
+    clearStaleStockCountWork(storeNumber);
+    if (STOCK_COUNT_WORK_MAX_MS <= 0) return;
+    const key = String(storeNumber);
+    staleWorkTimersByStore.set(
+        key,
+        setTimeout(async () => {
+            staleWorkTimersByStore.delete(key);
+            const checkpoint = await getCheckpoint(storeNumber);
+            if (!checkpoint || checkpoint.stage === 'completed') return;
+            log.warn(
+                `Store ${storeNumber}: MMX stock count work exceeded ${Math.round(STOCK_COUNT_WORK_MAX_MS / 1000)}s — cancelling stale session`
+            );
+            await destroySessionsForStore(storeNumber, 'timed-out');
+            await clearCheckpoint(storeNumber);
+        }, STOCK_COUNT_WORK_MAX_MS)
+    );
+}
+
+function beginStockCountMmxWork(reason, storeNumber) {
     abortCompetingMmxWork(reason);
     acquireMmxResource(reason);
+    if (storeNumber) scheduleStaleStockCountWorkCleanup(storeNumber);
 }
-const { setCheckpoint, getCheckpoint, clearCheckpoint } = require('./mmxPipelineCheckpoint');
+
+function endStockCountMmxWork(storeNumber, reason) {
+    clearStaleStockCountWork(storeNumber);
+    releaseMmxResource(reason);
+}
+
+async function discardStockCountMmxWork(storeNumber, reason = 'discarded') {
+    clearStaleStockCountWork(storeNumber);
+    await destroySessionsForStore(storeNumber, reason);
+    await clearCheckpoint(storeNumber);
+}
+
 const { runStoreOrdersCompleteCleanup } = require('./storeOrdersCompleteCleanup');
 const log = require('./mmxReports/util-logging');
 const runLockByStore = new Map();
@@ -169,7 +213,7 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
         await markMmxSent(storeNumber, row.slug, dateKey);
     }
 
-    beginStockCountMmxWork(`manual counts → orders (store ${storeNumber})`);
+    beginStockCountMmxWork(`manual counts → orders (store ${storeNumber})`, storeNumber);
     let browser;
     let page;
     try {
@@ -200,6 +244,7 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
         if (orderFailures) {
             log.warn(`Store ${storeNumber} scheduled order failures: ${orderFailures}`);
         }
+        clearStaleStockCountWork(storeNumber);
         await clearCheckpoint(storeNumber);
         return {
             success: true,
@@ -217,7 +262,7 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
         };
     } finally {
         await closeBrowserQuietly(browser, 'manual counts orders');
-        releaseMmxResource(`manual counts orders finished (store ${storeNumber})`);
+        endStockCountMmxWork(storeNumber, `manual counts orders finished (store ${storeNumber})`);
     }
 }
 
@@ -508,7 +553,7 @@ async function runOrdersAfterApply(storeNumber, dateKey, mmx = {}) {
 }
 
 async function resumeScheduledOrdersInNewBrowser(storeNumber, dateKey, options = {}) {
-    beginStockCountMmxWork(`resume scheduled orders (store ${storeNumber})`);
+    beginStockCountMmxWork(`resume scheduled orders (store ${storeNumber})`, storeNumber);
     let browser;
     let page;
     try {
@@ -518,7 +563,7 @@ async function resumeScheduledOrdersInNewBrowser(storeNumber, dateKey, options =
         return { orders, orderFailures };
     } finally {
         await closeBrowserQuietly(browser, 'resume scheduled orders');
-        releaseMmxResource(`resume scheduled orders finished (store ${storeNumber})`);
+        endStockCountMmxWork(storeNumber, `resume scheduled orders finished (store ${storeNumber})`);
     }
 }
 
@@ -533,7 +578,7 @@ function allVendorsMarkedMmxSent(vendorSlugs, sentSlugs) {
  */
 async function runScheduledOrdersOnly(storeNumber, options = {}) {
     return withStoreLock(storeNumber, async () => {
-        beginStockCountMmxWork(`scheduled orders (store ${storeNumber})`);
+        beginStockCountMmxWork(`scheduled orders (store ${storeNumber})`, storeNumber);
         const dateKey = options.dateKey || melbourneDateKey();
         let browser;
         let page;
@@ -566,7 +611,7 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
             };
         } finally {
             await closeBrowserQuietly(browser, 'scheduled orders only');
-            releaseMmxResource(`scheduled orders finished (store ${storeNumber})`);
+            endStockCountMmxWork(storeNumber, `scheduled orders finished (store ${storeNumber})`);
         }
     });
 }
@@ -581,6 +626,8 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
         const vendorEntries = await buildVendorEntries(storeNumber, toSend, dateKey);
         logStockCountMmxPlan(storeNumber, vendorEntries);
 
+        await discardStockCountMmxWork(storeNumber, 'replaced');
+
         if (!vendorEntriesNeedKeyItemCount(vendorEntries)) {
             return runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options);
         }
@@ -593,7 +640,7 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
             sessionId: null,
         });
 
-        beginStockCountMmxWork(`stock count prepare (store ${storeNumber})`);
+        beginStockCountMmxWork(`stock count prepare (store ${storeNumber})`, storeNumber);
         let sessionStarted = false;
 
         let browser;
@@ -687,7 +734,7 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
             throw error;
         } finally {
             if (!sessionStarted) {
-                releaseMmxResource(`stock count prepare ended without session (store ${storeNumber})`);
+                endStockCountMmxWork(storeNumber, `stock count prepare ended without session (store ${storeNumber})`);
             }
         }
     });
@@ -857,6 +904,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
                     lastError: orderFailures,
                 });
             }
+            clearStaleStockCountWork(storeNumber);
             await clearCheckpoint(storeNumber);
         } catch (error) {
             await setCheckpoint(storeNumber, {
@@ -892,10 +940,19 @@ async function applyStockCountSession(storeNumber, sessionId, options = {}) {
 }
 
 async function cancelStockCountSession(storeNumber, sessionId) {
-    const session = getSession(storeNumber, sessionId);
-    if (!session) return { success: true, cancelled: false };
-    await destroySession(session, 'recount');
-    return { success: true, cancelled: true };
+    clearStaleStockCountWork(storeNumber);
+    let cancelled = false;
+    if (sessionId) {
+        const session = getSession(storeNumber, sessionId);
+        if (session) {
+            await destroySession(session, 'cancelled');
+            cancelled = true;
+        }
+    } else {
+        cancelled = await destroySessionsForStore(storeNumber, 'cancelled');
+    }
+    await clearCheckpoint(storeNumber);
+    return { success: true, cancelled };
 }
 
 /** @deprecated Use prepareStockCountForMmx + applyStockCountSession */
@@ -908,6 +965,7 @@ module.exports = {
     prepareStockCountForMmx,
     applyStockCountSession,
     cancelStockCountSession,
+    discardStockCountMmxWork,
     sendStockCountToMmx,
     getStockCountSendPlan,
     getStockCountPipelineStatus,

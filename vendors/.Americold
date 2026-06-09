@@ -28,10 +28,10 @@
 10        | 37911  | TB CHEESE CHEDD ANGEL HAIR/SFINE SHRED 6x2KG   | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 10        | 37909  | TB SAUCE NACHO CHEESE 6X1.5KG                  | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 10        | 37013  | TB SAUCE PICO DE GALLO 12X500GM                | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
+10        | 100457 | SAUCE FIRE 10X1KG                              | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
+10        | 37870  | TB SAUCE CHILLI MILD 10X1KG                    | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 
 # --- Fridge oh:10 — ISE × 10 build-to; SOH/SOO; not on Key Item Count ---
-oh:10     | 100457 | SAUCE FIRE 10X1KG                              | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
-oh:10     | 37870  | TB SAUCE CHILLI MILD 10X1KG                    | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 oh:10     | 38088  | DESSERT CHOCETTES 2X2.5KG                      | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 oh:10     | 40003  | TB JALAPENO 6X2.3KG                            | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 oh:10     | 106191 | SAUCE CARAMEL MONIN 1.89L                      | Boxes | N/a     | N/a  | N/a     | Fridge  | N/a  | In Use |
@@ -51,14 +51,13 @@ oh:10     | 38894  | TB LID POSTMIX 1000EA                          | Boxes | N/
 oh:10     | 507876 | CUP 590ML FCB 1000PK                           | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 507877 | LID FCB DOME 590 ML                            | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 507516 | STRAW PAPER KFC 4000EA                         | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
-oh:10     | 505798 | TRAYS DRINKS 4 CUP 100EA                       | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 37989  | TB BAG TAKEAWAY BROWN MEDIUM 1000EA            | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 37991  | TB BAG TAKEAWAY BROWN LARGE 250EA              | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 39943A | TB BAG CHIP REGULAR 3000EA                     | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 39944A | TB BAG CHIPS LARGE / NACHO CHIPS REGULAR       | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 39942  | TB BAG CRUNCHWRAP 2000EA                       | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 40014  | TB BOX CANTINA 200EA                           | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
-oh:10     | 38892  | TB BIG BELL BOX 250EA                          | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
+oh:10     | 38892  | TB BIG BELL BOX 250EA                          | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    | 3811=+2
 oh:10     | 39744  | TB DIPPING CUP 60ML 1000EA                     | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 39746  | TB LID CLEAR 60ML DIPPING CUP 1000EA           | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 39748  | TB WOODEN FORK 1000EA                          | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
@@ -73,12 +72,14 @@ manual=2  | 100482 | GLOVE NITRILE LARGE10X100                      | Boxes | Pa
 manual=2  | 100483 | GLOVE NITRILE XLARGE 10X100                    | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 10
 manual=1  | 38076  | TOWEL PAPER HAND TORK WHITE 6 ROLLS            | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
 manual=1  | 38078  | TOILET PAPER SMARTONE 12 ROLLS                 | Boxes | Rolls   | N/a  | N/a     | N/a     | Dry  | N/a    | 12
-manual=0.1  | 38464  | FILTER SHEET EVOLUTION LOADED 100EA            | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
+manual=0.1| 38464  | FILTER SHEET EVOLUTION LOADED 100EA          | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
 manual=2  | 38542  | BIN LINER 240L H/DUTY 8X25 EA                  | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
 manual=1  | 504245 | SCOURERS SMALL GREEN MAXPAC 30                 | Boxes | Packs   | N/a  | N/a     | N/a     | Dry  | N/a    | 6
 manual=1  | 504372 | WIPING CLOTH BLUE 350EA                        | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
 manual=1  | 505796 | WIPING CLOTH YELLOW                            | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
 manual=0.2| 505253 | TB BAG MULTIPURPOSE 5000EA                     | Boxes | N/a     | N/a  | N/a     | N/a     | Dry  | N/a    |
+manual=0.01| 505798 | TRAYS DRINKS 4 CUP 100EA                       | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
+
 
 ignore    | 38686  | TOWEL PAPER BLUE AUTOMATIC CENTREFEED 6 ROLLS  | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |
 ignore    | 106431 | 260 x 260mm Baking Paper Golden Silidor        | Boxes | N/a     | N/a  | N/a     | N/a     | N/a    | N/a  |

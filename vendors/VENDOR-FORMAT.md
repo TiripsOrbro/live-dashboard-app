@@ -68,6 +68,8 @@ Many items never appear on **stock-on-hand** or **stock-on-order** exports — t
 
 Optional trailing number after locations = **inner units per carton** (e.g. `| Carryover | 10` → 10 packs per carton). Stock count can enter cartons and packs/rolls; order qty uses the combined carton equivalent (e.g. 1 carton + 5 packs with `/10` → 1.5).
 
+Optional **per-store build-to** token after that (see section below): `3811=+2`, `3811=10+2`, etc.
+
 Optional **order routing** tokens (not stock-count tabs):
 
 | Token | Meaning |
@@ -121,21 +123,21 @@ Do **not** add lines where Other equals Canonical (e.g. `| 40303 | 40303`) — t
 
 ## Per-store build-to overrides (optional)
 
-When one store needs different build-to days or extra cartons on top of the shared vendor catalog, add an entry in `config/build-to-store-overrides.json` (copy from `config/build-to-store-overrides.example.json`):
+When one store needs different build-to on a shared line, add a trailing token after locations / inner pack size:
 
-```json
-{
-  "stores": {
-    "3811": {
-      "items": {
-        "38892": { "buildToDays": 10, "buildToAdd": 2 }
-      }
-    }
-  }
-}
+| Token | Meaning |
+|--------|---------|
+| `3811=+2` | Extra cartons on top of this line’s build-to (e.g. `oh:10` stays 10-day, store 3811 adds +2) |
+| `3811=10+2` | That store only: 10-day × ISE average **plus** 2 cartons |
+| `3811=12` | That store only: 12-day build-to (no extra add) |
+
+Example (3811 only wants two extra Big Bell cartons):
+
+```text
+oh:10 | 38892 | TB BIG BELL BOX 250EA | Boxes | N/a | Each | N/a | N/a | Dry | N/a | 3811=+2
 ```
 
-Overrides merge onto the catalog rule for that item code only at that store — other stores keep the `vendors/.VendorName` line unchanged.
+Other stores keep the normal `oh:10` rule from the same line.
 
 Same `itemCode` on multiple tabs (e.g. beef on Freezer and Fridge): use **one catalog line** with `| Freezer | Fridge | In Use`, not two lines with the same code.
 

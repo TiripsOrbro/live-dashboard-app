@@ -1,41 +1,33 @@
-const fs = require('fs');
-const path = require('path');
 const { normalizeItemCode } = require('./reportReader');
+const { listConfiguredVendors, getVendorCatalog } = require('./vendorCatalog');
+const { lookupKeysForMmx, mmxCodeForOrderCode } = require('./itemCodes');
 
-const OVERRIDE_FILE =
-    process.env.BUILD_TO_STORE_OVERRIDES_FILE ||
-    path.join(__dirname, '..', '..', 'config', 'build-to-store-overrides.json');
-
-let cache = null;
-
-function loadOverridesFile() {
-    if (cache) return cache;
-    try {
-        const raw = fs.readFileSync(OVERRIDE_FILE, 'utf8');
-        const parsed = JSON.parse(raw);
-        cache = parsed && typeof parsed === 'object' ? parsed : { stores: {} };
-    } catch (error) {
-        if (error.code !== 'ENOENT') {
-            console.warn('[BuildTo] Failed to read store overrides:', error.message);
-        }
-        cache = { stores: {} };
+function registerOverrideKeys(map, itemCode, rule) {
+    const raw = normalizeItemCode(itemCode);
+    if (!raw || !rule) return;
+    const mmx = mmxCodeForOrderCode(raw) || raw;
+    const keys = new Set([raw, ...lookupKeysForMmx(mmx)]);
+    for (const key of keys) {
+        if (key) map.set(key, rule);
     }
-    return cache;
 }
 
-/** @returns {Map<string, object>} normalized item code → override rule */
+/** Per-store build-to patches from trailing tokens on vendor catalog lines (e.g. 3811=+2). */
 function buildToOverridesForStore(storeNumber) {
     const key = String(storeNumber || '').trim();
-    const items = loadOverridesFile().stores?.[key]?.items;
     const map = new Map();
-    if (!items || typeof items !== 'object') return map;
-    for (const [code, rule] of Object.entries(items)) {
-        if (!rule || typeof rule !== 'object') continue;
-        const norm = normalizeItemCode(code);
-        if (!norm) continue;
-        const { _note, ...patch } = rule;
-        map.set(norm, patch);
+    if (!key) return map;
+
+    for (const vendor of listConfiguredVendors()) {
+        const catalog = getVendorCatalog(vendor.slug);
+        if (!catalog?.items?.length) continue;
+        for (const item of catalog.items) {
+            const patch = item.storeBuildTo?.[key];
+            if (!patch || !item.itemCode) continue;
+            registerOverrideKeys(map, item.itemCode, patch);
+        }
     }
+
     return map;
 }
 
@@ -46,7 +38,6 @@ function mergeBuildToRules(baseRule, override) {
 }
 
 module.exports = {
-    OVERRIDE_FILE,
     buildToOverridesForStore,
     mergeBuildToRules,
 };

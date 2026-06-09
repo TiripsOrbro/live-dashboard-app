@@ -297,6 +297,38 @@ function sectionToMmxOrderClass(sectionName) {
     return 'FRZ';
 }
 
+/** Trailing token: 3811=+2 | 3811=10+2 | 3811=12 — per-store build-to tweak on this line. */
+function parseStoreBuildToHint(part) {
+    const raw = String(part || '').trim();
+    const m = raw.match(/^(\d{4})=(.+)$/);
+    if (!m) return null;
+    const store = m[1];
+    const expr = m[2].trim();
+
+    const daysPlus = expr.match(/^(\d{1,2})\+([\d.]+)$/);
+    if (daysPlus) {
+        const days = Number(daysPlus[1]);
+        const add = Number(daysPlus[2]);
+        if (days >= 1 && days <= 31 && Number.isFinite(add) && add >= 0) {
+            return { store, buildToDays: days, buildToAdd: add };
+        }
+        return null;
+    }
+
+    if (/^\+/.test(expr)) {
+        const add = Number(expr.slice(1));
+        if (Number.isFinite(add) && add >= 0) return { store, buildToAdd: add };
+        return null;
+    }
+
+    if (/^\d{1,2}$/.test(expr)) {
+        const days = Number(expr);
+        if (days >= 1 && days <= 31) return { store, buildToDays: days };
+    }
+
+    return null;
+}
+
 /** Optional trailing location token: order:FRG | order:DRY | order:FRZ | no-order */
 function parseLocationPartHints(part) {
     const raw = String(part || '').trim();
@@ -401,11 +433,18 @@ function parseCatalogText(text, def) {
 
         let innerPerCarton = null;
         const locNames = [];
+        const storeBuildTo = {};
         let mmxOrderClassOverride = '';
         let skipVendorOrder = false;
         for (const part of locationParts) {
             if (/^\d+(\.\d+)?$/.test(part)) {
                 innerPerCarton = Number(part);
+                continue;
+            }
+            const storeHint = parseStoreBuildToHint(part);
+            if (storeHint) {
+                const { store, ...rule } = storeHint;
+                storeBuildTo[store] = { ...(storeBuildTo[store] || {}), ...rule };
                 continue;
             }
             const hint = parseLocationPartHints(part);
@@ -438,6 +477,7 @@ function parseCatalogText(text, def) {
             buildToAdd: buildToManual && !buildToOrderManual ? 0 : buildToAdd,
             buildToFixed:
                 buildToFixed != null && Number.isFinite(buildToFixed) ? buildToFixed : null,
+            storeBuildTo: Object.keys(storeBuildTo).length ? storeBuildTo : undefined,
         });
     }
 
@@ -620,5 +660,6 @@ module.exports = {
     normalizeUnitSlots,
     buildCatalogBuildToIndex,
     parseBuildToPrefix,
+    parseStoreBuildToHint,
     UNIT_SLOTS,
 };

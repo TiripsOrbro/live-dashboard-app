@@ -103,7 +103,7 @@ async function waitForReportFormatControls(page, timeoutMs = 20000) {
         .catch(() => {});
 }
 
-async function waitForScmReportList(page, timeoutMs = 25000) {
+async function waitForScmReportList(page, timeoutMs = Number(process.env.MMX_REPORT_LIST_WAIT_MS || 8000)) {
     await page
         .waitForFunction(
             () => {

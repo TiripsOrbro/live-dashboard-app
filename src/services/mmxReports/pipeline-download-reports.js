@@ -102,6 +102,11 @@ async function downloadSupplyChainReport(page, report, settings) {
     log.info(`Downloading: ${report.label || report.id} (${report.reportName})${scope}`);
     await runSupplyChainReport(page, report, settings);
 
+    if (typeof settings.onReportStep === 'function') {
+        const reportLabel = report.label || report.reportName || report.id || 'report';
+        await settings.onReportStep(`${reportLabel}: waiting for file download…`);
+    }
+
     const downloaded = await waitForReportDownload(
         getReportDownloadDir(settings),
         settings.downloadWaitMs,

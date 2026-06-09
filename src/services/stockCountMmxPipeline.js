@@ -550,6 +550,20 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
         );
 
         const orderPack = await buildOrderLinesByVendorId(storeNumber, buildToOpts);
+        const dryManual = (orderPack.byVendorId['americold-dry']?.buildToEntries || []).filter(
+            (e) => e.buildToSource === 'count-manual'
+        );
+        if (dryManual.length) {
+            log.info(
+                `Store ${storeNumber} manual= dry orders: ${dryManual
+                    .map((e) => `${e.catalogItemCode || e.iseItemCode}=${e.orderQty}`)
+                    .join(', ')}`
+            );
+        } else {
+            log.warn(
+                `Store ${storeNumber}: no manual= dry order lines — check stock count draft for ${dateKey}`
+            );
+        }
 
         if (options.dryRun) {
             cycleSucceeded = true;

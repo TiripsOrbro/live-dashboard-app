@@ -5,6 +5,8 @@ const {
     loadManualCountsForStore,
     manualCountToCartons,
     finalizeOrderQty,
+    finalizeManualParOrderQty,
+    findManualCountEntry,
     orderRoundingDisabled,
     ensureBuildToReportContext,
     onHandCartonsForCatalogItem,
@@ -125,7 +127,7 @@ async function buildOrderManualEntriesFromCounts(
         const code = normalizeItemCode(item.itemCode);
         if (!code) continue;
 
-        const countEntry = counts.get(code);
+        const countEntry = findManualCountEntry(counts, item);
         const hasBuildToRule = catalogItemHasBuildToRule(item);
         let buildTo;
         let onHandCartons = 0;
@@ -138,16 +140,23 @@ async function buildOrderManualEntriesFromCounts(
             // manual= dry supplies: always build-to − stock count (never SOH).
             // order= (e.g. oil): SOH when reports are available after count apply.
             if (item.buildToManual) {
-                if (countEntry) {
-                    onHandCartons = manualCountToCartons({ columns: countEntry.columns }, item, 1);
-                }
+                if (!countEntry) continue;
+                onHandCartons = manualCountToCartons(
+                    { columns: countEntry.columns },
+                    countEntry.catalogItem || item,
+                    1
+                );
             } else if (options.preferReportOnHand && reportCtx) {
                 const fromReport = onHandCartonsForCatalogItem(code, item, reportCtx);
                 if (Number.isFinite(fromReport)) {
                     onHandCartons = fromReport;
                 }
             } else if (countEntry) {
-                onHandCartons = manualCountToCartons({ columns: countEntry.columns }, item, 1);
+                onHandCartons = manualCountToCartons(
+                    { columns: countEntry.columns },
+                    countEntry.catalogItem || item,
+                    1
+                );
             }
         } else if (
             hasUncountedDefault &&
@@ -164,7 +173,10 @@ async function buildOrderManualEntriesFromCounts(
             item.buildToOrderManual && !item.buildToManual && reportCtx
                 ? onOrderCartonsForCatalogItem(code, item, reportCtx)
                 : 0;
-        const orderQty = finalizeOrderQty(buildTo - onHandCartons - onOrderCartons, options);
+        const rawOrder = buildTo - onHandCartons - onOrderCartons;
+        const orderQty = item.buildToManual
+            ? finalizeManualParOrderQty(rawOrder, options)
+            : finalizeOrderQty(rawOrder, options);
         if (orderQty <= 0 && !countEntry) continue;
 
         entries.push({

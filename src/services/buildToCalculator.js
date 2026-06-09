@@ -192,6 +192,14 @@ function finalizeOrderQty(value, options = {}) {
     return Math.round(n);
 }
 
+/** manual= par lines: any positive shortage orders at least one carton. */
+function finalizeManualParOrderQty(value, options = {}) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    if (orderRoundingDisabled(options)) return round4(n);
+    return Math.ceil(n);
+}
+
 async function loadManualCountsForStore(storeNumber, dateKey = melbourneDateKey()) {
     const manual = new Map();
     const byVendor = countedItemCodesByVendor();
@@ -204,24 +212,50 @@ async function loadManualCountsForStore(storeNumber, dateKey = melbourneDateKey(
             if (!code) continue;
             const hasCount = Object.values(item.columns || {}).some((v) => num(v) > 0);
             if (!hasCount) continue;
-            const catalogItem = catalog.items.find((i) => normalizeItemCode(i.itemCode) === code);
+            const itemKey = String(item.itemKey || '').trim();
+            const catalogItem = catalog.items.find(
+                (i) =>
+                    normalizeItemCode(i.itemCode) === code ||
+                    (itemKey && i.key === itemKey)
+            );
             if (!catalogItem) continue;
             const entry = {
                 itemCode: code,
+                itemKey: item.itemKey || code,
                 itemName: item.itemName,
                 vendorSlug: slug,
                 columns: { ...item.columns },
                 catalogItem,
             };
-            manual.set(code, entry);
-            const mmxCode = mmxCodeForOrderCode(code);
-            if (mmxCode && mmxCode !== code) {
-                manual.set(mmxCode, { ...entry, itemCode: mmxCode });
+            const indexKeys = new Set([code, item.itemKey, catalogItem.key].filter(Boolean));
+            for (const alias of allLookupKeys(code)) {
+                if (alias) indexKeys.add(normalizeItemCode(alias));
+            }
+            for (const key of indexKeys) {
+                const normalized = normalizeItemCode(key) || String(key).trim();
+                if (normalized) manual.set(normalized, entry);
             }
         }
     }
 
     return manual;
+}
+
+/** Stock-count row for a catalog line (code, item key, and .item-codes aliases). */
+function findManualCountEntry(counts, item) {
+    if (!counts || !item) return null;
+    const keys = new Set();
+    const code = normalizeItemCode(item.itemCode);
+    if (code) keys.add(code);
+    if (item.key) keys.add(String(item.key).trim());
+    for (const alias of allLookupKeys(code)) {
+        if (alias) keys.add(normalizeItemCode(alias));
+    }
+    for (const key of keys) {
+        const hit = counts.get(key);
+        if (hit) return hit;
+    }
+    return null;
 }
 
 /**
@@ -527,6 +561,8 @@ function filterAmericoldOrderLines(result) {
 module.exports = {
     calculateBuildToOrders,
     finalizeOrderQty,
+    finalizeManualParOrderQty,
+    findManualCountEntry,
     orderRoundingDisabled,
     filterAmericoldOrderLines,
     loadManualCountsForStore,

@@ -22,6 +22,7 @@ const collapsedQuestionGroups = new Set();
 let landingView = 'start';
 let inspectionHistory = [];
 let historyDetailSession = null;
+let historyDetailReturnTo = 'history';
 let blue2Unsubscribe = null;
 let completionGuideActive = false;
 const dfscReminderTimeouts = new Map();
@@ -844,6 +845,10 @@ function blue2Connected() {
     return Boolean(blue2Supported() && window.DfscBlue2.getState().connected);
 }
 
+function blue2Connecting() {
+    return Boolean(blue2Supported() && window.DfscBlue2.getState().connecting);
+}
+
 function showCaptureTempButton(question) {
     if (!blue2Supported()) return false;
     if (question?.id === 'init_prepThermoTemp') return false;
@@ -853,12 +858,14 @@ function showCaptureTempButton(question) {
 function renderCaptureTempButton(questionId, { locked = false, disabled = false } = {}) {
     if (locked || !blue2Supported()) return '';
     const fieldDisabled = disabled;
-    const connected = blue2Connected();
-    const isDisabled = fieldDisabled || !connected;
-    const title = !fieldDisabled && !connected ? 'Connect the Bluetooth Thermometer first' : '';
+    const title = fieldDisabled
+        ? ''
+        : blue2Connected()
+          ? 'Capture when the reading stabilizes'
+          : 'Connects to the Bluetooth thermometer, then captures when stable';
     return `<button type="button" class="dfsc-capture-temp" data-blue2-qid="${escapeHtml(questionId)}"${
         fieldDisabled ? ' data-blue2-field-disabled="true"' : ''
-    }${isDisabled ? ' disabled' : ''}${title ? ` title="${escapeHtml(title)}"` : ''}>Capture Temp.</button>`;
+    }${fieldDisabled ? ' disabled' : ''}${title ? ` title="${escapeHtml(title)}"` : ''}>Capture temperature</button>`;
 }
 
 function tempInputHtml(questionId, { value = '', disabled = false, qtype = 'temp', placeholder = '' } = {}) {
@@ -878,19 +885,28 @@ function scrollDfscSectionToTop() {
 
 function renderBlue2Bar() {
     if (!blue2Supported()) {
-        return `<div class="dfsc-blue2-bar dfsc-blue2-bar--unsupported">Bluetooth Thermometer auto-read works in Chrome or Edge on a Bluetooth-capable tablet or PC.</div>`;
+        const reason =
+            window.DfscBlue2?.getSupportBlockReason?.() ||
+            'Bluetooth Thermometer auto-read works in Chrome or Edge on a Bluetooth-capable tablet or PC.';
+        return `<div class="dfsc-blue2-bar dfsc-blue2-bar--unsupported">${escapeHtml(reason)}</div>`;
     }
     const state = window.DfscBlue2.getState();
     const reading =
         state.connected && state.lastReading?.celsius != null ? `${state.lastReading.celsius}°C` : '';
+    const dotClass = state.connected ? 'is-connected' : state.connecting ? 'is-connecting' : '';
+    const statusLabel = state.connected
+        ? state.deviceName || 'Bluetooth thermometer connected'
+        : state.connecting
+          ? 'Connecting…'
+          : 'Bluetooth thermometer not connected';
     return `
         <div class="dfsc-blue2-bar" id="dfsc-blue2-bar">
             <div class="dfsc-blue2-status">
-                <span class="dfsc-blue2-dot ${state.connected ? 'is-connected' : ''}" aria-hidden="true"></span>
-                <span id="dfsc-blue2-label">${escapeHtml(state.connected ? state.deviceName || 'Bluetooth Thermometer connected' : 'Bluetooth Thermometer not connected')}</span>
+                <span class="dfsc-blue2-dot ${dotClass}" aria-hidden="true"></span>
+                <span id="dfsc-blue2-label">${escapeHtml(statusLabel)}</span>
                 <span class="dfsc-blue2-reading" id="dfsc-blue2-reading">${escapeHtml(reading)}</span>
             </div>
-            <button type="button" class="dfsc-btn dfsc-btn-secondary dfsc-btn-sm" id="dfsc-blue2-connect-btn">${state.connected ? 'Disconnect' : 'Connect Bluetooth Thermometer'}</button>
+            <button type="button" class="dfsc-btn dfsc-btn-secondary dfsc-btn-sm" id="dfsc-blue2-connect-btn" ${state.connecting ? 'disabled' : ''}>${state.connected ? 'Disconnect' : 'Connect'}</button>
         </div>`;
 }
 
@@ -898,30 +914,44 @@ function updateBlue2Bar() {
     const label = document.getElementById('dfsc-blue2-label');
     if (!label) return;
     const state = window.DfscBlue2.getState();
-    label.textContent = state.connected ? state.deviceName || 'Bluetooth Thermometer connected' : 'Bluetooth Thermometer not connected';
+    label.textContent = state.connected
+        ? state.deviceName || 'Bluetooth thermometer connected'
+        : state.connecting
+          ? 'Connecting…'
+          : 'Bluetooth thermometer not connected';
     const readingEl = document.getElementById('dfsc-blue2-reading');
     if (readingEl) {
         readingEl.textContent =
             state.connected && state.lastReading?.celsius != null ? `${state.lastReading.celsius}°C` : '';
     }
     const btn = document.getElementById('dfsc-blue2-connect-btn');
-    if (btn) btn.textContent = state.connected ? 'Disconnect' : 'Connect Bluetooth Thermometer';
-    document.querySelector('.dfsc-blue2-dot')?.classList.toggle('is-connected', state.connected);
+    if (btn) {
+        btn.textContent = state.connected ? 'Disconnect' : 'Connect';
+        btn.disabled = Boolean(state.connecting);
+    }
+    const dot = document.querySelector('.dfsc-blue2-dot');
+    if (dot) {
+        dot.classList.toggle('is-connected', state.connected);
+        dot.classList.toggle('is-connecting', Boolean(state.connecting && !state.connected));
+    }
     updateCaptureTempButtons();
 }
 
 function updateCaptureTempButtons() {
     if (!blue2Supported()) return;
     const connected = blue2Connected();
+    const connecting = blue2Connecting();
     document.querySelectorAll('[data-blue2-qid]').forEach((btn) => {
         if (btn.dataset.blue2FieldDisabled === 'true') return;
-        btn.disabled = !connected;
-        btn.title = connected ? '' : 'Connect the Bluetooth Thermometer first';
+        btn.disabled = connecting;
+        btn.title = connected
+            ? 'Capture when the reading stabilizes'
+            : 'Connects to the Bluetooth thermometer, then captures when stable';
     });
 }
 
 async function toggleBlue2Connection() {
-    if (!blue2Supported()) return;
+    if (!blue2Supported() || blue2Connecting()) return;
     statusMessage = '';
     try {
         const state = window.DfscBlue2.getState();
@@ -932,28 +962,43 @@ async function toggleBlue2Connection() {
         }
         updateBlue2Bar();
     } catch (err) {
-        statusMessage = err.message;
+        const msg = String(err?.message || err || 'Could not connect.');
+        if (/not found|no compatible/i.test(msg) || err?.name === 'NotFoundError') {
+            statusMessage =
+                'No Bluetooth device found — put Blue2 in pairing mode, enable Chrome “Nearby devices”, and try again.';
+        } else {
+            statusMessage = msg;
+        }
         statusKind = 'error';
         renderStatusBar();
+        updateBlue2Bar();
     }
 }
 
 async function captureBlue2ForQuestion(questionId) {
     if (!blue2Supported()) return;
-    if (!blue2Connected()) {
-        statusMessage = 'Connect the Bluetooth Thermometer first using the bar above.';
-        statusKind = 'error';
-        renderStatusBar();
-        return;
-    }
     statusMessage = '';
     const btn = document.querySelector(`[data-blue2-qid="${questionId}"]`);
+    const input = document.querySelector(`input[data-qid="${questionId}"]`);
     if (btn) {
         btn.disabled = true;
-        btn.textContent = 'Reading…';
+        btn.textContent = 'Connecting…';
     }
     try {
-        const celsius = await window.DfscBlue2.captureCelsius();
+        if (!blue2Connected()) {
+            if (btn) btn.textContent = 'Connecting…';
+            await window.DfscBlue2.connect();
+            updateBlue2Bar();
+        }
+        if (btn) btn.textContent = 'Reading…';
+        statusMessage = 'Hold the probe steady until the reading stabilizes…';
+        statusKind = 'info';
+        renderStatusBar();
+
+        const celsius = await window.DfscBlue2.captureStableCelsius((live) => {
+            if (input) input.value = String(live);
+        });
+
         setAnswer(questionId, String(celsius));
         statusMessage = `Temperature captured: ${celsius}°C`;
         statusKind = 'success';
@@ -962,13 +1007,14 @@ async function captureBlue2ForQuestion(questionId) {
         statusMessage = err.message;
         statusKind = 'error';
         renderStatusBar();
+        updateBlue2Bar();
     } finally {
         if (btn) {
-            btn.textContent = 'Capture Temp.';
+            btn.textContent = 'Capture temperature';
             if (btn.dataset.blue2FieldDisabled === 'true') {
                 btn.disabled = true;
             } else {
-                btn.disabled = !blue2Connected();
+                btn.disabled = blue2Connecting();
             }
         }
     }
@@ -1966,7 +2012,7 @@ function renderHistoryDetailView() {
             <div class="dfsc-landing-toolbar dfsc-landing-toolbar--bottom dfsc-landing-toolbar--stack">
                 <button type="button" class="dfsc-btn dfsc-btn-primary dfsc-btn-toolbar" id="dfsc-history-edit-btn">Edit inspection</button>
                 <button type="button" class="dfsc-btn dfsc-btn-secondary dfsc-btn-toolbar" id="dfsc-history-download-pdf">Download PDF</button>
-                <button type="button" class="dfsc-btn dfsc-btn-secondary dfsc-btn-toolbar" id="dfsc-history-detail-back-btn">Back to history</button>
+                <button type="button" class="dfsc-btn dfsc-btn-secondary dfsc-btn-toolbar" id="dfsc-history-detail-back-btn">${historyDetailReturnTo === 'start' ? 'Back to DFSC' : 'Back to history'}</button>
             </div>
         </div>`;
 
@@ -1977,6 +2023,12 @@ function renderHistoryDetailView() {
         downloadHistoryPdf(session);
     });
     document.getElementById('dfsc-history-detail-back-btn').addEventListener('click', () => {
+        if (historyDetailReturnTo === 'start') {
+            landingView = 'start';
+            historyDetailSession = null;
+            renderLandingView();
+            return;
+        }
         landingView = 'history';
         historyDetailSession = null;
         renderHistoryView();
@@ -1998,7 +2050,7 @@ async function openInspectionHistory() {
     }
 }
 
-async function openHistoryDetail(sessionId, dateKey) {
+async function openHistoryDetail(sessionId, dateKey, { returnTo = 'history' } = {}) {
     statusMessage = '';
     try {
         const data = await fetchJson(
@@ -2007,6 +2059,7 @@ async function openHistoryDetail(sessionId, dateKey) {
         if (data.session?.status !== 'completed') {
             throw new Error('This inspection is not completed.');
         }
+        historyDetailReturnTo = returnTo;
         historyDetailSession = data.session;
         landingView = 'historyDetail';
         renderHistoryDetailView();
@@ -2113,6 +2166,51 @@ async function downloadHistoryPdf(session) {
     }
 }
 
+function renderTodayCompletedSection(rows = []) {
+    if (!rows.length) return '';
+    const items = rows
+        .map(
+            (row) => `
+        <li class="dfsc-open-item">
+            <div class="dfsc-open-main">
+                <div class="dfsc-open-title">${escapeHtml(row.shift)} shift · ${escapeHtml(row.conductorName || 'Unknown')}</div>
+                <div class="dfsc-open-meta">
+                    Completed ${escapeHtml(formatAuditTime(row.completedAt))}
+                    · ${escapeHtml(formatDuration(row.durationMinutes))}
+                    ${row.nonCompliantCount ? ` · ${row.nonCompliantCount} NC` : ''}
+                </div>
+            </div>
+            <div class="dfsc-open-actions">
+                <button type="button" class="dfsc-btn dfsc-btn-secondary dfsc-btn-sm" data-view-today="${escapeHtml(row.id)}" data-today-date="${escapeHtml(row.dateKey)}">View</button>
+                <button type="button" class="dfsc-btn dfsc-btn-secondary dfsc-btn-sm" data-pdf-today="${escapeHtml(row.id)}" data-today-date="${escapeHtml(row.dateKey)}">PDF</button>
+            </div>
+        </li>`
+        )
+        .join('');
+    return `
+        <section class="dfsc-open-section dfsc-open-section--completed" aria-labelledby="dfsc-today-heading">
+            <div class="dfsc-open-head">
+                <h2 id="dfsc-today-heading">Completed today</h2>
+                <span class="dfsc-open-count">${rows.length}</span>
+            </div>
+            <p class="dfsc-open-hint">Shared for everyone with access to store ${escapeHtml(STORE_NUMBER)}.</p>
+            <ul class="dfsc-open-list">${items}</ul>
+        </section>`;
+}
+
+function bindTodayCompletedEvents() {
+    document.querySelectorAll('[data-view-today]').forEach((btn) => {
+        btn.addEventListener('click', () =>
+            openHistoryDetail(btn.dataset.viewToday, btn.dataset.todayDate, { returnTo: 'start' })
+        );
+    });
+    document.querySelectorAll('[data-pdf-today]').forEach((btn) => {
+        btn.addEventListener('click', () =>
+            downloadHistoryPdf({ id: btn.dataset.pdfToday, dateKey: btn.dataset.todayDate })
+        );
+    });
+}
+
 function renderOpenAuditsSection(openAudits = []) {
     if (!openAudits.length) return '';
     const rows = openAudits
@@ -2140,7 +2238,7 @@ function renderOpenAuditsSection(openAudits = []) {
                 <h2 id="dfsc-open-heading">Open audits</h2>
                 <span class="dfsc-open-count">${openAudits.length}</span>
             </div>
-            <p class="dfsc-open-hint">In-progress audits you can resume or delete if they were started by mistake.</p>
+            <p class="dfsc-open-hint">In-progress audits for this restaurant — any ${escapeHtml(context.storeName || 'store')} login can resume or delete.</p>
             <ul class="dfsc-open-list">${rows}</ul>
         </section>`;
 }
@@ -2195,6 +2293,7 @@ function renderLandingView() {
     }
 
     const openAudits = context.openAudits || [];
+    const todayCompletedHtml = renderTodayCompletedSection(context.todayCompleted || []);
     const openAuditsHtml = renderOpenAuditsSection(openAudits);
 
     const dayStatus = context.daySummary;
@@ -2207,6 +2306,7 @@ function renderLandingView() {
                 <p>${escapeHtml(statusLine)}</p>
             </div>
             ${renderLandingToolbar()}
+            ${todayCompletedHtml}
             ${openAuditsHtml}
             <div id="dfsc-status-bar">${renderStatus()}</div>
             <article class="dfsc-card">
@@ -2265,6 +2365,7 @@ function renderLandingView() {
     document.getElementById('dfsc-core-report-btn')?.addEventListener('click', downloadCoreReport);
     document.getElementById('dfsc-history-btn')?.addEventListener('click', openInspectionHistory);
     bindOpenAuditEvents();
+    bindTodayCompletedEvents();
 
     const nameInput = document.getElementById('dfsc-name');
     if (nameInput && context.conductorFullName) {

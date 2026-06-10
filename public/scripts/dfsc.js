@@ -49,6 +49,11 @@ async function fetchJson(url, options = {}) {
     const res = await fetch(url, { credentials: 'include', ...options });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.success === false) {
+        if (res.status === 413) {
+            throw new Error(
+                data.error || 'Request too large. Refresh the page and try again with a smaller signature.'
+            );
+        }
         throw new Error(data.error || `Request failed (${res.status})`);
     }
     return data;
@@ -701,9 +706,30 @@ function blurActiveTextInput() {
     }
 }
 
-const SIGNATURE_MIN_SCALE = 2;
-const SIGNATURE_EXPORT_MIN_WIDTH = 640;
-const SIGNATURE_EXPORT_QUALITY = 0.85;
+const SIGNATURE_DRAW_SCALE_MAX = 2;
+const SIGNATURE_EXPORT_MAX_WIDTH = 480;
+const SIGNATURE_EXPORT_MAX_HEIGHT = 180;
+const SIGNATURE_EXPORT_QUALITY = 0.7;
+
+function exportSignatureDataUrl(sourceCanvas) {
+    let width = sourceCanvas.width;
+    let height = sourceCanvas.height;
+    const scale = Math.min(
+        SIGNATURE_EXPORT_MAX_WIDTH / width,
+        SIGNATURE_EXPORT_MAX_HEIGHT / height,
+        1
+    );
+    width = Math.max(1, Math.round(width * scale));
+    height = Math.max(1, Math.round(height * scale));
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = width;
+    exportCanvas.height = height;
+    const exportCtx = exportCanvas.getContext('2d');
+    exportCtx.fillStyle = '#fff';
+    exportCtx.fillRect(0, 0, width, height);
+    exportCtx.drawImage(sourceCanvas, 0, 0, width, height);
+    return exportCanvas.toDataURL('image/jpeg', SIGNATURE_EXPORT_QUALITY);
+}
 
 function initSignaturePad(canvasId) {
     const canvas = document.getElementById(canvasId);
@@ -730,7 +756,7 @@ function initSignaturePad(canvasId) {
     const rect = canvas.getBoundingClientRect();
     const cssWidth = Math.max(rect.width, 1);
     const cssHeight = Math.max(rect.height, 1);
-    const scale = Math.max(window.devicePixelRatio || 1, SIGNATURE_MIN_SCALE);
+    const scale = Math.min(Math.max(window.devicePixelRatio || 1, 1), SIGNATURE_DRAW_SCALE_MAX);
 
     canvas.width = Math.round(cssWidth * scale);
     canvas.height = Math.round(cssHeight * scale);
@@ -802,18 +828,7 @@ function initSignaturePad(canvasId) {
         },
         toDataUrl() {
             if (!hasStroke) return '';
-            let exportCanvas = canvas;
-            if (canvas.width < SIGNATURE_EXPORT_MIN_WIDTH) {
-                const exportScale = SIGNATURE_EXPORT_MIN_WIDTH / canvas.width;
-                exportCanvas = document.createElement('canvas');
-                exportCanvas.width = SIGNATURE_EXPORT_MIN_WIDTH;
-                exportCanvas.height = Math.round(canvas.height * exportScale);
-                const exportCtx = exportCanvas.getContext('2d');
-                exportCtx.fillStyle = '#fff';
-                exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-                exportCtx.drawImage(canvas, 0, 0, exportCanvas.width, exportCanvas.height);
-            }
-            return exportCanvas.toDataURL('image/jpeg', SIGNATURE_EXPORT_QUALITY);
+            return exportSignatureDataUrl(canvas);
         },
         restore(dataUrl) {
             if (!dataUrl) return;
@@ -963,13 +978,7 @@ async function toggleBlue2Connection() {
         }
         updateBlue2Bar();
     } catch (err) {
-        const msg = String(err?.message || err || 'Could not connect.');
-        if (/not found|no compatible/i.test(msg) || err?.name === 'NotFoundError') {
-            statusMessage =
-                'No Bluetooth device found — put Blue2 in pairing mode, enable Chrome “Nearby devices”, and try again.';
-        } else {
-            statusMessage = msg;
-        }
+        statusMessage = String(err?.message || err || 'Could not connect to Bluetooth thermometer.');
         statusKind = 'error';
         renderStatusBar();
         updateBlue2Bar();

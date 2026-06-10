@@ -25,6 +25,7 @@
                     <button type="button" class="mic-settings-btn" data-action="change-password">Change password</button>
                     <button type="button" class="mic-settings-btn" data-action="view-accounts" id="mic-view-accounts-btn"${viewAccountsHidden ? ' hidden' : ''}>View accounts</button>
                     <button type="button" class="mic-settings-btn" data-action="changelog">What's new</button>
+                    <button type="button" class="mic-settings-btn" data-action="hard-refresh">Refresh page</button>
                     <div class="mic-settings-pref-block">
                         <div class="mic-settings-toggle-row">
                             <span class="mic-settings-toggle-label" id="mic-dark-mode-label">Dark mode</span>
@@ -229,6 +230,13 @@
         picker.querySelector('[data-action="changelog"]')?.addEventListener('click', () => {
             closeSettingsPanel();
             global.location.href = '/changelog';
+        });
+        picker.querySelector('[data-action="hard-refresh"]')?.addEventListener('click', () => {
+            if (global.DashboardMeta?.hardRefresh) {
+                void global.DashboardMeta.hardRefresh();
+                return;
+            }
+            global.location.reload();
         });
         picker.querySelector('[data-action="logout"]')?.addEventListener('click', () => {
             global.location.href = '/logout';

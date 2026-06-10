@@ -1,5 +1,18 @@
 (function (global) {
     const BOOT_STORAGE_KEY = 'dashboardClientBootId';
+    const HARD_REFRESH_PARAM = '_';
+
+    (function stripHardRefreshParam() {
+        try {
+            const url = new URL(global.location.href);
+            if (!url.searchParams.has(HARD_REFRESH_PARAM)) return;
+            url.searchParams.delete(HARD_REFRESH_PARAM);
+            const next = `${url.pathname}${url.search}${url.hash}`;
+            global.history.replaceState(null, '', next || url.pathname);
+        } catch {
+            /* ignore */
+        }
+    })();
 
     async function fetchMeta() {
         const res = await fetch('/api/dashboard/meta', { cache: 'no-store', credentials: 'same-origin' });
@@ -44,7 +57,7 @@
         }
 
         const url = new URL(global.location.href);
-        url.searchParams.set('_', String(Date.now()));
+        url.searchParams.set(HARD_REFRESH_PARAM, String(Date.now()));
         global.location.replace(url.toString());
     }
 

@@ -8,14 +8,19 @@
     const TEMP_CHAR_UUID = '78544003-4394-4fc2-8cfd-be6a00aa701b';
     const BATTERY_SERVICE_UUID = '0000180f-0000-1000-8000-00805f9b34fb';
     const BATTERY_CHAR_UUID = '00002a19-0000-1000-8000-00805f9b34fb';
+    const HEALTH_THERMOMETER_SERVICE = '00001809-0000-1000-8000-00805f9b34fb';
+    const HEALTH_THERMOMETER_CHAR = '00002a1c-0000-1000-8000-00805f9b34fb';
+    const GATT_CONNECT_SETTLE_MS = 400;
+    const GATT_CONNECT_ATTEMPTS = 3;
 
     const OPTIONAL_SERVICE_UUIDS = [
         TEMP_SERVICE_UUID,
         TEMP_SERVICE_ALT_UUID,
-        TEMP_CHAR_UUID,
         BATTERY_SERVICE_UUID,
-        '00001809-0000-1000-8000-00805f9b34fb',
+        HEALTH_THERMOMETER_SERVICE,
         '0000180a-0000-1000-8000-00805f9b34fb',
+        '00001800-0000-1000-8000-00805f9b34fb',
+        '00001801-0000-1000-8000-00805f9b34fb',
     ];
 
     const STABILITY_DELTA = 0.3;
@@ -161,6 +166,122 @@
         return Math.round(n * 10) / 10;
     }
 
+    function sleep(ms) {
+        return new Promise((resolve) => window.setTimeout(resolve, ms));
+    }
+
+    function charHasLiveUpdates(char) {
+        const props = char?.properties || {};
+        return Boolean(props.notify || props.indicate);
+    }
+
+    function isCooperServiceUuid(uuid) {
+        return canonicalUuid(uuid).includes('785440');
+    }
+
+    function isGattDisconnectedError(err) {
+        const msg = String(err?.message || err || '').toLowerCase();
+        return (
+            err?.name === 'NetworkError' ||
+            msg.includes('gatt server is disconnected') ||
+            msg.includes('reconnect first') ||
+            msg.includes('gatt server is not connected') ||
+            msg.includes('device is disconnected')
+        );
+    }
+
+    function bindDisconnectHandler(bleDevice) {
+        if (!bleDevice || bleDevice._dfscDisconnectBound) return;
+        bleDevice.addEventListener('gattserverdisconnected', markDisconnected);
+        bleDevice._dfscDisconnectBound = true;
+    }
+
+    async function waitForGattConnected(bleDevice) {
+        let server = bleDevice.gatt;
+        if (!server) throw new Error('Bluetooth GATT is not available on this device.');
+        if (!server.connected) {
+            server = await server.connect();
+        }
+        const deadline = Date.now() + 6000;
+        while (!server.connected && Date.now() < deadline) {
+            await sleep(100);
+        }
+        if (!server.connected) {
+            throw new Error('GATT Server is disconnected. Cannot retrieve services. (Re)connect first with device.gatt.connect');
+        }
+        await sleep(GATT_CONNECT_SETTLE_MS);
+        return server;
+    }
+
+    async function connectGattWithRetry(bleDevice) {
+        let lastErr = null;
+        for (let attempt = 0; attempt < GATT_CONNECT_ATTEMPTS; attempt += 1) {
+            try {
+                return await waitForGattConnected(bleDevice);
+            } catch (err) {
+                lastErr = err;
+                if (!isGattDisconnectedError(err) || attempt + 1 >= GATT_CONNECT_ATTEMPTS) break;
+                try {
+                    if (bleDevice.gatt?.connected) bleDevice.gatt.disconnect();
+                } catch {
+                    /* ignore */
+                }
+                await sleep(500);
+            }
+        }
+        throw lastErr || new Error('Could not connect to Bluetooth thermometer.');
+    }
+
+    async function runWithGatt(bleDevice, fn) {
+        let lastErr = null;
+        for (let attempt = 0; attempt < GATT_CONNECT_ATTEMPTS; attempt += 1) {
+            try {
+                const server = await connectGattWithRetry(bleDevice);
+                return await fn(server);
+            } catch (err) {
+                lastErr = err;
+                if (!isGattDisconnectedError(err) || attempt + 1 >= GATT_CONNECT_ATTEMPTS) throw err;
+                try {
+                    if (bleDevice.gatt?.connected) bleDevice.gatt.disconnect();
+                } catch {
+                    /* ignore */
+                }
+                await sleep(500);
+            }
+        }
+        throw lastErr || new Error('Could not connect to Bluetooth thermometer.');
+    }
+
+    function normalizeConnectError(err) {
+        const msg = String(err?.message || err || 'Could not connect to Bluetooth thermometer.');
+        if (err?.name === 'NotFoundError') {
+            return new Error(
+                'No Bluetooth device found — put Blue2 in pairing mode, enable Chrome “Nearby devices”, and try again.'
+            );
+        }
+        if (err?.name === 'SecurityError' || /not allowed to access the service/i.test(msg)) {
+            return new Error(
+                'Chrome blocked thermometer access — close this tab, reopen DFSC, and tap Connect again.'
+            );
+        }
+        if (err?.name === 'NetworkError' || /gatt|op in progress|connection/i.test(msg)) {
+            return new Error(
+                'Bluetooth connection failed — keep Blue2 in pairing mode (flashing icon). If it is paired in Android Settings → Bluetooth, tap Forget device, then connect only through DFSC.'
+            );
+        }
+        if (/temperature service not found/i.test(msg)) {
+            return new Error(
+                'Connected to the device but could not find the temperature service — use a Cooper-Atkins Blue2, not a phone or other Bluetooth device.'
+            );
+        }
+        if (isGattDisconnectedError(err)) {
+            return new Error(
+                'Bluetooth disconnected while connecting — keep Blue2 in pairing mode (flashing icon) until connected. If Blue2 appears in Android Settings → Bluetooth, tap Forget device, then connect only through DFSC.'
+            );
+        }
+        return err instanceof Error ? err : new Error(msg);
+    }
+
     async function readBatteryLevel(server) {
         try {
             const batteryService = await server.getPrimaryService(BATTERY_SERVICE_UUID);
@@ -171,27 +292,72 @@
         }
     }
 
+    async function pickLiveCharacteristic(service) {
+        try {
+            return await service.getCharacteristic(TEMP_CHAR_UUID);
+        } catch {
+            /* try notify/indicate characteristics on this service */
+        }
+        try {
+            return await service.getCharacteristic(HEALTH_THERMOMETER_CHAR);
+        } catch {
+            /* not standard health thermometer */
+        }
+        const chars = await service.getCharacteristics();
+        for (const char of chars) {
+            if (uuidMatches(char.uuid, TEMP_CHAR_UUID)) return char;
+        }
+        for (const char of chars) {
+            if (charHasLiveUpdates(char)) return char;
+        }
+        return null;
+    }
+
     async function getTemperatureCharacteristic(server) {
-        for (const serviceUuid of [TEMP_SERVICE_UUID, TEMP_SERVICE_ALT_UUID]) {
+        if (!server?.connected) {
+            throw new Error('GATT Server is disconnected. Cannot retrieve services. (Re)connect first with device.gatt.connect');
+        }
+
+        for (const serviceUuid of [TEMP_SERVICE_UUID, TEMP_SERVICE_ALT_UUID, HEALTH_THERMOMETER_SERVICE]) {
             try {
                 const service = await server.getPrimaryService(serviceUuid);
-                return await service.getCharacteristic(TEMP_CHAR_UUID);
-            } catch {
+                const char = await pickLiveCharacteristic(service);
+                if (char) return char;
+            } catch (err) {
+                if (isGattDisconnectedError(err)) throw err;
                 /* try next */
             }
         }
 
-        const services = await server.getPrimaryServices();
+        let services = [];
+        try {
+            services = await server.getPrimaryServices();
+        } catch (err) {
+            if (isGattDisconnectedError(err)) throw err;
+            throw new Error(`Could not read thermometer services (${err?.message || err}).`);
+        }
+
         for (const service of services) {
+            if (!isCooperServiceUuid(service.uuid)) continue;
             try {
-                const chars = await service.getCharacteristics();
-                for (const char of chars) {
-                    if (uuidMatches(char.uuid, TEMP_CHAR_UUID)) return char;
-                }
-            } catch {
-                /* some services may not expose characteristics */
+                const char = await pickLiveCharacteristic(service);
+                if (char) return char;
+            } catch (err) {
+                if (isGattDisconnectedError(err)) throw err;
+                /* try next service */
             }
         }
+
+        for (const service of services) {
+            try {
+                const char = await pickLiveCharacteristic(service);
+                if (char) return char;
+            } catch (err) {
+                if (isGattDisconnectedError(err)) throw err;
+                /* try next service */
+            }
+        }
+
         throw new Error('Bluetooth thermometer temperature service not found. Choose the Cooper-Atkins Blue2.');
     }
 
@@ -203,6 +369,7 @@
         // OR filters — pairing mode often advertises the name only, not the temp service UUID.
         const filters = [
             { name: 'Blue2' },
+            { name: 'Blue2-D' },
             { namePrefix: 'Blue' },
             { namePrefix: 'Cooper' },
             { namePrefix: 'MFT' },
@@ -226,10 +393,11 @@
     }
 
     async function setupTemperatureStream(server) {
-        await readBatteryLevel(server);
         const char = await getTemperatureCharacteristic(server);
-        await char.startNotifications();
-        char.addEventListener('characteristicvaluechanged', onNotify);
+        if (charHasLiveUpdates(char)) {
+            await char.startNotifications();
+            char.addEventListener('characteristicvaluechanged', onNotify);
+        }
         try {
             const initial = await char.readValue();
             const parsed = parseTemperature(initial);
@@ -237,6 +405,7 @@
         } catch {
             /* notifications will populate reading */
         }
+        void readBatteryLevel(server);
         return char;
     }
 
@@ -267,11 +436,11 @@
                     }
                 }
                 device = picked;
-                device.addEventListener('gattserverdisconnected', markDisconnected);
-                const server = await device.gatt.connect();
-                characteristic = await setupTemperatureStream(server);
+                bindDisconnectHandler(device);
+                characteristic = await runWithGatt(device, (server) => setupTemperatureStream(server));
             } else if (!characteristic) {
-                characteristic = await setupTemperatureStream(device.gatt);
+                bindDisconnectHandler(device);
+                characteristic = await runWithGatt(device, (server) => setupTemperatureStream(server));
             }
 
             ready = true;
@@ -279,7 +448,7 @@
             return getState();
         } catch (err) {
             markDisconnected();
-            throw err;
+            throw normalizeConnectError(err);
         } finally {
             connecting = false;
             notify();

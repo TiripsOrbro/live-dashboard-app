@@ -275,8 +275,9 @@ if (/^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_ENABLE_CORS ?? '').tr
     app.use(cors());
 }
 
-app.use(express.urlencoded({ extended: false }));
-app.use(express.json({ limit: process.env.DASHBOARD_JSON_BODY_LIMIT || '2mb' }));
+const JSON_BODY_LIMIT = process.env.DASHBOARD_JSON_BODY_LIMIT || '10mb';
+app.use(express.urlencoded({ extended: false, limit: JSON_BODY_LIMIT }));
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
 
 let salesCache = null;
 let salesCacheAt = 0;
@@ -1830,7 +1831,11 @@ app.get(/^\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)\/?$/i, (req, res) => 
 function sendDfscPage(req, res, storeNumber) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
     if (!assertDfscAccess(req, res)) return;
-    res.sendFile(path.join(__dirname, '../public', 'dfsc.html'));
+    const bootId = getDashboardMeta().bootId;
+    const htmlPath = path.join(__dirname, '../public', 'dfsc.html');
+    let html = fsSync.readFileSync(htmlPath, 'utf8');
+    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    res.type('html').send(html);
 }
 
 app.get(/^\/(teststore|\d{3,6})\/dfsc\/?$/i, (req, res) => {
@@ -3416,6 +3421,17 @@ app.get('/api/area-dashboard', async (req, res) => {
         console.error('API: Error loading area dashboard:', error);
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+app.use((err, req, res, next) => {
+    if (err?.type === 'entity.too.large') {
+        res.status(413).json({
+            success: false,
+            error: 'Request too large. Refresh the page and try again with a smaller signature.',
+        });
+        return;
+    }
+    next(err);
 });
 
 // Background refresh: keep the multi-store cache warm so browser requests never wait through a full scrape.

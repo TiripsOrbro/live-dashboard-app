@@ -1740,8 +1740,6 @@ body.dfsc-page #app {
     .dfsc-section-head,
     .dfsc-section-intro,
     .dfsc-stepper-wrap,
-    .dfsc-group,
-    .dfsc-group-banner,
     #dfsc-status-bar {
         padding-left: 1rem;
         padding-right: 1rem;
@@ -1770,22 +1768,17 @@ body.dfsc-page #app {
     }
 
     .dfsc-qcard-content {
-        padding: 0.75rem 0.85rem 0.65rem;
+        padding: 0.75rem 0 0.65rem;
+    }
+
+    .dfsc-qcard-content > :not(.dfsc-qcard-actions) {
+        padding-left: 0.85rem;
+        padding-right: 0.85rem;
+        box-sizing: border-box;
     }
 
     .dfsc-qcard--action-grid .dfsc-qcard-content {
-        padding-left: 0;
-        padding-right: 0;
         padding-bottom: 0;
-    }
-
-    .dfsc-qcard--action-grid .dfsc-qcard-label,
-    .dfsc-qcard--action-grid .dfsc-qcard-hint,
-    .dfsc-qcard--action-grid .dfsc-nc-alert,
-    .dfsc-qcard--action-grid .dfsc-remind-hint,
-    .dfsc-qcard--action-grid .dfsc-time-gate {
-        padding-left: 0.85rem;
-        padding-right: 0.85rem;
     }
 
     .dfsc-qcard-footer,

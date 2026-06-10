@@ -386,6 +386,10 @@ body.dfsc-page {
 }
 
 /* ── Question cards ── */
+#dfsc-section-body {
+    overflow-anchor: none;
+}
+
 .dfsc-questions {
     padding: 0 1rem;
 }
@@ -1760,12 +1764,28 @@ body.dfsc-page #app {
 
     .dfsc-qcard {
         border-radius: 0;
+        border-left-width: 0;
         border-right-width: 0;
         margin-bottom: 0.55rem;
     }
 
     .dfsc-qcard-content {
         padding: 0.75rem 0.85rem 0.65rem;
+    }
+
+    .dfsc-qcard--action-grid .dfsc-qcard-content {
+        padding-left: 0;
+        padding-right: 0;
+        padding-bottom: 0;
+    }
+
+    .dfsc-qcard--action-grid .dfsc-qcard-label,
+    .dfsc-qcard--action-grid .dfsc-qcard-hint,
+    .dfsc-qcard--action-grid .dfsc-nc-alert,
+    .dfsc-qcard--action-grid .dfsc-remind-hint,
+    .dfsc-qcard--action-grid .dfsc-time-gate {
+        padding-left: 0.85rem;
+        padding-right: 0.85rem;
     }
 
     .dfsc-qcard-footer,
@@ -1782,7 +1802,9 @@ body.dfsc-page #app {
     .dfsc-qcard--action-grid .dfsc-qcard-actions {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 0.45rem;
+        gap: 1px;
+        width: 100%;
+        background: var(--dfsc-border);
     }
 
     .dfsc-qcard--action-grid .dfsc-qcard-actions .dfsc-radio-group,
@@ -1805,6 +1827,9 @@ body.dfsc-page #app {
         min-height: 2.5rem;
         height: 100%;
         box-sizing: border-box;
+        border-radius: 0;
+        border: none;
+        background: #fff;
     }
 
     .dfsc-qcard-footer .dfsc-qcard-footer-btns {

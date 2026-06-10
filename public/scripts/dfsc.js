@@ -748,7 +748,7 @@ function editAction(questionId) {
     const entry = getActionEntry(questionId);
     session.actions = session.actions || {};
     session.actions[questionId] = { text: entry.text, submittedAt: null };
-    renderQuestionArea();
+    renderQuestionArea({ scrollAnchorQuestionId: questionId });
 }
 
 function setNote(questionId, value) {
@@ -800,11 +800,11 @@ function orderedQuestionGroups(sectionId) {
     return groups;
 }
 
-function autoCollapseCompletedGroups(sectionId, exceptQuestionId = null) {
+function autoCollapseCompletedGroups(sectionId, activeQuestionId = null) {
     if (!sectionId) return;
-    const exceptGroup = exceptQuestionId ? groupForQuestion(exceptQuestionId) : null;
+    const activeGroup = activeQuestionId ? groupForQuestion(activeQuestionId) : null;
     const groupOrder = orderedQuestionGroups(sectionId);
-    const exceptGroupIndex = exceptGroup ? groupOrder.indexOf(exceptGroup) : -1;
+    const activeGroupIndex = activeGroup ? groupOrder.indexOf(activeGroup) : -1;
     const questions = visibleQuestions(sectionId);
     let index = 0;
     let groupIndex = 0;
@@ -820,30 +820,21 @@ function autoCollapseCompletedGroups(sectionId, exceptQuestionId = null) {
             groupQuestions.push(questions[index]);
             index += 1;
         }
+        const key = questionGroupKey(sectionId, groupName);
         const progress = groupProgress(groupQuestions);
         const complete = progress.total > 0 && progress.answered === progress.total;
-        if (exceptQuestionId && exceptGroupIndex >= 0) {
-            if (groupIndex >= exceptGroupIndex) {
-                groupIndex += 1;
-                continue;
-            }
-        } else if (!complete) {
-            groupIndex += 1;
-            continue;
-        } else if (groupName === exceptGroup) {
-            const incomplete = groupQuestions.some(
-                (q) => q.required && isAnswerEmpty(q, session.answers?.[q.id])
-            );
-            if (incomplete) {
-                groupIndex += 1;
-                continue;
-            }
-        }
+        const isFutureGroup = activeGroupIndex >= 0 && groupIndex > activeGroupIndex;
+
         if (!complete) {
+            collapsedQuestionGroups.delete(key);
             groupIndex += 1;
             continue;
         }
-        collapsedQuestionGroups.add(questionGroupKey(sectionId, groupName));
+        if (isFutureGroup) {
+            groupIndex += 1;
+            continue;
+        }
+        collapsedQuestionGroups.add(key);
         groupIndex += 1;
     }
 }
@@ -866,6 +857,16 @@ function scrollAnchorElement(snapshot) {
     return el;
 }
 
+function pageScrollY() {
+    return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+}
+
+function setPageScrollY(y) {
+    window.scrollTo(0, y);
+    document.documentElement.scrollTop = y;
+    document.body.scrollTop = y;
+}
+
 function captureScrollAnchor(questionId) {
     if (!questionId) return null;
     const el = document.querySelector(`[data-question-id="${CSS.escape(questionId)}"]`);
@@ -875,27 +876,26 @@ function captureScrollAnchor(questionId) {
     return {
         questionId,
         groupKey: groupEl?.dataset?.groupKey || null,
-        offsetTop: rect.top + window.scrollY,
-        scrollY: window.scrollY,
+        offsetTop: rect.top + pageScrollY(),
+        scrollY: pageScrollY(),
     };
 }
 
 function restoreScrollAnchor(snapshot) {
     if (!snapshot?.questionId) return;
     const apply = () => {
-        const el = scrollAnchorElement(snapshot);
-        if (!el) {
-            if (Number.isFinite(snapshot.scrollY)) {
-                window.scrollTo({ top: snapshot.scrollY, behavior: 'auto' });
-            }
-            return;
+        if (Number.isFinite(snapshot.scrollY)) {
+            setPageScrollY(snapshot.scrollY);
         }
-        const nextOffset = el.getBoundingClientRect().top + window.scrollY;
+        const el = scrollAnchorElement(snapshot);
+        if (!el) return;
+        const nextOffset = el.getBoundingClientRect().top + pageScrollY();
         const delta = nextOffset - snapshot.offsetTop;
         if (Math.abs(delta) > 0.5) {
-            window.scrollBy({ top: delta, behavior: 'auto' });
+            setPageScrollY(pageScrollY() + delta);
         }
     };
+    apply();
     requestAnimationFrame(() => requestAnimationFrame(apply));
 }
 
@@ -1142,13 +1142,13 @@ function tempInputHtml(questionId, { value = '', disabled = false, qtype = 'temp
 function scrollDfscSectionToTop() {
     const anchor = document.querySelector('.dfsc-section-head') || document.getElementById('dfsc-section-body');
     if (!anchor) {
-        window.scrollTo({ top: 0, behavior: 'instant' });
+        setPageScrollY(0);
         return;
     }
     const stickyTabs = document.querySelector('.dfsc-tabs-sticky');
     const offset = stickyTabs ? stickyTabs.getBoundingClientRect().height : 0;
-    const top = anchor.getBoundingClientRect().top + window.scrollY - offset;
-    window.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
+    const top = anchor.getBoundingClientRect().top + pageScrollY() - offset;
+    setPageScrollY(Math.max(0, top));
 }
 
 function renderBlue2Bar() {
@@ -1908,7 +1908,16 @@ function renderQuestionArea({ scrollToTop = false, scrollAnchorQuestionId = null
 
     const isSignOff = section.id === 'signOff';
 
+    const activeEl = document.activeElement;
+    if (activeEl && activeEl !== document.body && activeEl.closest('#dfsc-section-body')) {
+        activeEl.blur();
+    }
+
     document.getElementById('dfsc-section-body').innerHTML = body;
+    if (!scrollToTop && scrollAnchor && Number.isFinite(scrollAnchor.scrollY)) {
+        setPageScrollY(scrollAnchor.scrollY);
+    }
+
     document.getElementById('dfsc-prev-btn').disabled = currentSectionIndex === 0;
     document.getElementById('dfsc-next-btn').hidden = isSignOff;
     document.getElementById('dfsc-submit-btn').hidden = !isSignOff;

@@ -133,7 +133,18 @@ function formatAnswerValue(question, value) {
     }
     if (question.type === 'ppm') return `${raw} ppm`;
     if (question.type === 'percent') return `${raw}%`;
-    if (question.type === 'datetime' || question.type === 'date') {
+    if (question.type === 'date') {
+        const parsed = Date.parse(raw.includes('T') ? raw : `${raw}T12:00:00`);
+        if (Number.isFinite(parsed)) {
+            return new Date(parsed).toLocaleDateString('en-AU', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+            });
+        }
+        return raw;
+    }
+    if (question.type === 'datetime') {
         const parsed = Date.parse(raw.includes('T') ? raw : `${raw}T12:00:00`);
         if (Number.isFinite(parsed)) {
             return new Date(parsed).toLocaleString('en-AU', {

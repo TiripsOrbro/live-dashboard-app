@@ -244,6 +244,8 @@ const {
     listOpenAudits: listDfscOpenAudits,
     deleteOpenAudit: deleteDfscOpenAudit,
     listInspectionHistory: listDfscInspectionHistory,
+    userOwnsSession: dfscUserOwnsSession,
+    canUserAccessSession,
 } = require('./services/dfsc/dfscStore');
 const { buildDfscReportPdf, buildReportFilename } = require('./services/dfsc/dfscReport');
 const { buildCoreReportPdf } = require('./services/dfsc/dfscCoreReport');
@@ -1603,6 +1605,45 @@ function assertDfscAccess(req, res) {
     return true;
 }
 
+function dfscRequestUserContext(req) {
+    const user = req.dashboardUser || getRequestUser(req);
+    return {
+        user,
+        username: user?.username || '',
+        conductorFullName: getDfscConductorName(user),
+        isAdmin: isAdminUser(user),
+        access: {
+            username: user?.username || '',
+            conductorFullName: getDfscConductorName(user),
+        },
+    };
+}
+
+function assertDfscSessionAccess(req, res, session, { reopen = false } = {}) {
+    if (!session) {
+        res.status(404).json({ success: false, error: 'Session not found.' });
+        return false;
+    }
+    const ctx = dfscRequestUserContext(req);
+    if (ctx.isAdmin) return true;
+    if (session.status === 'completed') {
+        if (reopen && !dfscUserOwnsSession(session, ctx.username, ctx.conductorFullName)) {
+            res.status(403).json({
+                success: false,
+                error: 'Only the crew member who conducted this audit can reopen it for editing.',
+            });
+            return false;
+        }
+        return true;
+    }
+    const check = canUserAccessSession(session, ctx.username, ctx.conductorFullName);
+    if (!check.ok) {
+        res.status(check.status || 403).json({ success: false, error: check.error });
+        return false;
+    }
+    return true;
+}
+
 async function enrichSalesSliceWithStockCount(slice, options = {}) {
     if (!slice || typeof slice !== 'object') return slice;
     const storeNumber = String(slice.storeNumber || '').trim();
@@ -2698,11 +2739,15 @@ app.get('/api/dfsc/context', (req, res) => {
         const store = String(req.query.store || '').trim();
         if (!store || !assertStoreAccess(req, res, store)) return;
         if (!assertDfscAccess(req, res)) return;
-        const user = req.dashboardUser || getRequestUser(req);
+        const ctx = dfscRequestUserContext(req);
         res.json({
             success: true,
-            ...getDfscContext(store),
-            conductorFullName: getDfscConductorName(user),
+            ...getDfscContext(store, {
+                username: ctx.username,
+                conductorFullName: ctx.conductorFullName,
+            }),
+            conductorFullName: ctx.conductorFullName,
+            currentUsername: ctx.username,
             canAccessDfsc: true,
         });
     } catch (error) {
@@ -2716,7 +2761,14 @@ app.get('/api/dfsc/open', (req, res) => {
         const store = String(req.query.store || '').trim();
         if (!store || !assertStoreAccess(req, res, store)) return;
         if (!assertDfscAccess(req, res)) return;
-        res.json({ success: true, openAudits: listDfscOpenAudits(store) });
+        const ctx = dfscRequestUserContext(req);
+        res.json({
+            success: true,
+            openAudits: listDfscOpenAudits(store, {
+                username: ctx.username,
+                conductorFullName: ctx.conductorFullName,
+            }),
+        });
     } catch (error) {
         console.error('API: Error listing open DFSC audits:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -2742,12 +2794,20 @@ app.delete('/api/dfsc/session', (req, res) => {
         const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
         if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
         if (!assertDfscAccess(req, res)) return;
-        const result = deleteDfscOpenAudit(store, sessionId);
+        const ctx = dfscRequestUserContext(req);
+        const result = deleteDfscOpenAudit(store, sessionId, ctx.access);
         if (!result.ok) {
             res.status(400).json({ success: false, error: result.error });
             return;
         }
-        res.json({ success: true, deletedId: result.deletedId, openAudits: listDfscOpenAudits(store) });
+        res.json({
+            success: true,
+            deletedId: result.deletedId,
+            openAudits: listDfscOpenAudits(store, {
+                username: ctx.username,
+                conductorFullName: ctx.conductorFullName,
+            }),
+        });
     } catch (error) {
         console.error('API: Error deleting open DFSC audit:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -2759,11 +2819,14 @@ app.post('/api/dfsc/start', (req, res) => {
         const store = String(req.body?.store || req.query.store || '').trim();
         if (!store || !assertStoreAccess(req, res, store)) return;
         if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
         const result = createDfscSession(store, {
             name: req.body?.name,
             shift: req.body?.shift,
             startSignatureDataUrl: req.body?.startSignatureDataUrl,
             forceNew: Boolean(req.body?.forceNew),
+            clientMeta: req.body?.clientMeta,
+            createdByUsername: ctx.username,
         });
         if (!result.ok) {
             res.status(400).json({ success: false, error: result.error });
@@ -2783,11 +2846,12 @@ app.get('/api/dfsc/session', (req, res) => {
         if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
         if (!assertDfscAccess(req, res)) return;
         const session = getDfscSessionById(store, sessionId, req.query.dateKey);
-        if (!session) {
-            res.status(404).json({ success: false, error: 'Session not found.' });
-            return;
-        }
-        res.json({ success: true, session });
+        if (!assertDfscSessionAccess(req, res, session)) return;
+        const ctx = dfscRequestUserContext(req);
+        const canReopen =
+            session.status === 'completed' &&
+            (ctx.isAdmin || dfscUserOwnsSession(session, ctx.username, ctx.conductorFullName));
+        res.json({ success: true, session, canReopen });
     } catch (error) {
         console.error('API: Error loading DFSC session:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -2841,7 +2905,10 @@ app.post('/api/dfsc/reopen', (req, res) => {
         const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
         if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
         if (!assertDfscAccess(req, res)) return;
-        const result = reopenDfscSession(store, sessionId, req.body?.dateKey || req.query.dateKey);
+        const session = getDfscSessionById(store, sessionId, req.body?.dateKey || req.query.dateKey);
+        if (!assertDfscSessionAccess(req, res, session, { reopen: true })) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = reopenDfscSession(store, sessionId, req.body?.dateKey || req.query.dateKey, ctx.access);
         if (!result.ok) {
             res.status(400).json({ success: false, error: result.error });
             return;
@@ -2859,14 +2926,23 @@ app.put('/api/dfsc/session', (req, res) => {
         const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
         if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
         if (!assertDfscAccess(req, res)) return;
-        const result = updateDfscSession(store, sessionId, {
-            answers: req.body?.answers,
-            sectionSkips: req.body?.sectionSkips,
-            actions: req.body?.actions,
-            notes: req.body?.notes,
-            signOff: req.body?.signOff,
-            dateKey: req.body?.dateKey,
-        });
+        const existing = getDfscSessionById(store, sessionId, req.body?.dateKey);
+        if (!assertDfscSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = updateDfscSession(
+            store,
+            sessionId,
+            {
+                answers: req.body?.answers,
+                sectionSkips: req.body?.sectionSkips,
+                actions: req.body?.actions,
+                notes: req.body?.notes,
+                signOff: req.body?.signOff,
+                dateKey: req.body?.dateKey,
+                clientMeta: req.body?.clientMeta,
+            },
+            ctx.access
+        );
         if (!result.ok) {
             res.status(400).json({ success: false, error: result.error });
             return;
@@ -2885,7 +2961,10 @@ app.post('/api/dfsc/session/validate-section', (req, res) => {
         const sectionId = String(req.body?.sectionId || '').trim();
         if (!store || !sessionId || !sectionId || !assertStoreAccess(req, res, store)) return;
         if (!assertDfscAccess(req, res)) return;
-        const result = validateSessionSection(store, sessionId, sectionId);
+        const existing = getDfscSessionById(store, sessionId, req.body?.dateKey);
+        if (!assertDfscSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = validateSessionSection(store, sessionId, sectionId, ctx.access);
         if (!result.ok) {
             res.status(400).json({ success: false, error: result.error });
             return;
@@ -2903,7 +2982,10 @@ app.post('/api/dfsc/submit', (req, res) => {
         const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
         if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
         if (!assertDfscAccess(req, res)) return;
-        const result = submitDfscSession(store, sessionId, req.body?.signOff || {});
+        const existing = getDfscSessionById(store, sessionId, req.body?.dateKey);
+        if (!assertDfscSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = submitDfscSession(store, sessionId, req.body?.signOff || {}, ctx.access);
         if (!result.ok) {
             res.status(400).json({ success: false, error: result.error });
             return;

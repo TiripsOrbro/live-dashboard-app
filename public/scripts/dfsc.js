@@ -22,6 +22,7 @@ const collapsedQuestionGroups = new Set();
 let landingView = 'start';
 let inspectionHistory = [];
 let historyDetailSession = null;
+let historyDetailCanReopen = false;
 let historyDetailReturnTo = 'history';
 let blue2Unsubscribe = null;
 let blue2CaptureModal = null;
@@ -158,7 +159,62 @@ function showWhenAnswerMatches(actual, expected) {
     return options.some((e) => String(actual ?? '').toLowerCase() === String(e).toLowerCase());
 }
 
+function isIosClient() {
+    return /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+}
+
+function buildClientMeta() {
+    const ua = navigator.userAgent || '';
+    return {
+        userAgent: ua,
+        platform: isIosClient() ? 'ios' : /Android/i.test(ua) ? 'android' : 'other',
+    };
+}
+
+function questionDisplayLabel(question) {
+    if (question.iosLabel && isIosClient()) return question.iosLabel;
+    return question.label;
+}
+
+function datetimeInputType(question) {
+    if (question.type === 'date') return 'date';
+    // iOS datetime-local commits "now" while the wheel is still moving; date-only is enough for UBD fields.
+    if (isIosClient() && /Ubd$/i.test(question.id)) return 'date';
+    return 'datetime-local';
+}
+
+function formatValueForDatetimeInput(value, inputType) {
+    const raw = String(value ?? '').trim();
+    if (!raw) return '';
+    if (inputType === 'date') return raw.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) return raw.slice(0, 16);
+    const parsed = Date.parse(raw);
+    if (!Number.isFinite(parsed)) return '';
+    const d = new Date(parsed);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function renderDatetimeControl(question, value, locked) {
+    const inputType = datetimeInputType(question);
+    const inputValue = formatValueForDatetimeInput(value, inputType);
+    const valueAttr = inputValue ? ` value="${escapeHtml(inputValue)}"` : '';
+    const inputClass =
+        inputType === 'date' ? 'dfsc-input dfsc-input--date' : 'dfsc-input dfsc-input--datetime';
+    return `<input class="${inputClass}" type="${inputType}"
+            data-qid="${escapeHtml(question.id)}" data-qtype="datetime"${valueAttr} ${locked ? 'disabled' : ''} />`;
+}
+
+function bindDatetimeInputEvents(input) {
+    const qid = input.dataset.qid;
+    // iOS fires `input` while the native picker moves; saving on `input` re-renders and locks in "now".
+    input.addEventListener('change', () => {
+        setAnswer(qid, String(input.value || '').trim());
+    });
+}
+
 function isQuestionVisible(question) {
+    if (question.hideOnIos && isIosClient()) return false;
     if (question.amOnly && session.shift !== 'AM') return false;
     if (question.skipGroup && (session.sectionSkips || []).includes(question.skipGroup)) return false;
     if (question.showWhenAnswer) {
@@ -495,6 +551,7 @@ async function saveSession() {
                 actions: session.actions,
                 notes: session.notes,
                 signOff: session.signOff,
+                clientMeta: session.clientMeta || buildClientMeta(),
             }),
         });
         session = data.session;
@@ -735,11 +792,22 @@ function expandQuestionGroup(questionId) {
     collapsedQuestionGroups.delete(questionGroupKey(question.section, question.group));
 }
 
+function orderedQuestionGroups(sectionId) {
+    const groups = [];
+    for (const question of visibleQuestions(sectionId)) {
+        if (question.group && !groups.includes(question.group)) groups.push(question.group);
+    }
+    return groups;
+}
+
 function autoCollapseCompletedGroups(sectionId, exceptQuestionId = null) {
     if (!sectionId) return;
     const exceptGroup = exceptQuestionId ? groupForQuestion(exceptQuestionId) : null;
+    const groupOrder = orderedQuestionGroups(sectionId);
+    const exceptGroupIndex = exceptGroup ? groupOrder.indexOf(exceptGroup) : -1;
     const questions = visibleQuestions(sectionId);
     let index = 0;
+    let groupIndex = 0;
     while (index < questions.length) {
         const question = questions[index];
         if (!question.group) {
@@ -754,28 +822,81 @@ function autoCollapseCompletedGroups(sectionId, exceptQuestionId = null) {
         }
         const progress = groupProgress(groupQuestions);
         const complete = progress.total > 0 && progress.answered === progress.total;
-        if (!complete || groupName === exceptGroup) continue;
+        if (exceptQuestionId && exceptGroupIndex >= 0) {
+            if (groupIndex >= exceptGroupIndex) {
+                groupIndex += 1;
+                continue;
+            }
+        } else if (!complete) {
+            groupIndex += 1;
+            continue;
+        } else if (groupName === exceptGroup) {
+            const incomplete = groupQuestions.some(
+                (q) => q.required && isAnswerEmpty(q, session.answers?.[q.id])
+            );
+            if (incomplete) {
+                groupIndex += 1;
+                continue;
+            }
+        }
+        if (!complete) {
+            groupIndex += 1;
+            continue;
+        }
         collapsedQuestionGroups.add(questionGroupKey(sectionId, groupName));
+        groupIndex += 1;
     }
+}
+
+function questionCardIsVisible(el) {
+    if (!el) return false;
+    const groupBody = el.closest('.dfsc-group-body');
+    if (groupBody?.hasAttribute('hidden')) return false;
+    return el.getBoundingClientRect().height > 0;
+}
+
+function scrollAnchorElement(snapshot) {
+    let el = document.querySelector(`[data-question-id="${CSS.escape(snapshot.questionId)}"]`);
+    if (el && questionCardIsVisible(el)) return el;
+    if (snapshot.groupKey) {
+        return document.querySelector(
+            `.dfsc-group[data-group-key="${CSS.escape(snapshot.groupKey)}"] .dfsc-subsection-toggle`
+        );
+    }
+    return el;
 }
 
 function captureScrollAnchor(questionId) {
     if (!questionId) return null;
     const el = document.querySelector(`[data-question-id="${CSS.escape(questionId)}"]`);
     if (!el) return null;
-    return { questionId, top: el.getBoundingClientRect().top };
+    const groupEl = el.closest('.dfsc-group');
+    const rect = el.getBoundingClientRect();
+    return {
+        questionId,
+        groupKey: groupEl?.dataset?.groupKey || null,
+        offsetTop: rect.top + window.scrollY,
+        scrollY: window.scrollY,
+    };
 }
 
 function restoreScrollAnchor(snapshot) {
     if (!snapshot?.questionId) return;
-    requestAnimationFrame(() => {
-        const el = document.querySelector(`[data-question-id="${CSS.escape(snapshot.questionId)}"]`);
-        if (!el) return;
-        const delta = el.getBoundingClientRect().top - snapshot.top;
-        if (Math.abs(delta) > 0.5) {
-            window.scrollBy({ top: delta, behavior: 'instant' });
+    const apply = () => {
+        const el = scrollAnchorElement(snapshot);
+        if (!el) {
+            if (Number.isFinite(snapshot.scrollY)) {
+                window.scrollTo({ top: snapshot.scrollY, behavior: 'auto' });
+            }
+            return;
         }
-    });
+        const nextOffset = el.getBoundingClientRect().top + window.scrollY;
+        const delta = nextOffset - snapshot.offsetTop;
+        if (Math.abs(delta) > 0.5) {
+            window.scrollBy({ top: delta, behavior: 'auto' });
+        }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(apply));
 }
 
 function renderQuestionGroupBlock(sectionId, groupName, groupQuestions) {
@@ -1429,22 +1550,42 @@ function renderActionForm(questionId, { compact = false } = {}) {
         </div>`;
 }
 
-function renderQuestionFooter(question) {
+function questionUsesActionGrid(question) {
+    return (
+        isCompliantType(question.type) ||
+        question.type === 'yes_no' ||
+        question.type === 'received' ||
+        question.type === 'ppm_band'
+    );
+}
+
+function renderQuestionFooterButtons(question) {
+    const hasNote = Boolean(String(session.notes?.[question.id] || '').trim());
+    const noteOpen = expandedNotes.has(question.id) || hasNote;
+    const noteBtnClass = `dfsc-qcard-btn dfsc-qcard-btn--note${noteOpen ? ' is-active' : ''}`;
+    return `
+        <div class="dfsc-qcard-footer-btns">
+            <button type="button" class="${noteBtnClass}" data-toggle-note="${escapeHtml(question.id)}">
+                ${NOTE_ICON}<span>Add note</span>
+            </button>
+            <button type="button" class="dfsc-qcard-btn dfsc-qcard-btn--media" data-add-photo="${escapeHtml(question.id)}" aria-label="Attach photo">
+                ${IMAGE_ICON}<span>Photo</span>
+            </button>
+        </div>`;
+}
+
+function renderQuestionFooter(question, { inlineButtons = false } = {}) {
     const isNc = isNcAnswer(question, session.answers?.[question.id]);
     const hasNote = Boolean(String(session.notes?.[question.id] || '').trim());
     const noteOpen = expandedNotes.has(question.id) || hasNote;
     const actionSubmitted = isActionSubmitted(question.id);
-    const noteBtnClass = `dfsc-qcard-btn dfsc-qcard-btn--note${noteOpen ? ' is-active' : ''}`;
     return `
         <div class="dfsc-qcard-foot">
-            <div class="dfsc-qcard-footer">
-                <button type="button" class="${noteBtnClass}" data-toggle-note="${escapeHtml(question.id)}">
-                    ${NOTE_ICON}<span>Add note</span>
-                </button>
-                <button type="button" class="dfsc-qcard-btn dfsc-qcard-btn--media" disabled title="Coming soon" aria-label="Attach photo">
-                    ${IMAGE_ICON}<span>Photo</span>
-                </button>
-            </div>
+            ${
+                inlineButtons
+                    ? ''
+                    : `<div class="dfsc-qcard-footer">${renderQuestionFooterButtons(question)}</div>`
+            }
             ${noteOpen ? `<div class="dfsc-qcard-strip dfsc-qcard-strip--note"><textarea class="dfsc-textarea" rows="2" data-note-qid="${escapeHtml(question.id)}" placeholder="Add a note">${escapeHtml(session.notes?.[question.id] || '')}</textarea></div>` : ''}
             ${
                 isNc
@@ -1462,7 +1603,7 @@ function renderSegmentedControl(question, locked) {
     const value = session.answers?.[question.id] ?? '';
     const choices = question.choices || [];
     return `
-        <div class="dfsc-segmented" role="radiogroup" aria-label="${escapeHtml(question.label)}">
+        <div class="dfsc-segmented" role="radiogroup" aria-label="${escapeHtml(questionDisplayLabel(question))}">
             ${choices
                 .map((choice) => {
                     const selected = value === choice.value;
@@ -1513,13 +1654,19 @@ function renderQuestion(question) {
     const lockBadge =
         locked && !questionHasTimeGate(question) ? `<span class="dfsc-lock-badge">Locked</span>` : '';
 
+    const useActionGrid = questionUsesActionGrid(question);
+
     let control = '';
-    if (isCompliantType(question.type) || question.type === 'yes_no' || question.type === 'received') {
-        control = renderChoiceGroup(question);
+    if (useActionGrid) {
+        const choiceControl =
+            question.type === 'ppm_band' ? renderPpmBandGroup(question) : renderChoiceGroup(question);
+        control = `
+            <div class="dfsc-qcard-actions">
+                ${choiceControl}
+                ${renderQuestionFooterButtons(question)}
+            </div>`;
     } else if (question.type === 'carryover_temp') {
         control = renderCarryoverControl(question);
-    } else if (question.type === 'ppm_band') {
-        control = renderPpmBandGroup(question);
     } else if (question.type === 'temperature' || question.type === 'temperature_na') {
         const isNa = String(value).toLowerCase() === 'na';
         const tempNc = !isEditingTemp && !isNa && isTempRangeNonCompliant(question, value);
@@ -1561,9 +1708,7 @@ function renderQuestion(question) {
     } else if (question.type === 'select') {
         control = renderSelectControl(question, locked);
     } else if (question.type === 'datetime' || question.type === 'date') {
-        control = `<input class="dfsc-input dfsc-input--datetime" type="datetime-local"
-            data-qid="${escapeHtml(question.id)}" data-qtype="text"
-            value="${escapeHtml(value)}" ${locked ? 'disabled' : ''} />`;
+        control = renderDatetimeControl(question, value, locked);
     } else if (question.type === 'text' || question.type === 'text_na') {
         control = `<input class="dfsc-input" type="text"
             data-qid="${escapeHtml(question.id)}" data-qtype="text"
@@ -1572,17 +1717,16 @@ function renderQuestion(question) {
     }
 
     const actionSubmitted = isNc && isActionSubmitted(question.id);
-    const ncAlert =
-        isNc && !actionSubmitted
-            ? `<div class="dfsc-nc-alert">YOU'RE REQUIRED TO CREATE AN ACTION</div>`
-            : '';
-    const ncResolvedBadge = actionSubmitted
-        ? `<div class="dfsc-nc-badge">Non-Compliant: action created</div>`
-        : '';
+    const ncAlert = !isNc
+        ? ''
+        : actionSubmitted
+          ? `<div class="dfsc-nc-alert dfsc-nc-alert--done">Non-Compliant: action created</div>`
+          : `<div class="dfsc-nc-alert">YOU'RE REQUIRED TO CREATE AN ACTION</div>`;
 
     const cardClass = [
         'dfsc-qcard',
-        isNc && !actionSubmitted ? 'dfsc-qcard--nc' : '',
+        useActionGrid ? 'dfsc-qcard--action-grid' : '',
+        isNc ? (actionSubmitted ? 'dfsc-qcard--nc-resolved' : 'dfsc-qcard--nc') : '',
         unanswered && !isNc ? 'dfsc-qcard--pending' : '',
         locked ? 'is-locked' : '',
     ]
@@ -1598,16 +1742,15 @@ function renderQuestion(question) {
 
     return `
         <article class="${cardClass}" data-question-id="${escapeHtml(question.id)}">
-            ${ncResolvedBadge}
             <div class="dfsc-qcard-content">
-                <p class="dfsc-qcard-label">${question.required ? '<span class="dfsc-required">*</span>' : ''}${escapeHtml(question.label)}${lockBadge}</p>
+                <p class="dfsc-qcard-label">${question.required ? '<span class="dfsc-required">*</span>' : ''}${escapeHtml(questionDisplayLabel(question))}${lockBadge}</p>
                 ${question.hint ? `<p class="dfsc-qcard-hint">${escapeHtml(question.hint)}</p>` : ''}
                 ${timeGateBanner}
                 ${control}
                 ${remindHint}
                 ${ncAlert}
             </div>
-            ${renderQuestionFooter(question)}
+            ${renderQuestionFooter(question, { inlineButtons: useActionGrid })}
         </article>`;
 }
 
@@ -1812,6 +1955,7 @@ function bindQuestionEvents() {
     document.querySelectorAll('[data-qtype="text"]').forEach((input) => {
         input.addEventListener('input', () => setAnswer(input.dataset.qid, input.value));
     });
+    document.querySelectorAll('[data-qtype="datetime"]').forEach(bindDatetimeInputEvents);
     document.querySelectorAll('[data-qtype="select"]').forEach((input) => {
         input.addEventListener('change', () => setAnswer(input.dataset.qid, input.value));
     });
@@ -1851,6 +1995,13 @@ function bindQuestionEvents() {
             if (expandedNotes.has(qid)) expandedNotes.delete(qid);
             else expandedNotes.add(qid);
             renderQuestionArea({ scrollAnchorQuestionId: qid });
+        });
+    });
+    document.querySelectorAll('[data-add-photo]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            statusMessage = 'Photo attachments are coming soon.';
+            statusKind = 'info';
+            renderStatusBar();
         });
     });
 }
@@ -2202,6 +2353,10 @@ function renderHistoryDetailView() {
             ? Math.round((completed - started) / 60000)
             : null;
 
+    const editBtnHtml = historyDetailCanReopen
+        ? `<button type="button" class="dfsc-btn dfsc-btn-primary dfsc-btn-toolbar" id="dfsc-history-edit-btn">Edit inspection</button>`
+        : '';
+
     app.innerHTML = `
         <div class="dfsc-shell">
             <div class="dfsc-landing-head">
@@ -2223,7 +2378,7 @@ function renderHistoryDetailView() {
                 ${renderHistoryDetailNcRows(session)}
             </article>
             <div class="dfsc-landing-toolbar dfsc-landing-toolbar--bottom dfsc-landing-toolbar--stack">
-                <button type="button" class="dfsc-btn dfsc-btn-primary dfsc-btn-toolbar" id="dfsc-history-edit-btn">Edit inspection</button>
+                ${editBtnHtml}
                 <button type="button" class="dfsc-btn dfsc-btn-secondary dfsc-btn-toolbar" id="dfsc-history-download-pdf">Download PDF</button>
                 <button type="button" class="dfsc-btn dfsc-btn-secondary dfsc-btn-toolbar" id="dfsc-history-detail-back-btn">${historyDetailReturnTo === 'start' ? 'Back to DFSC' : 'Back to history'}</button>
             </div>
@@ -2274,6 +2429,7 @@ async function openHistoryDetail(sessionId, dateKey, { returnTo = 'history' } = 
         }
         historyDetailReturnTo = returnTo;
         historyDetailSession = data.session;
+        historyDetailCanReopen = Boolean(data.canReopen);
         landingView = 'historyDetail';
         renderHistoryDetailView();
     } catch (err) {
@@ -2448,10 +2604,10 @@ function renderOpenAuditsSection(openAudits = []) {
     return `
         <section class="dfsc-open-section" aria-labelledby="dfsc-open-heading">
             <div class="dfsc-open-head">
-                <h2 id="dfsc-open-heading">Open audits</h2>
+                <h2 id="dfsc-open-heading">Your open audits</h2>
                 <span class="dfsc-open-count">${openAudits.length}</span>
             </div>
-            <p class="dfsc-open-hint">In-progress audits for this restaurant — any ${escapeHtml(context.storeName || 'store')} login can resume or delete.</p>
+            <p class="dfsc-open-hint">Your in-progress audits — only you can resume or delete these.</p>
             <ul class="dfsc-open-list">${rows}</ul>
         </section>`;
 }
@@ -2628,9 +2784,11 @@ async function startSession(forceNew) {
                 shift,
                 startSignatureDataUrl,
                 forceNew: true,
+                clientMeta: buildClientMeta(),
             }),
         });
         session = data.session;
+        if (!session.clientMeta) session.clientMeta = buildClientMeta();
         schema = context.schema;
         window.history.replaceState({}, '', `/${STORE_NUMBER}/dfsc/audit?session=${session.id}`);
         renderAuditView();
@@ -2647,6 +2805,7 @@ async function resumeSession(inProgress) {
             apiUrl('/api/dfsc/session', { store: STORE_NUMBER, sessionId: inProgress.id, dateKey: inProgress.dateKey })
         );
         session = data.session;
+        if (!session.clientMeta) session.clientMeta = buildClientMeta();
         schema = context.schema;
         window.history.replaceState({}, '', `/${STORE_NUMBER}/dfsc/audit?session=${session.id}`);
         renderAuditView();
@@ -2664,14 +2823,21 @@ async function loadSessionFromQuery() {
     try {
         const data = await fetchJson(apiUrl('/api/dfsc/session', { store: STORE_NUMBER, sessionId }));
         session = data.session;
+        if (!session.clientMeta) session.clientMeta = buildClientMeta();
         if (session.status === 'completed') {
             renderCompleteView();
             return true;
         }
         renderAuditView();
         return true;
-    } catch {
-        return false;
+    } catch (err) {
+        window.history.replaceState({}, '', `/${STORE_NUMBER}/dfsc`);
+        statusMessage = err.message || 'You cannot open this audit.';
+        statusKind = 'error';
+        session = null;
+        landingView = 'start';
+        renderLandingView();
+        return true;
     }
 }
 

@@ -181,12 +181,44 @@ function buildDaySummary(storeNumber, dateKey) {
     };
 }
 
-function getContext(storeNumber) {
+function normalizeUsername(username) {
+    return String(username || '').trim().toLowerCase();
+}
+
+function userOwnsSession(session, username, conductorFullName = '') {
+    if (!session) return false;
+    const owner = normalizeUsername(session.createdByUsername);
+    const user = normalizeUsername(username);
+    if (owner && user) return owner === user;
+    if (!owner) {
+        const conductor = String(session.conductor?.name || '').trim().toLowerCase();
+        const fullName = String(conductorFullName || '').trim().toLowerCase();
+        if (conductor && fullName) return conductor === fullName;
+    }
+    return false;
+}
+
+function canUserAccessSession(session, username, conductorFullName = '') {
+    if (!session) return { ok: false, error: 'Session not found.', status: 404 };
+    if (session.status === 'completed') return { ok: true };
+    if (userOwnsSession(session, username, conductorFullName)) return { ok: true };
+    return {
+        ok: false,
+        error: 'Only the crew member who started this audit can open it while it is in progress.',
+        status: 403,
+    };
+}
+
+function getContext(storeNumber, options = {}) {
     const store = normalizeStoreKey(storeNumber);
     const cfg = getStoreConfig(store) || {};
     const dateKey = storeDateKey(store);
     pruneOldRecords(store, dateKey);
     const day = buildDaySummary(store, dateKey);
+    const username = options.username || '';
+    const conductorFullName = options.conductorFullName || '';
+    const ownedInProgress =
+        day.inProgress && userOwnsSession(day.inProgress, username, conductorFullName) ? day.inProgress : null;
     return {
         storeNumber: store,
         storeName: String(cfg.storeName || store).trim(),
@@ -202,16 +234,16 @@ function getContext(storeNumber) {
             completedCount: day.completedCount,
             extraCount: day.extraCount,
         },
-        inProgress: day.inProgress
+        inProgress: ownedInProgress
             ? {
-                  id: day.inProgress.id,
-                  shift: day.inProgress.shift,
-                  conductorName: day.inProgress.conductor?.name || '',
-                  startedAt: day.inProgress.startedAt,
-                  dateKey: day.inProgress.dateKey,
+                  id: ownedInProgress.id,
+                  shift: ownedInProgress.shift,
+                  conductorName: ownedInProgress.conductor?.name || '',
+                  startedAt: ownedInProgress.startedAt,
+                  dateKey: ownedInProgress.dateKey,
               }
             : null,
-        openAudits: listOpenAudits(store),
+        openAudits: listOpenAudits(store, { username, conductorFullName }),
         todayCompleted: getCompletedSessions(store, dateKey)
             .map(summarizeCompletedAudit)
             .sort((a, b) => String(a.shift || '').localeCompare(String(b.shift || '')) || String(a.completedAt || '').localeCompare(String(b.completedAt || ''))),
@@ -219,7 +251,10 @@ function getContext(storeNumber) {
     };
 }
 
-function createSession(storeNumber, { name, shift, startSignatureDataUrl, forceNew = false } = {}) {
+function createSession(
+    storeNumber,
+    { name, shift, startSignatureDataUrl, forceNew = false, clientMeta = null, createdByUsername = null } = {}
+) {
     const store = normalizeStoreKey(storeNumber);
     const conductorName = String(name || '').trim();
     const shiftNorm = String(shift || '').trim().toUpperCase();
@@ -233,7 +268,7 @@ function createSession(storeNumber, { name, shift, startSignatureDataUrl, forceN
     const active = getActivePointer(store);
     if (!forceNew && active?.sessionId) {
         const existing = loadSession(store, active.dateKey, active.sessionId);
-        if (existing?.status === 'in_progress') {
+        if (existing?.status === 'in_progress' && userOwnsSession(existing, createdByUsername, conductorName)) {
             return { ok: true, session: existing, resumed: true };
         }
     }
@@ -249,12 +284,14 @@ function createSession(storeNumber, { name, shift, startSignatureDataUrl, forceN
         startedAt: new Date().toISOString(),
         completedAt: null,
         conductor: { name: conductorName, startSignatureDataUrl: String(startSignatureDataUrl).trim() },
+        createdByUsername: String(createdByUsername || '').trim(),
         signOff: { name: '', signatureDataUrl: '', acknowledgedAt: null },
         answers: {},
         actions: {},
         sectionSkips: [],
         notes: {},
         answerTimestamps: {},
+        clientMeta: clientMeta && typeof clientMeta === 'object' ? clientMeta : null,
     };
     saveSession(session);
     setActivePointer(store, session.id, dateKey);
@@ -281,11 +318,14 @@ function findSessionAcrossDays(storeNumber, sessionId) {
     return null;
 }
 
-function updateSession(storeNumber, sessionId, updates = {}) {
+function updateSession(storeNumber, sessionId, updates = {}, access = {}) {
     const store = normalizeStoreKey(storeNumber);
     let session = getSessionById(store, sessionId, updates.dateKey) || findSessionAcrossDays(store, sessionId);
     if (!session) return { ok: false, error: 'Session not found.' };
     if (session.status === 'completed') return { ok: false, error: 'This DFSC is already completed.' };
+    if (!userOwnsSession(session, access.username, access.conductorFullName)) {
+        return { ok: false, error: 'Only the crew member who started this audit can edit it while it is in progress.' };
+    }
 
     const now = Date.now();
     if (updates.answers && typeof updates.answers === 'object') {
@@ -314,18 +354,24 @@ function updateSession(storeNumber, sessionId, updates = {}) {
     if (updates.signOff && typeof updates.signOff === 'object') {
         session.signOff = { ...session.signOff, ...updates.signOff };
     }
+    if (updates.clientMeta && typeof updates.clientMeta === 'object' && !session.clientMeta) {
+        session.clientMeta = updates.clientMeta;
+    }
     session.updatedAt = new Date().toISOString();
     saveSession(session);
     setActivePointer(store, session.id, session.dateKey);
     return { ok: true, session, nonCompliant: collectNonCompliant(session) };
 }
 
-function reopenSession(storeNumber, sessionId, dateKey) {
+function reopenSession(storeNumber, sessionId, dateKey, access = {}) {
     const store = normalizeStoreKey(storeNumber);
     let session = getSessionById(store, sessionId, dateKey) || findSessionAcrossDays(store, sessionId);
     if (!session) return { ok: false, error: 'Session not found.' };
     if (session.status !== 'completed') {
         return { ok: false, error: 'Only completed inspections can be reopened for editing.' };
+    }
+    if (!userOwnsSession(session, access.username, access.conductorFullName)) {
+        return { ok: false, error: 'Only the crew member who conducted this audit can reopen it for editing.' };
     }
 
     session.status = 'in_progress';
@@ -336,11 +382,14 @@ function reopenSession(storeNumber, sessionId, dateKey) {
     return { ok: true, session, nonCompliant: collectNonCompliant(session) };
 }
 
-function submitSession(storeNumber, sessionId, signOff = {}) {
+function submitSession(storeNumber, sessionId, signOff = {}, access = {}) {
     const store = normalizeStoreKey(storeNumber);
     let session = getSessionById(store, sessionId) || findSessionAcrossDays(store, sessionId);
     if (!session) return { ok: false, error: 'Session not found.' };
     if (session.status === 'completed') return { ok: true, session };
+    if (!userOwnsSession(session, access.username, access.conductorFullName)) {
+        return { ok: false, error: 'Only the crew member who started this audit can submit it.' };
+    }
 
     session.signOff = {
         name: String(signOff.name || session.signOff?.name || '').trim(),
@@ -360,9 +409,12 @@ function submitSession(storeNumber, sessionId, signOff = {}) {
     return { ok: true, session };
 }
 
-function validateSessionSection(storeNumber, sessionId, sectionId) {
+function validateSessionSection(storeNumber, sessionId, sectionId, access = {}) {
     const session = getSessionById(storeNumber, sessionId) || findSessionAcrossDays(storeNumber, sessionId);
     if (!session) return { ok: false, error: 'Session not found.' };
+    if (session.status === 'in_progress' && !userOwnsSession(session, access.username, access.conductorFullName)) {
+        return { ok: false, error: 'Only the crew member who started this audit can edit it while it is in progress.' };
+    }
     return validateSection(session, sectionId);
 }
 
@@ -400,21 +452,26 @@ function summarizeOpenAudit(session) {
     };
 }
 
-function listOpenAudits(storeNumber) {
+function listOpenAudits(storeNumber, options = {}) {
     const store = normalizeStoreKey(storeNumber);
     const storeRoot = path.join(DFSC_DATA_DIR, store);
     if (!fs.existsSync(storeRoot)) return [];
+    const username = options.username || '';
+    const conductorFullName = options.conductorFullName || '';
+    const filterByUser = Boolean(username || conductorFullName);
     const open = [];
     for (const entry of fs.readdirSync(storeRoot, { withFileTypes: true })) {
         if (!entry.isDirectory() || entry.name.startsWith('_')) continue;
         for (const session of listSessionsForDay(store, entry.name)) {
-            if (session.status === 'in_progress') open.push(summarizeOpenAudit(session));
+            if (session.status !== 'in_progress') continue;
+            if (filterByUser && !userOwnsSession(session, username, conductorFullName)) continue;
+            open.push(summarizeOpenAudit(session));
         }
     }
     return open.sort((a, b) => String(b.startedAt || '').localeCompare(String(a.startedAt || '')));
 }
 
-function deleteOpenAudit(storeNumber, sessionId) {
+function deleteOpenAudit(storeNumber, sessionId, access = {}) {
     const store = normalizeStoreKey(storeNumber);
     const id = String(sessionId || '').trim();
     if (!id) return { ok: false, error: 'Session id is required.' };
@@ -423,6 +480,9 @@ function deleteOpenAudit(storeNumber, sessionId) {
     if (!session) return { ok: false, error: 'Audit not found.' };
     if (session.status === 'completed') {
         return { ok: false, error: 'Completed audits cannot be deleted.' };
+    }
+    if (!userOwnsSession(session, access.username, access.conductorFullName)) {
+        return { ok: false, error: 'Only the crew member who started this audit can delete it.' };
     }
 
     const filePath = sessionFilePath(session.storeNumber, session.dateKey, session.id);
@@ -581,4 +641,6 @@ module.exports = {
     getSections,
     getSectionSkipGroups,
     buildSchemaPayload,
+    userOwnsSession,
+    canUserAccessSession,
 };

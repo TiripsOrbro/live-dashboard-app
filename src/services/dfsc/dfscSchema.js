@@ -71,6 +71,7 @@ const LINE_COUNT_CHOICES = [
 ];
 
 const TWO_LINES_VISIBLE = { prodLines_lineCount: ['2_line_split', '2_line_shared'] };
+const TWO_LINE_SPLIT_VISIBLE = { prodLines_lineCount: '2_line_split' };
 
 const CRISPY_CHICKEN_LOCATION_CHOICES = [
     { value: 'on_line', label: 'On the Line' },
@@ -90,6 +91,7 @@ const UNDERLINE_ING2_CHOICES = [
 ];
 
 const UNDERLINE_FRIDGE_VISIBLE = { prodLine1_underlineFridgeInUse: 'yes' };
+const UNDERLINE_FRIDGE_LINE2_VISIBLE = { prodLine2_underlineFridgeInUse: 'yes' };
 const PREP_FRIDGE_VISIBLE = { prodLine1_prepFridgeInUse: 'yes' };
 
 const FREEZER_TEMP_MAX = -18;
@@ -110,13 +112,17 @@ const DFSC_QUESTIONS = [
         'initialChecks',
         'compliant',
         'Bluetooth thermometer available, in good working order?',
-        { group: 'Thermometer Calibration' }
+        {
+            group: 'Thermometer Calibration',
+            iosLabel: 'Do you have 2 thermometers available?',
+        }
     ),
     q('init_bluetoothThermoTemp', 'initialChecks', 'temperature', 'Bluetooth Thermometer Calibration Temp to 0°C ( +/-1°C )', {
         group: 'Thermometer Calibration',
         hint: 'Temperature should be between -1°C and 1°C',
         tempMin: -1,
         tempMax: 1,
+        hideOnIos: true,
     }),
     q('init_prepThermo', 'initialChecks', 'compliant', 'Prep thermometer available, in good working order?', { group: 'Thermometer Calibration' }),
     q('init_prepThermoTemp', 'initialChecks', 'temperature', 'Prep Thermometer Calibration Temp', {
@@ -126,31 +132,26 @@ const DFSC_QUESTIONS = [
         tempMax: 1,
     }),
 
-    // ── Initial Checks — Setting Up ──
+    // ── Initial Checks — Carryover ──
     q(
         'init_settingUpBanner',
         'initialChecks',
         'banner',
         '',
         {
-            group: 'Setting Up',
+            group: 'Carryover',
             required: false,
             bannerTitle: 'CHECK CARRYOVER BEFORE ANYTHING ELSE',
             bannerSubtitle: 'Procedures followed, marked with correct hold times, and temperatures ≤ 5°C?',
         }
     ),
-    q('init_beefCarryover', 'initialChecks', 'carryover_temp', 'Is there carryover Beef?', { group: 'Setting Up', tempMax: 5 }),
-    q('init_chickenCarryover', 'initialChecks', 'carryover_temp', 'Is there carryover Chicken?', { group: 'Setting Up', tempMax: 5 }),
-    q('init_nachoCarryover', 'initialChecks', 'carryover_temp', 'Is there carryover Nacho Cheese?', { group: 'Setting Up', tempMax: 5 }),
-    q(
-        'init_pestActivity',
-        'initialChecks',
-        'compliant',
-        'Restaurant is free from pest activity (no evidence of live or dead rodents, insects, droppings, chew marks or nesting)?',
-        { group: 'Setting Up' }
-    ),
+    q('init_beefCarryover', 'initialChecks', 'carryover_temp', 'Is there carryover Beef?', { group: 'Carryover', tempMax: 5 }),
+    q('init_chickenCarryover', 'initialChecks', 'carryover_temp', 'Is there carryover Chicken?', { group: 'Carryover', tempMax: 5 }),
+    q('init_nachoCarryover', 'initialChecks', 'carryover_temp', 'Is there carryover Nacho Cheese?', { group: 'Carryover', tempMax: 5 }),
+
+    // ── Initial Checks — Washup Sink ──
     q('init_sinkHotWaterTemp', 'initialChecks', 'temperature', '3-compartment sink hot water is a minimum of 49°C. Record the temp.', {
-        group: 'Setting Up',
+        group: 'Washup Sink',
         hint: 'Min 49°C',
         tempMin: 49,
     }),
@@ -160,7 +161,7 @@ const DFSC_QUESTIONS = [
         'ppm_band',
         '3-compartment sink is fully set up, water level clearly marked and sanitiser is at correct concentration (50ppm–100ppm)?',
         {
-            group: 'Setting Up',
+            group: 'Washup Sink',
             choices: [
                 { value: 'lt50', label: '<50', tone: 'red', nc: true },
                 { value: '50_100', label: '>50', tone: 'yellow', nc: false },
@@ -168,6 +169,50 @@ const DFSC_QUESTIONS = [
                 { value: 'gt200', label: '200>', tone: 'red', nc: true },
             ],
         }
+    ),
+    q(
+        'init_sanitiserBuckets',
+        'initialChecks',
+        'compliant',
+        'Sanitiser buckets (and bottles if applicable) are set up at all required stations and held between 50ppm–100ppm and are timed with a 4 hour hold sticker?',
+        { group: 'Washup Sink' }
+    ),
+    q(
+        'init_dryingRack',
+        'initialChecks',
+        'compliant',
+        'Does the drying rack meet food safety standards? (wet and dry smallwares and utensils are stored separately)',
+        { group: 'Washup Sink' }
+    ),
+
+    // ── Initial Checks — Hand Washing Sinks ──
+    q(
+        'init_handwashAccessible',
+        'initialChecks',
+        'compliant',
+        'Hand washing sinks are accessible and fully stocked (gloves, hand sanitiser, antibacterial soap, paper towels, rubbish bin)?',
+        { group: 'Hand Washing Sinks' }
+    ),
+    q('init_handwashWaterTemp', 'initialChecks', 'temperature', 'Water at hand washing sinks reach a minimum of 30°C? Record the temp.', {
+        group: 'Hand Washing Sinks',
+        hint: 'Min 30°C',
+        tempMin: 30,
+    }),
+    q(
+        'init_handwashClean',
+        'initialChecks',
+        'compliant',
+        'Hand washing sinks are clean, free from build up/mould (check around silicone and drain cover), and are not being used for anything other than handwashing?',
+        { group: 'Hand Washing Sinks' }
+    ),
+
+    // ── Initial Checks — Setting Up ──
+    q(
+        'init_pestActivity',
+        'initialChecks',
+        'compliant',
+        'Restaurant is free from pest activity (no evidence of live or dead rodents, insects, droppings, chew marks or nesting)?',
+        { group: 'Setting Up' }
     ),
     q(
         'init_tacoTowerHotWaterCup',
@@ -181,29 +226,10 @@ const DFSC_QUESTIONS = [
         }
     ),
     q(
-        'init_handwashAccessible',
+        'init_walkwaysClear',
         'initialChecks',
         'compliant',
-        'Hand washing sinks (including in bathrooms) are accessible and fully stocked (gloves, hand sanitiser, antibacterial soap, paper towels, rubbish bin)?',
-        { group: 'Setting Up' }
-    ),
-    q('init_handwashWaterTemp', 'initialChecks', 'temperature', 'Water at hand washing sinks reach a minimum of 30°C? Record the temp.', {
-        group: 'Setting Up',
-        hint: 'Min 30°C',
-        tempMin: 30,
-    }),
-    q(
-        'init_handwashClean',
-        'initialChecks',
-        'compliant',
-        'Hand washing sinks are clean, free from build up/mould (check around silicone and drain cover), and are not being used for anything other than handwashing?',
-        { group: 'Setting Up' }
-    ),
-    q(
-        'init_bathroomSinksClean',
-        'initialChecks',
-        'compliant',
-        'Bathroom sinks are clean, free from build up/mould (check around silicone and drain cover), and are not being used for anything other than handwashing?',
+        'There are no obstructions in walkways or in front of emergency exits/back door?',
         { group: 'Setting Up' }
     ),
     q(
@@ -211,20 +237,6 @@ const DFSC_QUESTIONS = [
         'initialChecks',
         'compliant',
         'No sewage back up or build up of any waste in sink and floor drains?',
-        { group: 'Setting Up' }
-    ),
-    q(
-        'init_dryingRack',
-        'initialChecks',
-        'compliant',
-        'Does the drying rack meet food safety standards? (wet and dry smallwares and utensils are stored separately)',
-        { group: 'Setting Up' }
-    ),
-    q(
-        'init_sanitiserBuckets',
-        'initialChecks',
-        'compliant',
-        'Sanitiser buckets (and bottles if applicable) are set up at all required stations and held between 50ppm–100ppm and are timed with a 4 hour hold sticker?',
         { group: 'Setting Up' }
     ),
     q(
@@ -269,14 +281,23 @@ const DFSC_QUESTIONS = [
         'Are floors, walls, ceilings and non-food contact surfaces clean and in good repair?',
         { group: 'Setting Up' }
     ),
-    q('init_drinkNozzles', 'initialChecks', 'compliant', 'Drink machine nozzles are cleaned daily and free from mould?', { group: 'Setting Up' }),
+
+    // ── Initial Checks — FOH ──
     q(
-        'init_walkwaysClear',
+        'init_bathroomSinksClean',
         'initialChecks',
         'compliant',
-        'There are no obstructions in walkways or in front of emergency exits/back door?',
-        { group: 'Setting Up' }
+        'Bathroom sinks are clean, free from build up/mould (check around silicone and drain cover), and are not being used for anything other than handwashing?',
+        { group: 'FOH' }
     ),
+    q(
+        'init_janitorCupboard',
+        'initialChecks',
+        'compliant',
+        'Janitor cupboard — is all cleaning equipment hanging and stored correctly?',
+        { group: 'FOH' }
+    ),
+    q('init_drinkNozzles', 'initialChecks', 'compliant', 'Drink machine nozzles are cleaned daily and free from mould?', { group: 'FOH' }),
 
     // ── Fridge & Freezer — Walk-in freezer ──
     q('freezer_walkInTemp', 'freezerColdrooms', 'temperature', 'Walk-in freezer — internal air temp', {
@@ -351,10 +372,10 @@ const DFSC_QUESTIONS = [
         'Open bags of ingredients are sealed with a clip and marked with an open bag hold time?',
         { group: 'Coldroom 1' }
     ),
-    q('coldroom1_lettuceUbd', 'freezerColdrooms', 'datetime', 'Lettuce — earliest use by / best before', { group: 'Coldroom 1 — dates' }),
-    q('coldroom1_tomatoUbd', 'freezerColdrooms', 'datetime', 'Tomato — earliest use by / best before', { group: 'Coldroom 1 — dates' }),
-    q('coldroom1_onionUbd', 'freezerColdrooms', 'datetime', 'Onion — earliest use by / best before', { group: 'Coldroom 1 — dates' }),
-    q('coldroom1_corianderUbd', 'freezerColdrooms', 'datetime', 'Coriander — earliest use by / best before', { group: 'Coldroom 1 — dates' }),
+    q('coldroom1_lettuceUbd', 'freezerColdrooms', 'date', 'Lettuce — earliest use by / best before', { group: 'Coldroom 1 — dates' }),
+    q('coldroom1_tomatoUbd', 'freezerColdrooms', 'date', 'Tomato — earliest use by / best before', { group: 'Coldroom 1 — dates' }),
+    q('coldroom1_onionUbd', 'freezerColdrooms', 'date', 'Onion — earliest use by / best before', { group: 'Coldroom 1 — dates' }),
+    q('coldroom1_corianderUbd', 'freezerColdrooms', 'date', 'Coriander — earliest use by / best before', { group: 'Coldroom 1 — dates' }),
     q('coldroom1_sourCreamUbd', 'freezerColdrooms', 'datetime', 'Sour Cream — earliest use by / best before', { group: 'Coldroom 1 — dates' }),
 
     // ── Fridge & Freezer — Coldroom 2 (when 2 coldrooms) ──
@@ -615,7 +636,14 @@ const DFSC_QUESTIONS = [
         { group: 'Line 1 — Prep fridge', showWhenAnswer: PREP_FRIDGE_VISIBLE }
     ),
 
-    // Line 2 — Hot Line (dual line only; no taco tower or underline/prep fridge)
+    // Line 2 — Hot Line (split layout: includes taco tower; shared layout: hot/cold only)
+    q('prodLine2_tacoTowerTemp', 'productionLines', 'temperature', 'Taco Tower Temp', {
+        group: 'Line 2 — Hot Line',
+        hint: 'Minimum 49°C',
+        tempMin: 49,
+        unlockAfterAnswer: { questionId: 'init_tacoTowerHotWaterCup', minutes: 30 },
+        showWhenAnswer: TWO_LINE_SPLIT_VISIBLE,
+    }),
     q('prodLine2_beefTemp', 'productionLines', 'temperature', 'Beef Temp', {
         group: 'Line 2 — Hot Line',
         ...HOT_HOLD_TEMP_OPTS,
@@ -711,6 +739,34 @@ const DFSC_QUESTIONS = [
         { group: 'Line 2 — Cold Line', showWhenAnswer: TWO_LINES_VISIBLE }
     ),
 
+    // Line 2 — Underline fridge (split layout only)
+    q('prodLine2_underlineFridgeInUse', 'productionLines', 'yes_no', 'Is the underline fridge in use?', {
+        group: 'Line 2 — Underline fridge',
+        showWhenAnswer: TWO_LINE_SPLIT_VISIBLE,
+    }),
+    q('prodLine2_underlineIngredient1Item', 'productionLines', 'select', 'Ingredient 1', {
+        group: 'Line 2 — Underline fridge',
+        choices: UNDERLINE_ING1_CHOICES,
+        defaultValue: 'lettuce',
+        showWhenAnswer: { ...TWO_LINE_SPLIT_VISIBLE, ...UNDERLINE_FRIDGE_LINE2_VISIBLE },
+    }),
+    q('prodLine2_underlineIngredient1Temp', 'productionLines', 'temperature', 'Ingredient 1 — temperature', {
+        group: 'Line 2 — Underline fridge',
+        ...FRIDGE_TEMP_OPTS,
+        showWhenAnswer: { ...TWO_LINE_SPLIT_VISIBLE, ...UNDERLINE_FRIDGE_LINE2_VISIBLE },
+    }),
+    q('prodLine2_underlineIngredient2Item', 'productionLines', 'select', 'Ingredient 2', {
+        group: 'Line 2 — Underline fridge',
+        choices: UNDERLINE_ING2_CHOICES,
+        defaultValue: 'tomato',
+        showWhenAnswer: { ...TWO_LINE_SPLIT_VISIBLE, ...UNDERLINE_FRIDGE_LINE2_VISIBLE },
+    }),
+    q('prodLine2_underlineIngredient2Temp', 'productionLines', 'temperature', 'Ingredient 2 — temperature', {
+        group: 'Line 2 — Underline fridge',
+        ...FRIDGE_TEMP_OPTS,
+        showWhenAnswer: { ...TWO_LINE_SPLIT_VISIBLE, ...UNDERLINE_FRIDGE_LINE2_VISIBLE },
+    }),
+
     // ── Other ──
     q(
         'other_chocSauce',
@@ -751,11 +807,11 @@ const DFSC_QUESTIONS = [
     ),
 
     // ── Deliveries & Transfers ──
-    q('deliveries_cutFresh', 'deliveriesTransfers', 'received', 'Cut Fresh'),
+    q('deliveries_cutFresh', 'deliveriesTransfers', 'received', 'Cut Fresh/PM Fresh'),
     q('deliveries_bega', 'deliveriesTransfers', 'received', 'Bega'),
     q('deliveries_americoldChilled', 'deliveriesTransfers', 'received', 'Americold/Sands'),
     q('deliveries_americoldFrozen', 'deliveriesTransfers', 'received', 'Americold/Sands Frozen'),
-    q('deliveries_transfersReceived', 'deliveriesTransfers', 'yes_no', 'Did you receive any transfers?'),
+    q('deliveries_transfersReceived', 'deliveriesTransfers', 'yes_no', 'Did you receive any refrigerated transfers?'),
     q('deliveries_transferFreezerTemp', 'deliveriesTransfers', 'temperature', 'Stock Transfers — Freezer', {
         group: 'Stock Transfers',
         ...FREEZER_TEMP_OPTS,
@@ -885,7 +941,14 @@ function isAnswerEmpty(question, value) {
     return false;
 }
 
+function isIosClient(session) {
+    const ua = String(session?.clientMeta?.userAgent || '');
+    if (/iPhone|iPad|iPod/i.test(ua)) return true;
+    return session?.clientMeta?.platform === 'ios';
+}
+
 function isQuestionVisible(question, session) {
+    if (question.hideOnIos && isIosClient(session)) return false;
     if (question.amOnly && session.shift !== 'AM') return false;
     if (question.skipGroup && (session.sectionSkips || []).includes(question.skipGroup)) return false;
     if (question.showWhenAnswer) {

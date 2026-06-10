@@ -16,12 +16,20 @@
     --dfsc-accent: #7c3aed;
 }
 
+html.page-scroll,
+body.dfsc-page {
+    overflow-x: hidden;
+    max-width: 100%;
+}
+
 .dfsc-page {
     background: var(--dfsc-bg);
     min-height: 100vh;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     font-size: clamp(0.8125rem, 0.2rem + 2.6vw, 1rem);
     color: var(--dfsc-text);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
 }
 
 .dfsc-shell {
@@ -383,13 +391,12 @@
 }
 
 .dfsc-qcard {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: stretch;
     background: var(--dfsc-card-bg);
     border: 1px solid var(--dfsc-border);
-    border-left-width: 4px;
-    border-left-color: transparent;
     border-radius: 4px;
     margin-bottom: 0.75rem;
     overflow: hidden;
@@ -397,9 +404,25 @@
     box-sizing: border-box;
 }
 
-.dfsc-qcard--nc,
-.dfsc-qcard--pending {
-    border-left-color: var(--dfsc-red);
+.dfsc-qcard::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 4px;
+    background: transparent;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.dfsc-qcard--nc::before,
+.dfsc-qcard--pending::before {
+    background: var(--dfsc-red);
+}
+
+.dfsc-qcard--nc-resolved::before {
+    background: #15803d;
 }
 
 .dfsc-nc-badge {
@@ -758,10 +781,16 @@
 /* ── NC alert + inline action ── */
 .dfsc-nc-alert {
     margin-top: 0.75rem;
+    min-height: 1.25rem;
     font-size: 0.82rem;
     font-weight: 700;
+    line-height: 1.25rem;
     color: var(--dfsc-red);
     letter-spacing: 0.02em;
+}
+
+.dfsc-nc-alert--done {
+    color: #15803d;
 }
 
 .dfsc-inline-action {
@@ -806,10 +835,6 @@
     cursor: default;
 }
 
-.dfsc-nc-alert--done {
-    color: #15803d;
-}
-
 .dfsc-inline-note {
     margin-top: 0.65rem;
 }
@@ -822,16 +847,40 @@
     margin: 0;
 }
 
-.dfsc-qcard-footer {
+.dfsc-qcard-actions {
     display: flex;
-    flex-wrap: nowrap;
+    flex-direction: column;
     gap: 0.5rem;
+    width: 100%;
+}
+
+.dfsc-qcard-actions .dfsc-radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.dfsc-qcard-footer-btns {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.dfsc-qcard-footer {
     box-sizing: border-box;
     width: 100%;
     margin: 0;
     padding: 0.65rem 1rem;
     border-top: 1px solid #f0f2f5;
     background: #fafbfc;
+}
+
+.dfsc-qcard-footer .dfsc-qcard-footer-btns {
+    width: 100%;
+}
+
+.dfsc-qcard-footer .dfsc-qcard-btn {
+    flex: 1 1 0;
+    width: auto;
 }
 
 .dfsc-qcard-strip {
@@ -850,6 +899,10 @@
 .dfsc-qcard-strip--submitted {
     background: #f0fdf4;
     border-top-color: #bbf7d0;
+}
+
+.dfsc-qcard-strip:has(.dfsc-inline-action) {
+    min-height: 9.25rem;
 }
 
 .dfsc-qcard-link {
@@ -891,7 +944,8 @@
     justify-content: center;
     gap: 0.35rem;
     margin: 0;
-    padding: 0.55rem 0.65rem;
+    padding: 0.6rem 0.85rem;
+    touch-action: manipulation;
     border: 1px solid var(--dfsc-border);
     border-radius: 6px;
     background: #fff;
@@ -1721,8 +1775,42 @@ body.dfsc-page #app {
     }
 
     .dfsc-qcard-btn {
-        padding: 0.5rem 0.45rem;
-        font-size: 0.75rem;
+        padding: 0.55rem 0.75rem;
+        font-size: 0.8rem;
+    }
+
+    .dfsc-qcard--action-grid .dfsc-qcard-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.45rem;
+    }
+
+    .dfsc-qcard--action-grid .dfsc-qcard-actions .dfsc-radio-group,
+    .dfsc-qcard--action-grid .dfsc-qcard-actions .dfsc-qcard-footer-btns {
+        display: contents;
+    }
+
+    .dfsc-qcard--action-grid .dfsc-qcard-actions .dfsc-choice,
+    .dfsc-qcard--action-grid .dfsc-qcard-actions .dfsc-qcard-btn {
+        min-width: 0;
+        width: auto;
+        flex: none;
+    }
+
+    .dfsc-qcard--action-grid .dfsc-qcard-actions .dfsc-choice span,
+    .dfsc-qcard--action-grid .dfsc-qcard-actions .dfsc-qcard-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 2.5rem;
+        height: 100%;
+        box-sizing: border-box;
+    }
+
+    .dfsc-qcard-footer .dfsc-qcard-footer-btns {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.45rem;
     }
 
     .dfsc-qcard-label {
@@ -1741,7 +1829,7 @@ body.dfsc-page #app {
     .dfsc-textarea,
     .dfsc-input--datetime {
         min-height: 2.35rem;
-        font-size: 0.95em;
+        font-size: 16px;
         padding: 0.5rem 0.6rem;
     }
 

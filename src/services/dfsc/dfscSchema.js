@@ -170,20 +170,13 @@ const DFSC_QUESTIONS = [
         }
     ),
     q(
-        'init_drainsClear',
-        'initialChecks',
-        'compliant',
-        'No sewage back up or build up of any waste in sink and floor drains?',
-        { group: 'Setting Up' }
-    ),
-    q(
         'init_tacoTowerHotWaterCup',
         'initialChecks',
         'temperature',
         'Cup of hot water set up in taco tower to be temped at a later stage',
         {
             group: 'Setting Up',
-            hint: 'Minimum 49°C — starts the Taco Tower temperature timer on Production Lines',
+            hint: 'Minimum 49°C',
             tempMin: 49,
         }
     ),
@@ -211,6 +204,13 @@ const DFSC_QUESTIONS = [
         'initialChecks',
         'compliant',
         'Bathroom sinks are clean, free from build up/mould (check around silicone and drain cover), and are not being used for anything other than handwashing?',
+        { group: 'Setting Up' }
+    ),
+    q(
+        'init_drainsClear',
+        'initialChecks',
+        'compliant',
+        'No sewage back up or build up of any waste in sink and floor drains?',
         { group: 'Setting Up' }
     ),
     q(
@@ -900,6 +900,7 @@ function isQuestionVisible(question, session) {
             if (showWhenAnswerMatches(actual, expected)) return false;
         }
     }
+    if (question.unlockAfterAnswer && !isTimeGateOpen(question, session)) return false;
     return true;
 }
 

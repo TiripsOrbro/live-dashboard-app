@@ -171,6 +171,7 @@ function isQuestionVisible(question) {
             if (showWhenAnswerMatches(session.answers?.[qId], expected)) return false;
         }
     }
+    if (question.unlockAfterAnswer && !isTimeGateOpen(question)) return false;
     return true;
 }
 
@@ -1302,6 +1303,13 @@ function renderPpmBandGroup(question) {
 
 function updateTimeGateCountdowns() {
     let needsUnlockRender = false;
+    for (const question of schema?.questions || []) {
+        if (!questionHasTimeGate(question) || isTimeGateOpen(question)) continue;
+        if (timeGateRemainingMs(question) <= 0) {
+            needsUnlockRender = true;
+            break;
+        }
+    }
     document.querySelectorAll('[data-time-gate-qid]').forEach((el) => {
         const qid = el.dataset.timeGateQid;
         const question = (schema?.questions || []).find((q) => q.id === qid);
@@ -1318,14 +1326,7 @@ function updateTimeGateCountdowns() {
 
 function renderTimeGateBanner(question) {
     if (isTimeGateOpen(question) || !questionHasTimeGate(question)) return '';
-    const anchor = getTimeGateAnchorMs(question);
-    if (question.unlockAfterAnswer && !Number.isFinite(anchor)) {
-        const triggerQ = (schema?.questions || []).find((q) => q.id === question.unlockAfterAnswer.questionId);
-        return `
-        <div class="dfsc-time-gate dfsc-time-gate--waiting" role="status" aria-live="polite">
-            <span class="dfsc-time-gate-label">Record ${escapeHtml(triggerQ?.label || 'hot water cup temperature')} in Initial Checks to start the timer</span>
-        </div>`;
-    }
+    if (question.unlockAfterAnswer) return '';
     return `
         <div class="dfsc-time-gate" role="status" aria-live="polite">
             <span class="dfsc-time-gate-label">Available in</span>

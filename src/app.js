@@ -276,7 +276,7 @@ if (/^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_ENABLE_CORS ?? '').tr
 }
 
 app.use(express.urlencoded({ extended: false }));
-app.use(express.json());
+app.use(express.json({ limit: process.env.DASHBOARD_JSON_BODY_LIMIT || '2mb' }));
 
 let salesCache = null;
 let salesCacheAt = 0;

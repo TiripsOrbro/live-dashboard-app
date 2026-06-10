@@ -27,6 +27,19 @@ function normalizeStoreKey(storeNumber) {
     return raw.replace(/[^0-9]/g, '') || raw;
 }
 
+function defaultShiftForStore(storeNumber) {
+    const cfg = getStoreConfig(normalizeStoreKey(storeNumber)) || {};
+    const tz = cfg.timeZone || DEFAULT_TIME_ZONE;
+    const hour = Number(
+        new Intl.DateTimeFormat('en-AU', {
+            timeZone: tz,
+            hour: 'numeric',
+            hour12: false,
+        }).format(new Date())
+    );
+    return Number.isFinite(hour) && hour >= 12 ? 'PM' : 'AM';
+}
+
 function storeDateKey(storeNumber, date = new Date()) {
     const cfg = getStoreConfig(storeNumber) || {};
     const tz = cfg.timeZone || DEFAULT_TIME_ZONE;
@@ -179,6 +192,7 @@ function getContext(storeNumber) {
         dateKey,
         timeLabel: storeTimeLabel(store),
         timeZone: cfg.timeZone || DEFAULT_TIME_ZONE,
+        defaultShift: defaultShiftForStore(store),
         daySummary: {
             amCompleted: day.amCompleted,
             pmCompleted: day.pmCompleted,
@@ -197,6 +211,9 @@ function getContext(storeNumber) {
               }
             : null,
         openAudits: listOpenAudits(store),
+        todayCompleted: getCompletedSessions(store, dateKey)
+            .map(summarizeCompletedAudit)
+            .sort((a, b) => String(a.shift || '').localeCompare(String(b.shift || '')) || String(a.completedAt || '').localeCompare(String(b.completedAt || ''))),
         schema: buildSchemaPayload(),
     };
 }

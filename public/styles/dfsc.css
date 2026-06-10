@@ -1364,8 +1364,23 @@
     flex-shrink: 0;
 }
 
+.dfsc-blue2-dot.is-connecting {
+    background: #2563eb;
+    animation: dfsc-blue2-pulse 1s ease-in-out infinite;
+}
+
 .dfsc-blue2-dot.is-connected {
     background: #16a34a;
+}
+
+@keyframes dfsc-blue2-pulse {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.35;
+    }
 }
 
 .dfsc-blue2-reading {
@@ -1389,7 +1404,7 @@
 
 .dfsc-temp-row .dfsc-capture-temp {
     flex: 0 0 auto;
-    width: 7.25rem;
+    width: 8.5rem;
     max-width: 30%;
     display: flex;
     align-items: center;

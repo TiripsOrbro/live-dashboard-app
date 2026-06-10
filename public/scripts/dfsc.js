@@ -701,8 +701,9 @@ function blurActiveTextInput() {
     }
 }
 
-const SIGNATURE_MIN_SCALE = 4;
-const SIGNATURE_EXPORT_MIN_WIDTH = 1600;
+const SIGNATURE_MIN_SCALE = 2;
+const SIGNATURE_EXPORT_MIN_WIDTH = 640;
+const SIGNATURE_EXPORT_QUALITY = 0.85;
 
 function initSignaturePad(canvasId) {
     const canvas = document.getElementById(canvasId);
@@ -801,18 +802,18 @@ function initSignaturePad(canvasId) {
         },
         toDataUrl() {
             if (!hasStroke) return '';
-            if (canvas.width >= SIGNATURE_EXPORT_MIN_WIDTH) {
-                return canvas.toDataURL('image/png');
+            let exportCanvas = canvas;
+            if (canvas.width < SIGNATURE_EXPORT_MIN_WIDTH) {
+                const exportScale = SIGNATURE_EXPORT_MIN_WIDTH / canvas.width;
+                exportCanvas = document.createElement('canvas');
+                exportCanvas.width = SIGNATURE_EXPORT_MIN_WIDTH;
+                exportCanvas.height = Math.round(canvas.height * exportScale);
+                const exportCtx = exportCanvas.getContext('2d');
+                exportCtx.fillStyle = '#fff';
+                exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+                exportCtx.drawImage(canvas, 0, 0, exportCanvas.width, exportCanvas.height);
             }
-            const exportScale = SIGNATURE_EXPORT_MIN_WIDTH / canvas.width;
-            const exportCanvas = document.createElement('canvas');
-            exportCanvas.width = SIGNATURE_EXPORT_MIN_WIDTH;
-            exportCanvas.height = Math.round(canvas.height * exportScale);
-            const exportCtx = exportCanvas.getContext('2d');
-            exportCtx.fillStyle = '#fff';
-            exportCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
-            exportCtx.drawImage(canvas, 0, 0, exportCanvas.width, exportCanvas.height);
-            return exportCanvas.toDataURL('image/png');
+            return exportCanvas.toDataURL('image/jpeg', SIGNATURE_EXPORT_QUALITY);
         },
         restore(dataUrl) {
             if (!dataUrl) return;
@@ -2298,6 +2299,7 @@ function renderLandingView() {
 
     const dayStatus = context.daySummary;
     const statusLine = `Today: ${dayStatus.amCompleted ? 'AM done' : 'AM pending'} · ${dayStatus.pmCompleted ? 'PM done' : 'PM pending'}`;
+    const defaultShift = context.defaultShift === 'PM' ? 'PM' : 'AM';
 
     app.innerHTML = `
         <div class="dfsc-shell">
@@ -2330,8 +2332,8 @@ function renderLandingView() {
                 <div class="dfsc-field">
                     <span class="dfsc-field-label">Shift</span>
                     <div class="dfsc-radio-group">
-                        <label class="dfsc-choice"><input type="radio" name="dfsc-shift" value="AM" checked /><span>AM</span></label>
-                        <label class="dfsc-choice"><input type="radio" name="dfsc-shift" value="PM" /><span>PM</span></label>
+                        <label class="dfsc-choice"><input type="radio" name="dfsc-shift" value="AM" ${defaultShift === 'AM' ? 'checked' : ''} /><span>AM</span></label>
+                        <label class="dfsc-choice"><input type="radio" name="dfsc-shift" value="PM" ${defaultShift === 'PM' ? 'checked' : ''} /><span>PM</span></label>
                     </div>
                 </div>
                 <div class="dfsc-field">
@@ -2378,7 +2380,7 @@ function renderLandingView() {
 async function startSession(forceNew) {
     statusMessage = '';
     const name = document.getElementById('dfsc-name')?.value?.trim() || '';
-    const shift = document.querySelector('input[name="dfsc-shift"]:checked')?.value || 'AM';
+    const shift = document.querySelector('input[name="dfsc-shift"]:checked')?.value || context?.defaultShift || 'AM';
     const startPad = signaturePads.get('dfsc-start-signature');
     const startSignatureDataUrl = startPad?.toDataUrl() || '';
 

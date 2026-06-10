@@ -15,13 +15,10 @@
     const COOPER_WAKE_DELAY_MS = 350;
     const TEMP_DISCOVERY_ATTEMPTS = 3;
 
-    const COOPER_VENDOR_SERVICES = Array.from({ length: 12 }, (_, index) => {
-        const slot = String(index + 1).padStart(2, '0');
-        return `785440${slot}-4394-4fc2-8cfd-be6a00aa701b`;
-    });
-
+    // Cooper-Atkins GATT: 78544001/78544002 are services; 78544003 is the temperature characteristic.
     const OPTIONAL_SERVICE_UUIDS = [
-        ...COOPER_VENDOR_SERVICES,
+        TEMP_SERVICE_UUID,
+        TEMP_SERVICE_ALT_UUID,
         BATTERY_SERVICE_UUID,
         HEALTH_THERMOMETER_SERVICE,
         '0000180a-0000-1000-8000-00805f9b34fb',
@@ -196,6 +193,16 @@
         );
     }
 
+    function isSecurityBlockedError(err) {
+        const msg = String(err?.message || err || '');
+        return err?.name === 'SecurityError' || /not allowed to access the service/i.test(msg);
+    }
+
+    function shouldRepickDevice(err) {
+        const msg = String(err?.message || err || '');
+        return isSecurityBlockedError(err) || /temperature service not found/i.test(msg);
+    }
+
     function bindDisconnectHandler(bleDevice) {
         if (!bleDevice || bleDevice._dfscDisconnectBound) return;
         bleDevice.addEventListener('gattserverdisconnected', markDisconnected);
@@ -265,9 +272,9 @@
                 'No Bluetooth device found — put Blue2 in pairing mode, enable Chrome “Nearby devices”, and try again.'
             );
         }
-        if (err?.name === 'SecurityError' || /not allowed to access the service/i.test(msg)) {
+        if (isSecurityBlockedError(err)) {
             return new Error(
-                'Chrome blocked thermometer access — close this tab, reopen DFSC, and tap Connect again.'
+                'Chrome blocked thermometer access — forget Blue2 in Android Settings → Bluetooth, put Blue2 in pairing mode (flashing icon), then tap Connect and pick Blue2 again.'
             );
         }
         if (err?.name === 'NetworkError' || /gatt|op in progress|connection/i.test(msg)) {
@@ -358,12 +365,7 @@
         const directChar = await findCharacteristicByUuid(server, TEMP_CHAR_UUID);
         if (directChar) return directChar;
 
-        const serviceCandidates = [
-            TEMP_SERVICE_UUID,
-            TEMP_SERVICE_ALT_UUID,
-            HEALTH_THERMOMETER_SERVICE,
-            ...COOPER_VENDOR_SERVICES,
-        ];
+        const serviceCandidates = [TEMP_SERVICE_UUID, TEMP_SERVICE_ALT_UUID, HEALTH_THERMOMETER_SERVICE];
 
         for (const serviceUuid of serviceCandidates) {
             try {
@@ -371,7 +373,7 @@
                 const char = await pickLiveCharacteristic(service);
                 if (char) return char;
             } catch (err) {
-                if (isGattDisconnectedError(err)) throw err;
+                if (isGattDisconnectedError(err) || isSecurityBlockedError(err)) throw err;
                 /* try next */
             }
         }
@@ -384,7 +386,7 @@
                 const char = await pickLiveCharacteristic(service);
                 if (char) return char;
             } catch (err) {
-                if (isGattDisconnectedError(err)) throw err;
+                if (isGattDisconnectedError(err) || isSecurityBlockedError(err)) throw err;
                 /* try next service */
             }
         }
@@ -394,7 +396,7 @@
                 const char = await pickLiveCharacteristic(service);
                 if (char) return char;
             } catch (err) {
-                if (isGattDisconnectedError(err)) throw err;
+                if (isGattDisconnectedError(err) || isSecurityBlockedError(err)) throw err;
                 /* try next service */
             }
         }
@@ -405,10 +407,12 @@
         );
     }
 
+    function buildRequestOptions() {
+        return { optionalServices: OPTIONAL_SERVICE_UUIDS };
+    }
+
     async function requestBlue2Device({ serviceOnly = false } = {}) {
-        const requestOptions = {
-            optionalServices: OPTIONAL_SERVICE_UUIDS,
-        };
+        const requestOptions = buildRequestOptions();
 
         if (serviceOnly) {
             return navigator.bluetooth.requestDevice({
@@ -420,29 +424,29 @@
             });
         }
 
-        // OR filters — pairing mode often advertises the name only, not the temp service UUID.
-        const filters = [
-            { name: 'Blue2' },
-            { name: 'Blue2-D' },
-            { namePrefix: 'Blue' },
-            { namePrefix: 'Cooper' },
-            { namePrefix: 'MFT' },
-            { services: [TEMP_SERVICE_UUID] },
-            { services: [TEMP_SERVICE_ALT_UUID] },
-        ];
-
+        // Service filters first — Chrome grants GATT access when the service is in filters.
         try {
             return await navigator.bluetooth.requestDevice({
                 ...requestOptions,
-                filters,
+                filters: [
+                    { services: [TEMP_SERVICE_UUID] },
+                    { services: [TEMP_SERVICE_ALT_UUID] },
+                ],
             });
         } catch (err) {
             if (err?.name !== 'NotFoundError') throw err;
         }
 
+        // Pairing mode often advertises the name only, not the temperature service UUID.
         return navigator.bluetooth.requestDevice({
             ...requestOptions,
-            acceptAllDevices: true,
+            filters: [
+                { name: 'Blue2' },
+                { name: 'Blue2-D' },
+                { namePrefix: 'Blue' },
+                { namePrefix: 'Cooper' },
+                { namePrefix: 'MFT' },
+            ],
         });
     }
 
@@ -455,7 +459,7 @@
                 return await getTemperatureCharacteristic(server);
             } catch (err) {
                 lastErr = err;
-                if (isGattDisconnectedError(err)) throw err;
+                if (isGattDisconnectedError(err) || isSecurityBlockedError(err)) throw err;
                 if (!/temperature service not found/i.test(String(err?.message || err))) throw err;
                 if (attempt + 1 >= TEMP_DISCOVERY_ATTEMPTS) break;
                 await sleep(400);
@@ -480,24 +484,26 @@
         return char;
     }
 
+    async function repickAndConnect(previousDevice) {
+        const repicked = await requestBlue2Device({ serviceOnly: true });
+        if (previousDevice?.gatt?.connected) {
+            try {
+                previousDevice.gatt.disconnect();
+            } catch {
+                /* ignore */
+            }
+        }
+        device = repicked;
+        bindDisconnectHandler(device);
+        return runWithGatt(repicked, (server) => setupTemperatureStream(server));
+    }
+
     async function connectDeviceStream(bleDevice, { allowServicePickerFallback = true } = {}) {
         try {
             return await runWithGatt(bleDevice, (server) => setupTemperatureStream(server));
         } catch (err) {
-            const msg = String(err?.message || err || '');
-            if (!allowServicePickerFallback || !/temperature service not found/i.test(msg)) throw err;
-
-            const repicked = await requestBlue2Device({ serviceOnly: true });
-            if (bleDevice?.gatt?.connected) {
-                try {
-                    bleDevice.gatt.disconnect();
-                } catch {
-                    /* ignore */
-                }
-            }
-            device = repicked;
-            bindDisconnectHandler(device);
-            return runWithGatt(repicked, (server) => setupTemperatureStream(server));
+            if (!allowServicePickerFallback || !shouldRepickDevice(err)) throw err;
+            return repickAndConnect(bleDevice);
         }
     }
 

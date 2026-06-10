@@ -3,8 +3,10 @@
  * connect → live readings → capture when stable (< 0.3° change, same as Mobile Auditor).
  */
 (function () {
-    const TEMP_SERVICE_UUID = '78544002-4394-4fc2-8cfd-be6a00aa701b';
-    const TEMP_SERVICE_ALT_UUID = '78544001-4394-4fc2-8cfd-be6a00aa701b';
+    // Cooper-Atkins Blue2: char is always 78544003; service UUID varies by firmware.
+    const TEMP_SERVICE_UUID = 'f2b32c77-ea68-464b-9cd7-a22cbffb98bd';
+    const TEMP_SERVICE_ALT_UUID = '78544002-4394-4fc2-8cfd-be6a00aa701b';
+    const TEMP_SERVICE_LEGACY_UUID = '78544001-4394-4fc2-8cfd-be6a00aa701b';
     const TEMP_CHAR_UUID = '78544003-4394-4fc2-8cfd-be6a00aa701b';
     const BATTERY_SERVICE_UUID = '0000180f-0000-1000-8000-00805f9b34fb';
     const BATTERY_CHAR_UUID = '00002a19-0000-1000-8000-00805f9b34fb';
@@ -15,10 +17,10 @@
     const COOPER_WAKE_DELAY_MS = 350;
     const TEMP_DISCOVERY_ATTEMPTS = 3;
 
-    // Cooper-Atkins GATT: 78544001/78544002 are services; 78544003 is the temperature characteristic.
     const OPTIONAL_SERVICE_UUIDS = [
         TEMP_SERVICE_UUID,
         TEMP_SERVICE_ALT_UUID,
+        TEMP_SERVICE_LEGACY_UUID,
         BATTERY_SERVICE_UUID,
         HEALTH_THERMOMETER_SERVICE,
         '0000180a-0000-1000-8000-00805f9b34fb',
@@ -178,8 +180,14 @@
         return Boolean(props.notify || props.indicate);
     }
 
+    function charCanBeRead(char) {
+        const props = char?.properties || {};
+        return Boolean(props.read || props.notify || props.indicate);
+    }
+
     function isCooperServiceUuid(uuid) {
-        return canonicalUuid(uuid).includes('785440');
+        const id = canonicalUuid(uuid);
+        return id.includes('785440') || id === canonicalUuid(TEMP_SERVICE_UUID);
     }
 
     function isGattDisconnectedError(err) {
@@ -274,7 +282,7 @@
         }
         if (isSecurityBlockedError(err)) {
             return new Error(
-                'Chrome blocked thermometer access — forget Blue2 in Android Settings → Bluetooth, put Blue2 in pairing mode (flashing icon), then tap Connect and pick Blue2 again.'
+                'Chrome blocked thermometer access — close this DFSC tab, open DFSC again, put Blue2 in pairing mode (flashing icon), then tap Connect and pick Blue2.'
             );
         }
         if (err?.name === 'NetworkError' || /gatt|op in progress|connection/i.test(msg)) {
@@ -284,7 +292,7 @@
         }
         if (/temperature service not found/i.test(msg)) {
             return new Error(
-                'Connected to Blue2 but the temperature channel is not available yet — keep the probe switched on and tap Connect again. If this repeats, forget Blue2 in Android Settings → Bluetooth, then connect only through DFSC.'
+                'Connected to Blue2 but the temperature channel is not available yet — insert the probe, wake the Blue2 (press power so the screen is on), keep the Bluetooth icon flashing, then tap Connect again.'
             );
         }
         if (isGattDisconnectedError(err)) {
@@ -354,6 +362,9 @@
         for (const char of chars) {
             if (charHasLiveUpdates(char)) return char;
         }
+        for (const char of chars) {
+            if (charCanBeRead(char)) return char;
+        }
         return null;
     }
 
@@ -365,7 +376,12 @@
         const directChar = await findCharacteristicByUuid(server, TEMP_CHAR_UUID);
         if (directChar) return directChar;
 
-        const serviceCandidates = [TEMP_SERVICE_UUID, TEMP_SERVICE_ALT_UUID, HEALTH_THERMOMETER_SERVICE];
+        const serviceCandidates = [
+            TEMP_SERVICE_UUID,
+            TEMP_SERVICE_ALT_UUID,
+            TEMP_SERVICE_LEGACY_UUID,
+            HEALTH_THERMOMETER_SERVICE,
+        ];
 
         for (const serviceUuid of serviceCandidates) {
             try {
@@ -414,39 +430,39 @@
     async function requestBlue2Device({ serviceOnly = false } = {}) {
         const requestOptions = buildRequestOptions();
 
+        const serviceFilters = [
+            { services: [TEMP_SERVICE_UUID] },
+            { services: [TEMP_SERVICE_ALT_UUID] },
+            { services: [TEMP_SERVICE_LEGACY_UUID] },
+        ];
+        const nameFilters = [
+            { name: 'Blue2' },
+            { name: 'Blue2-D' },
+            { namePrefix: 'Blue' },
+            { namePrefix: 'Cooper' },
+            { namePrefix: 'MFT' },
+        ];
+
         if (serviceOnly) {
             return navigator.bluetooth.requestDevice({
                 ...requestOptions,
-                filters: [
-                    { services: [TEMP_SERVICE_UUID] },
-                    { services: [TEMP_SERVICE_ALT_UUID] },
-                ],
+                filters: serviceFilters,
             });
         }
 
-        // Service filters first — Chrome grants GATT access when the service is in filters.
         try {
             return await navigator.bluetooth.requestDevice({
                 ...requestOptions,
-                filters: [
-                    { services: [TEMP_SERVICE_UUID] },
-                    { services: [TEMP_SERVICE_ALT_UUID] },
-                ],
+                filters: [...serviceFilters, ...nameFilters],
             });
         } catch (err) {
             if (err?.name !== 'NotFoundError') throw err;
         }
 
-        // Pairing mode often advertises the name only, not the temperature service UUID.
+        // Pairing mode: name only. optionalServices still grants Cooper GATT access in Chrome.
         return navigator.bluetooth.requestDevice({
             ...requestOptions,
-            filters: [
-                { name: 'Blue2' },
-                { name: 'Blue2-D' },
-                { namePrefix: 'Blue' },
-                { namePrefix: 'Cooper' },
-                { namePrefix: 'MFT' },
-            ],
+            filters: nameFilters,
         });
     }
 
@@ -471,15 +487,19 @@
     async function setupTemperatureStream(server) {
         const char = await discoverTemperatureCharacteristic(server);
         if (charHasLiveUpdates(char)) {
-            await char.startNotifications();
-            char.addEventListener('characteristicvaluechanged', onNotify);
+            try {
+                await char.startNotifications();
+                char.addEventListener('characteristicvaluechanged', onNotify);
+            } catch {
+                /* fall back to polling readValue */
+            }
         }
         try {
             const initial = await char.readValue();
             const parsed = parseTemperature(initial);
             if (parsed != null) publishReading(parsed);
         } catch {
-            /* notifications will populate reading */
+            /* notifications or a later read will populate reading */
         }
         return char;
     }

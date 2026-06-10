@@ -27,8 +27,41 @@ function consumeWelcomePending() {
     }
 }
 
-function delay(ms) {
-    return new Promise((resolve) => window.setTimeout(resolve, ms));
+/** Tap or click anywhere on the welcome screen to skip waits. */
+function createWelcomeSkipController() {
+    let skipped = false;
+    const pending = new Set();
+
+    function skip() {
+        if (skipped) return;
+        skipped = true;
+        for (const cancel of pending) cancel();
+        pending.clear();
+    }
+
+    function wait(ms) {
+        if (skipped) return Promise.resolve();
+        return new Promise((resolve) => {
+            const timer = window.setTimeout(() => {
+                pending.delete(cancel);
+                resolve();
+            }, ms);
+            const cancel = () => {
+                window.clearTimeout(timer);
+                resolve();
+            };
+            pending.add(cancel);
+        });
+    }
+
+    function attach(stage) {
+        if (!stage) return () => {};
+        const onPointer = () => skip();
+        stage.addEventListener('pointerdown', onPointer);
+        return () => stage.removeEventListener('pointerdown', onPointer);
+    }
+
+    return { skip, wait, attach };
 }
 
 function prefersReducedMotion() {
@@ -81,6 +114,7 @@ function injectWelcomeOverlay(welcomeName) {
 
 async function runWelcomeSequence(welcomeName) {
     const reduced = prefersReducedMotion();
+    const skipCtrl = createWelcomeSkipController();
     const stage = injectWelcomeOverlay(welcomeName);
     const brand = stage.querySelector('.welcome-brand');
     const message = stage.querySelector('.welcome-message');
@@ -104,13 +138,18 @@ async function runWelcomeSequence(welcomeName) {
         });
     });
 
-    await delay(reduced ? 280 : TIMING.display);
+    const detachSkip = skipCtrl.attach(stage);
+    try {
+        await skipCtrl.wait(reduced ? 280 : TIMING.display);
 
-    stage.classList.add('welcome-stage--exit');
-    await delay(reduced ? 180 : TIMING.exit);
+        stage.classList.add('welcome-stage--exit');
+        await skipCtrl.wait(reduced ? 180 : TIMING.exit);
 
-    stage.remove();
-    document.body.classList.remove('welcome-overlay-active');
+        stage.remove();
+        document.body.classList.remove('welcome-overlay-active');
+    } finally {
+        detachSkip();
+    }
 }
 
 (function bootstrapWelcomeOverlay() {

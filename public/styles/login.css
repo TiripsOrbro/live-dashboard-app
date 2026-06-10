@@ -591,6 +591,9 @@ body.welcome-overlay-active .stores-sign-out-btn {
 .welcome-stage--visible {
     opacity: 1;
     pointer-events: auto;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .welcome-copy {

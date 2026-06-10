@@ -57,6 +57,43 @@ function delay(ms) {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+/** Tap or click anywhere on the welcome screen to skip waits. */
+function createWelcomeSkipController() {
+    let skipped = false;
+    const pending = new Set();
+
+    function skip() {
+        if (skipped) return;
+        skipped = true;
+        for (const cancel of pending) cancel();
+        pending.clear();
+    }
+
+    function wait(ms) {
+        if (skipped) return Promise.resolve();
+        return new Promise((resolve) => {
+            const timer = window.setTimeout(() => {
+                pending.delete(cancel);
+                resolve();
+            }, ms);
+            const cancel = () => {
+                window.clearTimeout(timer);
+                resolve();
+            };
+            pending.add(cancel);
+        });
+    }
+
+    function attach(stage) {
+        if (!stage) return () => {};
+        const onPointer = () => skip();
+        stage.addEventListener('pointerdown', onPointer);
+        return () => stage.removeEventListener('pointerdown', onPointer);
+    }
+
+    return { skip, wait, attach };
+}
+
 function prefersReducedMotion() {
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
@@ -258,6 +295,7 @@ function completePreloadedTransition(dest) {
 
 async function playWelcomeTransition(welcomeName, dest) {
     const reduced = prefersReducedMotion();
+    const skipCtrl = createWelcomeSkipController();
     const preloadPromise = preloadDashboard(dest);
 
     resetWelcomeAnimation();
@@ -287,24 +325,29 @@ async function playWelcomeTransition(welcomeName, dest) {
 
     markWelcomeShownToday();
 
-    await delay(reduced ? 280 : TIMING.welcomeDisplay);
+    const detachSkip = skipCtrl.attach(welcomeStage);
+    try {
+        await skipCtrl.wait(reduced ? 280 : TIMING.welcomeDisplay);
 
-    const preloadReady = (await preloadPromise) || isDashboardPreloadReady();
+        const preloadReady = (await preloadPromise) || isDashboardPreloadReady();
 
-    welcomeStage.classList.remove('welcome-stage--visible');
-    welcomeStage.classList.add('welcome-stage--exit');
-    if (preloadReady) {
-        revealPreloadedDashboard(dest);
+        welcomeStage.classList.remove('welcome-stage--visible');
+        welcomeStage.classList.add('welcome-stage--exit');
+        if (preloadReady) {
+            revealPreloadedDashboard(dest);
+        }
+
+        await skipCtrl.wait(reduced ? 180 : TIMING.exit);
+
+        if (preloadReady || isDashboardPreloadReady()) {
+            completePreloadedTransition(dest);
+            return;
+        }
+
+        window.location.replace(dest || '/login');
+    } finally {
+        detachSkip();
     }
-
-    await delay(reduced ? 180 : TIMING.exit);
-
-    if (preloadReady || isDashboardPreloadReady()) {
-        completePreloadedTransition(dest);
-        return;
-    }
-
-    window.location.replace(dest || '/login');
 }
 
 async function submitLogin() {

@@ -39,6 +39,7 @@
     let listeners = new Set();
     let pendingCapture = null;
     let stableCaptureSession = null;
+    let liveWatchSession = null;
 
     function isSupported() {
         return !getSupportBlockReason();
@@ -108,6 +109,13 @@
         }
         if (stableCaptureSession) {
             stableCaptureSession.onReading(celsius);
+        }
+        if (liveWatchSession) {
+            try {
+                liveWatchSession.onReading(celsius);
+            } catch {
+                /* ignore listener errors */
+            }
         }
     }
 
@@ -533,6 +541,71 @@
         notify();
     }
 
+    async function reconnectExistingDevice() {
+        if (!device?.gatt) return false;
+        try {
+            bindDisconnectHandler(device);
+            characteristic = await connectDeviceStream(device, { allowServicePickerFallback: false });
+            ready = true;
+            notify();
+            return true;
+        } catch {
+            markDisconnected();
+            return false;
+        }
+    }
+
+    /** Reconnect to a thermometer the user already chose in this browser (no picker). */
+    async function reconnectGrantedDevices() {
+        if (!navigator.bluetooth?.getDevices) return false;
+        let granted = [];
+        try {
+            granted = await navigator.bluetooth.getDevices();
+        } catch {
+            return false;
+        }
+        for (const bleDevice of granted) {
+            if (!bleDevice?.gatt) continue;
+            try {
+                if (device && device !== bleDevice && device.gatt?.connected) {
+                    try {
+                        device.gatt.disconnect();
+                    } catch {
+                        /* ignore */
+                    }
+                }
+                device = bleDevice;
+                bindDisconnectHandler(device);
+                characteristic = await connectDeviceStream(device, { allowServicePickerFallback: false });
+                ready = true;
+                notify();
+                return true;
+            } catch {
+                characteristic = null;
+                ready = false;
+            }
+        }
+        return false;
+    }
+
+    /** Silent reconnect when audit opens — does not open the device picker. */
+    async function tryAutoConnect() {
+        if (!isSupported()) return getState();
+        if (ready && device?.gatt?.connected && characteristic) return getState();
+        if (connecting) return getState();
+
+        connecting = true;
+        notify();
+        try {
+            if (device && !device.gatt?.connected && (await reconnectExistingDevice())) return getState();
+            if (await reconnectGrantedDevices()) return getState();
+            return getState();
+        } finally {
+            connecting = false;
+            notify();
+        }
+    }
+
     async function connect() {
         if (!isSupported()) {
             throw new Error('Web Bluetooth is not available in this browser. Use Chrome or Edge on Android/tablet/desktop.');
@@ -545,17 +618,22 @@
 
         try {
             if (!device || !device.gatt?.connected) {
-                const picked = await requestBlue2Device();
-                if (device && device !== picked) {
-                    try {
-                        if (device.gatt?.connected) device.gatt.disconnect();
-                    } catch {
-                        /* ignore */
+                let connected = false;
+                if (device) connected = await reconnectExistingDevice();
+                if (!connected) connected = await reconnectGrantedDevices();
+                if (!connected) {
+                    const picked = await requestBlue2Device();
+                    if (device && device !== picked) {
+                        try {
+                            if (device.gatt?.connected) device.gatt.disconnect();
+                        } catch {
+                            /* ignore */
+                        }
                     }
+                    device = picked;
+                    bindDisconnectHandler(device);
+                    characteristic = await connectDeviceStream(device);
                 }
-                device = picked;
-                bindDisconnectHandler(device);
-                characteristic = await connectDeviceStream(device);
             } else if (!characteristic) {
                 bindDisconnectHandler(device);
                 characteristic = await connectDeviceStream(device, { allowServicePickerFallback: false });
@@ -576,6 +654,7 @@
     async function disconnect() {
         pendingCapture = null;
         stableCaptureSession = null;
+        stopLiveWatch();
         connecting = false;
         if (characteristic) {
             try {
@@ -680,6 +759,32 @@
         return captureStableCelsius();
     }
 
+    function stopLiveWatch() {
+        liveWatchSession = null;
+    }
+
+    /** Stream live readings to a callback until stopLiveWatch() or unsubscribe. */
+    function watchLiveReadings(onReading) {
+        stopLiveWatch();
+        if (typeof onReading !== 'function') return stopLiveWatch;
+        liveWatchSession = { onReading };
+        if (lastReading?.celsius != null) {
+            try {
+                onReading(lastReading.celsius);
+            } catch {
+                /* ignore */
+            }
+        }
+        if (ready && device?.gatt?.connected && characteristic) {
+            readCurrentCelsius()
+                .then((celsius) => {
+                    if (liveWatchSession && celsius != null) onReading(celsius);
+                })
+                .catch(() => {});
+        }
+        return stopLiveWatch;
+    }
+
     function onStateChange(fn) {
         listeners.add(fn);
         return () => listeners.delete(fn);
@@ -690,10 +795,13 @@
         getSupportBlockReason,
         getState,
         connect,
+        tryAutoConnect,
         disconnect,
         readCurrentCelsius,
         captureCelsius,
         captureStableCelsius,
+        watchLiveReadings,
+        stopLiveWatch,
         onStateChange,
     };
 })();

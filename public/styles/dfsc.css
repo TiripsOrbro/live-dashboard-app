@@ -31,14 +31,21 @@
     padding-top: env(safe-area-inset-top, 0px);
 }
 
-/* ── Sticky audit header ── */
+/* ── Audit header: only section tabs stay fixed at top ── */
 .dfsc-header {
+    position: relative;
+    z-index: 30;
+    padding: 0;
+}
+
+.dfsc-tabs-sticky {
     position: sticky;
     top: 0;
     z-index: 30;
     background: var(--dfsc-bg);
     border-bottom: 1px solid var(--dfsc-border);
-    padding: 0.75rem 1rem 0.5rem;
+    padding: 0.5rem 1rem;
+    padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
 }
 
 .dfsc-header-top {
@@ -1440,6 +1447,92 @@
     background: #ede9fe;
 }
 
+/* ── Blue2 manual capture modal ── */
+body.dfsc-blue2-modal-open {
+    overflow: hidden;
+}
+
+.dfsc-blue2-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
+.dfsc-blue2-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+}
+
+.dfsc-blue2-modal-panel {
+    position: relative;
+    width: min(100%, 22rem);
+    background: var(--dfsc-card-bg);
+    border: 1px solid var(--dfsc-border);
+    border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+    padding: 1.25rem 1.25rem 1rem;
+}
+
+.dfsc-blue2-modal-title {
+    margin: 0 0 0.35rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--dfsc-text);
+}
+
+.dfsc-blue2-modal-question {
+    margin: 0 0 1rem;
+    font-size: 0.88rem;
+    line-height: 1.4;
+    color: var(--dfsc-text-muted);
+}
+
+.dfsc-blue2-modal-reading {
+    font-size: 2.75rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    color: var(--dfsc-text);
+    line-height: 1.1;
+    margin: 0.25rem 0 0.5rem;
+}
+
+.dfsc-blue2-modal-status {
+    margin: 0 0 0.75rem;
+    text-align: center;
+    font-size: 0.82rem;
+    color: var(--dfsc-text-muted);
+}
+
+.dfsc-blue2-modal-hint {
+    margin: 0 0 1rem;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--dfsc-text-muted);
+    text-align: center;
+}
+
+.dfsc-blue2-modal-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.dfsc-blue2-modal-actions .dfsc-btn {
+    flex: 1;
+    width: auto;
+    min-height: 2.75rem;
+}
+
+.dfsc-blue2-modal-actions .dfsc-btn-primary {
+    flex: 1.2;
+}
+
 .dfsc-landing-head {
     padding: 1rem 1rem 0.5rem;
 }
@@ -1495,7 +1588,7 @@ body.dfsc-page #app {
         padding-right: 0;
     }
 
-    .dfsc-header,
+    .dfsc-tabs-sticky,
     .dfsc-section-head,
     .dfsc-section-intro,
     .dfsc-stepper-wrap,

@@ -24,6 +24,7 @@ let inspectionHistory = [];
 let historyDetailSession = null;
 let historyDetailReturnTo = 'history';
 let blue2Unsubscribe = null;
+let blue2CaptureModal = null;
 let completionGuideActive = false;
 const dfscReminderTimeouts = new Map();
 let completionGuideQuestionId = null;
@@ -877,8 +878,8 @@ function renderCaptureTempButton(questionId, { locked = false, disabled = false 
     const title = fieldDisabled
         ? ''
         : blue2Connected()
-          ? 'Capture when the reading stabilizes'
-          : 'Connects to the Bluetooth thermometer, then captures when stable';
+          ? 'Open thermometer reader'
+          : 'Connect thermometer, then record when ready';
     return `<button type="button" class="dfsc-capture-temp" data-blue2-qid="${escapeHtml(questionId)}"${
         fieldDisabled ? ' data-blue2-field-disabled="true"' : ''
     }${fieldDisabled ? ' disabled' : ''}${title ? ` title="${escapeHtml(title)}"` : ''}>Capture temperature</button>`;
@@ -891,12 +892,15 @@ function tempInputHtml(questionId, { value = '', disabled = false, qtype = 'temp
 }
 
 function scrollDfscSectionToTop() {
-    const target = document.querySelector('.dfsc-section-head') || document.getElementById('dfsc-section-body');
-    if (target) {
-        target.scrollIntoView({ block: 'start', behavior: 'instant' });
+    const anchor = document.querySelector('.dfsc-section-head') || document.getElementById('dfsc-section-body');
+    if (!anchor) {
+        window.scrollTo({ top: 0, behavior: 'instant' });
         return;
     }
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    const stickyTabs = document.querySelector('.dfsc-tabs-sticky');
+    const offset = stickyTabs ? stickyTabs.getBoundingClientRect().height : 0;
+    const top = anchor.getBoundingClientRect().top + window.scrollY - offset;
+    window.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
 }
 
 function renderBlue2Bar() {
@@ -961,8 +965,8 @@ function updateCaptureTempButtons() {
         if (btn.dataset.blue2FieldDisabled === 'true') return;
         btn.disabled = connecting;
         btn.title = connected
-            ? 'Capture when the reading stabilizes'
-            : 'Connects to the Bluetooth thermometer, then captures when stable';
+            ? 'Open thermometer reader'
+            : 'Connect thermometer, then record when ready';
     });
 }
 
@@ -985,34 +989,121 @@ async function toggleBlue2Connection() {
     }
 }
 
+function closeBlue2CaptureModal() {
+    if (!blue2CaptureModal) return;
+    blue2CaptureModal.unsubLive?.();
+    blue2CaptureModal.unsubState?.();
+    blue2CaptureModal.onKeyDown?.();
+    window.DfscBlue2.stopLiveWatch?.();
+    document.getElementById('dfsc-blue2-modal')?.remove();
+    document.body.classList.remove('dfsc-blue2-modal-open');
+    blue2CaptureModal = null;
+}
+
+function openBlue2CaptureModal(questionId) {
+    closeBlue2CaptureModal();
+
+    const question = (schema?.questions || []).find((q) => q.id === questionId);
+    const label = question?.label || 'Temperature';
+    const state = window.DfscBlue2.getState();
+    const statusLabel = state.connected
+        ? state.deviceName || 'Thermometer connected'
+        : state.connecting
+          ? 'Connecting…'
+          : 'Not connected';
+
+    const modal = document.createElement('div');
+    modal.id = 'dfsc-blue2-modal';
+    modal.className = 'dfsc-blue2-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'dfsc-blue2-modal-title');
+    modal.innerHTML = `
+        <div class="dfsc-blue2-modal-backdrop" data-blue2-modal-cancel tabindex="-1"></div>
+        <div class="dfsc-blue2-modal-panel">
+            <h2 class="dfsc-blue2-modal-title" id="dfsc-blue2-modal-title">Thermometer reading</h2>
+            <p class="dfsc-blue2-modal-question">${escapeHtml(label)}</p>
+            <div class="dfsc-blue2-modal-reading" data-blue2-modal-reading aria-live="polite">—</div>
+            <p class="dfsc-blue2-modal-status" data-blue2-modal-status>${escapeHtml(statusLabel)}</p>
+            <p class="dfsc-blue2-modal-hint">Insert the probe and wait for a steady reading. Tap Capture temperature when you are ready to record.</p>
+            <div class="dfsc-blue2-modal-actions">
+                <button type="button" class="dfsc-btn dfsc-btn-secondary" data-blue2-modal-cancel>Cancel</button>
+                <button type="button" class="dfsc-btn dfsc-btn-primary" data-blue2-modal-record disabled>Capture temperature</button>
+            </div>
+        </div>`;
+
+    document.body.appendChild(modal);
+    document.body.classList.add('dfsc-blue2-modal-open');
+
+    const readingEl = modal.querySelector('[data-blue2-modal-reading]');
+    const statusEl = modal.querySelector('[data-blue2-modal-status]');
+    const recordBtn = modal.querySelector('[data-blue2-modal-record]');
+    let latestCelsius = null;
+
+    const setReading = (celsius) => {
+        if (celsius == null || !Number.isFinite(celsius)) return;
+        latestCelsius = celsius;
+        readingEl.textContent = `${celsius}°C`;
+        recordBtn.disabled = !blue2Connected();
+    };
+
+    if (state.lastReading?.celsius != null) {
+        setReading(state.lastReading.celsius);
+    }
+
+    const unsubLive = window.DfscBlue2.watchLiveReadings(setReading);
+    const unsubState = window.DfscBlue2.onStateChange((s) => {
+        if (!statusEl) return;
+        statusEl.textContent = s.connected
+            ? s.deviceName || 'Thermometer connected'
+            : s.connecting
+              ? 'Connecting…'
+              : 'Not connected';
+        if (!s.connected) recordBtn.disabled = true;
+        else if (latestCelsius != null) recordBtn.disabled = false;
+    });
+
+    const onKeyDown = (event) => {
+        if (event.key === 'Escape') closeBlue2CaptureModal();
+    };
+    document.addEventListener('keydown', onKeyDown);
+
+    blue2CaptureModal = { questionId, unsubLive, unsubState, onKeyDown: () => document.removeEventListener('keydown', onKeyDown) };
+
+    modal.querySelectorAll('[data-blue2-modal-cancel]').forEach((el) => {
+        el.addEventListener('click', closeBlue2CaptureModal);
+    });
+
+    recordBtn.addEventListener('click', () => {
+        if (latestCelsius == null || !blue2Connected()) return;
+        const input = document.querySelector(`input[data-qid="${questionId}"]`);
+        if (input) input.value = String(latestCelsius);
+        setAnswer(questionId, String(latestCelsius));
+        statusMessage = `Temperature recorded: ${latestCelsius}°C`;
+        statusKind = 'success';
+        renderStatusBar();
+        closeBlue2CaptureModal();
+    });
+
+    recordBtn.focus();
+}
+
 async function captureBlue2ForQuestion(questionId) {
     if (!blue2Supported()) return;
     statusMessage = '';
     const btn = document.querySelector(`[data-blue2-qid="${questionId}"]`);
-    const input = document.querySelector(`input[data-qid="${questionId}"]`);
+    const originalText = btn?.textContent || 'Capture temperature';
     if (btn) {
         btn.disabled = true;
-        btn.textContent = 'Connecting…';
+        btn.textContent = blue2Connected() ? 'Opening…' : 'Connecting…';
     }
     try {
         if (!blue2Connected()) {
-            if (btn) btn.textContent = 'Connecting…';
+            if (btn) btn.textContent = 'Select thermometer…';
             await window.DfscBlue2.connect();
             updateBlue2Bar();
         }
-        if (btn) btn.textContent = 'Reading…';
-        statusMessage = 'Hold the probe steady until the reading stabilizes…';
-        statusKind = 'info';
-        renderStatusBar();
-
-        const celsius = await window.DfscBlue2.captureStableCelsius((live) => {
-            if (input) input.value = String(live);
-        });
-
-        setAnswer(questionId, String(celsius));
-        statusMessage = `Temperature captured: ${celsius}°C`;
-        statusKind = 'success';
-        renderStatusBar();
+        openBlue2CaptureModal(questionId);
     } catch (err) {
         statusMessage = err.message;
         statusKind = 'error';
@@ -1020,7 +1111,7 @@ async function captureBlue2ForQuestion(questionId) {
         updateBlue2Bar();
     } finally {
         if (btn) {
-            btn.textContent = 'Capture temperature';
+            btn.textContent = originalText;
             if (btn.dataset.blue2FieldDisabled === 'true') {
                 btn.disabled = true;
             } else {
@@ -1048,9 +1139,11 @@ function setupBlue2() {
         updateCaptureTempButtons();
     });
     updateBlue2Bar();
+    window.DfscBlue2.tryAutoConnect?.().catch(() => {});
 }
 
 function teardownBlue2() {
+    closeBlue2CaptureModal();
     if (blue2Unsubscribe) {
         blue2Unsubscribe();
         blue2Unsubscribe = null;
@@ -1508,22 +1601,11 @@ function renderStepper() {
 }
 
 function renderAuditHeader() {
-    const elapsed = formatElapsed(Date.now() - startedAtMs());
-    const pageTitle = `${session.storeName || STORE_NUMBER} Daily Food Safety Check`;
     return `
         <header class="dfsc-header">
-            <div class="dfsc-header-top">
-                <div class="dfsc-header-title">
-                    <h1 class="dfsc-title">${escapeHtml(pageTitle)}</h1>
-                    <div class="dfsc-header-meta">
-                        <span class="dfsc-shift-badge">${escapeHtml(session.shift)}</span>
-                        <span class="dfsc-subtitle">${escapeHtml(session.dateKey)}</span>
-                    </div>
-                </div>
-                <div class="dfsc-timer" id="dfsc-elapsed" aria-live="polite">${escapeHtml(elapsed)}</div>
+            <div class="dfsc-tabs-sticky">
+                ${renderStepper()}
             </div>
-            ${renderBlue2Bar()}
-            ${renderStepper()}
         </header>`;
 }
 
@@ -1716,7 +1798,6 @@ function renderAuditView() {
         </div>`;
 
     bindStepperEvents();
-    bindBlue2ConnectButton();
     setupBlue2();
     restoreDfscReminders();
     renderQuestionArea({ scrollToTop: true });

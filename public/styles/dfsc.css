@@ -20,6 +20,7 @@
     background: var(--dfsc-bg);
     min-height: 100vh;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    font-size: clamp(0.8125rem, 0.2rem + 2.6vw, 1rem);
     color: var(--dfsc-text);
 }
 
@@ -313,15 +314,16 @@
 
 .dfsc-carryover-row .dfsc-capture-temp {
     flex: 0 0 auto;
-    width: 7.25rem;
-    max-width: 30%;
+    width: auto;
+    min-width: 3.1rem;
+    max-width: none;
     display: flex;
     align-items: center;
     justify-content: center;
     align-self: stretch;
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-    font-size: 0.78rem;
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+    font-size: 0.75rem;
 }
 
 .dfsc-carryover-row .dfsc-carryover-no {
@@ -386,15 +388,18 @@
     align-items: stretch;
     background: var(--dfsc-card-bg);
     border: 1px solid var(--dfsc-border);
+    border-left-width: 4px;
+    border-left-color: transparent;
     border-radius: 4px;
     margin-bottom: 0.75rem;
     overflow: hidden;
     min-width: 0;
+    box-sizing: border-box;
 }
 
 .dfsc-qcard--nc,
 .dfsc-qcard--pending {
-    border-left: 4px solid var(--dfsc-red);
+    border-left-color: var(--dfsc-red);
 }
 
 .dfsc-nc-badge {
@@ -451,6 +456,18 @@
     font-style: normal;
     background: #fef3c7;
     color: #92400e;
+}
+
+.dfsc-time-gate--waiting {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 1px solid #bfdbfe;
+}
+
+.dfsc-time-gate--waiting .dfsc-time-gate-label {
+    color: #1e40af;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    text-align: center;
 }
 
 .dfsc-time-gate {
@@ -807,8 +824,8 @@
 
 .dfsc-qcard-footer {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem 1.25rem;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
     box-sizing: border-box;
     width: 100%;
     margin: 0;
@@ -863,6 +880,65 @@
     width: 14px;
     height: 14px;
     fill: currentColor;
+}
+
+.dfsc-qcard-btn {
+    appearance: none;
+    flex: 1 1 0;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--dfsc-border);
+    border-radius: 6px;
+    background: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--dfsc-text);
+    cursor: pointer;
+    transition:
+        background 0.12s ease,
+        border-color 0.12s ease,
+        color 0.12s ease;
+}
+
+.dfsc-qcard-btn svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+    flex-shrink: 0;
+}
+
+.dfsc-qcard-btn--media svg {
+    width: 18px;
+    height: 18px;
+}
+
+.dfsc-qcard-btn:hover:not(:disabled) {
+    background: #f5f3ff;
+    border-color: #c4b5fd;
+    color: #6d28d9;
+}
+
+.dfsc-qcard-btn.is-active {
+    background: #f5f3ff;
+    border-color: #a78bfa;
+    color: #6d28d9;
+}
+
+.dfsc-qcard-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.dfsc-qcard-btn span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* ── Skip toggle ── */
@@ -1411,15 +1487,16 @@
 
 .dfsc-temp-row .dfsc-capture-temp {
     flex: 0 0 auto;
-    width: 8.5rem;
-    max-width: 30%;
+    width: auto;
+    min-width: 3.1rem;
+    max-width: none;
     display: flex;
     align-items: center;
     justify-content: center;
     align-self: stretch;
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-    font-size: 0.78rem;
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+    font-size: 0.75rem;
 }
 
 .dfsc-capture-temp,
@@ -1563,6 +1640,19 @@ html.mic-dark-mode .dfsc-qcard-footer {
     border-top-color: #374151;
 }
 
+html.mic-dark-mode .dfsc-qcard-btn {
+    background: #1f2937;
+    border-color: #374151;
+    color: #e5e7eb;
+}
+
+html.mic-dark-mode .dfsc-qcard-btn:hover:not(:disabled),
+html.mic-dark-mode .dfsc-qcard-btn.is-active {
+    background: rgba(124, 58, 237, 0.2);
+    border-color: #6d28d9;
+    color: #c4b5fd;
+}
+
 html.mic-dark-mode .dfsc-input-unit {
     background: #111827;
 }
@@ -1616,67 +1706,80 @@ body.dfsc-page #app {
 
     .dfsc-qcard {
         border-radius: 0;
-        border-left-width: 0;
         border-right-width: 0;
-        margin-bottom: 0.65rem;
-    }
-
-    .dfsc-qcard--nc,
-    .dfsc-qcard--pending {
-        border-left-width: 4px;
+        margin-bottom: 0.55rem;
     }
 
     .dfsc-qcard-content {
-        padding: 1.2rem 1rem 1rem;
+        padding: 0.75rem 0.85rem 0.65rem;
+    }
+
+    .dfsc-qcard-footer,
+    .dfsc-qcard-strip {
+        padding-left: 0.85rem;
+        padding-right: 0.85rem;
+    }
+
+    .dfsc-qcard-btn {
+        padding: 0.5rem 0.45rem;
+        font-size: 0.75rem;
     }
 
     .dfsc-qcard-label {
-        font-size: 1rem;
-        line-height: 1.5;
+        font-size: 0.92em;
+        line-height: 1.4;
     }
 
     .dfsc-segmented__option span {
-        min-height: 3rem;
-        font-size: 1rem;
-        padding: 0.75rem 0.85rem;
+        min-height: 2.35rem;
+        font-size: 0.92em;
+        padding: 0.5rem 0.6rem;
     }
 
     .dfsc-input,
     .dfsc-select,
     .dfsc-textarea,
     .dfsc-input--datetime {
-        min-height: 3rem;
-        font-size: 1rem;
-        padding: 0.75rem 0.85rem;
+        min-height: 2.35rem;
+        font-size: 0.95em;
+        padding: 0.5rem 0.6rem;
     }
 
-    .dfsc-choice {
-        min-height: 3rem;
-        padding: 0.75rem 0.85rem;
+    .dfsc-choice span {
+        padding: 0.45rem 0.4rem;
+        font-size: 0.88em;
     }
 
     .dfsc-radio-group .dfsc-choice {
         flex: 1 1 calc(50% - 0.35rem);
+        min-width: 0;
     }
 
     .dfsc-capture-temp {
-        min-height: 3rem;
-        padding: 0.75rem 1rem;
-        font-size: 0.9rem;
+        min-height: 2.35rem;
+        padding: 0.4rem 0.35rem;
+        font-size: 0.72rem;
     }
 
     .dfsc-temp-row .dfsc-input-wrap {
         flex: 1 1 auto;
     }
 
-    .dfsc-temp-row .dfsc-capture-temp {
-        flex: 0 0 auto;
-        width: 6.75rem;
-        max-width: 34%;
+    .dfsc-input-wrap .dfsc-input {
+        min-height: 2.35rem;
     }
 
-    .dfsc-input-wrap .dfsc-input {
-        min-height: 3rem;
+    .dfsc-section-head h2 {
+        font-size: 0.75rem;
+    }
+
+    .dfsc-section-progress {
+        font-size: 0.78rem;
+    }
+
+    .dfsc-step {
+        font-size: 0.58rem;
+        padding: 0.3rem 0.1rem;
     }
 
     .dfsc-nav-bar {

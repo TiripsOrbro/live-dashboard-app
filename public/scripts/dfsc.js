@@ -29,6 +29,7 @@ let completionGuideActive = false;
 const dfscReminderTimeouts = new Map();
 let completionGuideQuestionId = null;
 const editingTempQuestions = new Set();
+const CAPTURE_TEMP_LABEL = 'Capt. °';
 
 function escapeHtml(value) {
     return String(value ?? '')
@@ -84,17 +85,72 @@ function startedAtMs() {
     return Date.parse(session?.startedAt || '');
 }
 
+function isAnswerTimestampTrigger(question, value) {
+    if (value === '' || value == null) return false;
+    if (question.type === 'carryover_temp' && String(value).toLowerCase() === 'no') return false;
+    if (question.type === 'temperature' || question.type === 'temperature_na' || question.type === 'carryover_temp') {
+        return parseTempAnswer(value) != null;
+    }
+    return !isAnswerEmpty(question, value);
+}
+
+function getTimeGateDelayMinutes(question) {
+    if (question.unlockAfterAnswer?.minutes != null) return question.unlockAfterAnswer.minutes;
+    if (question.unlockAfterMinutes != null) return question.unlockAfterMinutes;
+    return null;
+}
+
+function questionHasTimeGate(question) {
+    return getTimeGateDelayMinutes(question) != null;
+}
+
+function getTimeGateAnchorMs(question) {
+    if (question.unlockAfterAnswer) {
+        const { questionId } = question.unlockAfterAnswer;
+        const triggerQ = (schema?.questions || []).find((q) => q.id === questionId);
+        const triggerVal = session?.answers?.[questionId];
+        if (!triggerQ || !isAnswerTimestampTrigger(triggerQ, triggerVal)) return null;
+        const stamped = Date.parse(session?.answerTimestamps?.[questionId] || '');
+        if (Number.isFinite(stamped)) return stamped;
+        const fallback = Date.parse(session?.updatedAt || session?.startedAt || '');
+        return Number.isFinite(fallback) ? fallback : null;
+    }
+    if (question.unlockAfterMinutes != null) {
+        const started = startedAtMs();
+        return Number.isFinite(started) ? started : null;
+    }
+    return null;
+}
+
+function applyAnswerTimestamp(questionId) {
+    if (!session) return;
+    const question = (schema?.questions || []).find((q) => q.id === questionId);
+    if (!question) return;
+    session.answerTimestamps = session.answerTimestamps || {};
+    const value = session.answers?.[questionId];
+    if (isAnswerTimestampTrigger(question, value)) {
+        if (!session.answerTimestamps[questionId]) {
+            session.answerTimestamps[questionId] = new Date().toISOString();
+        }
+        return;
+    }
+    delete session.answerTimestamps[questionId];
+}
+
 function isTimeGateOpen(question) {
-    if (!question.unlockAfterMinutes) return true;
-    const started = startedAtMs();
-    if (!Number.isFinite(started)) return false;
-    return Date.now() >= started + question.unlockAfterMinutes * 60 * 1000;
+    const delayMinutes = getTimeGateDelayMinutes(question);
+    if (delayMinutes == null) return true;
+    const anchor = getTimeGateAnchorMs(question);
+    if (!Number.isFinite(anchor)) return false;
+    return Date.now() >= anchor + delayMinutes * 60 * 1000;
 }
 
 function timeGateRemainingMs(question) {
-    const started = startedAtMs();
-    if (!Number.isFinite(started)) return question.unlockAfterMinutes * 60 * 1000;
-    return Math.max(0, started + question.unlockAfterMinutes * 60 * 1000 - Date.now());
+    const delayMinutes = getTimeGateDelayMinutes(question);
+    if (delayMinutes == null) return 0;
+    const anchor = getTimeGateAnchorMs(question);
+    if (!Number.isFinite(anchor)) return delayMinutes * 60 * 1000;
+    return Math.max(0, anchor + delayMinutes * 60 * 1000 - Date.now());
 }
 
 function showWhenAnswerMatches(actual, expected) {
@@ -133,6 +189,17 @@ function parseTempAnswer(value) {
     return Number.isFinite(n) ? n : null;
 }
 
+function getEffectiveTempMin(question) {
+    if (!question) return null;
+    if (question.tempMinFromSelect) {
+        const cfg = question.tempMinFromSelect;
+        const item = String(session?.answers?.[cfg.questionId] ?? '').toLowerCase();
+        if (item && cfg.map?.[item] != null) return cfg.map[item];
+        if (cfg.defaultMin != null) return cfg.defaultMin;
+    }
+    return question.tempMin ?? null;
+}
+
 function isTempRangeNonCompliant(question, value) {
     if (!question) return false;
     if (question.type === 'carryover_temp') {
@@ -141,15 +208,18 @@ function isTempRangeNonCompliant(question, value) {
         if (temp === null) return false;
         const max = question.tempMax ?? 5;
         if (temp > max) return true;
-        if (question.tempMin != null && temp < question.tempMin) return true;
+        const tempMin = getEffectiveTempMin(question);
+        if (tempMin != null && temp < tempMin) return true;
         return false;
     }
     if (question.type !== 'temperature' && question.type !== 'temperature_na') return false;
-    if (question.tempMin == null && question.tempMax == null) return false;
+    const tempMin = getEffectiveTempMin(question);
+    const tempMax = question.tempMax ?? null;
+    if (tempMin == null && tempMax == null) return false;
     const temp = parseTempAnswer(value);
     if (temp === null) return false;
-    if (question.tempMin != null && temp < question.tempMin) return true;
-    if (question.tempMax != null && temp > question.tempMax) return true;
+    if (tempMin != null && temp < tempMin) return true;
+    if (tempMax != null && temp > tempMax) return true;
     return false;
 }
 
@@ -298,7 +368,8 @@ function navigateToQuestionItem(item) {
     if (item.sectionIndex != null && item.sectionIndex >= 0) {
         currentSectionIndex = item.sectionIndex;
     }
-    renderQuestionArea();
+    expandQuestionGroup(item.questionId);
+    renderQuestionArea({ scrollAnchorQuestionId: item.questionId });
     window.requestAnimationFrame(() => {
         const el = document.querySelector(`[data-question-id="${item.questionId}"]`);
         if (el) {
@@ -581,8 +652,9 @@ function setAnswer(questionId, value) {
     if (question?.remindWhenAnswer) {
         scheduleDfscReminder(question);
     }
+    applyAnswerTimestamp(questionId);
     scheduleSave();
-    renderQuestionArea();
+    renderQuestionArea({ scrollAnchorQuestionId: questionId });
     maybeAdvanceCompletionGuide(questionId);
 }
 
@@ -607,7 +679,7 @@ async function submitAction(questionId) {
     statusMessage = '';
     await saveSession();
     expandedActions.delete(questionId);
-    renderQuestionArea();
+    renderQuestionArea({ scrollAnchorQuestionId: questionId });
     if (completionGuideActive && questionId === completionGuideQuestionId) {
         goToNextIncompleteOrFinish();
     }
@@ -649,6 +721,60 @@ function groupProgress(questions) {
     const required = items.filter((q) => q.required);
     const answered = required.filter((q) => !isAnswerEmpty(q, session.answers?.[q.id])).length;
     return { answered, total: required.length };
+}
+
+function groupForQuestion(questionId) {
+    const question = (schema?.questions || []).find((q) => q.id === questionId);
+    return question?.group || null;
+}
+
+function expandQuestionGroup(questionId) {
+    const question = (schema?.questions || []).find((q) => q.id === questionId);
+    if (!question?.group) return;
+    collapsedQuestionGroups.delete(questionGroupKey(question.section, question.group));
+}
+
+function autoCollapseCompletedGroups(sectionId, exceptQuestionId = null) {
+    if (!sectionId) return;
+    const exceptGroup = exceptQuestionId ? groupForQuestion(exceptQuestionId) : null;
+    const questions = visibleQuestions(sectionId);
+    let index = 0;
+    while (index < questions.length) {
+        const question = questions[index];
+        if (!question.group) {
+            index += 1;
+            continue;
+        }
+        const groupName = question.group;
+        const groupQuestions = [];
+        while (index < questions.length && questions[index].group === groupName) {
+            groupQuestions.push(questions[index]);
+            index += 1;
+        }
+        const progress = groupProgress(groupQuestions);
+        const complete = progress.total > 0 && progress.answered === progress.total;
+        if (!complete || groupName === exceptGroup) continue;
+        collapsedQuestionGroups.add(questionGroupKey(sectionId, groupName));
+    }
+}
+
+function captureScrollAnchor(questionId) {
+    if (!questionId) return null;
+    const el = document.querySelector(`[data-question-id="${CSS.escape(questionId)}"]`);
+    if (!el) return null;
+    return { questionId, top: el.getBoundingClientRect().top };
+}
+
+function restoreScrollAnchor(snapshot) {
+    if (!snapshot?.questionId) return;
+    requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-question-id="${CSS.escape(snapshot.questionId)}"]`);
+        if (!el) return;
+        const delta = el.getBoundingClientRect().top - snapshot.top;
+        if (Math.abs(delta) > 0.5) {
+            window.scrollBy({ top: delta, behavior: 'instant' });
+        }
+    });
 }
 
 function renderQuestionGroupBlock(sectionId, groupName, groupQuestions) {
@@ -882,7 +1008,7 @@ function renderCaptureTempButton(questionId, { locked = false, disabled = false 
           : 'Connect thermometer, then record when ready';
     return `<button type="button" class="dfsc-capture-temp" data-blue2-qid="${escapeHtml(questionId)}"${
         fieldDisabled ? ' data-blue2-field-disabled="true"' : ''
-    }${fieldDisabled ? ' disabled' : ''}${title ? ` title="${escapeHtml(title)}"` : ''}>Capture temperature</button>`;
+    }${fieldDisabled ? ' disabled' : ''}${title ? ` title="${escapeHtml(title)}"` : ''}>${CAPTURE_TEMP_LABEL}</button>`;
 }
 
 function tempInputHtml(questionId, { value = '', disabled = false, qtype = 'temp', placeholder = '' } = {}) {
@@ -1025,10 +1151,10 @@ function openBlue2CaptureModal(questionId) {
             <p class="dfsc-blue2-modal-question">${escapeHtml(label)}</p>
             <div class="dfsc-blue2-modal-reading" data-blue2-modal-reading aria-live="polite">—</div>
             <p class="dfsc-blue2-modal-status" data-blue2-modal-status>${escapeHtml(statusLabel)}</p>
-            <p class="dfsc-blue2-modal-hint">Insert the probe and wait for a steady reading. Tap Capture temperature when you are ready to record.</p>
+            <p class="dfsc-blue2-modal-hint">Insert the probe and wait for a steady reading. Tap ${CAPTURE_TEMP_LABEL} when you are ready to record.</p>
             <div class="dfsc-blue2-modal-actions">
                 <button type="button" class="dfsc-btn dfsc-btn-secondary" data-blue2-modal-cancel>Cancel</button>
-                <button type="button" class="dfsc-btn dfsc-btn-primary" data-blue2-modal-record disabled>Capture temperature</button>
+                <button type="button" class="dfsc-btn dfsc-btn-primary" data-blue2-modal-record disabled>${CAPTURE_TEMP_LABEL}</button>
             </div>
         </div>`;
 
@@ -1092,7 +1218,7 @@ async function captureBlue2ForQuestion(questionId) {
     if (!blue2Supported()) return;
     statusMessage = '';
     const btn = document.querySelector(`[data-blue2-qid="${questionId}"]`);
-    const originalText = btn?.textContent || 'Capture temperature';
+    const originalText = btn?.textContent || CAPTURE_TEMP_LABEL;
     if (btn) {
         btn.disabled = true;
         btn.textContent = blue2Connected() ? 'Opening…' : 'Connecting…';
@@ -1179,7 +1305,7 @@ function updateTimeGateCountdowns() {
     document.querySelectorAll('[data-time-gate-qid]').forEach((el) => {
         const qid = el.dataset.timeGateQid;
         const question = (schema?.questions || []).find((q) => q.id === qid);
-        if (!question?.unlockAfterMinutes) return;
+        if (!questionHasTimeGate(question)) return;
         const remaining = timeGateRemainingMs(question);
         if (remaining <= 0) {
             needsUnlockRender = true;
@@ -1191,7 +1317,15 @@ function updateTimeGateCountdowns() {
 }
 
 function renderTimeGateBanner(question) {
-    if (isTimeGateOpen(question) || !question.unlockAfterMinutes) return '';
+    if (isTimeGateOpen(question) || !questionHasTimeGate(question)) return '';
+    const anchor = getTimeGateAnchorMs(question);
+    if (question.unlockAfterAnswer && !Number.isFinite(anchor)) {
+        const triggerQ = (schema?.questions || []).find((q) => q.id === question.unlockAfterAnswer.questionId);
+        return `
+        <div class="dfsc-time-gate dfsc-time-gate--waiting" role="status" aria-live="polite">
+            <span class="dfsc-time-gate-label">Record ${escapeHtml(triggerQ?.label || 'hot water cup temperature')} in Initial Checks to start the timer</span>
+        </div>`;
+    }
     return `
         <div class="dfsc-time-gate" role="status" aria-live="polite">
             <span class="dfsc-time-gate-label">Available in</span>
@@ -1267,9 +1401,8 @@ function renderChoiceGroup(question) {
         </div>`;
 }
 
-const LINK_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3zM5 5h7v2H7v10h10v-5h2v7H5V5z"/></svg>`;
 const NOTE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 3H5a2 2 0 0 0-2 2v14l4-4h12a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>`;
-const ACTION_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 3H5c-1.1 0-2 .9-2 2v14l4-4h12c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 9h-2V9h2v3zm0-4h-2V5h2v3z"/></svg>`;
+const IMAGE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.5 10.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 19l-5.5-7-4 5-2.5-3L5 19h16z"/></svg>`;
 
 function renderActionForm(questionId, { compact = false } = {}) {
     const entry = getActionEntry(questionId);
@@ -1300,24 +1433,16 @@ function renderQuestionFooter(question) {
     const hasNote = Boolean(String(session.notes?.[question.id] || '').trim());
     const noteOpen = expandedNotes.has(question.id) || hasNote;
     const actionSubmitted = isActionSubmitted(question.id);
+    const noteBtnClass = `dfsc-qcard-btn dfsc-qcard-btn--note${noteOpen ? ' is-active' : ''}`;
     return `
         <div class="dfsc-qcard-foot">
             <div class="dfsc-qcard-footer">
-                <button type="button" class="dfsc-qcard-link" data-toggle-note="${escapeHtml(question.id)}">
-                    ${NOTE_ICON} Add note
+                <button type="button" class="${noteBtnClass}" data-toggle-note="${escapeHtml(question.id)}">
+                    ${NOTE_ICON}<span>Add note</span>
                 </button>
-                <button type="button" class="dfsc-qcard-link" disabled title="Coming soon">
-                    ${LINK_ICON} Attach media
+                <button type="button" class="dfsc-qcard-btn dfsc-qcard-btn--media" disabled title="Coming soon" aria-label="Attach photo">
+                    ${IMAGE_ICON}<span>Photo</span>
                 </button>
-                ${
-                    isNc
-                        ? actionSubmitted
-                            ? `<span class="dfsc-qcard-link dfsc-qcard-link--done">${ACTION_ICON} Action submitted</span>`
-                            : `<button type="button" class="dfsc-qcard-link" data-toggle-action="${escapeHtml(question.id)}">
-                                ${ACTION_ICON} Create action
-                               </button>`
-                        : ''
-                }
             </div>
             ${noteOpen ? `<div class="dfsc-qcard-strip dfsc-qcard-strip--note"><textarea class="dfsc-textarea" rows="2" data-note-qid="${escapeHtml(question.id)}" placeholder="Add a note">${escapeHtml(session.notes?.[question.id] || '')}</textarea></div>` : ''}
             ${
@@ -1385,9 +1510,7 @@ function renderQuestion(question) {
     const unanswered = question.required && isAnswerEmpty(question, value);
     const timeGateBanner = renderTimeGateBanner(question);
     const lockBadge =
-        locked && !question.unlockAfterMinutes
-            ? `<span class="dfsc-lock-badge">Locked</span>`
-            : '';
+        locked && !questionHasTimeGate(question) ? `<span class="dfsc-lock-badge">Locked</span>` : '';
 
     let control = '';
     if (isCompliantType(question.type) || question.type === 'yes_no' || question.type === 'received') {
@@ -1609,10 +1732,15 @@ function renderAuditHeader() {
         </header>`;
 }
 
-function renderQuestionArea({ scrollToTop = false } = {}) {
+function renderQuestionArea({ scrollToTop = false, scrollAnchorQuestionId = null } = {}) {
     const sections = schema?.sections || [];
     const section = sections[currentSectionIndex];
     if (!section) return;
+
+    const scrollAnchor = scrollAnchorQuestionId ? captureScrollAnchor(scrollAnchorQuestionId) : null;
+    if (!['actions', 'signOff'].includes(section.id)) {
+        autoCollapseCompletedGroups(section.id, scrollAnchorQuestionId || null);
+    }
 
     const progress = sectionProgress(section.id);
     const progressEl = document.getElementById('dfsc-section-progress');
@@ -1647,6 +1775,7 @@ function renderQuestionArea({ scrollToTop = false } = {}) {
     bindSignOffSignature();
     updateStepperClasses();
     if (scrollToTop) scrollDfscSectionToTop();
+    else if (scrollAnchor) restoreScrollAnchor(scrollAnchor);
     if (isSignOff) {
         requestAnimationFrame(() => blurActiveTextInput());
     }
@@ -1720,15 +1849,7 @@ function bindQuestionEvents() {
             const qid = btn.dataset.toggleNote;
             if (expandedNotes.has(qid)) expandedNotes.delete(qid);
             else expandedNotes.add(qid);
-            renderQuestionArea();
-        });
-    });
-    document.querySelectorAll('[data-toggle-action]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const qid = btn.dataset.toggleAction;
-            if (expandedActions.has(qid)) expandedActions.delete(qid);
-            else expandedActions.add(qid);
-            renderQuestionArea();
+            renderQuestionArea({ scrollAnchorQuestionId: qid });
         });
     });
 }

@@ -92,6 +92,17 @@ const UNDERLINE_ING2_CHOICES = [
 const UNDERLINE_FRIDGE_VISIBLE = { prodLine1_underlineFridgeInUse: 'yes' };
 const PREP_FRIDGE_VISIBLE = { prodLine1_prepFridgeInUse: 'yes' };
 
+const FREEZER_TEMP_MAX = -18;
+const FRIDGE_TEMP_MAX = 5;
+const COOK_TEMP_MIN = 74;
+const RICE_COOK_TEMP_MIN = 71;
+
+const FREEZER_TEMP_OPTS = { hint: 'Must be −18°C or colder', tempMax: FREEZER_TEMP_MAX };
+const FRIDGE_TEMP_OPTS = { hint: 'Must be 5°C or below', tempMax: FRIDGE_TEMP_MAX };
+const HOT_HOLD_TEMP_OPTS = { hint: 'Minimum 74°C', tempMin: COOK_TEMP_MIN };
+const RICE_HOT_TEMP_OPTS = { hint: 'Minimum 71°C', tempMin: RICE_COOK_TEMP_MIN };
+const CABINET_INGREDIENT_TEMP_HINT = 'Minimum 74°C (71°C for rice)';
+
 const DFSC_QUESTIONS = [
     // ── Initial Checks — Thermometer Calibration ──
     q(
@@ -138,32 +149,6 @@ const DFSC_QUESTIONS = [
         'Restaurant is free from pest activity (no evidence of live or dead rodents, insects, droppings, chew marks or nesting)?',
         { group: 'Setting Up' }
     ),
-    q(
-        'init_handwashAccessible',
-        'initialChecks',
-        'compliant',
-        'Hand washing sinks (including in bathrooms) are accessible and fully stocked (gloves, hand sanitiser, antibacterial soap, paper towels, rubbish bin)?',
-        { group: 'Setting Up' }
-    ),
-    q('init_handwashWaterTemp', 'initialChecks', 'temperature', 'Water at hand washing sinks reach a minimum of 30°C? Record the temp.', {
-        group: 'Setting Up',
-        hint: 'Min 30°C',
-        tempMin: 30,
-    }),
-    q(
-        'init_handwashClean',
-        'initialChecks',
-        'compliant',
-        'Hand washing sinks are clean, free from build up/mould (check around silicone and drain cover), and are not being used for anything other than handwashing?',
-        { group: 'Setting Up' }
-    ),
-    q(
-        'init_bathroomSinksClean',
-        'initialChecks',
-        'compliant',
-        'Bathroom sinks are clean, free from build up/mould (check around silicone and drain cover), and are not being used for anything other than handwashing?',
-        { group: 'Setting Up' }
-    ),
     q('init_sinkHotWaterTemp', 'initialChecks', 'temperature', '3-compartment sink hot water is a minimum of 49°C. Record the temp.', {
         group: 'Setting Up',
         hint: 'Min 49°C',
@@ -189,6 +174,43 @@ const DFSC_QUESTIONS = [
         'initialChecks',
         'compliant',
         'No sewage back up or build up of any waste in sink and floor drains?',
+        { group: 'Setting Up' }
+    ),
+    q(
+        'init_tacoTowerHotWaterCup',
+        'initialChecks',
+        'temperature',
+        'Cup of hot water set up in taco tower to be temped at a later stage',
+        {
+            group: 'Setting Up',
+            hint: 'Minimum 49°C — starts the Taco Tower temperature timer on Production Lines',
+            tempMin: 49,
+        }
+    ),
+    q(
+        'init_handwashAccessible',
+        'initialChecks',
+        'compliant',
+        'Hand washing sinks (including in bathrooms) are accessible and fully stocked (gloves, hand sanitiser, antibacterial soap, paper towels, rubbish bin)?',
+        { group: 'Setting Up' }
+    ),
+    q('init_handwashWaterTemp', 'initialChecks', 'temperature', 'Water at hand washing sinks reach a minimum of 30°C? Record the temp.', {
+        group: 'Setting Up',
+        hint: 'Min 30°C',
+        tempMin: 30,
+    }),
+    q(
+        'init_handwashClean',
+        'initialChecks',
+        'compliant',
+        'Hand washing sinks are clean, free from build up/mould (check around silicone and drain cover), and are not being used for anything other than handwashing?',
+        { group: 'Setting Up' }
+    ),
+    q(
+        'init_bathroomSinksClean',
+        'initialChecks',
+        'compliant',
+        'Bathroom sinks are clean, free from build up/mould (check around silicone and drain cover), and are not being used for anything other than handwashing?',
         { group: 'Setting Up' }
     ),
     q(
@@ -259,8 +281,7 @@ const DFSC_QUESTIONS = [
     // ── Fridge & Freezer — Walk-in freezer ──
     q('freezer_walkInTemp', 'freezerColdrooms', 'temperature', 'Walk-in freezer — internal air temp', {
         group: 'Walk-in Freezer',
-        hint: 'Temperature should be ≤ −18°C',
-        tempMax: -18,
+        ...FREEZER_TEMP_OPTS,
     }),
     q('freezer_ingredient1Item', 'freezerColdrooms', 'select', 'Ingredient 1', {
         group: 'Walk-in Freezer',
@@ -269,8 +290,7 @@ const DFSC_QUESTIONS = [
     }),
     q('freezer_ingredient1Temp', 'freezerColdrooms', 'temperature', 'Ingredient 1 — temperature', {
         group: 'Walk-in Freezer',
-        hint: 'Temperature should be ≤ −18°C',
-        tempMax: -18,
+        ...FREEZER_TEMP_OPTS,
     }),
     q('freezer_ingredient2Item', 'freezerColdrooms', 'select', 'Ingredient 2', {
         group: 'Walk-in Freezer',
@@ -279,8 +299,7 @@ const DFSC_QUESTIONS = [
     }),
     q('freezer_ingredient2Temp', 'freezerColdrooms', 'temperature', 'Ingredient 2 — temperature', {
         group: 'Walk-in Freezer',
-        hint: 'Temperature should be ≤ −18°C',
-        tempMax: -18,
+        ...FREEZER_TEMP_OPTS,
     }),
 
     q('freezer_twoColdrooms', 'freezerColdrooms', 'yes_no', 'How many cool rooms do you have?', {
@@ -291,8 +310,7 @@ const DFSC_QUESTIONS = [
     // ── Fridge & Freezer — Coldroom 1 ──
     q('coldroom1_airTemp', 'freezerColdrooms', 'temperature', 'Coldroom 1 — internal air temp', {
         group: 'Coldroom 1',
-        hint: 'Temperature should be ≤ 5°C',
-        tempMax: 5,
+        ...FRIDGE_TEMP_OPTS,
     }),
     q('coldroom1_ingredient1Item', 'freezerColdrooms', 'select', 'Ingredient 1', {
         group: 'Coldroom 1',
@@ -301,8 +319,7 @@ const DFSC_QUESTIONS = [
     }),
     q('coldroom1_ingredient1Temp', 'freezerColdrooms', 'temperature', 'Ingredient 1 — temperature', {
         group: 'Coldroom 1',
-        hint: 'Temperature should be ≤ 5°C',
-        tempMax: 5,
+        ...FRIDGE_TEMP_OPTS,
     }),
     q('coldroom1_ingredient2Item', 'freezerColdrooms', 'select', 'Ingredient 2', {
         group: 'Coldroom 1',
@@ -311,8 +328,7 @@ const DFSC_QUESTIONS = [
     }),
     q('coldroom1_ingredient2Temp', 'freezerColdrooms', 'temperature', 'Ingredient 2 — temperature', {
         group: 'Coldroom 1',
-        hint: 'Temperature should be ≤ 5°C',
-        tempMax: 5,
+        ...FRIDGE_TEMP_OPTS,
     }),
     q(
         'coldroom1_thawedLabelled',
@@ -344,8 +360,7 @@ const DFSC_QUESTIONS = [
     // ── Fridge & Freezer — Coldroom 2 (when 2 coldrooms) ──
     q('coldroom2_airTemp', 'freezerColdrooms', 'temperature', 'Coldroom 2 — internal air temp', {
         group: 'Coldroom 2',
-        hint: 'Temperature should be ≤ 5°C',
-        tempMax: 5,
+        ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: COLDROOM2_VISIBLE,
     }),
     q('coldroom2_ingredient1Item', 'freezerColdrooms', 'select', 'Ingredient 1', {
@@ -356,8 +371,7 @@ const DFSC_QUESTIONS = [
     }),
     q('coldroom2_ingredient1Temp', 'freezerColdrooms', 'temperature', 'Ingredient 1 — temperature', {
         group: 'Coldroom 2',
-        hint: 'Temperature should be ≤ 5°C',
-        tempMax: 5,
+        ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: COLDROOM2_VISIBLE,
     }),
     q('coldroom2_ingredient2Item', 'freezerColdrooms', 'select', 'Ingredient 2', {
@@ -368,8 +382,7 @@ const DFSC_QUESTIONS = [
     }),
     q('coldroom2_ingredient2Temp', 'freezerColdrooms', 'temperature', 'Ingredient 2 — temperature', {
         group: 'Coldroom 2',
-        hint: 'Temperature should be ≤ 5°C',
-        tempMax: 5,
+        ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: COLDROOM2_VISIBLE,
     }),
     q(
@@ -381,53 +394,29 @@ const DFSC_QUESTIONS = [
     ),
 
     // ── Cook Temps & Fry — Cook temps ──
-    q('prepFry_beefTemp', 'prepFry', 'temperature', 'Beef', {
-        group: 'Cook Temps',
-        hint: 'Temperature should be ≥ 74°C',
-        tempMin: 74,
-    }),
-    q('prepFry_chickenTemp', 'prepFry', 'temperature', 'Chicken', {
-        group: 'Cook Temps',
-        hint: 'Temperature should be ≥ 74°C',
-        tempMin: 74,
-    }),
-    q('prepFry_blackBeansTemp', 'prepFry', 'temperature', 'Black Beans', {
-        group: 'Cook Temps',
-        hint: 'Temperature should be ≥ 74°C',
-        tempMin: 74,
-    }),
-    q('prepFry_nachoCheeseTemp', 'prepFry', 'temperature', 'Nacho Cheese', {
-        group: 'Cook Temps',
-        hint: 'Temperature should be ≥ 74°C',
-        tempMin: 74,
-    }),
-    q('prepFry_riceSeasonedTemp', 'prepFry', 'temperature', 'Rice once seasoned', {
-        group: 'Cook Temps',
-        hint: 'Temperature should be ≥ 71°C',
-        tempMin: 71,
-    }),
+    q('prepFry_beefTemp', 'prepFry', 'temperature', 'Beef', { group: 'Cook Temps', ...HOT_HOLD_TEMP_OPTS }),
+    q('prepFry_chickenTemp', 'prepFry', 'temperature', 'Chicken', { group: 'Cook Temps', ...HOT_HOLD_TEMP_OPTS }),
+    q('prepFry_blackBeansTemp', 'prepFry', 'temperature', 'Black Beans', { group: 'Cook Temps', ...HOT_HOLD_TEMP_OPTS }),
+    q('prepFry_nachoCheeseTemp', 'prepFry', 'temperature', 'Nacho Cheese', { group: 'Cook Temps', ...HOT_HOLD_TEMP_OPTS }),
+    q('prepFry_riceSeasonedTemp', 'prepFry', 'temperature', 'Rice once seasoned', { group: 'Cook Temps', ...RICE_HOT_TEMP_OPTS }),
     q('prepFry_carryoverBeefTemp', 'prepFry', 'temperature_na', '(If temped cold earlier) Carryover Beef', {
         group: 'Carryover Cook Temps',
-        hint: 'Temperature should be ≥ 74°C',
-        tempMin: 74,
+        ...HOT_HOLD_TEMP_OPTS,
         hideWhenAnswer: { init_beefCarryover: 'no' },
     }),
     q('prepFry_carryoverChickenTemp', 'prepFry', 'temperature_na', '(If temped cold earlier) Carryover Chicken', {
         group: 'Carryover Cook Temps',
-        hint: 'Temperature should be ≥ 74°C',
-        tempMin: 74,
+        ...HOT_HOLD_TEMP_OPTS,
         hideWhenAnswer: { init_chickenCarryover: 'no' },
     }),
     q('prepFry_carryoverNachoCheeseTemp', 'prepFry', 'temperature_na', '(If temped cold earlier) Carryover Nacho Cheese', {
         group: 'Carryover Cook Temps',
-        hint: 'Temperature should be ≥ 74°C',
-        tempMin: 74,
+        ...HOT_HOLD_TEMP_OPTS,
         hideWhenAnswer: { init_nachoCarryover: 'no' },
     }),
     q('prepFry_heatedCabinetTemp', 'prepFry', 'temperature', 'Heated Cabinet', {
         group: 'Heated Cabinet',
-        hint: 'Temperature should be ≥ 71°C',
-        tempMin: 71,
+        ...RICE_HOT_TEMP_OPTS,
     }),
     q('prepFry_cabinetIngredientsBanner', 'prepFry', 'banner', '', {
         group: 'Heated Cabinet',
@@ -449,6 +438,12 @@ const DFSC_QUESTIONS = [
     }),
     q('prepFry_cabinetIngredient1Temp', 'prepFry', 'temperature', 'Ingredient 1 — temperature', {
         group: 'Heated Cabinet',
+        hint: CABINET_INGREDIENT_TEMP_HINT,
+        tempMinFromSelect: {
+            questionId: 'prepFry_cabinetIngredient1Item',
+            map: { rice: RICE_COOK_TEMP_MIN },
+            defaultMin: COOK_TEMP_MIN,
+        },
     }),
     q('prepFry_cabinetIngredient2Item', 'prepFry', 'select', 'Ingredient 2', {
         group: 'Heated Cabinet',
@@ -457,6 +452,12 @@ const DFSC_QUESTIONS = [
     }),
     q('prepFry_cabinetIngredient2Temp', 'prepFry', 'temperature', 'Ingredient 2 — temperature', {
         group: 'Heated Cabinet',
+        hint: CABINET_INGREDIENT_TEMP_HINT,
+        tempMinFromSelect: {
+            questionId: 'prepFry_cabinetIngredient2Item',
+            map: { rice: RICE_COOK_TEMP_MIN },
+            defaultMin: COOK_TEMP_MIN,
+        },
     }),
 
     // ── Cook Temps & Fry — Fry station ──
@@ -510,13 +511,15 @@ const DFSC_QUESTIONS = [
     // Line 1 — Hot Line
     q('prodLine1_tacoTowerTemp', 'productionLines', 'temperature', 'Taco Tower Temp', {
         group: 'Line 1 — Hot Line',
-        unlockAfterMinutes: 30,
+        hint: 'Minimum 49°C',
+        tempMin: 49,
+        unlockAfterAnswer: { questionId: 'init_tacoTowerHotWaterCup', minutes: 30 },
     }),
-    q('prodLine1_beefTemp', 'productionLines', 'temperature', 'Beef Temp', { group: 'Line 1 — Hot Line' }),
-    q('prodLine1_chickenTemp', 'productionLines', 'temperature', 'Chicken Temp', { group: 'Line 1 — Hot Line' }),
-    q('prodLine1_beansTemp', 'productionLines', 'temperature', 'Bean Temp', { group: 'Line 1 — Hot Line' }),
-    q('prodLine1_riceTemp', 'productionLines', 'temperature', 'Rice Temp', { group: 'Line 1 — Hot Line' }),
-    q('prodLine1_nachoCheeseTemp', 'productionLines', 'temperature', 'Nacho Cheese Temp', { group: 'Line 1 — Hot Line' }),
+    q('prodLine1_beefTemp', 'productionLines', 'temperature', 'Beef Temp', { group: 'Line 1 — Hot Line', ...HOT_HOLD_TEMP_OPTS }),
+    q('prodLine1_chickenTemp', 'productionLines', 'temperature', 'Chicken Temp', { group: 'Line 1 — Hot Line', ...HOT_HOLD_TEMP_OPTS }),
+    q('prodLine1_beansTemp', 'productionLines', 'temperature', 'Bean Temp', { group: 'Line 1 — Hot Line', ...HOT_HOLD_TEMP_OPTS }),
+    q('prodLine1_riceTemp', 'productionLines', 'temperature', 'Rice Temp', { group: 'Line 1 — Hot Line', ...RICE_HOT_TEMP_OPTS }),
+    q('prodLine1_nachoCheeseTemp', 'productionLines', 'temperature', 'Nacho Cheese Temp', { group: 'Line 1 — Hot Line', ...HOT_HOLD_TEMP_OPTS }),
     q('prodLine1_crispyChickenLocation', 'productionLines', 'select', 'Where are you holding crispy chicken strips?', {
         group: 'Line 1 — Hot Line',
         choices: CRISPY_CHICKEN_LOCATION_CHOICES,
@@ -524,6 +527,7 @@ const DFSC_QUESTIONS = [
     }),
     q('prodLine1_crispyChickenLineTemp', 'productionLines', 'temperature', 'Crispy chicken strips — temperature', {
         group: 'Line 1 — Hot Line',
+        ...HOT_HOLD_TEMP_OPTS,
         showWhenAnswer: { prodLine1_crispyChickenLocation: 'on_line' },
     }),
     q(
@@ -542,11 +546,11 @@ const DFSC_QUESTIONS = [
     ),
 
     // Line 1 — Cold Line
-    q('prodLine1_guacTemp', 'productionLines', 'temperature', 'Guac Temp', { group: 'Line 1 — Cold Line' }),
-    q('prodLine1_lettuceTemp', 'productionLines', 'temperature', 'Lettuce Temp', { group: 'Line 1 — Cold Line' }),
-    q('prodLine1_tomatoesTemp', 'productionLines', 'temperature', 'Tomatoes Temp', { group: 'Line 1 — Cold Line' }),
-    q('prodLine1_fiestaTemp', 'productionLines', 'temperature', 'Fiesta Temp', { group: 'Line 1 — Cold Line' }),
-    q('prodLine1_cheeseTemp', 'productionLines', 'temperature', 'Cheese Temp', { group: 'Line 1 — Cold Line' }),
+    q('prodLine1_guacTemp', 'productionLines', 'temperature', 'Guac Temp', { group: 'Line 1 — Cold Line', ...FRIDGE_TEMP_OPTS }),
+    q('prodLine1_lettuceTemp', 'productionLines', 'temperature', 'Lettuce Temp', { group: 'Line 1 — Cold Line', ...FRIDGE_TEMP_OPTS }),
+    q('prodLine1_tomatoesTemp', 'productionLines', 'temperature', 'Tomatoes Temp', { group: 'Line 1 — Cold Line', ...FRIDGE_TEMP_OPTS }),
+    q('prodLine1_fiestaTemp', 'productionLines', 'temperature', 'Fiesta Temp', { group: 'Line 1 — Cold Line', ...FRIDGE_TEMP_OPTS }),
+    q('prodLine1_cheeseTemp', 'productionLines', 'temperature', 'Cheese Temp', { group: 'Line 1 — Cold Line', ...FRIDGE_TEMP_OPTS }),
     q(
         'prodLine1_coldHoldChart',
         'productionLines',
@@ -574,6 +578,7 @@ const DFSC_QUESTIONS = [
     }),
     q('prodLine1_underlineIngredient1Temp', 'productionLines', 'temperature', 'Ingredient 1 — temperature', {
         group: 'Line 1 — Underline fridge',
+        ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: UNDERLINE_FRIDGE_VISIBLE,
     }),
     q('prodLine1_underlineIngredient2Item', 'productionLines', 'select', 'Ingredient 2', {
@@ -584,6 +589,7 @@ const DFSC_QUESTIONS = [
     }),
     q('prodLine1_underlineIngredient2Temp', 'productionLines', 'temperature', 'Ingredient 2 — temperature', {
         group: 'Line 1 — Underline fridge',
+        ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: UNDERLINE_FRIDGE_VISIBLE,
     }),
 
@@ -593,10 +599,12 @@ const DFSC_QUESTIONS = [
     }),
     q('prodLine1_prepFridgeGuacTemp', 'productionLines', 'temperature', 'Guac', {
         group: 'Line 1 — Prep fridge',
+        ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: PREP_FRIDGE_VISIBLE,
     }),
     q('prodLine1_prepFridgeFiestaTemp', 'productionLines', 'temperature', 'Fiesta', {
         group: 'Line 1 — Prep fridge',
+        ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: PREP_FRIDGE_VISIBLE,
     }),
     q(
@@ -610,22 +618,27 @@ const DFSC_QUESTIONS = [
     // Line 2 — Hot Line (dual line only; no taco tower or underline/prep fridge)
     q('prodLine2_beefTemp', 'productionLines', 'temperature', 'Beef Temp', {
         group: 'Line 2 — Hot Line',
+        ...HOT_HOLD_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_chickenTemp', 'productionLines', 'temperature', 'Chicken Temp', {
         group: 'Line 2 — Hot Line',
+        ...HOT_HOLD_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_beansTemp', 'productionLines', 'temperature', 'Bean Temp', {
         group: 'Line 2 — Hot Line',
+        ...HOT_HOLD_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_riceTemp', 'productionLines', 'temperature', 'Rice Temp', {
         group: 'Line 2 — Hot Line',
+        ...RICE_HOT_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_nachoCheeseTemp', 'productionLines', 'temperature', 'Nacho Cheese Temp', {
         group: 'Line 2 — Hot Line',
+        ...HOT_HOLD_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_crispyChickenLocation', 'productionLines', 'select', 'Where are you holding crispy chicken strips?', {
@@ -636,6 +649,7 @@ const DFSC_QUESTIONS = [
     }),
     q('prodLine2_crispyChickenLineTemp', 'productionLines', 'temperature', 'Crispy chicken strips — temperature', {
         group: 'Line 2 — Hot Line',
+        ...HOT_HOLD_TEMP_OPTS,
         showWhenAnswer: { prodLine2_crispyChickenLocation: 'on_line', ...TWO_LINES_VISIBLE },
     }),
     q(
@@ -659,22 +673,27 @@ const DFSC_QUESTIONS = [
     // Line 2 — Cold Line
     q('prodLine2_guacTemp', 'productionLines', 'temperature', 'Guac Temp', {
         group: 'Line 2 — Cold Line',
+        ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_lettuceTemp', 'productionLines', 'temperature', 'Lettuce Temp', {
         group: 'Line 2 — Cold Line',
+        ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_tomatoesTemp', 'productionLines', 'temperature', 'Tomatoes Temp', {
         group: 'Line 2 — Cold Line',
+        ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_fiestaTemp', 'productionLines', 'temperature', 'Fiesta Temp', {
         group: 'Line 2 — Cold Line',
+        ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_cheeseTemp', 'productionLines', 'temperature', 'Cheese Temp', {
         group: 'Line 2 — Cold Line',
+        ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q(
@@ -739,10 +758,12 @@ const DFSC_QUESTIONS = [
     q('deliveries_transfersReceived', 'deliveriesTransfers', 'yes_no', 'Did you receive any transfers?'),
     q('deliveries_transferFreezerTemp', 'deliveriesTransfers', 'temperature', 'Stock Transfers — Freezer', {
         group: 'Stock Transfers',
+        ...FREEZER_TEMP_OPTS,
         showWhenAnswer: { deliveries_transfersReceived: 'yes' },
     }),
     q('deliveries_transferFridgeTemp', 'deliveriesTransfers', 'temperature', 'Stock Transfers — Fridge', {
         group: 'Stock Transfers',
+        ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: { deliveries_transfersReceived: 'yes' },
     }),
 ];
@@ -780,32 +801,46 @@ function parseTempAnswer(value) {
     return Number.isFinite(n) ? n : null;
 }
 
-function isTempRangeNonCompliant(question, value) {
+function getEffectiveTempMin(question, session) {
+    if (!question) return null;
+    if (question.tempMinFromSelect) {
+        const cfg = question.tempMinFromSelect;
+        const item = String(session?.answers?.[cfg.questionId] ?? '').toLowerCase();
+        if (item && cfg.map?.[item] != null) return cfg.map[item];
+        if (cfg.defaultMin != null) return cfg.defaultMin;
+    }
+    return question.tempMin ?? null;
+}
+
+function isTempRangeNonCompliant(question, value, session = null) {
     if (!question) return false;
     if (question.type === 'carryover_temp') {
         if (String(value).toLowerCase() === 'no') return false;
         const temp = parseTempAnswer(value);
         if (temp === null) return false;
-        const max = question.tempMax ?? 5;
+        const max = question.tempMax ?? FRIDGE_TEMP_MAX;
         if (temp > max) return true;
-        if (question.tempMin != null && temp < question.tempMin) return true;
+        const tempMin = getEffectiveTempMin(question, session);
+        if (tempMin != null && temp < tempMin) return true;
         return false;
     }
     if (question.type !== 'temperature' && question.type !== 'temperature_na') return false;
-    if (question.tempMin == null && question.tempMax == null) return false;
+    const tempMin = getEffectiveTempMin(question, session);
+    const tempMax = question.tempMax ?? null;
+    if (tempMin == null && tempMax == null) return false;
     const temp = parseTempAnswer(value);
     if (temp === null) return false;
-    if (question.tempMin != null && temp < question.tempMin) return true;
-    if (question.tempMax != null && temp > question.tempMax) return true;
+    if (tempMin != null && temp < tempMin) return true;
+    if (tempMax != null && temp > tempMax) return true;
     return false;
 }
 
-function isNotCompliantValue(value, question = null) {
+function isNotCompliantValue(value, question = null, session = null) {
     if (question?.type === 'ppm_band') {
         const choice = (question.choices || []).find((c) => c.value === String(value));
         return Boolean(choice?.nc);
     }
-    if (isTempRangeNonCompliant(question, value)) return true;
+    if (isTempRangeNonCompliant(question, value, session)) return true;
     return String(value || '').toLowerCase() === 'not_compliant';
 }
 
@@ -868,11 +903,59 @@ function isQuestionVisible(question, session) {
     return true;
 }
 
+function isAnswerTimestampTrigger(question, value) {
+    if (value === '' || value == null || value === undefined) return false;
+    if (question.type === 'carryover_temp' && String(value).toLowerCase() === 'no') return false;
+    if (question.type === 'temperature' || question.type === 'temperature_na' || question.type === 'carryover_temp') {
+        return parseTempAnswer(value) != null;
+    }
+    return !isAnswerEmpty(question, value);
+}
+
+function getTimeGateDelayMinutes(question) {
+    if (question.unlockAfterAnswer?.minutes != null) return question.unlockAfterAnswer.minutes;
+    if (question.unlockAfterMinutes != null) return question.unlockAfterMinutes;
+    return null;
+}
+
+function getTimeGateAnchorMs(question, session) {
+    if (question.unlockAfterAnswer) {
+        const { questionId } = question.unlockAfterAnswer;
+        const triggerQ = getQuestionById(questionId);
+        const triggerVal = session.answers?.[questionId];
+        if (!triggerQ || !isAnswerTimestampTrigger(triggerQ, triggerVal)) return null;
+        const stamped = Date.parse(session.answerTimestamps?.[questionId] || '');
+        if (Number.isFinite(stamped)) return stamped;
+        const fallback = Date.parse(session.updatedAt || session.startedAt || '');
+        return Number.isFinite(fallback) ? fallback : null;
+    }
+    if (question.unlockAfterMinutes != null) {
+        const started = Date.parse(session.startedAt || '');
+        return Number.isFinite(started) ? started : null;
+    }
+    return null;
+}
+
+function applyAnswerTimestamp(session, questionId, value, now = Date.now()) {
+    if (!session) return;
+    session.answerTimestamps = session.answerTimestamps || {};
+    const question = getQuestionById(questionId);
+    if (!question) return;
+    if (isAnswerTimestampTrigger(question, value)) {
+        if (!session.answerTimestamps[questionId]) {
+            session.answerTimestamps[questionId] = new Date(now).toISOString();
+        }
+        return;
+    }
+    delete session.answerTimestamps[questionId];
+}
+
 function isTimeGateOpen(question, session, now = Date.now()) {
-    if (!question.unlockAfterMinutes) return true;
-    const started = Date.parse(session.startedAt || '');
-    if (!Number.isFinite(started)) return false;
-    return now >= started + question.unlockAfterMinutes * 60 * 1000;
+    const delayMinutes = getTimeGateDelayMinutes(question);
+    if (delayMinutes == null) return true;
+    const anchor = getTimeGateAnchorMs(question, session);
+    if (!Number.isFinite(anchor)) return false;
+    return now >= anchor + delayMinutes * 60 * 1000;
 }
 
 function getVisibleQuestions(session, sectionId) {
@@ -920,7 +1003,7 @@ function collectNonCompliant(session) {
     for (const question of DFSC_QUESTIONS) {
         if (!isQuestionVisible(question, session)) continue;
         const value = session.answers?.[question.id];
-        if (!isNotCompliantValue(value, question)) continue;
+        if (!isNotCompliantValue(value, question, session)) continue;
         const action = getActionEntry(session, question.id);
         out.push({
             questionId: question.id,
@@ -998,10 +1081,15 @@ module.exports = {
     isCompliantType,
     isNotCompliantValue,
     isTempRangeNonCompliant,
+    getEffectiveTempMin,
     parseTempAnswer,
     isAnswerEmpty,
     isQuestionVisible,
     isTimeGateOpen,
+    getTimeGateAnchorMs,
+    getTimeGateDelayMinutes,
+    isAnswerTimestampTrigger,
+    applyAnswerTimestamp,
     getActionEntry,
     isActionSubmitted,
     normalizeActionUpdate,

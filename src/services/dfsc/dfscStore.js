@@ -13,6 +13,7 @@ const {
     isTimeGateOpen,
     getQuestionById,
     normalizeActionUpdate,
+    applyAnswerTimestamp,
 } = require('./dfscSchema');
 const { sendDfscReportEmail } = require('./dfscEmail');
 
@@ -253,6 +254,7 @@ function createSession(storeNumber, { name, shift, startSignatureDataUrl, forceN
         actions: {},
         sectionSkips: [],
         notes: {},
+        answerTimestamps: {},
     };
     saveSession(session);
     setActivePointer(store, session.id, dateKey);
@@ -294,6 +296,7 @@ function updateSession(storeNumber, sessionId, updates = {}) {
                 return { ok: false, error: `${question.label} is not yet available.` };
             }
             session.answers[questionId] = value;
+            applyAnswerTimestamp(session, questionId, value, now);
         }
     }
     if (Array.isArray(updates.sectionSkips)) {

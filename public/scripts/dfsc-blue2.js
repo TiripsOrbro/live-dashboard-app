@@ -12,10 +12,16 @@
     const HEALTH_THERMOMETER_CHAR = '00002a1c-0000-1000-8000-00805f9b34fb';
     const GATT_CONNECT_SETTLE_MS = 400;
     const GATT_CONNECT_ATTEMPTS = 3;
+    const COOPER_WAKE_DELAY_MS = 350;
+    const TEMP_DISCOVERY_ATTEMPTS = 3;
+
+    const COOPER_VENDOR_SERVICES = Array.from({ length: 12 }, (_, index) => {
+        const slot = String(index + 1).padStart(2, '0');
+        return `785440${slot}-4394-4fc2-8cfd-be6a00aa701b`;
+    });
 
     const OPTIONAL_SERVICE_UUIDS = [
-        TEMP_SERVICE_UUID,
-        TEMP_SERVICE_ALT_UUID,
+        ...COOPER_VENDOR_SERVICES,
         BATTERY_SERVICE_UUID,
         HEALTH_THERMOMETER_SERVICE,
         '0000180a-0000-1000-8000-00805f9b34fb',
@@ -271,7 +277,7 @@
         }
         if (/temperature service not found/i.test(msg)) {
             return new Error(
-                'Connected to the device but could not find the temperature service — use a Cooper-Atkins Blue2, not a phone or other Bluetooth device.'
+                'Connected to Blue2 but the temperature channel is not available yet — keep the probe switched on and tap Connect again. If this repeats, forget Blue2 in Android Settings → Bluetooth, then connect only through DFSC.'
             );
         }
         if (isGattDisconnectedError(err)) {
@@ -290,6 +296,37 @@
         } catch {
             /* Cooper-Atkins firmware often still works without this */
         }
+    }
+
+    async function listGrantedServices(server) {
+        try {
+            return await server.getPrimaryServices();
+        } catch (err) {
+            if (isGattDisconnectedError(err)) throw err;
+            return [];
+        }
+    }
+
+    async function findCharacteristicByUuid(server, targetUuid) {
+        const target = canonicalUuid(targetUuid);
+        const services = await listGrantedServices(server);
+        for (const service of services) {
+            try {
+                const direct = await service.getCharacteristic(targetUuid);
+                if (direct) return direct;
+            } catch {
+                /* scan all characteristics on this service */
+            }
+            try {
+                const chars = await service.getCharacteristics();
+                for (const char of chars) {
+                    if (canonicalUuid(char.uuid) === target) return char;
+                }
+            } catch {
+                /* ignore inaccessible service */
+            }
+        }
+        return null;
     }
 
     async function pickLiveCharacteristic(service) {
@@ -318,7 +355,17 @@
             throw new Error('GATT Server is disconnected. Cannot retrieve services. (Re)connect first with device.gatt.connect');
         }
 
-        for (const serviceUuid of [TEMP_SERVICE_UUID, TEMP_SERVICE_ALT_UUID, HEALTH_THERMOMETER_SERVICE]) {
+        const directChar = await findCharacteristicByUuid(server, TEMP_CHAR_UUID);
+        if (directChar) return directChar;
+
+        const serviceCandidates = [
+            TEMP_SERVICE_UUID,
+            TEMP_SERVICE_ALT_UUID,
+            HEALTH_THERMOMETER_SERVICE,
+            ...COOPER_VENDOR_SERVICES,
+        ];
+
+        for (const serviceUuid of serviceCandidates) {
             try {
                 const service = await server.getPrimaryService(serviceUuid);
                 const char = await pickLiveCharacteristic(service);
@@ -329,13 +376,7 @@
             }
         }
 
-        let services = [];
-        try {
-            services = await server.getPrimaryServices();
-        } catch (err) {
-            if (isGattDisconnectedError(err)) throw err;
-            throw new Error(`Could not read thermometer services (${err?.message || err}).`);
-        }
+        const services = await listGrantedServices(server);
 
         for (const service of services) {
             if (!isCooperServiceUuid(service.uuid)) continue;
@@ -358,13 +399,26 @@
             }
         }
 
-        throw new Error('Bluetooth thermometer temperature service not found. Choose the Cooper-Atkins Blue2.');
+        const granted = services.map((service) => canonicalUuid(service.uuid)).join(', ');
+        throw new Error(
+            `Bluetooth thermometer temperature service not found.${granted ? ` Granted services: ${granted}.` : ''}`
+        );
     }
 
-    async function requestBlue2Device() {
+    async function requestBlue2Device({ serviceOnly = false } = {}) {
         const requestOptions = {
             optionalServices: OPTIONAL_SERVICE_UUIDS,
         };
+
+        if (serviceOnly) {
+            return navigator.bluetooth.requestDevice({
+                ...requestOptions,
+                filters: [
+                    { services: [TEMP_SERVICE_UUID] },
+                    { services: [TEMP_SERVICE_ALT_UUID] },
+                ],
+            });
+        }
 
         // OR filters — pairing mode often advertises the name only, not the temp service UUID.
         const filters = [
@@ -392,8 +446,26 @@
         });
     }
 
+    async function discoverTemperatureCharacteristic(server) {
+        let lastErr = null;
+        for (let attempt = 0; attempt < TEMP_DISCOVERY_ATTEMPTS; attempt += 1) {
+            try {
+                await readBatteryLevel(server);
+                await sleep(COOPER_WAKE_DELAY_MS);
+                return await getTemperatureCharacteristic(server);
+            } catch (err) {
+                lastErr = err;
+                if (isGattDisconnectedError(err)) throw err;
+                if (!/temperature service not found/i.test(String(err?.message || err))) throw err;
+                if (attempt + 1 >= TEMP_DISCOVERY_ATTEMPTS) break;
+                await sleep(400);
+            }
+        }
+        throw lastErr || new Error('Bluetooth thermometer temperature service not found.');
+    }
+
     async function setupTemperatureStream(server) {
-        const char = await getTemperatureCharacteristic(server);
+        const char = await discoverTemperatureCharacteristic(server);
         if (charHasLiveUpdates(char)) {
             await char.startNotifications();
             char.addEventListener('characteristicvaluechanged', onNotify);
@@ -405,8 +477,28 @@
         } catch {
             /* notifications will populate reading */
         }
-        void readBatteryLevel(server);
         return char;
+    }
+
+    async function connectDeviceStream(bleDevice, { allowServicePickerFallback = true } = {}) {
+        try {
+            return await runWithGatt(bleDevice, (server) => setupTemperatureStream(server));
+        } catch (err) {
+            const msg = String(err?.message || err || '');
+            if (!allowServicePickerFallback || !/temperature service not found/i.test(msg)) throw err;
+
+            const repicked = await requestBlue2Device({ serviceOnly: true });
+            if (bleDevice?.gatt?.connected) {
+                try {
+                    bleDevice.gatt.disconnect();
+                } catch {
+                    /* ignore */
+                }
+            }
+            device = repicked;
+            bindDisconnectHandler(device);
+            return runWithGatt(repicked, (server) => setupTemperatureStream(server));
+        }
     }
 
     function markDisconnected() {
@@ -437,10 +529,10 @@
                 }
                 device = picked;
                 bindDisconnectHandler(device);
-                characteristic = await runWithGatt(device, (server) => setupTemperatureStream(server));
+                characteristic = await connectDeviceStream(device);
             } else if (!characteristic) {
                 bindDisconnectHandler(device);
-                characteristic = await runWithGatt(device, (server) => setupTemperatureStream(server));
+                characteristic = await connectDeviceStream(device, { allowServicePickerFallback: false });
             }
 
             ready = true;

@@ -181,21 +181,22 @@ function orderRoundingDisabled(options = {}) {
 
 /**
  * Order qty from build-to − on-hand − on-order.
- * Default: skip when shortage < 1 carton; otherwise round to nearest whole carton.
+ * Default: any positive shortage orders at least one carton (round up),
+ * matching the manual build-to guide.
  * Testing: raw (4 dp) via --no-order-rounding / ORDER_NO_ROUNDING.
  */
 function finalizeOrderQty(value, options = {}) {
     const n = Number(value);
-    if (!Number.isFinite(n) || n <= 0) return 0;
+    // 1e-6 guard: ignore floating-point noise from carton conversions.
+    if (!Number.isFinite(n) || n <= 1e-6) return 0;
     if (orderRoundingDisabled(options)) return round4(n);
-    if (n < 1) return 0;
-    return Math.round(n);
+    return Math.ceil(n);
 }
 
 /** manual= par lines: any positive shortage orders at least one carton. */
 function finalizeManualParOrderQty(value, options = {}) {
     const n = Number(value);
-    if (!Number.isFinite(n) || n <= 0) return 0;
+    if (!Number.isFinite(n) || n <= 1e-6) return 0;
     if (orderRoundingDisabled(options)) return round4(n);
     return Math.ceil(n);
 }
@@ -396,9 +397,15 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
     const usedIseCodes = new Set();
 
     const appendLineFromIse = (reportItemCode, ise, catalogItem, iseMatchSource) => {
+        // If this ISE code belongs to an ignore/manual catalog line, never name-match
+        // it onto another catalog item (e.g. ignored small bags → medium bags).
+        const reportCanonCode = canonicalItemCode(reportItemCode) || normalizeItemCode(reportItemCode);
+        const reportCodeRule = catalogRuleForItem(reportCanonCode, catalogRules, storeOverrideMap);
         const resolved = catalogItem
             ? { item: catalogItem, matchSource: iseMatchSource || 'code' }
-            : resolveCatalogItemForIseRow(ise, reportItemCode, catalogItems);
+            : reportCodeRule?.buildToManual
+              ? null
+              : resolveCatalogItemForIseRow(ise, reportItemCode, catalogItems);
         const matchedCatalog = resolved?.item || null;
         const itemCode = matchedCatalog
             ? normalizeItemCode(matchedCatalog.itemCode)

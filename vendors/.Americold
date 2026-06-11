@@ -28,7 +28,7 @@
 10        | 37911  | TB CHEESE CHEDD ANGEL HAIR/SFINE SHRED 6x2KG   | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 10        | 37909  | TB SAUCE NACHO CHEESE 6X1.8KG                  | Boxes | Bags    | KGs  | N/a     | Fridge  | Carryover | In Use | Key | Daily
 10        | 37013  | TB SAUCE PICO DE GALLO 12X500GM                | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
-10        | 100457 | SAUCE FIRE 10X1KG                              | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
+10        | 100457 | SAUCE FIRE 10X1KG                              | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use | order:DRY
 10        | 37870  | TB SAUCE CHILLI MILD 10X1KG                    | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use | Key | Daily
 
 # --- Fridge oh:10 — ISE × 10 build-to; SOH/SOO; not on Key Item Count ---
@@ -38,7 +38,7 @@ oh:10     | 106191 | SAUCE CARAMEL MONIN 1.89L                      | Boxes | N/
 oh:10     | 38163  | TB SAUCE CHOCOLATE DA VINCI 3X2LTR             | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 
 # --- Dry (MMX DRY tab) — travel-path / Key Item Count ---
-10        | 40062A | TB CINNAMON TWISTS 2 X 5KG                     | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |
+10        | 40062A | TB CINNAMON TWISTS 2 X 5KG                     | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    | 2
 10        | 37915  | TB RICE LONG GRAIN WHITE 10KG                  | Bags  | N/a     | KGs  | N/a     | N/a     | Dry  | N/a    |
 10+1      | 39054  | TB SEASONING MEXICAN RECI 10X1                 | Bags  | N/a     | KGs  | N/a     | N/a     | Dry  | N/a    |
 10        | 40037  | SUGAR CINNAMON 5X2.5KG                         | Boxes | Bags    | KGs  | N/a     | N/a     | Dry  | N/a    |

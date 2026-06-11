@@ -146,17 +146,25 @@ async function buildOrderManualEntriesFromCounts(
                     countEntry.catalogItem || item,
                     1
                 );
-            } else if (options.preferReportOnHand && reportCtx) {
-                const fromReport = onHandCartonsForCatalogItem(code, item, reportCtx);
-                if (Number.isFinite(fromReport)) {
-                    onHandCartons = fromReport;
-                }
-            } else if (countEntry) {
+            } else if (countEntry && !options.preferReportOnHand) {
                 onHandCartons = manualCountToCartons(
                     { columns: countEntry.columns },
                     countEntry.catalogItem || item,
                     1
                 );
+            } else if (reportCtx) {
+                // No count today (or preferReportOnHand): use the SOH report
+                // instead of assuming zero on hand (oil, Schweppes BIBs/FCBs).
+                const fromReport = onHandCartonsForCatalogItem(code, item, reportCtx);
+                if (Number.isFinite(fromReport)) {
+                    onHandCartons = fromReport;
+                } else if (countEntry) {
+                    onHandCartons = manualCountToCartons(
+                        { columns: countEntry.columns },
+                        countEntry.catalogItem || item,
+                        1
+                    );
+                }
             }
         } else if (
             hasUncountedDefault &&
@@ -169,8 +177,9 @@ async function buildOrderManualEntriesFromCounts(
             continue;
         }
 
+        // manual= and order= lines both deduct stock-on-order (see VENDOR-FORMAT.md).
         const onOrderCartons =
-            item.buildToOrderManual && !item.buildToManual && reportCtx
+            item.buildToOrderManual && reportCtx
                 ? onOrderCartonsForCatalogItem(code, item, reportCtx)
                 : 0;
         const rawOrder = buildTo - onHandCartons - onOrderCartons;

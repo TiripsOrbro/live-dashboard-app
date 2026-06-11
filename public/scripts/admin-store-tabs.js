@@ -78,7 +78,7 @@
     function areaHref(areaName) {
         const code = areaCodeFromName(areaName);
         if (code) return global.AppPaths?.adminArea?.(code) || `/Admin/${code}`;
-        return global.AppPaths?.adminOverview?.() || '/Admin/Overview';
+        return global.AppPaths?.overview?.() || '/overview';
     }
 
     function filterStoresForActiveArea(stores, activeStore, areaCode) {
@@ -116,7 +116,7 @@
         const num = String(storeNumber || '').trim();
         return num
             ? global.AppPaths?.adminStore?.(num) || `/Admin/${encodeURIComponent(num)}`
-            : global.AppPaths?.adminOverview?.() || '/Admin/Overview';
+            : global.AppPaths?.overview?.() || '/overview';
     }
 
     function tabLabel(store) {

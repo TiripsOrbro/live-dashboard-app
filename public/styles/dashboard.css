@@ -636,6 +636,11 @@ body {
     background: color-mix(in srgb, var(--blank) 22%, var(--dark-purple-border));
 }
 
+a.audit-chip--link {
+    text-decoration: none;
+    color: inherit;
+}
+
 .audit-chip:focus-visible {
     outline: 2px solid var(--blank);
     outline-offset: 2px;

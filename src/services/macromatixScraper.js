@@ -26,6 +26,20 @@ const lastKnownPendingVendorsByStore = new Map();
 
 const DEFAULT_STORE_KEY = '__default__';
 
+/** Thrown when the Macromatix login cannot access a store — scrape should skip, not error. */
+class StoreInaccessibleError extends Error {
+    constructor(storeNumber, detail) {
+        super(`Store ${storeNumber} not accessible with this Macromatix login${detail ? `: ${detail}` : ''}`);
+        this.name = 'StoreInaccessibleError';
+        this.storeNumber = String(storeNumber || '').trim();
+        this.skippable = true;
+    }
+}
+
+function isStoreInaccessibleError(err) {
+    return Boolean(err && (err instanceof StoreInaccessibleError || err.skippable === true));
+}
+
 function decryptCredentialPayload(encryptedPayload, keyText) {
     if (!encryptedPayload || !keyText) return null;
 
@@ -1891,12 +1905,14 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
     if (!pickerPresent) {
         await ensureLoginStorePickerPage(page);
     }
+    let loginNums = [];
     const hasLoginDropdown = await isLoginStorePickerPresent(page);
     if (hasLoginDropdown) {
         await waitForLoginStoreDropdownStable(page);
         const available = await listStoresOnLoginDropdown(page);
-        const nums = available.map((s) => s.storeNumber).join(', ') || '(none parsed)';
-        if (available.some((s) => s.storeNumber === want)) {
+        loginNums = available.map((s) => s.storeNumber);
+        const nums = loginNums.join(', ') || '(none parsed)';
+        if (loginNums.includes(want)) {
             throw new Error(
                 `Store ${target} is on the login picker but could not be selected. Available: ${nums}`
             );
@@ -1951,14 +1967,15 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
     await ensureSpaAuthenticated(page, credentials);
 
     const listed = await listStoresOnChangeStorePage(page);
-    if (listed.length && !listed.some((s) => s.storeNumber === want)) {
-        const spaNums = listed.map((s) => s.storeNumber).join(', ');
-        throw new Error(
-            `Store ${target} not accessible with this Macromatix login. ` +
-                `Labour scheduler: ${labourNums.join(', ') || 'none'}. ` +
-                `Change Store: ${spaNums}. ` +
-                `Check SCRAPER_* in .env, or add crew MMX credentials via Create account.`
-        );
+    const spaNums = listed.map((s) => s.storeNumber);
+    const knownLists = [loginNums, labourNums, spaNums].filter((nums) => nums.length > 0);
+    const inAnyList = knownLists.some((nums) => nums.includes(want));
+    if (knownLists.length > 0 && !inAnyList) {
+        const parts = [];
+        if (loginNums.length) parts.push(`login picker: ${loginNums.join(', ')}`);
+        if (labourNums.length) parts.push(`labour: ${labourNums.join(', ')}`);
+        if (spaNums.length) parts.push(`change store: ${spaNums.join(', ')}`);
+        throw new StoreInaccessibleError(target, parts.join('; '));
     }
 
     try {
@@ -1971,6 +1988,9 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
             console.log(`[Macromatix] Post-login store selected (ASP.NET fallback): ${picked}`);
             await waitForStoreSelectionPostback(page);
             return picked;
+        }
+        if (knownLists.length > 0 && !inAnyList) {
+            throw new StoreInaccessibleError(target, spaErr.message);
         }
         throw spaErr;
     }
@@ -2294,6 +2314,17 @@ function resolveMacromatixCredentialsForStore(storeNumber, options = {}) {
 
 function resolveMacromatixCredentials(options = {}) {
     const storeNumber = String(options.storeNumber || '').trim();
+    const dashUser = String(options.dashboardUsername || '').trim();
+    if (storeNumber && options.preferDashboardMmxCredentials && dashUser) {
+        const { readMmxCredentialsForUser } = require('./mmxUserCredentials');
+        const stored = readMmxCredentialsForUser(dashUser);
+        if (stored?.username && stored?.password) {
+            console.log(
+                `[Macromatix] Store ${storeNumber}: using signed-in user MMX login (${maskUsernameForLog(stored.username)})`
+            );
+            return { ...stored, source: `mmx-users/${dashUser}` };
+        }
+    }
     if (storeNumber) {
         const perStore = resolveMacromatixCredentialsForStore(storeNumber, options);
         return {
@@ -2309,7 +2340,6 @@ function resolveMacromatixCredentials(options = {}) {
             source: 'explicit options',
         };
     }
-    const dashUser = String(options.dashboardUsername || '').trim();
     if (dashUser) {
         const { readMmxCredentialsForUser } = require('./mmxUserCredentials');
         const stored = readMmxCredentialsForUser(dashUser);
@@ -2412,6 +2442,9 @@ async function scrapeStoreWithCredentialCandidates(browser, store, ctx, candidat
         }
     }
 
+    if (isStoreInaccessibleError(lastErr)) {
+        throw lastErr;
+    }
     throw lastErr || new Error(`No Macromatix credentials available for store ${label}`);
 }
 
@@ -2580,6 +2613,14 @@ async function scrapeMacromatix(options = {}) {
                         });
                     } catch (storeErr) {
                         if (storeErr?.aborted) throw storeErr;
+                        if (isStoreInaccessibleError(storeErr)) {
+                            console.warn(
+                                `[Macromatix] Worker ${workerId} store ${label} skipped (no access):`,
+                                storeErr.message
+                            );
+                            results[i] = null;
+                            continue;
+                        }
                         console.error(
                             `[Macromatix] Worker ${workerId} store ${label} failed:`,
                             storeErr.message
@@ -2634,6 +2675,11 @@ async function scrapeMacromatix(options = {}) {
                         results[i] = await scrapeStoreData(workerPage, store, ctx);
                     } catch (storeErr) {
                         if (storeErr?.aborted) throw storeErr;
+                        if (isStoreInaccessibleError(storeErr)) {
+                            console.warn(`[Macromatix] Store ${label} skipped (no access):`, storeErr.message);
+                            results[i] = null;
+                            continue;
+                        }
                         console.error(`[Macromatix] Store ${label} scrape failed:`, storeErr.message);
                         results[i] = buildErrorResult(store, storeErr, todayKey);
                     }
@@ -2688,10 +2734,11 @@ async function scrapeMacromatix(options = {}) {
         await closeBrowserQuietly(browser, 'normal completion');
         browser = null;
 
+        const scrapedStores = results.filter((r) => r != null);
         return {
             success: true,
             timestamp: new Date().toISOString(),
-            stores: results,
+            stores: scrapedStores,
         };
     } catch (error) {
         await closeBrowserQuietly(browser, 'error cleanup');

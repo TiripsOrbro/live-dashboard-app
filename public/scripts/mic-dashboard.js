@@ -1,4 +1,4 @@
-const IS_MIC_OVERVIEW = /^\/MIC\/Overview\/?$/i.test(window.location.pathname);
+const IS_MIC_OVERVIEW = /^\/overview\/?$/i.test(window.location.pathname);
 let STORE_NUMBER =
     (window.location.pathname.match(/^\/MIC\/(teststore|\d{3,6})\/?$/i) || [])[1] || '';
 
@@ -10,6 +10,7 @@ const MULTIPLIER_NOTHING_LABEL = 'Nothing Yet...';
 let micData = null;
 let pickerOpen = false;
 let pickerEscHandler = null;
+let micCanViewAdminAuditSummary = false;
 
 const VOC_PLACEHOLDER = { count: 30, osatPercent: 83, accuracyPercent: 90 };
 const SMG_REPORTING_URL = 'https://reporting.smg.com/Index.aspx';
@@ -20,6 +21,17 @@ const CURRENT_PROMO = {
     imageUrl: '/images/promos/let-it-drip-banner.png',
     pdfUrl: '/documents/promos/let-it-drip-frrop.pdf',
 };
+
+const MIC_OVERVIEW_TABS = [
+    { id: 'sales', label: 'Sales' },
+    { id: 'results', label: 'Results' },
+    { id: 'orders', label: 'Orders' },
+    { id: 'audits', label: 'Audits' },
+];
+const MIC_TAB_STORAGE_KEY = 'mic-overview-active-tab';
+
+let activeMicTab = sessionStorage.getItem(MIC_TAB_STORAGE_KEY) || 'sales';
+let micOverviewTabsBound = false;
 
 function formatVocDisplay(voc = {}) {
     if (voc.placeholder) {
@@ -59,8 +71,7 @@ function formatTime(date) {
 }
 
 function applyDashboardScale() {
-    const scale = Math.min(1.15, Math.max(0.72, window.innerWidth / 1280));
-    document.documentElement.style.setProperty('--dashboard-scale', String(scale));
+    window.MicOverviewScale?.apply?.();
 }
 
 function formatSssgDisplay(value) {
@@ -116,17 +127,28 @@ function renderShell() {
                     </div>
                 </div>
             </header>
+            <nav
+                class="mic-overview-tabs"
+                id="mic-overview-tabs"
+                role="tablist"
+                aria-label="MIC overview sections"
+                hidden
+            ></nav>
             <div class="mic-grid mic-grid--admin" id="mic-grid"></div>
         </div>
         ${window.MicSettings?.renderCog?.() || ''}
+        <!-- Daily item multiplier picker — disabled for now
         <div id="mic-item-picker" class="mic-item-picker" hidden>
             <div class="mic-item-picker-panel">
                 <h2>Select item for 3× points today</h2>
                 <div class="mic-item-list" id="mic-item-list"></div>
             </div>
         </div>
+        -->
         ${window.MicSettings?.renderPanel?.({
             darkModeHint: 'Dark background and tiles on this MIC page.',
+            storeNumber: STORE_NUMBER || '',
+            reportEmail: micData?.reportEmail || '',
         }) || ''}
     `;
 }
@@ -143,13 +165,29 @@ function renderSalesStack(sales) {
             ? `${formatMoney(actual)} / ${formatMoney(forecast)}`
             : 'Waiting for sales data';
     return `
-        <div class="mic-store-lead-sales-stack">
-            <div class="mic-store-lead-total-amount">${amounts}</div>
-            <div class="mic-store-lead-pace-band">${layers}</div>
+        <div class="mic-store-lead-sales-stack mic-store-lead-sales-stack--pace-only">
+            <div class="mic-store-lead-pace-band mic-store-lead-pace-band--with-amounts">
+                ${layers}
+                <span class="mic-store-lead-pace-amounts">${escapeHtml(amounts)}</span>
+            </div>
         </div>
     `;
 }
 
+function renderSssgInlineBlock(sales = {}) {
+    const today = formatSssgDisplay(sales.sssgPercent);
+    const wtd = formatSssgDisplay(sales.sssgWtdPercent);
+    const hasData = today.text !== '—' || wtd.text !== '—';
+    return `
+        <div class="mic-sssg-inline${hasData ? '' : ' mic-sssg-inline--future'}" aria-label="Same store sales growth">
+            <div class="mic-sssg-inline-label">Today SSSG</div>
+            <div class="mic-sssg-value ${today.toneClass}">${escapeHtml(today.text)}</div>
+            <div class="mic-sssg-wtd ${wtd.toneClass}">WTD ${escapeHtml(wtd.text)}</div>
+        </div>
+    `;
+}
+
+/*
 function renderMultiplierBlock(data) {
     const rules =
         data?.dailyItemMultipliers || (data?.dailyItemMultiplier ? [data.dailyItemMultiplier] : []);
@@ -180,6 +218,7 @@ function renderMultiplierBlock(data) {
         </button>
     `;
 }
+*/
 
 function isMicMobileView() {
     return window.matchMedia('(max-width: 900px)').matches;
@@ -190,6 +229,7 @@ let lastMicMobileLayout = null;
 function syncMicLayoutMode() {
     const mobile = isMicMobileView();
     document.body.classList.toggle('mic-overview--mobile', mobile);
+    document.documentElement.classList.toggle('mic-overview--mobile', mobile);
     if (lastMicMobileLayout !== null && lastMicMobileLayout !== mobile && micData) {
         renderTiles(micData);
     }
@@ -201,17 +241,25 @@ function renderMiniDashboard(sales) {
     const mobile = isMicMobileView();
     if (mobile) {
         const totalsHtml = window.MicMiniDashboard?.renderMobileMealTotals?.(sales) || '';
+        const hourlyHtml = window.MicMiniDashboard?.renderMobileHourlyWindow?.(sales, { allHours: true }) || '';
         return `
             <div class="mic-mini-dashboard mic-mini-dashboard--mobile">
                 ${totalsHtml}
+                ${hourlyHtml}
                 <a class="mic-store-lead-dashboard-link mic-store-lead-dashboard-link--plain mic-meal-dashboard-link" href="${escapeHtml(window.AppPaths?.micStore?.(STORE_NUMBER) || `/MIC/${STORE_NUMBER}`)}">View full dashboard →</a>
             </div>
         `;
     }
     const gridHtml = window.MicMiniDashboard?.renderPortraitGrid?.(sales) || '';
+    const hourCount = window.MicMiniDashboard?.getTradingHourCount?.(sales) ?? 12;
     return `
         <div class="mic-mini-dashboard">
-            <div class="dashboard-grid dashboard-grid--portrait" role="region" aria-label="Today's sales by hour">
+            <div
+                class="dashboard-grid dashboard-grid--portrait dashboard-grid--mic-fill"
+                style="--mic-hour-count: ${hourCount}"
+                role="region"
+                aria-label="Today's sales by hour"
+            >
                 ${gridHtml}
             </div>
         </div>
@@ -223,36 +271,61 @@ function refreshMiniDashboard() {
     const host = document.querySelector('.mic-mini-dashboard');
     if (!host) return;
     host.outerHTML = renderMiniDashboard(micData.salesToday);
+    requestAnimationFrame(syncSalesHourlyScroll);
 }
 
-function renderStoreSalesTile(data) {
+function renderMobileStoreLeadHeader(_sales, storeLabelHtml) {
+    return `<div class="mic-store-lead-store-label mic-store-lead-store-label--mobile">${storeLabelHtml}</div>`;
+}
+
+function renderStoreSalesTile(data, { tabbed = false } = {}) {
     const sales = data?.salesToday || { actual: 0, forecast: 0 };
     const storeName = escapeHtml(data?.storeName || STORE_NUMBER);
     const storeLabel = data?.storeName && data.storeName !== STORE_NUMBER
         ? `${storeName} · ${escapeHtml(STORE_NUMBER)}`
         : storeName;
+    const mobile = tabbed || isMicMobileView();
+    const leadHeader = mobile
+        ? renderMobileStoreLeadHeader(sales, storeLabel)
+        : `<div class="mic-store-lead-store-label">${storeLabel}</div>`;
+    const posClass = tabbed ? '' : ' mic-tile--pos-store-sales';
     return `
-        <article class="mic-tile mic-tile--store-leaderboard mic-tile--pos-store-sales">
-            <div class="mic-store-lead mic-store-lead--purple">
-                <div class="mic-store-lead-store-label">${storeLabel}</div>
+        <article class="mic-tile mic-tile--store-leaderboard${posClass}">
+            <div class="mic-store-lead mic-store-lead--purple${mobile ? ' mic-store-lead--mobile' : ''}">
+                ${leadHeader}
                 <div class="mic-store-lead-sales">${renderSalesStack(sales)}</div>
             </div>
             <div class="mic-store-lead-list mic-store-lead-list--dashboard">
                 ${renderMiniDashboard(sales)}
-                ${isMicMobileView() ? '' : `<a class="mic-store-lead-dashboard-link mic-store-lead-dashboard-link--plain" href="${escapeHtml(window.AppPaths?.micStore?.(STORE_NUMBER) || `/MIC/${STORE_NUMBER}`)}">Open full dashboard →</a>`}
-                ${renderMultiplierBlock(data)}
+                ${mobile ? '' : `<a class="mic-store-lead-dashboard-link mic-store-lead-dashboard-link--plain" href="${escapeHtml(window.AppPaths?.micStore?.(STORE_NUMBER) || `/MIC/${STORE_NUMBER}`)}">Open full dashboard →</a>`}
+                ${mobile ? '' : renderSssgInlineBlock(sales)}
             </div>
         </article>
     `;
 }
 
-function renderSssgTile(sales = {}) {
+function renderMicTabPanel(tabId, content) {
+    return `
+        <section
+            class="mic-tab-panel mic-tab-panel--${tabId}"
+            data-mic-tab-panel="${tabId}"
+            id="mic-tabpanel-${tabId}"
+            role="tabpanel"
+            aria-labelledby="mic-tab-${tabId}"
+        >
+            ${content}
+        </section>
+    `;
+}
+
+function renderSssgTile(sales = {}, { tabbed = false } = {}) {
     const today = formatSssgDisplay(sales.sssgPercent);
     const wtd = formatSssgDisplay(sales.sssgWtdPercent);
     const hasData = today.text !== '—' || wtd.text !== '—';
     const futureClass = hasData ? '' : ' mic-tile--future';
+    const posClass = tabbed ? '' : ' mic-tile--pos-sssg';
     return `
-        <article class="mic-tile mic-tile--sssg${futureClass} mic-tile--pos-sssg">
+        <article class="mic-tile mic-tile--sssg${futureClass}${posClass}">
             <div class="mic-tile-body">
                 <div class="mic-tile-label">Today SSSG</div>
                 <div class="mic-sssg-value ${today.toneClass}">${escapeHtml(today.text)}</div>
@@ -262,26 +335,241 @@ function renderSssgTile(sales = {}) {
     `;
 }
 
-function renderAdminLabelTile({ label, posClass, sub = 'Coming soon' }) {
+function renderVocTile(voc, { tabbed = false, wide = false, inRow = false } = {}) {
+    const posClass =
+        tabbed || inRow ? '' : ` mic-tile--pos-voc${wide ? ' mic-tile--pos-voc-wide' : ''}`;
     return `
-        <article class="mic-tile ${posClass}">
+        <a
+            class="mic-tile mic-tile--link mic-tile--voc${posClass}"
+            href="${SMG_REPORTING_URL}"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="VOC — open SMG reporting"
+        >
             <div class="mic-tile-body">
-                <div class="mic-tile-label">${escapeHtml(label)}</div>
-                <div class="mic-tile-sub">${escapeHtml(sub)}</div>
+                <div class="mic-tile-label">VOC</div>
+                <div class="mic-tile-main">${voc.count}</div>
+                <div class="mic-tile-sub">OSAT ${voc.osat == null ? '—' : `${voc.osat}%`} · Acc ${voc.acc == null ? '—' : `${voc.acc}%`}</div>
+                <div class="mic-tile-sub mic-tile-sub--footnote">Pipeline coming soon</div>
             </div>
-        </article>
+        </a>
     `;
 }
 
-function renderDfscTile(data) {
+function renderMicOverviewTabsHtml() {
+    return MIC_OVERVIEW_TABS.map(({ id, label }) => {
+        const isActive = activeMicTab === id;
+        return `
+            <button
+                type="button"
+                class="mic-overview-tab${isActive ? ' is-active' : ''}"
+                role="tab"
+                id="mic-tab-${id}"
+                aria-selected="${isActive ? 'true' : 'false'}"
+                aria-controls="mic-tabpanel-${id}"
+                data-mic-overview-tab="${id}"
+            >${escapeHtml(label)}</button>
+        `;
+    }).join('');
+}
+
+function applyMicOverviewTab(tabId) {
+    if (!MIC_OVERVIEW_TABS.some((tab) => tab.id === tabId)) {
+        tabId = 'sales';
+    }
+    activeMicTab = tabId;
+    sessionStorage.setItem(MIC_TAB_STORAGE_KEY, tabId);
+
+    document.querySelectorAll('[data-mic-overview-tab]').forEach((button) => {
+        const isActive = button.dataset.micOverviewTab === tabId;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    });
+
+    const tabClasses = [
+        'mic-overview-tab--sales',
+        'mic-overview-tab--results',
+        'mic-overview-tab--orders',
+        'mic-overview-tab--audits',
+    ];
+    document.body.classList.remove(...tabClasses);
+    document.documentElement.classList.remove(...tabClasses);
+    document.body.classList.add(`mic-overview-tab--${tabId}`);
+    document.documentElement.classList.add(`mic-overview-tab--${tabId}`);
+
+    const grid = document.getElementById('mic-grid');
+    if (!grid) return;
+    grid.querySelectorAll('[data-mic-tab-panel]').forEach((panel) => {
+        const isActive = panel.dataset.micTabPanel === tabId;
+        panel.hidden = !isActive;
+        panel.classList.toggle('is-tab-active', isActive);
+    });
+
+    if (tabId === 'sales') {
+        requestAnimationFrame(syncSalesHourlyScroll);
+    }
+}
+
+function syncSalesHourlyScroll() {
+    if (!isMicMobileView() || activeMicTab !== 'sales') return;
+
+    const panel = document.querySelector('.mic-tab-panel--sales:not([hidden])');
+    const hourly = panel?.querySelector('.mic-mobile-hourly--scroll');
+    const body = hourly?.querySelector('.mic-mobile-hourly-body');
+    const head = hourly?.querySelector('.mic-mobile-hourly-head');
+    if (!panel || !hourly || !body) return;
+
+    const hourlyRect = hourly.getBoundingClientRect();
+    const headHeight = head?.offsetHeight || 0;
+    const link = panel.querySelector('.mic-meal-dashboard-link');
+    const bottomLimit = link
+        ? link.getBoundingClientRect().top
+        : panel.getBoundingClientRect().bottom;
+    const available = bottomLimit - hourlyRect.top - headHeight - 4;
+    const maxHeight = Math.max(120, Math.floor(available));
+
+    body.style.maxHeight = `${maxHeight}px`;
+    body.style.overflowY = 'auto';
+    body.style.webkitOverflowScrolling = 'touch';
+}
+
+function bindMicOverviewTabs() {
+    const nav = document.getElementById('mic-overview-tabs');
+    if (!nav || micOverviewTabsBound) return;
+    nav.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-mic-overview-tab]');
+        if (!button) return;
+        applyMicOverviewTab(button.dataset.micOverviewTab);
+    });
+    micOverviewTabsBound = true;
+}
+
+function syncMicOverviewTabs(mobile) {
+    const nav = document.getElementById('mic-overview-tabs');
+    const tabClasses = [
+        'mic-overview-tab--sales',
+        'mic-overview-tab--results',
+        'mic-overview-tab--orders',
+        'mic-overview-tab--audits',
+    ];
+    if (!mobile) {
+        if (nav) nav.hidden = true;
+        document.body.classList.remove(...tabClasses);
+        document.documentElement.classList.remove(...tabClasses);
+        return;
+    }
+    if (!nav) return;
+    nav.hidden = false;
+    nav.innerHTML = renderMicOverviewTabsHtml();
+    bindMicOverviewTabs();
+}
+
+function renderBlankTile({ posClass = 'mic-tile--pos-blank' } = {}) {
+    return `<article class="mic-tile mic-tile--blank ${posClass}" aria-hidden="true"></article>`;
+}
+
+function renderAdminLabelTile({ label, posClass, sub = 'Coming soon', tabbed = false, inRow = false, href = '' }) {
+    const subHtml = sub
+        ? `<div class="mic-tile-sub">${escapeHtml(sub)}</div>`
+        : '';
+    const gridPosClass = tabbed || inRow ? '' : ` ${posClass}`;
+    const body = `
+            <div class="mic-tile-body">
+                <div class="mic-tile-label">${escapeHtml(label)}</div>
+                ${subHtml}
+            </div>`;
+    if (href) {
+        return `
+        <a class="mic-tile mic-tile--link${gridPosClass}" href="${escapeHtml(href)}" aria-label="${escapeHtml(`${label} — ${sub}`)}">${body}</a>`;
+    }
+    return `<article class="mic-tile${gridPosClass}">${body}</article>`;
+}
+
+function shouldShowDfscTile(data) {
     const dfsc = data?.dfsc;
-    if (!dfsc) return '';
-    const href = dfsc.href || `/${STORE_NUMBER}/dfsc`;
+    if (!dfsc) return false;
+    return !(dfsc.amCompleted && dfsc.pmCompleted);
+}
+
+function shouldShowOrdersTile(data) {
+    const sc = data?.stockCount || {};
+    return Number(sc.pendingCount) > 0;
+}
+
+const PSI_AUDIT_LABEL = 'Period Safety Inspection';
+
+function storeWeeklyAuditsForTiles(data) {
+    const tiles = data?.weeklyAudits?.auditTiles;
+    const list = Array.isArray(tiles) && tiles.length ? tiles : weeklyAuditFallbackTiles();
+    const due = list.filter((audit) => !audit.done);
+    const psi = list.find((audit) => audit.label === PSI_AUDIT_LABEL);
+    if (psi && !due.some((audit) => audit.label === PSI_AUDIT_LABEL)) {
+        return [...due, psi];
+    }
+    return due;
+}
+
+function dueSquareOneTiles(data) {
+    const tiles = data?.squareOneTiles;
+    if (!Array.isArray(tiles)) return [];
+    return tiles.filter((tile) => !tile.done);
+}
+
+function renderSquareOneTile(tile, { tabbed = false } = {}) {
+    const label = escapeHtml(tile?.tileLabel || tile?.label || 'Square One');
+    const sub = escapeHtml(tile?.sub || (tile?.done ? 'Complete' : 'Due this week'));
+    const adminHref = tacauditAdminHrefForAudit(tile?.label, tile?.areaId);
+    const href =
+        adminHref ||
+        tile?.href ||
+        (tile?.areaId && STORE_NUMBER ? `/${STORE_NUMBER}/square-one?area=${encodeURIComponent(tile.areaId)}` : '');
+    const doneClass = tile?.done ? ' mic-tile--audit-complete' : ' mic-tile--audit-due';
+    const body = `
+            <div class="mic-tile-body">
+                <div class="mic-tile-label">${label}</div>
+                <div class="mic-tile-sub">${sub}</div>
+            </div>`;
+    if (href) {
+        return `
+        <a
+            class="mic-tile mic-tile--link mic-tile--weekly-audit mic-tile--square-one${doneClass}"
+            href="${escapeHtml(href)}"
+            aria-label="${escapeHtml(`${tile?.label || label} — ${sub}`)}"
+        >${body}
+        </a>`;
+    }
+    return `<article class="mic-tile mic-tile--weekly-audit mic-tile--square-one${doneClass}">${body}</article>`;
+}
+
+function countMicContentRows(data) {
+    let rows = 2;
+    if (storeWeeklyAuditsForTiles(data).length > 0 || dueSquareOneTiles(data).length > 0) rows += 1;
+    return rows;
+}
+
+function renderEqualWidthRow(tileHtmlList, { rowNum, tabbed = false, extraClass = '' } = {}) {
+    const tiles = tileHtmlList.filter(Boolean);
+    if (!tiles.length) return '';
+    const colCount = tiles.length;
+    if (tabbed) {
+        return `<div class="mic-tab-tile-row mic-tab-tile-row--cols-${colCount}">${tiles.join('')}</div>`;
+    }
+    const rowClass = rowNum ? ` mic-grid-equal-row--row-${rowNum}` : '';
+    return `<div class="mic-grid-equal-row mic-grid-equal-row--cols-${colCount}${rowClass}${extraClass ? ` ${extraClass}` : ''}">${tiles.join('')}</div>`;
+}
+
+function renderDfscTile(data, { tabbed = false, inRow = false } = {}) {
+    const dfsc = data?.dfsc;
+    if (!dfsc || !shouldShowDfscTile(data)) return '';
+    const adminHref =
+        micCanViewAdminAuditSummary &&
+        window.AppPaths?.tacauditAdminSummary?.({ row: 'safety-culture-actions' });
+    const href = adminHref || dfsc.href || `/${STORE_NUMBER}/dfsc`;
     const sub = dfsc.subtext || 'AM pending · PM pending';
-    const tone = dfsc.inProgress ? 'mic-tile--orders-active' : dfsc.amCompleted && dfsc.pmCompleted ? 'mic-tile--stock-idle' : 'mic-tile--orders-idle';
+    const posClass = tabbed || inRow ? '' : ' mic-tile--pos-dfsc';
     return `
         <a
-            class="mic-tile mic-tile--link ${tone} mic-tile--pos-dfsc"
+            class="mic-tile mic-tile--link${posClass}"
             href="${escapeHtml(href)}"
             aria-label="Daily Food Safety Check"
         >
@@ -301,80 +589,240 @@ function ordersStoreDetail(entry) {
     return entry?.message || 'Open stock count';
 }
 
-function renderOrdersToPlaceTile(data) {
+const WEEKLY_AUDIT_FORM_ROUTES = {
+    'Pest Walk': (store) => `/${store}/pest-walk`,
+    'RGM Cleaning Checklist': (store) => `/${store}/rgm-cleaning`,
+    'RGM cleaning': (store) => `/${store}/rgm-cleaning`,
+    'Period Safety Inspection': (store) => `/${store}/psi`,
+    PSI: (store) => `/${store}/psi`,
+};
+
+function tacauditAdminHrefForAudit(label, areaId) {
+    if (!micCanViewAdminAuditSummary) return '';
+    const row = window.AppPaths?.tacauditRowForAuditLabel?.(label, areaId) || '';
+    return window.AppPaths?.tacauditAdminSummary?.({ row }) || '';
+}
+
+function weeklyAuditHref(audit) {
+    const label = String(audit?.label || audit?.tileLabel || '').trim();
+    const adminHref = tacauditAdminHrefForAudit(label);
+    if (adminHref) return adminHref;
+    if (audit?.href) return String(audit.href);
+    const route = WEEKLY_AUDIT_FORM_ROUTES[label];
+    return route && STORE_NUMBER ? route(STORE_NUMBER) : '';
+}
+
+function weeklyAuditFallbackTiles() {
+    return [
+        { label: 'Pest Walk', tileLabel: 'Pest Walk', sub: 'Due this week', done: false },
+        { label: 'RGM Cleaning Checklist', tileLabel: 'RGM cleaning', sub: 'Due this week', done: false },
+        { label: 'Period Safety Inspection', tileLabel: 'PSI', sub: 'Due this week', done: false },
+    ];
+}
+
+function renderWeeklyAuditTile(audit, index, { tabbed = false } = {}) {
+    const label = escapeHtml(audit?.tileLabel || audit?.label || 'Audit');
+    const sub = escapeHtml(audit?.sub || (audit?.done ? 'Complete' : 'Due this week'));
+    const href = weeklyAuditHref(audit);
+    const doneClass = audit?.done ? ' mic-tile--audit-complete' : ' mic-tile--audit-due';
+    const body = `
+            <div class="mic-tile-body">
+                <div class="mic-tile-label">${label}</div>
+                <div class="mic-tile-sub">${sub}</div>
+            </div>`;
+    if (href) {
+        return `
+        <a
+            class="mic-tile mic-tile--link mic-tile--weekly-audit${doneClass}"
+            href="${escapeHtml(href)}"
+            aria-label="${escapeHtml(`${audit?.label || label} — ${sub}`)}"
+        >${body}
+        </a>`;
+    }
+    return `<article class="mic-tile mic-tile--weekly-audit${doneClass}">${body}</article>`;
+}
+
+function renderWeeklyAuditTiles(data, { tabbed = false, rowNum = 2 } = {}) {
+    const squareDue = dueSquareOneTiles(data);
+    const weekly = storeWeeklyAuditsForTiles(data);
+    const tiles = [
+        ...squareDue.slice(0, 2).map((tile) => renderSquareOneTile(tile, { tabbed })),
+        ...weekly.map((audit, index) => renderWeeklyAuditTile(audit, index, { tabbed })),
+    ];
+    if (!tiles.length) return '';
+    if (tabbed) return renderEqualWidthRow(tiles, { tabbed: true });
+    return renderEqualWidthRow(tiles, {
+        rowNum,
+        extraClass: 'mic-tile--pos-weekly-audit-row',
+    });
+}
+
+function renderOrdersToPlaceTile(data, { tabbed = false, inRow = false } = {}) {
     const sc = data?.stockCount || {};
     const active = Boolean(sc.active);
-    const tone = active ? 'mic-tile--orders-active' : 'mic-tile--orders-idle';
-    const rows = active
-        ? `
-            <li class="mic-orders-store-item" role="listitem">
-                <a
-                    class="mic-orders-store-link"
-                    href="${escapeHtml(sc.href || window.AppPaths?.micStore?.(STORE_NUMBER) || `/MIC/${STORE_NUMBER}`)}"
-                    aria-label="${escapeHtml(`${data?.storeName || STORE_NUMBER} — ${ordersStoreDetail(sc)}`)}"
-                >
-                    <span class="mic-orders-store-title">
-                        <span class="mic-orders-store-name">${escapeHtml(data?.storeName || STORE_NUMBER)}</span>
-                        <span class="mic-orders-store-num">${escapeHtml(STORE_NUMBER)}</span>
-                    </span>
-                    <span class="mic-orders-store-detail">${escapeHtml(ordersStoreDetail(sc))}</span>
-                </a>
-            </li>`
-        : '<li class="mic-orders-store-empty">All orders are placed for today</li>';
-
-    return `
-        <article class="mic-tile mic-tile--orders-to-place ${tone} mic-tile--pos-orders">
-            <div class="mic-tile-body mic-tile-body--orders">
+    const sub = active ? ordersStoreDetail(sc) : 'All orders are placed for today';
+    const href = active ? sc.href || window.AppPaths?.micStore?.(STORE_NUMBER) || `/MIC/${STORE_NUMBER}` : '';
+    const posClass = tabbed || inRow ? '' : ' mic-tile--pos-orders';
+    const body = `
+            <div class="mic-tile-body">
                 <div class="mic-tile-label">Orders to place</div>
-                <ul class="mic-orders-store-list" role="list">${rows}</ul>
-            </div>
-        </article>
+                <div class="mic-tile-sub">${escapeHtml(sub)}</div>
+            </div>`;
+    if (href) {
+        return `
+        <a
+            class="mic-tile mic-tile--link mic-tile--orders-to-place${posClass}"
+            href="${escapeHtml(href)}"
+            aria-label="${escapeHtml(`Orders to place — ${sub}`)}"
+        >${body}
+        </a>`;
+    }
+    return `<article class="mic-tile mic-tile--orders-to-place${posClass}">${body}</article>`;
+}
+
+function renderDailyCountTile(data, { tabbed = false, inRow = false } = {}) {
+    const dc = data?.dailyStockCount || {};
+    if (!dc.configured) return '';
+    const sub = dc.sub || dc.message || 'Open daily count';
+    const href = dc.href || `/${STORE_NUMBER}/daily-stock-count`;
+    const posClass = tabbed || inRow ? '' : ' mic-tile--pos-daily-count';
+    const body = `
+            <div class="mic-tile-body">
+                <div class="mic-tile-label">Daily count</div>
+                <div class="mic-tile-sub">${escapeHtml(sub)}</div>
+            </div>`;
+    if (dc.clickable && href) {
+        return `
+        <a
+            class="mic-tile mic-tile--link mic-tile--daily-count${posClass}"
+            href="${escapeHtml(href)}"
+            aria-label="${escapeHtml(`Daily count — ${sub}`)}"
+        >${body}
+        </a>`;
+    }
+    return `<article class="mic-tile mic-tile--daily-count${posClass}">${body}</article>`;
+}
+
+function renderSquareOneMiddleTile(data, { inRow = false } = {}) {
+    const due = dueSquareOneTiles(data);
+    if (due.length >= 2) return '';
+    if (due.length === 1) return renderSquareOneTile(due[0], { tabbed: false });
+    const all = data?.squareOneTiles || [];
+    if (all.length && all.every((t) => t.done)) {
+        return renderAdminLabelTile({
+            label: 'Square One',
+            sub: 'Complete this week',
+            posClass: 'mic-tile--pos-square-one',
+            inRow,
+        });
+    }
+    const squareHref =
+        tacauditAdminHrefForAudit('Square One') || (STORE_NUMBER ? `/${STORE_NUMBER}/square-one` : '');
+    return renderAdminLabelTile({
+        label: 'Square One',
+        sub: 'Due this week',
+        posClass: 'mic-tile--pos-square-one',
+        inRow,
+        href: squareHref,
+    });
+}
+
+function renderStoreTopRow(data) {
+    const voc = formatVocDisplay(data?.voc || {});
+    const tiles = [renderVocTile(voc, { inRow: true })];
+    if (shouldShowDfscTile(data)) {
+        tiles.push(renderDfscTile(data, { inRow: true }));
+    }
+    if (!tiles.length) return '';
+    return renderEqualWidthRow(tiles, { rowNum: 'top' });
+}
+
+function renderDesktopMiddleRow(data) {
+    const tiles = [
+        renderSquareOneMiddleTile(data, { inRow: true }),
+        renderDailyCountTile(data, { inRow: true }),
+    ].filter(Boolean);
+    if (shouldShowOrdersTile(data)) {
+        tiles.push(renderOrdersToPlaceTile(data, { inRow: true }));
+    }
+    return renderEqualWidthRow(tiles, { rowNum: 1, extraClass: 'mic-tile--pos-middle-row' });
+}
+
+function renderMobileOrdersTab(data) {
+    const tiles = [];
+    if (shouldShowOrdersTile(data)) {
+        tiles.push(renderOrdersToPlaceTile(data, { tabbed: true }));
+    }
+    tiles.push(renderDailyCountTile(data, { tabbed: true }));
+    return renderEqualWidthRow(tiles, { tabbed: true });
+}
+
+function renderMobileAuditsTab(data) {
+    const parts = [];
+    const dfscHtml = renderDfscTile(data, { tabbed: true });
+    if (dfscHtml) parts.push(dfscHtml);
+    const auditRow = renderWeeklyAuditTiles(data, { tabbed: true });
+    if (auditRow) parts.push(auditRow);
+    if (!parts.length) {
+        return '<p class="mic-tile-empty mic-tile-empty--audits">All audits complete for this week</p>';
+    }
+    return parts.join('');
+}
+
+function renderDesktopTiles(data) {
+    return `
+        ${renderStoreSalesTile(data)}
+        ${renderStoreTopRow(data)}
+        ${renderDesktopMiddleRow(data)}
+        ${renderWeeklyAuditTiles(data)}
+    `;
+}
+
+function renderMobileTabbedTiles(data) {
+    const voc = formatVocDisplay(data?.voc || {});
+    const tabbed = true;
+    return `
+        ${renderMicTabPanel('sales', renderStoreSalesTile(data, { tabbed }))}
+        ${renderMicTabPanel(
+            'results',
+            `
+            ${renderVocTile(voc, { tabbed })}
+            ${renderSssgTile(data?.salesToday || {}, { tabbed })}
+        `
+        )}
+        ${renderMicTabPanel('orders', renderMobileOrdersTab(data))}
+        ${renderMicTabPanel('audits', renderMobileAuditsTab(data))}
     `;
 }
 
 function renderTiles(data) {
     const grid = document.getElementById('mic-grid');
     if (!grid) return;
-    const sales = data?.salesToday || { actual: 0, forecast: 0 };
-    const voc = formatVocDisplay(data?.voc || {});
+    const mobile = isMicMobileView();
 
-    grid.innerHTML = `
-        ${renderStoreSalesTile(data)}
+    syncMicOverviewTabs(mobile);
+    grid.classList.toggle('mic-grid--tabbed', mobile);
+    if (!mobile) {
+        grid.style.setProperty('--mic-content-rows', String(countMicContentRows(data)));
+    } else {
+        grid.style.removeProperty('--mic-content-rows');
+    }
+    grid.innerHTML = mobile ? renderMobileTabbedTiles(data) : renderDesktopTiles(data);
 
-        <a
-            class="mic-tile mic-tile--link mic-tile--voc mic-tile--pos-voc"
-            href="${SMG_REPORTING_URL}"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="VOC — open SMG reporting"
-        >
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">VOC</div>
-                <div class="mic-voc-grid">
-                    <div class="mic-voc-count">${voc.count}</div>
-                    <div class="mic-voc-metrics">
-                        <div class="mic-voc-metric">OSAT ${voc.osat == null ? '—' : `${voc.osat}%`}</div>
-                        <div class="mic-voc-metric">Acc ${voc.acc == null ? '—' : `${voc.acc}%`}</div>
-                    </div>
-                </div>
-                <div class="mic-tile-sub">Pipeline coming soon</div>
-            </div>
-        </a>
+    if (mobile) {
+        applyMicOverviewTab(activeMicTab);
+        requestAnimationFrame(syncSalesHourlyScroll);
+    }
 
-        ${renderSssgTile(sales)}
-
-        ${renderDfscTile(data)}
-        ${renderAdminLabelTile({ label: 'Daily count', posClass: 'mic-tile--pos-daily-count' })}
-        ${renderAdminLabelTile({ label: 'Square One', posClass: 'mic-tile--pos-square-one' })}
-        ${renderOrdersToPlaceTile(data)}
-    `;
-
+    /*
     const multiplierTile = document.getElementById('mic-multiplier-tile');
     if (multiplierTile) {
         multiplierTile.addEventListener('click', openItemPicker);
     }
+    */
 }
 
+/*
 function pickerItems() {
     return (micData?.items || []).filter((item) => !/\bbox\b/i.test(String(item?.label || '')));
 }
@@ -467,6 +915,7 @@ async function clearDailyMultiplier() {
     }
     await loadMicData();
 }
+*/
 
 async function enrichMicSalesHourly(data) {
     const sales = data?.salesToday || {};
@@ -512,7 +961,8 @@ async function enrichMicSalesHourly(data) {
 }
 
 async function loadMicData() {
-    const res = await fetch(`/api/mic?store=${encodeURIComponent(STORE_NUMBER)}`, {
+    const storeParam = STORE_NUMBER ? `?store=${encodeURIComponent(STORE_NUMBER)}` : '';
+    const res = await fetch(`/api/overview${storeParam}`, {
         credentials: 'same-origin',
     });
     const data = await res.json().catch(() => ({}));
@@ -521,6 +971,10 @@ async function loadMicData() {
         return;
     }
     micData = await enrichMicSalesHourly(data);
+    window.MicSettings?.setStoreContext?.({
+        storeNumber: STORE_NUMBER || '',
+        reportEmail: micData.reportEmail || '',
+    });
     const label = document.getElementById('mic-store-label');
     if (label) {
         label.textContent = micData.storeName
@@ -548,7 +1002,18 @@ async function resolveMicStoreNumber() {
     return '';
 }
 
-async function init() {
+async function fetchMeProfile() {
+    try {
+        const res = await fetch('/api/me', { credentials: 'same-origin' });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.success !== false ? data : null;
+    } catch {
+        return null;
+    }
+}
+
+async function initStoreOverview() {
     if (!STORE_NUMBER && IS_MIC_OVERVIEW) {
         STORE_NUMBER = await resolveMicStoreNumber();
     }
@@ -556,11 +1021,19 @@ async function init() {
         app.textContent = 'Invalid store.';
         return;
     }
-    applyDashboardScale();
+    if (!micCanViewAdminAuditSummary) {
+        const me = await fetchMeProfile();
+        micCanViewAdminAuditSummary = Boolean(me?.canViewCrossStoreAccounts);
+    }
+    window.MicOverviewScale?.bind?.();
     renderShell();
     syncMicLayoutMode();
     window.MicSettings?.bind?.({
         getViewAccountsOptions: () => ({ storeNumber: STORE_NUMBER }),
+        storeNumber: STORE_NUMBER || '',
+        onReportEmailSaved: (email) => {
+            if (micData) micData.reportEmail = email;
+        },
     });
     window.MicSettings?.initPreferences?.();
     loadMicData();
@@ -571,9 +1044,23 @@ async function init() {
     window.setInterval(refreshMiniDashboard, 60 * 1000);
     window.setInterval(loadMicData, REFRESH_MS);
     window.addEventListener('resize', () => {
-        applyDashboardScale();
         syncMicLayoutMode();
+        requestAnimationFrame(syncSalesHourlyScroll);
     });
+}
+
+async function init() {
+    if (!IS_MIC_OVERVIEW) {
+        await initStoreOverview();
+        return;
+    }
+    const me = await fetchMeProfile();
+    const scope = me?.overviewScope || 'store';
+    if (scope !== 'store') {
+        window.MicOverviewMulti?.start(me, app, renderPromoBanner());
+        return;
+    }
+    await initStoreOverview();
 }
 
 init();

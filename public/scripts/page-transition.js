@@ -78,8 +78,8 @@
         }, EXIT_MS);
     }
 
-    function navigateBackToStores(url = '/stores') {
-        const dest = String(url || '/stores').trim() || '/stores';
+    function navigateBackToStores(url = '/overview') {
+        const dest = String(url || '/overview').trim() || '/overview';
         clearCameFromStorePicker();
         if (prefersReducedMotion()) {
             global.location.href = dest;
@@ -100,7 +100,7 @@
         if (!anchor.classList.contains('store-tile')) return false;
         try {
             const path = new URL(anchor.href, global.location.origin).pathname;
-            if (path === '/stores' || path === '/stores.html') return false;
+            if (path === '/overview' || path === '/stores' || path === '/stores.html') return false;
             if (/^\/(teststore|\d{3,6})\/?$/i.test(path)) return true;
             if (/^\/(area\/[^/]+|a\d+)\/?$/i.test(path)) return true;
         } catch {

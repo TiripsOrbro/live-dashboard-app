@@ -24,6 +24,7 @@ Use `location-order` and a trailing **location** on each line to group stock-cou
 | `=3`, `=6`, etc. | **Fixed build-to** cartons (e.g. Schweppes BIBs); order qty still auto-calculated |
 | `order=1`, `order=3`, etc. | Fixed build-to from **dashboard count**; fills **Americold Vic** scheduled order, **not** Key Item Count |
 | `oh:13`, `oh:10`, etc. | **On-hand only** — not on travel-path tabs or Key Item Count; build-to = **ISE average × days**; order qty = build-to − **stock-on-hand** − **stock-on-order** (e.g. Americold dry supplies, Schweppes bottles/cans) |
+| `oh:10+1`, etc. | Same as `oh:` but **extra cartons on top** of the days-based target (e.g. `oh:10+1` = ISE avg × 10 **+ 1** carton — not an 11-day build-to) |
 | `manual` or `m` | Stock-count only (packaging etc.) — no Key Item Count, no auto vendor order |
 | `manual=2`, `manual=1`, etc. | Stock-count with **fixed build-to** (cartons); order qty = build-to − **your count** − **stock-on-order** (same on-order deduction as `oh:`); fills scheduled orders like `order=N`. If the submitted count has **only** `manual` / `manual=` lines (no KIC items), **Send to MMX** skips Key Item Count and runs scheduled orders from your counts. |
 | *(omitted)* | Use built-in rules (7-day salads, 13-day list, default 10-day) |
@@ -78,6 +79,10 @@ Optional **order routing** tokens (not stock-count tabs):
 | `order:DRY` | Scheduled order on **Americold Vic DRY** |
 | `order:FRZ` | Scheduled order on **Americold Vic FRZ** |
 | `no-order` | Stock count / Key Item Count only — no build-to vendor order line |
+| `Key` or `key` | Explicitly on **Key Item Count** (optional marker) |
+| `Daily` or `daily` | Include on **Daily Count** in the app (subset of Key Item grid rows) |
+
+Daily count uses the same vendor files; only lines tagged with `Daily` appear on `/{store}/daily-stock-count`. Everything on daily is also on Key Item Count in Macromatix.
 
 Example: count oil on the **Dry** tab but order on the fridge run:
 
@@ -91,7 +96,7 @@ Nacho chips: use catalog code **39009** on the freezer run (FRZ); count on Freez
 
 ```text
 10 | 3939 | 7UP BIB 15L | Boxes | N/a | N/a
-13 | 39520 | Cooked Beef | Cartons | N/a | Bags | Freezer
+13 | 39520 | Cooked Beef | Cartons | N/a | Bags | Freezer | Key | Daily
 manual | 3227 | 7UP 600ml PET | Packs | N/a | Bottles
 10+2 | SLETT | Lettuce | Crates | Bags | N/a
 10 | DTOM4 | Tomato | Crates | KGs | N/a

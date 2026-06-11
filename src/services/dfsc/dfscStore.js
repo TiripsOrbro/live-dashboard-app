@@ -15,11 +15,19 @@ const {
     normalizeActionUpdate,
     applyAnswerTimestamp,
 } = require('./dfscSchema');
-const { sendDfscReportEmail } = require('./dfscEmail');
+const { afterAuditSubmit } = require('../tacaudit/tacauditSubmit');
+const { listInspectionHistory: listPestWalkInspectionHistory } = require('../pestWalk/pestWalkStore');
+const {
+    userOwnsSession,
+    canContinueDfscInProgress,
+    canUserAccessSession: sharedCanUserAccessSession,
+    shouldListOpenAudit,
+    inProgressAccessError,
+} = require('../audit/auditSessionAccess');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..', '..');
 const DFSC_DATA_DIR = path.join(PROJECT_ROOT, 'data', 'dfsc');
-const RETENTION_DAYS = 30;
+const RETENTION_DAYS = 45;
 const DEFAULT_TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
 
 function normalizeStoreKey(storeNumber) {
@@ -181,32 +189,8 @@ function buildDaySummary(storeNumber, dateKey) {
     };
 }
 
-function normalizeUsername(username) {
-    return String(username || '').trim().toLowerCase();
-}
-
-function userOwnsSession(session, username, conductorFullName = '') {
-    if (!session) return false;
-    const owner = normalizeUsername(session.createdByUsername);
-    const user = normalizeUsername(username);
-    if (owner && user) return owner === user;
-    if (!owner) {
-        const conductor = String(session.conductor?.name || '').trim().toLowerCase();
-        const fullName = String(conductorFullName || '').trim().toLowerCase();
-        if (conductor && fullName) return conductor === fullName;
-    }
-    return false;
-}
-
-function canUserAccessSession(session, username, conductorFullName = '') {
-    if (!session) return { ok: false, error: 'Session not found.', status: 404 };
-    if (session.status === 'completed') return { ok: true };
-    if (userOwnsSession(session, username, conductorFullName)) return { ok: true };
-    return {
-        ok: false,
-        error: 'Only the crew member who started this audit can open it while it is in progress.',
-        status: 403,
-    };
+function canUserAccessSession(session, access = {}) {
+    return sharedCanUserAccessSession(session, access, { collaborative: false });
 }
 
 function getContext(storeNumber, options = {}) {
@@ -215,10 +199,14 @@ function getContext(storeNumber, options = {}) {
     const dateKey = storeDateKey(store);
     pruneOldRecords(store, dateKey);
     const day = buildDaySummary(store, dateKey);
-    const username = options.username || '';
-    const conductorFullName = options.conductorFullName || '';
+    const access = {
+        username: options.username || '',
+        conductorFullName: options.conductorFullName || '',
+        canAccessDfsc: Boolean(options.canAccessDfsc),
+        isAdmin: Boolean(options.isAdmin),
+    };
     const ownedInProgress =
-        day.inProgress && userOwnsSession(day.inProgress, username, conductorFullName) ? day.inProgress : null;
+        day.inProgress && canContinueDfscInProgress(day.inProgress, access) ? day.inProgress : null;
     return {
         storeNumber: store,
         storeName: String(cfg.storeName || store).trim(),
@@ -243,7 +231,7 @@ function getContext(storeNumber, options = {}) {
                   dateKey: ownedInProgress.dateKey,
               }
             : null,
-        openAudits: listOpenAudits(store, { username, conductorFullName }),
+        openAudits: listOpenAudits(store, { access }),
         todayCompleted: getCompletedSessions(store, dateKey)
             .map(summarizeCompletedAudit)
             .sort((a, b) => String(a.shift || '').localeCompare(String(b.shift || '')) || String(a.completedAt || '').localeCompare(String(b.completedAt || ''))),
@@ -324,7 +312,7 @@ function updateSession(storeNumber, sessionId, updates = {}, access = {}) {
     if (!session) return { ok: false, error: 'Session not found.' };
     if (session.status === 'completed') return { ok: false, error: 'This DFSC is already completed.' };
     if (!userOwnsSession(session, access.username, access.conductorFullName)) {
-        return { ok: false, error: 'Only the crew member who started this audit can edit it while it is in progress.' };
+        return { ok: false, error: inProgressAccessError(false) };
     }
 
     const now = Date.now();
@@ -405,7 +393,7 @@ function submitSession(storeNumber, sessionId, signOff = {}, access = {}) {
     session.nonCompliant = collectNonCompliant(session);
     saveSession(session);
     clearActivePointer(store);
-    void sendDfscReportEmail(session);
+    afterAuditSubmit({ storeNumber: store, auditType: 'dfsc', session });
     return { ok: true, session };
 }
 
@@ -413,7 +401,7 @@ function validateSessionSection(storeNumber, sessionId, sectionId, access = {}) 
     const session = getSessionById(storeNumber, sessionId) || findSessionAcrossDays(storeNumber, sessionId);
     if (!session) return { ok: false, error: 'Session not found.' };
     if (session.status === 'in_progress' && !userOwnsSession(session, access.username, access.conductorFullName)) {
-        return { ok: false, error: 'Only the crew member who started this audit can edit it while it is in progress.' };
+        return { ok: false, error: inProgressAccessError(false) };
     }
     return validateSection(session, sectionId);
 }
@@ -456,15 +444,17 @@ function listOpenAudits(storeNumber, options = {}) {
     const store = normalizeStoreKey(storeNumber);
     const storeRoot = path.join(DFSC_DATA_DIR, store);
     if (!fs.existsSync(storeRoot)) return [];
-    const username = options.username || '';
-    const conductorFullName = options.conductorFullName || '';
-    const filterByUser = Boolean(username || conductorFullName);
+    const access = options.access || {
+        username: options.username || '',
+        conductorFullName: options.conductorFullName || '',
+        canAccessDfsc: Boolean(options.canAccessDfsc),
+        isAdmin: Boolean(options.isAdmin),
+    };
     const open = [];
     for (const entry of fs.readdirSync(storeRoot, { withFileTypes: true })) {
         if (!entry.isDirectory() || entry.name.startsWith('_')) continue;
         for (const session of listSessionsForDay(store, entry.name)) {
-            if (session.status !== 'in_progress') continue;
-            if (filterByUser && !userOwnsSession(session, username, conductorFullName)) continue;
+            if (!shouldListOpenAudit(session, access, { collaborative: false })) continue;
             open.push(summarizeOpenAudit(session));
         }
     }
@@ -596,6 +586,8 @@ function buildCoreReportData(storeNumber, options = {}) {
 
     openActions.sort((a, b) => String(b.startedAt || '').localeCompare(String(a.startedAt || '')));
 
+    const pestWalkHistory = listPestWalkInspectionHistory(store, { limit: 12 });
+
     return {
         storeNumber: store,
         storeName: String(cfg.storeName || store).trim(),
@@ -606,12 +598,14 @@ function buildCoreReportData(storeNumber, options = {}) {
         dailyCompletion,
         openAudits,
         openActions,
+        pestWalkHistory,
         totals: {
             completed: completedTotal,
             amCompleted: amCompletedTotal,
             pmCompleted: pmCompletedTotal,
             openAudits: openAudits.length,
             openActions: openActions.length,
+            pestWalkCompleted: pestWalkHistory.length,
         },
     };
 }

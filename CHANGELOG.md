@@ -2,7 +2,7 @@
 
 Plain-English summary of what changed in each release — written for store managers and admins, not developers.
 
-**Current live branch:** `Version-0.3.5`
+**Current live branch:** `Version-0.3.7`
 
 ---
 
@@ -25,6 +25,53 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ---
 
 ## Release history
+
+### Version 0.3.7 — June 2026
+
+**Added**
+
+- **TacoAudit** — audit history, settings, and weekly forms (Pest Walk, RGM Cleaning, PSI, Square One) with PDF email on completion.
+- **Admin area summary** — traffic-light grid across stores (PERIOD/WEEK, regions, PSI, Pest, DFSC actions, RGM, Square One); open from `/tacaudit/summary` or any audit tile on MIC overview.
+- **Daily stock count** — enter counts by location tab in the app and submit to Macromatix (open-count detection, variance review).
+- **MIC overview** — unified `/overview` for store, area, and admin scopes; area/market multi-store tiles; PSI tile on store overview.
+- **Markets config** — `config/markets.json` for area/market groupings (example file included).
+
+**Changed**
+
+- **Admin MIC overview** — DFSC tile restored (links to TacAudit safety-culture row); Area summary tile removed (audit tiles already open the grid).
+- **Store MIC layout** — VOC/DFSC and Daily count/Orders rows align in equal-width columns.
+- **Stock count** — **Send to MMX** always visible; saves then sends when you tap it.
+- **Daily count** — smaller Macromatix check popup; **Back to Overview** button.
+- **URLs** — `/overview` landing; legacy admin/store paths redirect where needed.
+- **DFSC mobile** — edge-to-edge question cards, scroll preservation, group auto-collapse.
+
+**Fixed**
+
+- **PSI on store MIC** — no longer dropped when two Square One areas are due the same week.
+- **Stock count** — combined-vendor tabs detect unsaved counts correctly before send.
+
+**Removed**
+
+- Standalone **admin overview** and **stores** pages (replaced by `/overview` and MIC tiles).
+
+**What you need to do**
+
+- On the Pi: `git pull origin Version-0.3 && pm2 restart dashboard`
+- Hard refresh once (Ctrl+F5) on tablets after deploy.
+
+---
+
+### Version 0.3.6 — June 2026
+
+**Fixed**
+
+- **DFSC mobile** — question cards edge-to-edge; scroll position preserved when expanding groups.
+
+**What you need to do**
+
+- Hard refresh once after deploy.
+
+---
 
 ### Version 0.3.5 — June 2026
 

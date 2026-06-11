@@ -97,6 +97,25 @@ const {
     recordStockCountPrepareFailure,
     resetStalePipelineCheckpointsOnStartup,
 } = require('./services/stockCountMmxPipeline');
+const { buildDailyStockCountCatalog } = require('./services/dailyStockCountCatalog');
+const { buildDailyStockCountTileStateAsync } = require('./services/dailyStockCountTileState');
+const {
+    getDraft: getDailyCountDraft,
+    saveDraftLocation: saveDailyCountDraftLocation,
+    getSummary: getDailyCountSummary,
+    setStartResolution: setDailyCountStartResolution,
+    reopenDraft: reopenDailyCountDraft,
+    melbourneDateKey: dailyCountMelbourneDateKey,
+} = require('./services/dailyStockCountState');
+const {
+    probeOpenCounts,
+    prepareDailyCountForMmx,
+    applyDailyCountSessionWork,
+    cancelDailyCountSession,
+    getDailyCountPipelineStatus,
+    isDailyCountPipelineBusy,
+} = require('./services/dailyStockCountMmxPipeline');
+const { hasMmxCredentialsForUser } = require('./services/mmxUserCredentials');
 const {
     getDismissalPeriodKey,
     getAuditSchedule,
@@ -182,8 +201,15 @@ const {
     resolveUser,
     isAuthenticated,
     isAdminUser,
+    isSuperAdminUser,
+    getOverviewScope,
+    hasMultiStoreScope,
+    canViewCrossStoreAccounts,
+    getEffectiveStoresForUser,
+    userCanAccessArea,
     userCanAccessStore,
     filterStoresForUser,
+    getAccessibleAreasForUser,
     getLoginRedirectPath,
     getAdminRedirectPath,
     getKioskRedirectPath,
@@ -209,6 +235,7 @@ const {
     userNeedsPasswordChange,
     setAccountColourBlindPreference,
     setAccountMicDarkModePreference,
+    setAccountAuditAutoCollapsePreference,
     appendStoreUser,
     canUserCreateAccounts,
     canUserManageStoreAccounts,
@@ -232,6 +259,8 @@ const {
     computeStoreSalesToday,
     ADMIN_ROTATE_AREAS,
 } = require('./services/mic/adminOverview');
+const { buildOverviewPayload } = require('./services/mic/overviewPayload');
+const { buildWeeklyAuditsTileState, buildSquareOneTiles } = require('./services/weeklyAuditsTileState');
 const {
     getContext: getDfscContext,
     createSession: createDfscSession,
@@ -250,6 +279,78 @@ const {
 const { buildDfscReportPdf, buildReportFilename } = require('./services/dfsc/dfscReport');
 const { buildCoreReportPdf } = require('./services/dfsc/dfscCoreReport');
 const { buildAdminDfscStatus } = require('./services/dfsc/dfscAdmin');
+const {
+    getContext: getPestWalkContext,
+    createSession: createPestWalkSession,
+    getSessionById: getPestWalkSessionById,
+    updateSession: updatePestWalkSession,
+    reopenSession: reopenPestWalkSession,
+    submitSession: submitPestWalkSession,
+    validateSessionSection: validatePestWalkSection,
+    listOpenAudits: listPestWalkOpenAudits,
+    deleteOpenAudit: deletePestWalkOpenAudit,
+    listInspectionHistory: listPestWalkInspectionHistory,
+    userOwnsSession: pestWalkUserOwnsSession,
+    canUserAccessSession: canPestWalkUserAccessSession,
+    AUDIT_LABEL: PEST_WALK_AUDIT_LABEL,
+} = require('./services/pestWalk/pestWalkStore');
+const { buildPestWalkReportPdf, buildReportFilename: buildPestWalkReportFilename } = require('./services/pestWalk/pestWalkReport');
+const {
+    getContext: getRgmCleaningContext,
+    createSession: createRgmCleaningSession,
+    getSessionById: getRgmCleaningSessionById,
+    updateSession: updateRgmCleaningSession,
+    reopenSession: reopenRgmCleaningSession,
+    submitSession: submitRgmCleaningSession,
+    validateSessionSection: validateRgmCleaningSection,
+    listOpenAudits: listRgmCleaningOpenAudits,
+    deleteOpenAudit: deleteRgmCleaningOpenAudit,
+    listInspectionHistory: listRgmCleaningInspectionHistory,
+    userOwnsSession: rgmCleaningUserOwnsSession,
+    canUserAccessSession: canRgmCleaningUserAccessSession,
+    AUDIT_LABEL: RGM_CLEANING_AUDIT_LABEL,
+} = require('./services/rgmCleaning/rgmCleaningStore');
+const {
+    getContext: getPsiContext,
+    createSession: createPsiSession,
+    getSessionById: getPsiSessionById,
+    updateSession: updatePsiSession,
+    reopenSession: reopenPsiSession,
+    submitSession: submitPsiSession,
+    validateSessionSection: validatePsiSection,
+    listOpenAudits: listPsiOpenAudits,
+    deleteOpenAudit: deletePsiOpenAudit,
+    listInspectionHistory: listPsiInspectionHistory,
+    userOwnsSession: psiUserOwnsSession,
+    canUserAccessSession: canPsiUserAccessSession,
+    AUDIT_LABEL: PSI_AUDIT_LABEL,
+} = require('./services/periodicSafety/psiStore');
+const {
+    getContext: getSquareOneContext,
+    createSession: createSquareOneSession,
+    getSessionById: getSquareOneSessionById,
+    updateSession: updateSquareOneSession,
+    reopenSession: reopenSquareOneSession,
+    submitSession: submitSquareOneSession,
+    validateSessionSection: validateSquareOneSection,
+    listOpenAudits: listSquareOneOpenAudits,
+    deleteOpenAudit: deleteSquareOneOpenAudit,
+    listInspectionHistory: listSquareOneInspectionHistory,
+    userOwnsSession: squareOneUserOwnsSession,
+    canUserAccessSession: canSquareOneUserAccessSession,
+    AUDIT_LABEL: SQUARE_ONE_AUDIT_LABEL,
+} = require('./services/squareOne/squareOneStore');
+const { buildPsiReportPdf, buildReportFilename: buildPsiReportFilename } = require('./services/periodicSafety/psiReport');
+const {
+    buildSquareOneReportPdf,
+    buildReportFilename: buildSquareOneReportFilename,
+} = require('./services/squareOne/squareOneReport');
+const { buildRgmCleaningReportPdf, buildReportFilename: buildRgmCleaningReportFilename } = require('./services/rgmCleaning/rgmCleaningReport');
+const { getSettings: getTacauditSettings, saveSettings: saveTacauditSettings } = require('./services/tacaudit/tacauditStore');
+const { getArchivePdf } = require('./services/tacaudit/tacauditArchive');
+const { listTacauditHistory, getTacauditContext } = require('./services/tacaudit/tacauditHistory');
+const { buildTacauditAdminSummary, storesForArea } = require('./services/tacaudit/tacauditAdminSummary');
+const { getAuditTypeConfig } = require('./services/tacaudit/auditRegistry');
 const {
     setAccountGateCookie,
     clearAccountGateCookie,
@@ -487,6 +588,24 @@ function requireAdminPage(req, res, next) {
     next();
 }
 
+function requireMultiStoreScope(req, res, next) {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!user || (!isSuperAdminUser(user) && !hasMultiStoreScope(user))) {
+        sendUnauthorized(req, res);
+        return;
+    }
+    next();
+}
+
+function assertOverviewAccess(req, res) {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        sendUnauthorized(req, res);
+        return false;
+    }
+    return true;
+}
+
 function dashboardAuthMiddleware(req, res, next) {
     if (isLoginPublicPath(req.path)) {
         next();
@@ -557,12 +676,7 @@ app.get('/', (req, res) => {
         res.redirect('/change-password');
         return;
     }
-    if (isAdminUser(user)) {
-        res.redirect(getAdminRedirectPath());
-        return;
-    }
-    const dest = getLoginRedirectPath(user);
-    res.redirect(dest === '/login' ? '/login' : dest);
+    res.redirect(getLoginRedirectPath(user));
 });
 
 app.get('/login', (req, res) => {
@@ -582,8 +696,8 @@ app.get('/login', (req, res) => {
 app.get('/admin', (req, res) => {
     if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
         const user = getRequestUser(req);
-        if (isAdminUser(user)) {
-            res.redirect(getAdminRedirectPath());
+        if (isSuperAdminUser(user) || hasMultiStoreScope(user)) {
+            res.redirect(getMicOverviewPath());
             return;
         }
         res.redirect(getKioskRedirectPath(user));
@@ -674,14 +788,14 @@ app.post('/admin/login', (req, res) => {
     const password = String(req.body?.password || '');
     const remember = !(req.body?.remember === false || req.body?.remember === '0' || req.body?.remember === 0);
     const user = authenticate(username, password);
-    if (!user || !isAdminUser(user)) {
+    if (!user || (!isSuperAdminUser(user) && !hasMultiStoreScope(user))) {
         logAuthLoginFailed(req, username, 'admin login');
-        sendLoginFailure(req, res, 'Admin access only.', '/admin');
+        sendLoginFailure(req, res, 'Market or area access required.', '/admin');
         return;
     }
     setSessionCookie(res, user, remember, 'admin');
     logAuthLogin(req, user);
-    sendLoginSuccess(req, res, user, getAdminRedirectPath());
+    sendLoginSuccess(req, res, user, getMicOverviewPath());
 });
 
 app.post('/kiosk/login', (req, res) => {
@@ -698,8 +812,8 @@ app.post('/kiosk/login', (req, res) => {
         sendLoginFailure(req, res, 'Incorrect username or password.', '/kiosk');
         return;
     }
-    if (isAdminUser(user)) {
-        sendLoginFailure(req, res, 'Admins should sign in at /admin.', '/kiosk');
+    if (isSuperAdminUser(user) || hasMultiStoreScope(user)) {
+        sendLoginFailure(req, res, 'Market and area accounts should sign in at /login.', '/kiosk');
         return;
     }
     const store = singleStoreForUser(user);
@@ -729,10 +843,10 @@ app.post('/unlock', (req, res) => {
     const password = String(req.body?.accessKey || '');
     if (!authRequired()) {
         if (wantsJsonResponse(req)) {
-            res.json({ success: true, welcomeName: '', defaultPath: '/stores' });
+            res.json({ success: true, welcomeName: '', defaultPath: getMicOverviewPath() });
             return;
         }
-        res.redirect('/stores');
+        res.redirect(getMicOverviewPath());
         return;
     }
     if (DASHBOARD_ACCESS_KEY && timingSafeEqualString(password, DASHBOARD_ACCESS_KEY)) {
@@ -1568,8 +1682,8 @@ function combineAreaHourly(stores) {
 }
 
 function filterSalesSliceForUser(slice, user) {
-    if (!slice || isAdminUser(user)) return slice;
-    const allowed = new Set((user.stores === '*' ? [] : user.stores).map(String));
+    if (!slice || isSuperAdminUser(user)) return slice;
+    const allowed = new Set(getEffectiveStoresForUser(user).map(String));
     if (!allowed.size) return slice;
     return {
         ...slice,
@@ -1607,16 +1721,24 @@ function assertDfscAccess(req, res) {
 
 function dfscRequestUserContext(req) {
     const user = req.dashboardUser || getRequestUser(req);
+    const conductorFullName = getDfscConductorName(user);
     return {
         user,
         username: user?.username || '',
-        conductorFullName: getDfscConductorName(user),
+        conductorFullName,
         isAdmin: isAdminUser(user),
+        canAccessDfsc: canUserAccessDfsc(user),
         access: {
             username: user?.username || '',
-            conductorFullName: getDfscConductorName(user),
+            conductorFullName,
+            canAccessDfsc: canUserAccessDfsc(user),
+            isAdmin: isAdminUser(user),
         },
     };
+}
+
+function canViewTacauditAdminSummary(user) {
+    return isRealDashboardUser(user) && (isAdminUser(user) || hasMultiStoreScope(user));
 }
 
 function assertDfscSessionAccess(req, res, session, { reopen = false } = {}) {
@@ -1625,7 +1747,6 @@ function assertDfscSessionAccess(req, res, session, { reopen = false } = {}) {
         return false;
     }
     const ctx = dfscRequestUserContext(req);
-    if (ctx.isAdmin) return true;
     if (session.status === 'completed') {
         if (reopen && !dfscUserOwnsSession(session, ctx.username, ctx.conductorFullName)) {
             res.status(403).json({
@@ -1636,12 +1757,120 @@ function assertDfscSessionAccess(req, res, session, { reopen = false } = {}) {
         }
         return true;
     }
-    const check = canUserAccessSession(session, ctx.username, ctx.conductorFullName);
+    const check = canUserAccessSession(session, ctx.access);
     if (!check.ok) {
         res.status(check.status || 403).json({ success: false, error: check.error });
         return false;
     }
     return true;
+}
+
+function assertPestWalkSessionAccess(req, res, session, { reopen = false } = {}) {
+    if (!session) {
+        res.status(404).json({ success: false, error: 'Session not found.' });
+        return false;
+    }
+    const ctx = dfscRequestUserContext(req);
+    if (ctx.isAdmin) return true;
+    if (session.status === 'completed') {
+        if (reopen && !pestWalkUserOwnsSession(session, ctx.username, ctx.conductorFullName)) {
+            res.status(403).json({
+                success: false,
+                error: 'Only the crew member who conducted this audit can reopen it for editing.',
+            });
+            return false;
+        }
+        return true;
+    }
+    const check = canPestWalkUserAccessSession(session, ctx.access);
+    if (!check.ok) {
+        res.status(check.status || 403).json({ success: false, error: check.error });
+        return false;
+    }
+    return true;
+}
+
+function assertSquareOneSessionAccess(req, res, session, { reopen = false } = {}) {
+    if (!session) {
+        res.status(404).json({ success: false, error: 'Session not found.' });
+        return false;
+    }
+    const ctx = dfscRequestUserContext(req);
+    if (ctx.isAdmin) return true;
+    if (session.status === 'completed') {
+        if (reopen && !squareOneUserOwnsSession(session, ctx.username, ctx.conductorFullName)) {
+            res.status(403).json({
+                success: false,
+                error: 'Only the crew member who conducted this audit can reopen it for editing.',
+            });
+            return false;
+        }
+        return true;
+    }
+    const check = canSquareOneUserAccessSession(session, ctx.access);
+    if (!check.ok) {
+        res.status(check.status || 403).json({ success: false, error: check.error });
+        return false;
+    }
+    return true;
+}
+
+function assertPsiSessionAccess(req, res, session, { reopen = false } = {}) {
+    if (!session) {
+        res.status(404).json({ success: false, error: 'Session not found.' });
+        return false;
+    }
+    const ctx = dfscRequestUserContext(req);
+    if (ctx.isAdmin) return true;
+    if (session.status === 'completed') {
+        if (reopen && !psiUserOwnsSession(session, ctx.username, ctx.conductorFullName)) {
+            res.status(403).json({
+                success: false,
+                error: 'Only the crew member who conducted this inspection can reopen it for editing.',
+            });
+            return false;
+        }
+        return true;
+    }
+    const check = canPsiUserAccessSession(session, ctx.access);
+    if (!check.ok) {
+        res.status(check.status || 403).json({ success: false, error: check.error });
+        return false;
+    }
+    return true;
+}
+
+function assertRgmCleaningSessionAccess(req, res, session, { reopen = false } = {}) {
+    if (!session) {
+        res.status(404).json({ success: false, error: 'Session not found.' });
+        return false;
+    }
+    const ctx = dfscRequestUserContext(req);
+    if (ctx.isAdmin) return true;
+    if (session.status === 'completed') {
+        if (reopen && !rgmCleaningUserOwnsSession(session, ctx.username, ctx.conductorFullName)) {
+            res.status(403).json({
+                success: false,
+                error: 'Only the crew member who conducted this audit can reopen it for editing.',
+            });
+            return false;
+        }
+        return true;
+    }
+    const check = canRgmCleaningUserAccessSession(session, ctx.access);
+    if (!check.ok) {
+        res.status(check.status || 403).json({ success: false, error: check.error });
+        return false;
+    }
+    return true;
+}
+
+async function dismissAuditLabelForStore(storeNumber, label) {
+    const auditLabel = String(label || '').trim();
+    if (!auditLabel) return;
+    const state = await getAuditState(storeNumber);
+    const dismissed = [...new Set([...(state.dismissed || []), auditLabel])];
+    await saveAuditDismissals(storeNumber, dismissed);
 }
 
 async function enrichSalesSliceWithStockCount(slice, options = {}) {
@@ -1687,6 +1916,7 @@ function mmxAutomationOptions(req, storeNumber, extra = {}) {
         ...extra,
         storeNumber: String(storeNumber),
         dashboardUsername: String(user?.username || '').trim(),
+        preferDashboardMmxCredentials: hasMultiStoreScope(user) || isSuperAdminUser(user),
     };
 }
 
@@ -1694,33 +1924,28 @@ app.get('/welcome', (req, res) => {
     res.redirect('/login');
 });
 
-// Root path is the store picker — a grid of clickable store tiles (see public/stores.html).
-app.get('/stores', (req, res) => {
-    const user = req.dashboardUser || getRequestUser(req);
-    if (!user || !isAdminUser(user)) {
-        sendForbidden(req, res, 'Store picker is for admin accounts.');
-        return;
-    }
-    res.sendFile(path.join(PUBLIC_ROOT, 'stores.html'));
+app.get('/stores', (_req, res) => {
+    res.redirect(302, getMicOverviewPath());
 });
 
-function sendAdminOverviewPage(req, res) {
-    res.sendFile(path.join(PUBLIC_ROOT, 'admin-overview.html'));
+function sendAdminOverviewPage(_req, res) {
+    res.redirect(302, getMicOverviewPath());
 }
 
-app.get(/^\/admin\/overview\/?$/i, requireAdminPage, sendAdminOverviewPage);
+app.get(/^\/admin\/overview\/?$/i, sendAdminOverviewPage);
+app.get(/^\/Admin\/Overview\/?$/i, sendAdminOverviewPage);
 
-app.get(/^\/Admin\/A(\d+)\/?$/i, requireAdminPage, (req, res) => {
+app.get(/^\/Admin\/A(\d+)\/?$/i, requireMultiStoreScope, (req, res) => {
     res.sendFile(path.join(PUBLIC_ROOT, 'index.html'));
 });
 
-app.get(/^\/Admin\/teststore\/?$/i, requireAdminPage, (req, res) => {
+app.get(/^\/Admin\/teststore\/?$/i, requireMultiStoreScope, (req, res) => {
     if (!assertStoreAccess(req, res, TEST_STORE_SLUG)) return;
     res.sendFile(path.join(PUBLIC_ROOT, 'index.html'));
 });
 
 /** /Admin/3811 → /Admin/A22?store=3811 (client strips query after load). */
-app.get(/^\/Admin\/(\d{3,6})\/?$/i, requireAdminPage, (req, res) => {
+app.get(/^\/Admin\/(\d{3,6})\/?$/i, requireMultiStoreScope, (req, res) => {
     const storeNumber = (req.path.match(/^\/Admin\/(\d{3,6})\/?$/i) || [])[1];
     if (!assertStoreAccess(req, res, storeNumber)) return;
     const cfg = getStoreConfig(storeNumber);
@@ -1728,22 +1953,22 @@ app.get(/^\/Admin\/(\d{3,6})\/?$/i, requireAdminPage, (req, res) => {
     res.redirect(302, `${getAdminAreaPath(areaCode)}?store=${encodeURIComponent(storeNumber)}`);
 });
 
-app.get(/^\/admin\/A(\d+)\/?$/i, requireAdminPage, (req, res) => {
+app.get(/^\/admin\/A(\d+)\/?$/i, requireMultiStoreScope, (req, res) => {
     const n = (req.path.match(/^\/admin\/A(\d+)\/?$/i) || [])[1];
     res.redirect(302, getAdminAreaPath(`A${n}`));
 });
 
-app.get(/^\/admin\/(\d{3,6})\/?$/i, requireAdminPage, (req, res) => {
+app.get(/^\/admin\/(\d{3,6})\/?$/i, requireMultiStoreScope, (req, res) => {
     const storeNumber = (req.path.match(/^\/admin\/(\d{3,6})\/?$/i) || [])[1];
     res.redirect(302, `/Admin/${storeNumber}`);
 });
 
-app.get(/^\/admin\/teststore\/?$/i, requireAdminPage, (_req, res) => {
+app.get(/^\/admin\/teststore\/?$/i, requireMultiStoreScope, (_req, res) => {
     res.redirect(302, '/Admin/teststore');
 });
 
-// —— MIC: overview + per-store sales dashboard ——
-app.get(/^\/MIC\/Overview\/?$/i, (req, res) => {
+// —— Unified overview (scope-aware tiles) + per-store sales dashboard ——
+function sendOverviewPage(req, res) {
     if (dashboardEntryFromRequest(req) === 'kiosk') {
         const user = req.dashboardUser || getRequestUser(req);
         res.redirect(getKioskRedirectPath(user));
@@ -1754,17 +1979,25 @@ app.get(/^\/MIC\/Overview\/?$/i, (req, res) => {
         res.redirect('/login');
         return;
     }
-    if (isAdminUser(user)) {
-        res.redirect(getAdminRedirectPath());
-        return;
-    }
     if (isNologinUser(user)) {
-        sendForbidden(req, res, 'MIC overview is not available on no-login links.');
+        sendForbidden(req, res, 'Overview is not available on no-login links.');
         return;
     }
-    const store = singleStoreForUser(user);
-    if (!store || !assertStoreAccess(req, res, store)) return;
+    if (!isRealDashboardUser(user)) {
+        sendUnauthorized(req, res);
+        return;
+    }
+    if (getOverviewScope(user) === 'store') {
+        const store = singleStoreForUser(user);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+    }
     res.sendFile(path.join(PUBLIC_ROOT, 'mic.html'));
+}
+
+app.get(/^\/overview\/?$/i, sendOverviewPage);
+
+app.get(/^\/MIC\/Overview\/?$/i, (req, res) => {
+    res.redirect(302, getMicOverviewPath());
 });
 
 app.get(/^\/MIC\/teststore\/?$/i, (req, res) => {
@@ -1813,7 +2046,7 @@ app.get(/^\/teststore\/?$/i, (req, res) => {
         return;
     }
     const user = req.dashboardUser || getRequestUser(req);
-    if (user && isAdminUser(user)) {
+    if (user && (isSuperAdminUser(user) || hasMultiStoreScope(user))) {
         res.redirect(302, getAdminAreaPath('A22') + '?store=teststore');
         return;
     }
@@ -1828,7 +2061,7 @@ app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
     }
     if (!assertStoreAccess(req, res, storeNumber)) return;
     const user = req.dashboardUser || getRequestUser(req);
-    if (user && isAdminUser(user)) {
+    if (user && (isSuperAdminUser(user) || hasMultiStoreScope(user))) {
         const cfg = getStoreConfig(storeNumber);
         const areaCode = areaCodeFromValue(areaNameFromStore(cfg || {})) || 'A22';
         res.redirect(302, `${getAdminAreaPath(areaCode)}?store=${encodeURIComponent(storeNumber)}`);
@@ -1839,7 +2072,7 @@ app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
 
 app.get(/^\/(area\/[a-z0-9-]+|a\d+)\/?$/i, (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
-    if (user && isAdminUser(user)) {
+    if (user && (isSuperAdminUser(user) || hasMultiStoreScope(user))) {
         const codeMatch = req.path.match(/^\/(a\d+)\/?$/i);
         if (codeMatch) {
             const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
@@ -1869,6 +2102,57 @@ app.get(/^\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)\/?$/i, (req, res) => 
     sendStockCountPage(req, res, storeNumber);
 });
 
+function sendDailyStockCountPage(req, res, storeNumber) {
+    if (!assertStoreAccess(req, res, storeNumber)) return;
+    const bootId = getDashboardMeta().bootId;
+    const htmlPath = path.join(__dirname, '../public', 'daily-stock-count.html');
+    let html = fsSync.readFileSync(htmlPath, 'utf8');
+    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    res.type('html').send(html);
+}
+
+app.get('/daily-stock-count', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!user) {
+        res.redirect(302, '/login');
+        return;
+    }
+    const stores = filterStoresForUser(user, getStoreList());
+    const want = normalizeStoreKey(req.query.store);
+    if (want && userCanAccessStore(user, want)) {
+        res.redirect(302, `/${want}/daily-stock-count`);
+        return;
+    }
+    const first = stores[0]?.storeNumber;
+    if (first) {
+        res.redirect(302, `/${first}/daily-stock-count`);
+        return;
+    }
+    sendForbidden(req, res, 'No stores available for daily count.');
+});
+
+app.get(/^\/(teststore|\d{3,6})\/daily-stock-count\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/daily-stock-count\/?$/i) || [])[1]);
+    sendDailyStockCountPage(req, res, storeNumber);
+});
+
+function dailyCountStoreFromQuery(req) {
+    return normalizeStoreKey(req.query.store || req.body?.store);
+}
+
+function assertDailyCountMmxAccess(req, res) {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!user?.username || !hasMmxCredentialsForUser(user.username)) {
+        res.status(403).json({
+            success: false,
+            error: 'Macromatix login required. Complete Create account with your MMX username and password.',
+            needsMmxCredentials: true,
+        });
+        return false;
+    }
+    return true;
+}
+
 function sendDfscPage(req, res, storeNumber) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
     if (!assertDfscAccess(req, res)) return;
@@ -1887,6 +2171,132 @@ app.get(/^\/(teststore|\d{3,6})\/dfsc\/?$/i, (req, res) => {
 app.get(/^\/(teststore|\d{3,6})\/dfsc\/audit\/?$/i, (req, res) => {
     const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/dfsc\/audit\/?$/i) || [])[1]);
     sendDfscPage(req, res, storeNumber);
+});
+
+function sendPestWalkPage(req, res, storeNumber) {
+    if (!assertStoreAccess(req, res, storeNumber)) return;
+    if (!assertDfscAccess(req, res)) return;
+    const bootId = getDashboardMeta().bootId;
+    const htmlPath = path.join(__dirname, '../public', 'pest-walk.html');
+    let html = fsSync.readFileSync(htmlPath, 'utf8');
+    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    res.type('html').send(html);
+}
+
+app.get(/^\/(teststore|\d{3,6})\/pest-walk\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/pest-walk\/?$/i) || [])[1]);
+    sendPestWalkPage(req, res, storeNumber);
+});
+
+app.get(/^\/(teststore|\d{3,6})\/pest-walk\/audit\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/pest-walk\/audit\/?$/i) || [])[1]);
+    sendPestWalkPage(req, res, storeNumber);
+});
+
+function sendRgmCleaningPage(req, res, storeNumber) {
+    if (!assertStoreAccess(req, res, storeNumber)) return;
+    if (!assertDfscAccess(req, res)) return;
+    const bootId = getDashboardMeta().bootId;
+    const htmlPath = path.join(__dirname, '../public', 'rgm-cleaning.html');
+    let html = fsSync.readFileSync(htmlPath, 'utf8');
+    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    res.type('html').send(html);
+}
+
+app.get(/^\/(teststore|\d{3,6})\/rgm-cleaning\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/rgm-cleaning\/?$/i) || [])[1]);
+    sendRgmCleaningPage(req, res, storeNumber);
+});
+
+app.get(/^\/(teststore|\d{3,6})\/rgm-cleaning\/audit\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/rgm-cleaning\/audit\/?$/i) || [])[1]);
+    sendRgmCleaningPage(req, res, storeNumber);
+});
+
+function sendPsiPage(req, res, storeNumber) {
+    if (!assertStoreAccess(req, res, storeNumber)) return;
+    if (!assertDfscAccess(req, res)) return;
+    const bootId = getDashboardMeta().bootId;
+    const htmlPath = path.join(__dirname, '../public', 'psi.html');
+    let html = fsSync.readFileSync(htmlPath, 'utf8');
+    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    res.type('html').send(html);
+}
+
+app.get(/^\/(teststore|\d{3,6})\/psi\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/psi\/?$/i) || [])[1]);
+    sendPsiPage(req, res, storeNumber);
+});
+
+app.get(/^\/(teststore|\d{3,6})\/psi\/audit\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/psi\/audit\/?$/i) || [])[1]);
+    sendPsiPage(req, res, storeNumber);
+});
+
+function sendSquareOnePage(req, res, storeNumber) {
+    if (!assertStoreAccess(req, res, storeNumber)) return;
+    if (!assertDfscAccess(req, res)) return;
+    const bootId = getDashboardMeta().bootId;
+    const htmlPath = path.join(__dirname, '../public', 'square-one.html');
+    let html = fsSync.readFileSync(htmlPath, 'utf8');
+    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    res.type('html').send(html);
+}
+
+app.get(/^\/(teststore|\d{3,6})\/square-one\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/square-one\/?$/i) || [])[1]);
+    sendSquareOnePage(req, res, storeNumber);
+});
+
+app.get(/^\/(teststore|\d{3,6})\/square-one\/audit\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/square-one\/audit\/?$/i) || [])[1]);
+    sendSquareOnePage(req, res, storeNumber);
+});
+
+function sendTacauditHtml(res) {
+    const bootId = getDashboardMeta().bootId;
+    const htmlPath = path.join(__dirname, '../public', 'tacaudit.html');
+    let html = fsSync.readFileSync(htmlPath, 'utf8');
+    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    res.type('html').send(html);
+}
+
+function sendTacauditPage(req, res, storeNumber) {
+    if (!assertStoreAccess(req, res, storeNumber)) return;
+    if (!assertDfscAccess(req, res)) return;
+    sendTacauditHtml(res);
+}
+
+function sendTacauditSummaryPage(req, res) {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!user) {
+        res.redirect('/login');
+        return;
+    }
+    if (!isRealDashboardUser(user)) {
+        sendUnauthorized(req, res);
+        return;
+    }
+    if (!canViewTacauditAdminSummary(user)) {
+        sendForbidden(req, res, 'Area audit summary is not available for this account.');
+        return;
+    }
+    sendTacauditHtml(res);
+}
+
+app.get(/^\/tacaudit\/summary\/?$/i, sendTacauditSummaryPage);
+app.get(/^\/Admin\/tacaudit\/?$/i, (req, res) => {
+    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    res.redirect(302, `/tacaudit/summary${qs}`);
+});
+app.get(/^\/admin\/tacaudit\/?$/i, (req, res) => {
+    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    res.redirect(302, `/tacaudit/summary${qs}`);
+});
+
+app.get(/^\/(teststore|\d{3,6})\/tacaudit\/?$/i, (req, res) => {
+    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/tacaudit\/?$/i) || [])[1]);
+    sendTacauditPage(req, res, storeNumber);
 });
 
 app.get('/api/me', (req, res) => {
@@ -2018,6 +2428,23 @@ app.post('/api/account/mic-dark-mode', (req, res) => {
     const freshUser = { ...user, micDarkMode: Boolean(result.micDarkMode) };
     setSessionCookie(res, freshUser, true, dashboardEntryFromRequest(req) || 'store');
     res.json({ success: true, micDarkMode: Boolean(result.micDarkMode) });
+});
+
+app.post('/api/account/audit-auto-collapse', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.status(403).json({ success: false, error: 'Sign in with your store account to change this setting.' });
+        return;
+    }
+    const enabled = !(req.body?.enabled === false || req.body?.enabled === 0 || req.body?.enabled === '0');
+    const result = setAccountAuditAutoCollapsePreference(user.username, enabled);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    const freshUser = { ...user, auditAutoCollapse: Boolean(result.auditAutoCollapse) };
+    setSessionCookie(res, freshUser, true, dashboardEntryFromRequest(req) || 'store');
+    res.json({ success: true, auditAutoCollapse: Boolean(result.auditAutoCollapse) });
 });
 
 app.get('/api/account/managed-accounts', (req, res) => {
@@ -2549,6 +2976,179 @@ app.post('/api/stock-count/submit', async (req, res) => {
     }
 });
 
+app.get('/api/daily-stock-count/catalog', (req, res) => {
+    try {
+        const store = dailyCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const catalog = buildDailyStockCountCatalog();
+        if (!catalog) {
+            res.status(404).json({
+                success: false,
+                error: 'No daily count items configured. Add | Daily to vendor catalog lines.',
+            });
+            return;
+        }
+        res.json({ success: true, catalog, storeNumber: store });
+    } catch (error) {
+        console.error('API: Error reading daily stock count catalog:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/daily-stock-count/draft', async (req, res) => {
+    try {
+        const store = dailyCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const draft = await getDailyCountDraft(store);
+        if (!draft) {
+            res.status(404).json({ success: false, error: 'Daily count catalog not found.' });
+            return;
+        }
+        res.json(draft);
+    } catch (error) {
+        console.error('API: Error reading daily stock count draft:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/daily-stock-count/draft', async (req, res) => {
+    try {
+        const store = dailyCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const locationName = String(req.body?.location || req.query.location || '').trim();
+        const itemCounts = req.body?.items || req.body?.counts || {};
+        if (!locationName) {
+            res.status(400).json({ success: false, error: 'Location is required.' });
+            return;
+        }
+        const draft = await saveDailyCountDraftLocation(store, locationName, itemCounts);
+        res.json(draft);
+    } catch (error) {
+        console.error('API: Error saving daily stock count draft:', error);
+        const status = /Unknown location/i.test(error.message) ? 400 : 500;
+        res.status(status).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/daily-stock-count/mmx-status', async (req, res) => {
+    try {
+        const store = dailyCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDailyCountMmxAccess(req, res)) return;
+        const mmxOpts = mmxAutomationOptions(req, store);
+        const probeTimeoutMs = Number(process.env.DAILY_COUNT_MMX_PROBE_MS || 90000);
+        const result = await Promise.race([
+            probeOpenCounts(store, mmxOpts),
+            new Promise((_, reject) => {
+                setTimeout(
+                    () => reject(new Error('Macromatix check timed out. Try again in a moment.')),
+                    probeTimeoutMs
+                );
+            }),
+        ]);
+        res.json(result);
+    } catch (error) {
+        console.error('API: Error probing daily count MMX status:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/daily-stock-count/start', async (req, res) => {
+    try {
+        const store = dailyCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDailyCountMmxAccess(req, res)) return;
+        const resolution = String(req.body?.resolution || 'create').trim();
+        const openBatchValue = req.body?.openBatchValue ?? null;
+        if (!['create', 'overwrite', 'delete'].includes(resolution)) {
+            res.status(400).json({ success: false, error: 'Invalid resolution.' });
+            return;
+        }
+        const draft = await setDailyCountStartResolution(store, { resolution, openBatchValue });
+        res.json({ success: true, ...draft });
+    } catch (error) {
+        console.error('API: Error starting daily stock count:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/daily-stock-count/submit', async (req, res) => {
+    try {
+        const store = dailyCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDailyCountMmxAccess(req, res)) return;
+
+        const pipeline = await getDailyCountPipelineStatus(store);
+        if (isDailyCountPipelineBusy(pipeline.stage)) {
+            res.json({
+                success: true,
+                accepted: true,
+                inProgress: true,
+                stage: pipeline.stage,
+                sessionId: pipeline.sessionId || null,
+            });
+            return;
+        }
+
+        const summary = await getDailyCountSummary(store);
+        if (!summary?.hasCounts) {
+            res.status(400).json({ success: false, error: 'Enter at least one count before submitting.' });
+            return;
+        }
+
+        res.json({ success: true, accepted: true });
+        const mmxOpts = mmxAutomationOptions(req, store);
+        void prepareDailyCountForMmx(store, mmxOpts).catch((error) => {
+            console.error('API: Error preparing daily count for MMX:', error);
+        });
+    } catch (error) {
+        console.error('API: Error submitting daily stock count:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/daily-stock-count/pipeline-status', async (req, res) => {
+    try {
+        const store = dailyCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        res.json(await getDailyCountPipelineStatus(store));
+    } catch (error) {
+        console.error('API: Error reading daily stock count pipeline status:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/daily-stock-count/apply', async (req, res) => {
+    try {
+        const store = dailyCountStoreFromQuery(req);
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDailyCountMmxAccess(req, res)) return;
+        if (!sessionId) {
+            res.status(400).json({ success: false, error: 'sessionId is required.' });
+            return;
+        }
+        const result = await applyDailyCountSessionWork(store, sessionId, mmxAutomationOptions(req, store));
+        res.json(result);
+    } catch (error) {
+        console.error('API: Error applying daily stock count:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/daily-stock-count/recount', async (req, res) => {
+    try {
+        const store = dailyCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        await cancelDailyCountSession(store);
+        await reopenDailyCountDraft(store);
+        res.json({ success: true, storeNumber: store });
+    } catch (error) {
+        console.error('API: Error cancelling daily count session:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Test endpoint to trigger scraper
 app.get('/api/test-scraper', async (req, res) => {
     if (!/^(1|true|yes|on)$/i.test(String(process.env.ENABLE_TEST_SCRAPER ?? '').trim())) {
@@ -2647,27 +3247,82 @@ app.get('/api/sales', async (req, res) => {
     }
 });
 
-// MIC overview — store manager dashboard tiles.
-app.get('/api/mic', async (req, res) => {
+async function handleOverviewApi(req, res) {
     try {
-        const store = String(req.query.store || '').trim();
-        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertOverviewAccess(req, res)) return;
         const user = req.dashboardUser || getRequestUser(req);
-        let storeSlice = {};
-        if (isTestStore(store)) {
-            const payload = await getSalesDataCached();
-            storeSlice = buildTestStoreSalesSlice(payload, { stickyKey: stickyKeyForTestMirror(req, user) });
-        } else {
-            const payload = await getSalesDataCached();
-            storeSlice = storeSliceFromPayload(payload, store) || {};
-            await enrichSalesSliceWithStockCount(storeSlice);
+        const scope = getOverviewScope(user);
+        const storeQuery = String(req.query.store || '').trim();
+
+        if (scope === 'store') {
+            const store = storeQuery || singleStoreForUser(user);
+            if (!store || !assertStoreAccess(req, res, store)) return;
+            let storeSlice = {};
+            if (isTestStore(store)) {
+                const payload = await getSalesDataCached();
+                storeSlice = buildTestStoreSalesSlice(payload, { stickyKey: stickyKeyForTestMirror(req, user) });
+            } else {
+                const payload = await getSalesDataCached();
+                storeSlice = storeSliceFromPayload(payload, store) || {};
+                await enrichSalesSliceWithStockCount(storeSlice);
+            }
+            const result = await buildOverviewPayload(user, {
+                store,
+                storeSlice,
+                buildDailyStockCountTileStateAsync,
+                getAuditState,
+                isTestStore,
+                getAuditSchedule,
+                canUserAccessDfsc,
+            });
+            if (!result.ok) {
+                res.status(400).json({ success: false, error: result.error });
+                return;
+            }
+            const { ok, ...payload } = result;
+            res.json({ success: true, salesUpdatedAt: getSalesUpdatedAt(), ...payload });
+            return;
         }
-        res.json({ success: true, ...buildMicPayload(store, storeSlice, { canAccessDfsc: canUserAccessDfsc(user) }) });
+
+        let payload;
+        try {
+            payload = await getSalesDataCached();
+        } catch (error) {
+            payload = salesCache || buildCacheShellFromStoreList();
+        }
+        let stores = getStoreList().map((s) => ({
+            storeNumber: s.storeNumber,
+            storeName: s.storeName,
+            area: areaNameFromStore(s),
+            areaKey: normalizeAreaKey(areaNameFromStore(s)),
+            timeZone: s.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne',
+            openHour: s.openHour,
+            closeHour: s.closeHour,
+        }));
+        stores = filterStoresForUser(user, stores);
+        const result = await buildOverviewPayload(user, {
+            salesPayload: payload,
+            stores,
+            loadAuditStateMapForStores,
+            getAuditSchedule,
+            getSalesUpdatedAt,
+        });
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        const { ok, ...body } = result;
+        res.json({ success: true, ...body });
     } catch (error) {
-        console.error('API: Error loading MIC overview:', error);
+        console.error('API: Error loading overview:', error);
         res.status(500).json({ success: false, error: error.message });
     }
-});
+}
+
+app.get('/api/overview', handleOverviewApi);
+
+// MIC overview — store manager dashboard tiles (alias for /api/overview).
+app.get('/api/mic', handleOverviewApi);
 
 app.post('/api/mic/daily-item-multiplier', (req, res) => {
     try {
@@ -2677,10 +3332,13 @@ app.post('/api/mic/daily-item-multiplier', (req, res) => {
         const stores = req.body?.stores;
         const scopeAll = req.body?.allStores === true || stores === '*';
 
-        if (isAdminUser(user) && (scopeAll || (Array.isArray(stores) && stores.length))) {
+        const marketMultiStore =
+            hasMultiStoreScope(user) && (scopeAll || (Array.isArray(stores) && stores.length));
+        if ((isSuperAdminUser(user) || marketMultiStore) && (scopeAll || (Array.isArray(stores) && stores.length))) {
+            const effectiveStores = scopeAll ? '*' : stores;
             const result = addDailyItemMultiplier({
                 itemLabel,
-                stores: scopeAll ? '*' : stores,
+                stores: isSuperAdminUser(user) && scopeAll ? '*' : effectiveStores,
                 setBy: user?.username || '',
             });
             if (!result.ok) {
@@ -2745,6 +3403,8 @@ app.get('/api/dfsc/context', (req, res) => {
             ...getDfscContext(store, {
                 username: ctx.username,
                 conductorFullName: ctx.conductorFullName,
+                canAccessDfsc: ctx.canAccessDfsc,
+                isAdmin: ctx.isAdmin,
             }),
             conductorFullName: ctx.conductorFullName,
             currentUsername: ctx.username,
@@ -2764,10 +3424,7 @@ app.get('/api/dfsc/open', (req, res) => {
         const ctx = dfscRequestUserContext(req);
         res.json({
             success: true,
-            openAudits: listDfscOpenAudits(store, {
-                username: ctx.username,
-                conductorFullName: ctx.conductorFullName,
-            }),
+            openAudits: listDfscOpenAudits(store, { access: ctx.access }),
         });
     } catch (error) {
         console.error('API: Error listing open DFSC audits:', error);
@@ -2803,10 +3460,7 @@ app.delete('/api/dfsc/session', (req, res) => {
         res.json({
             success: true,
             deletedId: result.deletedId,
-            openAudits: listDfscOpenAudits(store, {
-                username: ctx.username,
-                conductorFullName: ctx.conductorFullName,
-            }),
+            openAudits: listDfscOpenAudits(store, { access: ctx.access }),
         });
     } catch (error) {
         console.error('API: Error deleting open DFSC audit:', error);
@@ -2997,11 +3651,1107 @@ app.post('/api/dfsc/submit', (req, res) => {
     }
 });
 
+app.get('/api/pest-walk/context', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        res.json({
+            success: true,
+            ...getPestWalkContext(store, {
+                username: ctx.username,
+                conductorFullName: ctx.conductorFullName,
+                canAccessDfsc: ctx.canAccessDfsc,
+                isAdmin: ctx.isAdmin,
+            }),
+            canAccessPestWalk: true,
+        });
+    } catch (error) {
+        console.error('API: Error loading pest walk context:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/pest-walk/open', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        res.json({
+            success: true,
+            openAudits: listPestWalkOpenAudits(store, { access: ctx.access }),
+        });
+    } catch (error) {
+        console.error('API: Error listing open pest walk audits:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/pest-walk/history', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const limit = Number(req.query.limit) || 50;
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        res.json({ success: true, history: listPestWalkInspectionHistory(store, { limit }) });
+    } catch (error) {
+        console.error('API: Error loading pest walk history:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.delete('/api/pest-walk/session', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = deletePestWalkOpenAudit(store, sessionId, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({
+            success: true,
+            deletedId: result.deletedId,
+            openAudits: listPestWalkOpenAudits(store, { access: ctx.access }),
+        });
+    } catch (error) {
+        console.error('API: Error deleting open pest walk audit:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/pest-walk/start', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = createPestWalkSession(store, {
+            name: req.body?.name,
+            startSignatureDataUrl: req.body?.startSignatureDataUrl,
+            forceNew: Boolean(req.body?.forceNew),
+            clientMeta: req.body?.clientMeta,
+            createdByUsername: ctx.username,
+        });
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session, resumed: result.resumed });
+    } catch (error) {
+        console.error('API: Error starting pest walk:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/pest-walk/session', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const session = getPestWalkSessionById(store, sessionId, req.query.periodKey);
+        if (!assertPestWalkSessionAccess(req, res, session)) return;
+        const ctx = dfscRequestUserContext(req);
+        const canReopen =
+            session.status === 'completed' &&
+            (ctx.isAdmin || pestWalkUserOwnsSession(session, ctx.username, ctx.conductorFullName));
+        res.json({ success: true, session, canReopen });
+    } catch (error) {
+        console.error('API: Error loading pest walk session:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/pest-walk/report.pdf', async (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const session = getPestWalkSessionById(store, sessionId, req.query.periodKey);
+        if (!session || session.status !== 'completed') {
+            res.status(404).json({ success: false, error: 'Completed audit not found.' });
+            return;
+        }
+        const pdfBuffer = await buildPestWalkReportPdf(session);
+        const filename = buildPestWalkReportFilename(session);
+        res.set('Content-Type', 'application/pdf');
+        res.set('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('API: Error generating pest walk PDF:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/pest-walk/reopen', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const session = getPestWalkSessionById(store, sessionId, req.body?.periodKey || req.query.periodKey);
+        if (!assertPestWalkSessionAccess(req, res, session, { reopen: true })) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = reopenPestWalkSession(store, sessionId, req.body?.periodKey || req.query.periodKey, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session, nonCompliant: result.nonCompliant });
+    } catch (error) {
+        console.error('API: Error reopening pest walk:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/pest-walk/session', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const existing = getPestWalkSessionById(store, sessionId, req.body?.periodKey);
+        if (!assertPestWalkSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = updatePestWalkSession(
+            store,
+            sessionId,
+            {
+                periodKey: req.body?.periodKey,
+                answers: req.body?.answers,
+                actions: req.body?.actions,
+                notes: req.body?.notes,
+                signOff: req.body?.signOff,
+                clientMeta: req.body?.clientMeta,
+            },
+            ctx.access
+        );
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session, nonCompliant: result.nonCompliant, score: result.score });
+    } catch (error) {
+        console.error('API: Error saving pest walk session:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/pest-walk/session/validate-section', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        const sectionId = String(req.body?.sectionId || '').trim();
+        if (!store || !sessionId || !sectionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const existing = getPestWalkSessionById(store, sessionId, req.body?.periodKey);
+        if (!assertPestWalkSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = validatePestWalkSection(store, sessionId, sectionId, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('API: Error validating pest walk section:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/pest-walk/submit', async (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const existing = getPestWalkSessionById(store, sessionId, req.body?.periodKey);
+        if (!assertPestWalkSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = submitPestWalkSession(store, sessionId, req.body?.signOff || {}, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        await dismissAuditLabelForStore(store, result.auditLabel || PEST_WALK_AUDIT_LABEL);
+        res.json({ success: true, session: result.session });
+    } catch (error) {
+        console.error('API: Error submitting pest walk:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/rgm-cleaning/context', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        res.json({
+            success: true,
+            ...getRgmCleaningContext(store, {
+                username: ctx.username,
+                conductorFullName: ctx.conductorFullName,
+                canAccessDfsc: ctx.canAccessDfsc,
+                isAdmin: ctx.isAdmin,
+            }),
+            canAccessRgmCleaning: true,
+        });
+    } catch (error) {
+        console.error('API: Error loading RGM cleaning context:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/rgm-cleaning/open', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        res.json({
+            success: true,
+            openAudits: listRgmCleaningOpenAudits(store, { access: ctx.access }),
+        });
+    } catch (error) {
+        console.error('API: Error listing open RGM cleaning audits:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/rgm-cleaning/history', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const limit = Number(req.query.limit) || 50;
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        res.json({ success: true, history: listRgmCleaningInspectionHistory(store, { limit }) });
+    } catch (error) {
+        console.error('API: Error loading RGM cleaning history:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.delete('/api/rgm-cleaning/session', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = deleteRgmCleaningOpenAudit(store, sessionId, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({
+            success: true,
+            deletedId: result.deletedId,
+            openAudits: listRgmCleaningOpenAudits(store, { access: ctx.access }),
+        });
+    } catch (error) {
+        console.error('API: Error deleting open RGM cleaning audit:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/rgm-cleaning/start', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = createRgmCleaningSession(store, {
+            name: req.body?.name,
+            startSignatureDataUrl: req.body?.startSignatureDataUrl,
+            forceNew: Boolean(req.body?.forceNew),
+            clientMeta: req.body?.clientMeta,
+            createdByUsername: ctx.username,
+        });
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session, resumed: result.resumed });
+    } catch (error) {
+        console.error('API: Error starting RGM cleaning:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/rgm-cleaning/session', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const session = getRgmCleaningSessionById(store, sessionId, req.query.periodKey);
+        if (!assertRgmCleaningSessionAccess(req, res, session)) return;
+        const ctx = dfscRequestUserContext(req);
+        const canReopen =
+            session.status === 'completed' &&
+            (ctx.isAdmin || rgmCleaningUserOwnsSession(session, ctx.username, ctx.conductorFullName));
+        res.json({ success: true, session, canReopen });
+    } catch (error) {
+        console.error('API: Error loading RGM cleaning session:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/rgm-cleaning/report.pdf', async (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const session = getRgmCleaningSessionById(store, sessionId, req.query.periodKey);
+        if (!session || session.status !== 'completed') {
+            res.status(404).json({ success: false, error: 'Completed audit not found.' });
+            return;
+        }
+        const pdfBuffer = await buildRgmCleaningReportPdf(session);
+        const filename = buildRgmCleaningReportFilename(session);
+        res.set('Content-Type', 'application/pdf');
+        res.set('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('API: Error generating RGM cleaning PDF:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/rgm-cleaning/reopen', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const session = getRgmCleaningSessionById(store, sessionId, req.body?.periodKey || req.query.periodKey);
+        if (!assertRgmCleaningSessionAccess(req, res, session, { reopen: true })) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = reopenRgmCleaningSession(store, sessionId, req.body?.periodKey || req.query.periodKey, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session, nonCompliant: result.nonCompliant });
+    } catch (error) {
+        console.error('API: Error reopening RGM cleaning:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/rgm-cleaning/session', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const existing = getRgmCleaningSessionById(store, sessionId, req.body?.periodKey);
+        if (!assertRgmCleaningSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = updateRgmCleaningSession(
+            store,
+            sessionId,
+            {
+                periodKey: req.body?.periodKey,
+                answers: req.body?.answers,
+                actions: req.body?.actions,
+                notes: req.body?.notes,
+                photos: req.body?.photos,
+                squareOnePhotoReviews: req.body?.squareOnePhotoReviews,
+                signOff: req.body?.signOff,
+                clientMeta: req.body?.clientMeta,
+            },
+            ctx.access
+        );
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session, nonCompliant: result.nonCompliant, score: result.score });
+    } catch (error) {
+        console.error('API: Error saving RGM cleaning session:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/rgm-cleaning/session/validate-section', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        const sectionId = String(req.body?.sectionId || '').trim();
+        if (!store || !sessionId || !sectionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const existing = getRgmCleaningSessionById(store, sessionId, req.body?.periodKey);
+        if (!assertRgmCleaningSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = validateRgmCleaningSection(store, sessionId, sectionId, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('API: Error validating RGM cleaning section:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/rgm-cleaning/submit', async (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const existing = getRgmCleaningSessionById(store, sessionId, req.body?.periodKey);
+        if (!assertRgmCleaningSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = submitRgmCleaningSession(store, sessionId, req.body?.signOff || {}, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        await dismissAuditLabelForStore(store, result.auditLabel || RGM_CLEANING_AUDIT_LABEL);
+        res.json({ success: true, session: result.session });
+    } catch (error) {
+        console.error('API: Error submitting RGM cleaning:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/psi/context', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        res.json({
+            success: true,
+            ...getPsiContext(store, {
+                username: ctx.username,
+                conductorFullName: ctx.conductorFullName,
+                canAccessDfsc: ctx.canAccessDfsc,
+                isAdmin: ctx.isAdmin,
+            }),
+            canAccessPsi: true,
+        });
+    } catch (error) {
+        console.error('API: Error loading PSI context:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/psi/open', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        res.json({
+            success: true,
+            openAudits: listPsiOpenAudits(store, { access: ctx.access }),
+        });
+    } catch (error) {
+        console.error('API: Error listing open PSI audits:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/psi/history', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const limit = Number(req.query.limit) || 50;
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        res.json({ success: true, history: listPsiInspectionHistory(store, { limit }) });
+    } catch (error) {
+        console.error('API: Error loading PSI history:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.delete('/api/psi/session', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = deletePsiOpenAudit(store, sessionId, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({
+            success: true,
+            deletedId: result.deletedId,
+            openAudits: listPsiOpenAudits(store, { access: ctx.access }),
+        });
+    } catch (error) {
+        console.error('API: Error deleting open PSI audit:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/psi/start', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = createPsiSession(store, {
+            name: req.body?.name,
+            startSignatureDataUrl: req.body?.startSignatureDataUrl,
+            forceNew: Boolean(req.body?.forceNew),
+            clientMeta: req.body?.clientMeta,
+            createdByUsername: ctx.username,
+        });
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session, resumed: result.resumed });
+    } catch (error) {
+        console.error('API: Error starting PSI:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/psi/session', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const session = getPsiSessionById(store, sessionId, req.query.periodKey);
+        if (!assertPsiSessionAccess(req, res, session)) return;
+        const ctx = dfscRequestUserContext(req);
+        const canReopen =
+            session.status === 'completed' &&
+            (ctx.isAdmin || psiUserOwnsSession(session, ctx.username, ctx.conductorFullName));
+        res.json({ success: true, session, canReopen });
+    } catch (error) {
+        console.error('API: Error loading PSI session:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/psi/report.pdf', async (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const session = getPsiSessionById(store, sessionId, req.query.periodKey);
+        if (!session || session.status !== 'completed') {
+            res.status(404).json({ success: false, error: 'Completed inspection not found.' });
+            return;
+        }
+        const pdfBuffer = await buildPsiReportPdf(session);
+        const filename = buildPsiReportFilename(session);
+        res.set('Content-Type', 'application/pdf');
+        res.set('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('API: Error generating PSI PDF:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/psi/reopen', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const session = getPsiSessionById(store, sessionId, req.body?.periodKey || req.query.periodKey);
+        if (!assertPsiSessionAccess(req, res, session, { reopen: true })) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = reopenPsiSession(store, sessionId, req.body?.periodKey || req.query.periodKey, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session, nonCompliant: result.nonCompliant });
+    } catch (error) {
+        console.error('API: Error reopening PSI:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/psi/session', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const existing = getPsiSessionById(store, sessionId, req.body?.periodKey);
+        if (!assertPsiSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = updatePsiSession(
+            store,
+            sessionId,
+            {
+                periodKey: req.body?.periodKey,
+                answers: req.body?.answers,
+                notes: req.body?.notes,
+                signOff: req.body?.signOff,
+                clientMeta: req.body?.clientMeta,
+            },
+            ctx.access
+        );
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session, nonCompliant: result.nonCompliant, score: result.score });
+    } catch (error) {
+        console.error('API: Error saving PSI session:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/psi/session/validate-section', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        const sectionId = String(req.body?.sectionId || '').trim();
+        if (!store || !sessionId || !sectionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const existing = getPsiSessionById(store, sessionId, req.body?.periodKey);
+        if (!assertPsiSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = validatePsiSection(store, sessionId, sectionId, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('API: Error validating PSI section:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/psi/submit', async (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const existing = getPsiSessionById(store, sessionId, req.body?.periodKey);
+        if (!assertPsiSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = submitPsiSession(store, sessionId, req.body?.signOff || {}, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        await dismissAuditLabelForStore(store, result.auditLabel || PSI_AUDIT_LABEL);
+        res.json({ success: true, session: result.session });
+    } catch (error) {
+        console.error('API: Error submitting PSI:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/square-one/context', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        res.json({
+            success: true,
+            ...getSquareOneContext(store, {
+                username: ctx.username,
+                conductorFullName: ctx.conductorFullName,
+                canAccessDfsc: ctx.canAccessDfsc,
+                isAdmin: ctx.isAdmin,
+                areaId: req.query.areaId,
+            }),
+        });
+    } catch (error) {
+        console.error('API: Error loading Square One context:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/square-one/open', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        res.json({ success: true, openAudits: listSquareOneOpenAudits(store, { access: ctx.access }) });
+    } catch (error) {
+        console.error('API: Error listing open Square One audits:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/square-one/history', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const limit = Number(req.query.limit) || 50;
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        res.json({ success: true, history: listSquareOneInspectionHistory(store, { limit }) });
+    } catch (error) {
+        console.error('API: Error loading Square One history:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.delete('/api/square-one/session', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = deleteSquareOneOpenAudit(store, sessionId, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({
+            success: true,
+            deletedId: result.deletedId,
+            openAudits: listSquareOneOpenAudits(store, { access: ctx.access }),
+        });
+    } catch (error) {
+        console.error('API: Error deleting open Square One audit:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/square-one/start', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = createSquareOneSession(store, {
+            areaId: req.body?.areaId,
+            name: req.body?.name,
+            startSignatureDataUrl: req.body?.startSignatureDataUrl,
+            forceNew: Boolean(req.body?.forceNew),
+            clientMeta: req.body?.clientMeta,
+            createdByUsername: ctx.username,
+        });
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session, resumed: result.resumed });
+    } catch (error) {
+        console.error('API: Error starting Square One:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/square-one/session', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const session = getSquareOneSessionById(store, sessionId, req.query.periodKey);
+        if (!assertSquareOneSessionAccess(req, res, session)) return;
+        res.json({ success: true, session });
+    } catch (error) {
+        console.error('API: Error loading Square One session:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/square-one/report.pdf', async (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const session = getSquareOneSessionById(store, sessionId, req.query.periodKey);
+        if (!session || session.status !== 'completed') {
+            res.status(404).json({ success: false, error: 'Completed audit not found.' });
+            return;
+        }
+        const pdf = await buildSquareOneReportPdf(session);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename="${buildSquareOneReportFilename(session)}"`);
+        res.send(pdf);
+    } catch (error) {
+        console.error('API: Error building Square One PDF:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/square-one/reopen', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const existing = getSquareOneSessionById(store, sessionId, req.body?.periodKey);
+        if (!assertSquareOneSessionAccess(req, res, existing, { reopen: true })) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = reopenSquareOneSession(store, sessionId, req.body?.periodKey, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session });
+    } catch (error) {
+        console.error('API: Error reopening Square One:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/square-one/session', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const existing = getSquareOneSessionById(store, sessionId, req.body?.periodKey);
+        if (!assertSquareOneSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = updateSquareOneSession(
+            store,
+            sessionId,
+            {
+                periodKey: req.body?.periodKey,
+                answers: req.body?.answers,
+                notes: req.body?.notes,
+                photos: req.body?.photos,
+                signOff: req.body?.signOff,
+                clientMeta: req.body?.clientMeta,
+            },
+            ctx.access
+        );
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, session: result.session, nonCompliant: result.nonCompliant, score: result.score });
+    } catch (error) {
+        console.error('API: Error saving Square One session:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/square-one/session/validate-section', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || '').trim();
+        const sectionId = String(req.body?.sectionId || '').trim();
+        if (!store || !sessionId || !sectionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const existing = getSquareOneSessionById(store, sessionId, req.body?.periodKey);
+        if (!assertSquareOneSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = validateSquareOneSection(store, sessionId, sectionId, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('API: Error validating Square One section:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/square-one/submit', async (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        const sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
+        if (!store || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const existing = getSquareOneSessionById(store, sessionId, req.body?.periodKey);
+        if (!assertSquareOneSessionAccess(req, res, existing)) return;
+        const ctx = dfscRequestUserContext(req);
+        const result = submitSquareOneSession(store, sessionId, req.body?.signOff || {}, ctx.access);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        await dismissAuditLabelForStore(store, result.auditLabel || SQUARE_ONE_AUDIT_LABEL);
+        res.json({ success: true, session: result.session });
+    } catch (error) {
+        console.error('API: Error submitting Square One:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/tacaudit/context', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const ctx = dfscRequestUserContext(req);
+        res.json({
+            success: true,
+            ...getTacauditContext(store, {
+                username: ctx.username,
+                conductorFullName: ctx.conductorFullName,
+                canAccessDfsc: ctx.canAccessDfsc,
+                isAdmin: ctx.isAdmin,
+                canViewAdminSummary: canViewTacauditAdminSummary(ctx.user),
+            }),
+        });
+    } catch (error) {
+        console.error('API: Error loading Tacaudit context:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/tacaudit/admin-summary', async (req, res) => {
+    try {
+        const user = req.dashboardUser || getRequestUser(req);
+        if (!canViewTacauditAdminSummary(user)) {
+            res.status(403).json({ success: false, error: 'Admin or area access required.' });
+            return;
+        }
+
+        const store = String(req.query.store || '').trim();
+        let areaName = String(req.query.area || '').trim();
+        if (areaName) {
+            const resolved = resolveAreaFromAdminList(areaName);
+            if (resolved?.name) areaName = resolved.name;
+        }
+        if (!areaName && store) {
+            const cfg = getStoreConfig(store);
+            areaName = String(cfg?.area || '').trim();
+        }
+        if (!areaName && !store) {
+            const accessible = getAccessibleAreasForUser(user);
+            if (accessible.length === 1) {
+                areaName = accessible[0];
+            }
+        }
+        if (areaName && !isAdminUser(user) && !userCanAccessArea(user, areaName)) {
+            res.status(403).json({ success: false, error: 'You do not have access to this area.' });
+            return;
+        }
+
+        let stores = filterStoresForUser(user, buildStoresCfgWithAreas());
+        if (areaName) {
+            stores = storesForArea(areaName, stores);
+        }
+        if (!stores.length) {
+            res.status(404).json({ success: false, error: 'No stores in scope for this summary.' });
+            return;
+        }
+
+        const auditStateByStore = await loadAuditStateMapForStores(stores.map((s) => s.storeNumber));
+        const summary = buildTacauditAdminSummary(stores, auditStateByStore, { areaName });
+        res.json({ success: true, summary });
+    } catch (error) {
+        console.error('API: Error loading Tacaudit admin summary:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/tacaudit/settings', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        res.json({ success: true, settings: getTacauditSettings(store) });
+    } catch (error) {
+        console.error('API: Error loading Tacaudit settings:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/tacaudit/settings', (req, res) => {
+    try {
+        const store = String(req.body?.store || req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const result = saveTacauditSettings(store, { reportEmail: req.body?.reportEmail });
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, settings: result.settings });
+    } catch (error) {
+        console.error('API: Error saving Tacaudit settings:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/tacaudit/history', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const type = String(req.query.type || '').trim();
+        if (!store || !type || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const result = listTacauditHistory(store, type, { limit: req.query.limit });
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, ...result });
+    } catch (error) {
+        console.error('API: Error loading Tacaudit history:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/tacaudit/archive.pdf', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        const type = String(req.query.type || '').trim();
+        const sessionId = String(req.query.sessionId || '').trim();
+        if (!store || !type || !sessionId || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const pdfBuffer = getArchivePdf(store, type, sessionId);
+        if (!pdfBuffer) {
+            res.status(404).json({ success: false, error: 'Archived PDF not found.' });
+            return;
+        }
+        const cfg = getAuditTypeConfig(type);
+        const label = cfg?.label || type;
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${label}-${sessionId}.pdf"`);
+        res.send(pdfBuffer);
+    } catch (error) {
+        console.error('API: Error serving Tacaudit archive PDF:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/tacaudit/core-report.pdf', async (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        const { buffer, filename } = await buildCoreReportPdf(store);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.send(buffer);
+    } catch (error) {
+        console.error('API: Error generating Tacaudit CORE report:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.get('/api/admin/dfsc/status', (req, res) => {
     try {
         const user = req.dashboardUser || getRequestUser(req);
-        if (!isAdminUser(user)) {
-            res.status(403).json({ success: false, error: 'Admin only.' });
+        if (!isRealDashboardUser(user) || getOverviewScope(user) === 'store') {
+            res.status(403).json({ success: false, error: 'DFSC rollup is not available for this account.' });
             return;
         }
         const dateKey = String(req.query.date || '').trim() || undefined;
@@ -3040,47 +4790,14 @@ app.get('/api/admin/dfsc/audit/:sessionId', (req, res) => {
 
 app.get('/api/admin/overview/status', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
-    if (!isAdminUser(user)) {
-        res.status(403).json({ success: false, error: 'Admin only.' });
+    if (!isRealDashboardUser(user) || getOverviewScope(user) === 'store') {
+        res.status(403).json({ success: false, error: 'Overview status is not available for this account.' });
         return;
     }
     res.json({ success: true, salesUpdatedAt: getSalesUpdatedAt() });
 });
 
-app.get('/api/admin/overview', async (req, res) => {
-    try {
-        const user = req.dashboardUser || getRequestUser(req);
-        if (!isAdminUser(user)) {
-            res.status(403).json({ success: false, error: 'Admin only.' });
-            return;
-        }
-        let payload;
-        try {
-            payload = await getSalesDataCached();
-        } catch (error) {
-            payload = salesCache || buildCacheShellFromStoreList();
-        }
-        let stores = getStoreList().map((s) => ({
-            storeNumber: s.storeNumber,
-            storeName: s.storeName,
-            area: areaNameFromStore(s),
-            areaKey: normalizeAreaKey(areaNameFromStore(s)),
-            timeZone: s.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne',
-            openHour: s.openHour,
-            closeHour: s.closeHour,
-        }));
-        stores = filterStoresForUser(user, stores);
-        const areas = buildAreaGroups(stores);
-        res.json({
-            success: true,
-            salesUpdatedAt: getSalesUpdatedAt(),
-            ...buildAdminOverviewPayload(payload, areas),
-        });
-    } catch (error) {
-        console.error('API: Error loading admin overview:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
+app.get('/api/admin/overview', handleOverviewApi);
 
 app.post('/api/webauthn/login/options', async (req, res) => {
     try {
@@ -3209,7 +4926,6 @@ function buildStoresCfgWithAreas() {
 
 async function buildAreaDashboardPayload(areaParam, user, salesPayload, auditStateByStore) {
     const storesCfg = buildStoresCfgWithAreas();
-    const adminUser = isAdminUser(user);
 
     let areaStoresCfg = storesCfg.filter((s) => areaParamMatchesStore(areaParam, s));
     let areaMeta = areaStoresCfg.length
@@ -3217,14 +4933,16 @@ async function buildAreaDashboardPayload(areaParam, user, salesPayload, auditSta
         : null;
 
     if (!areaStoresCfg.length) {
-        if (!adminUser) {
-            return { error: `Unknown area: ${areaParam}`, status: 404 };
-        }
         const resolved = resolveAreaFromAdminList(areaParam);
         if (!resolved) {
             return { error: `Unknown area: ${areaParam}`, status: 404 };
         }
         areaMeta = resolved;
+        areaStoresCfg = storesCfg.filter((s) => s.area === resolved.name);
+    }
+
+    if (!userCanAccessArea(user, areaMeta?.name)) {
+        return { forbidden: true };
     }
 
     const allowedStores = filterStoresForUser(
@@ -3232,7 +4950,7 @@ async function buildAreaDashboardPayload(areaParam, user, salesPayload, auditSta
         areaStoresCfg.map((s) => ({ storeNumber: s.storeNumber, storeName: s.storeName }))
     ).map((s) => String(s.storeNumber));
     const filteredCfg = areaStoresCfg.filter((s) => allowedStores.includes(String(s.storeNumber)));
-    if (!filteredCfg.length && !adminUser) {
+    if (!filteredCfg.length) {
         return { forbidden: true };
     }
 
@@ -3378,12 +5096,17 @@ async function loadAuditStateMapForStores(storeNumbers) {
 app.get('/api/admin/area-sales', async (req, res) => {
     try {
         const user = req.dashboardUser || getRequestUser(req);
-        if (!isAdminUser(user)) {
-            return res.status(403).json({ success: false, error: 'Admin access required.' });
-        }
         const areaParam = String(req.query.area || '').trim();
         if (!areaParam) {
             return res.status(400).json({ success: false, error: 'Missing area query parameter.' });
+        }
+        if (!isSuperAdminUser(user) && !hasMultiStoreScope(user)) {
+            return res.status(403).json({ success: false, error: 'Area access required.' });
+        }
+        const resolvedArea = resolveAreaFromAdminList(areaParam);
+        const areaName = resolvedArea?.name || areaParam;
+        if (!userCanAccessArea(user, areaName)) {
+            return sendForbidden(req, res);
         }
 
         let payload;

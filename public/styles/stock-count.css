@@ -1,7 +1,15 @@
 /* Stock count entry — extends dashboard palette */
+html.page-scroll.stock-count-page {
+    height: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
 body.stock-count-page {
     margin: 0;
     min-height: 100vh;
+    height: auto;
+    overflow: visible;
     background: var(--grey, #f0ece8);
     color: var(--charcoal, #231e1f);
 }
@@ -34,6 +42,32 @@ body.stock-count-page {
     margin: 4px 0 0;
     font-size: 0.9rem;
     opacity: 0.85;
+}
+
+.stock-count-store-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.stock-count-store-picker-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.75;
+}
+
+.stock-count-store-select {
+    min-width: min(280px, 100%);
+    max-width: 100%;
+    padding: 8px 10px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    border: var(--cell-border, 2px solid) var(--blank-border, #c8c0bc);
+    background: var(--blank, #fff);
+    color: inherit;
 }
 
 .stock-count-back {
@@ -120,6 +154,45 @@ body.stock-count-page {
 .stock-count-loc-btn--done:not(.stock-count-loc-btn--active) {
     background: color-mix(in srgb, var(--blank) 18%, var(--dark-purple-border, #4b3a63));
     border-color: var(--dark-purple-border, #4b3a63);
+}
+
+.stock-count-credentials-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: max(24px, 4vh) 12px;
+    box-sizing: border-box;
+}
+
+.stock-count-panel--credentials {
+    width: min(520px, 100%);
+    text-align: center;
+}
+
+.stock-count-panel--credentials .stock-count-review-note {
+    padding: 18px 20px;
+    margin: 0;
+    text-align: center;
+}
+
+.stock-count-panel--credentials .stock-count-actions.stock-count-actions--credentials {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    width: 100%;
+    margin: 0;
+    padding: 0 20px 20px;
+    box-sizing: border-box;
+}
+
+.stock-count-panel--credentials .stock-count-actions.stock-count-actions--credentials .stock-count-btn,
+.stock-count-panel--credentials .stock-count-actions.stock-count-actions--credentials .stock-count-btn--link {
+    width: 100%;
+    min-height: 3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
 }
 
 .stock-count-panel {
@@ -325,6 +398,20 @@ body.stock-count-page {
     > .stock-count-grid-cell:nth-child(4) {
     grid-column: 3;
     grid-row: 2;
+}
+
+/* Combined grid rows — explicit cell height (table 1px trick does not apply) */
+.stock-count-table--combined.stock-count-table--connected .stock-count-grid-cell {
+    width: 100%;
+    height: var(--sc-slot-height);
+    min-height: var(--sc-slot-height);
+    border: none;
+    border-right: 1px solid color-mix(in srgb, var(--charcoal) 12%, var(--blank-border));
+    vertical-align: bottom;
+}
+
+.stock-count-table--combined.stock-count-table--connected .stock-count-grid-cell:last-child {
+    border-right: none;
 }
 
 .stock-count-grid-cell {
@@ -881,11 +968,38 @@ body.stock-count-page {
 /* Page scroll via html.page-scroll + page-scroll.css */
 body.stock-count-page #app {
     padding: 0;
+    height: auto;
+    min-height: 100%;
+    min-height: 100dvh;
+    overflow: visible;
 }
 
 @media (min-width: 901px) {
+    .stock-count {
+        width: min(1200px, 100%);
+    }
+
     .stock-count-panel {
         overflow: visible;
+    }
+
+    .stock-count-table--combined.stock-count-table--connected {
+        --sc-slot-height: 3.25rem;
+        --sc-input-height: 3.25rem;
+    }
+
+    .stock-count-table--combined.stock-count-table--connected .stock-count-grid-name {
+        font-size: 0.88rem;
+        padding: 8px 14px;
+        line-height: 1.3;
+    }
+
+    .stock-count-table--combined.stock-count-table--connected .stock-count-grid-vendor {
+        font-size: 0.68rem;
+    }
+
+    .stock-count-table--combined.stock-count-table--connected .stock-count-input {
+        font-size: 1.1rem;
     }
 }
 
@@ -1063,6 +1177,10 @@ body.stock-count-page #app {
     .stock-count-actions:not(:has(.stock-count-btn--mmx)) {
         grid-template-columns: 1fr;
     }
+
+    .stock-count-panel--credentials .stock-count-actions.stock-count-actions--credentials {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 /* Wide / landscape entry layout — everything except phone portrait */
@@ -1204,6 +1322,24 @@ body.stock-count-page #app {
     max-width: 420px;
 }
 
+.stock-count-processing-card--compact {
+    min-width: min(260px, 86vw);
+    max-width: 300px;
+    padding: 18px 22px 16px;
+    gap: 8px;
+}
+
+.stock-count-processing-card--compact h2 {
+    margin: 0;
+    font-size: 1.05rem;
+    line-height: 1.3;
+}
+
+.stock-count-processing-card--compact .stock-count-mmx-wait-body {
+    font-size: 0.88rem;
+    line-height: 1.4;
+}
+
 .stock-count-processing-card--fullscreen {
     width: 100%;
     max-width: none;
@@ -1235,6 +1371,18 @@ body.stock-count-page #app {
     line-height: 1.5;
     color: var(--charcoal, #231e1f);
     opacity: 0.9;
+}
+
+.daily-count-open-list {
+    margin: 0.75rem 0 1rem;
+    padding-left: 1.25rem;
+    font-size: 0.95rem;
+    line-height: 1.45;
+    color: var(--charcoal, #231e1f);
+}
+
+.daily-count-open-list li + li {
+    margin-top: 0.35rem;
 }
 
 .stock-count-processing-stage {

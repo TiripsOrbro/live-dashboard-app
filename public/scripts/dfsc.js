@@ -18,7 +18,6 @@ let timerInterval = null;
 let signaturePads = new Map();
 let expandedNotes = new Set();
 let expandedActions = new Set();
-const collapsedQuestionGroups = new Set();
 let landingView = 'start';
 let inspectionHistory = [];
 let historyDetailSession = null;
@@ -62,13 +61,13 @@ async function fetchJson(url, options = {}) {
     return data;
 }
 
-function micPath() {
-    return window.AppPaths?.micOverview?.() || '/MIC/Overview';
+function tacauditPath() {
+    return window.AppPaths?.tacaudit?.(STORE_NUMBER) || `/${STORE_NUMBER}/tacaudit`;
 }
 
 function mountBackNav() {
     window.DashboardNavBack?.mountBackButton(document.getElementById('dfsc-nav-back'), {
-        fallback: micPath(),
+        fallback: tacauditPath(),
         alwaysFallback: true,
     });
 }
@@ -331,6 +330,21 @@ function isAnswerEmpty(question, value) {
     return false;
 }
 
+const questionGroups = window.AuditQuestionGroupsUi.createController({ isAnswerEmpty });
+const {
+    collapsedGroups: collapsedQuestionGroups,
+    expandQuestionGroup,
+    autoCollapseCompletedGroups,
+    toggleQuestionGroup,
+    captureScrollAnchor,
+    restoreScrollAnchor,
+    renderGroupShell,
+    pageScrollY,
+    setPageScrollY,
+} = questionGroups;
+
+const AUTO_COLLAPSE_SKIP_SECTIONS = new Set(['actions', 'signOff']);
+
 function collectNonCompliant() {
     const out = [];
     for (const question of schema?.questions || []) {
@@ -425,7 +439,7 @@ function navigateToQuestionItem(item) {
     if (item.sectionIndex != null && item.sectionIndex >= 0) {
         currentSectionIndex = item.sectionIndex;
     }
-    expandQuestionGroup(item.questionId);
+    expandQuestionGroup(schema, item.questionId);
     renderQuestionArea({ scrollAnchorQuestionId: item.questionId });
     window.requestAnimationFrame(() => {
         const el = document.querySelector(`[data-question-id="${item.questionId}"]`);
@@ -766,174 +780,14 @@ function sectionProgress(sectionId) {
     return { answered, total, pct };
 }
 
-function questionGroupKey(sectionId, groupName) {
-    return `${sectionId}::${groupName}`;
-}
-
-function questionGroupDomId(groupKey) {
-    return `dfsc-grp-${groupKey.replace(/[^a-zA-Z0-9]+/g, '-')}`;
-}
-
-function groupProgress(questions) {
-    const items = questions.filter((q) => q.type !== 'banner');
-    const required = items.filter((q) => q.required);
-    const answered = required.filter((q) => !isAnswerEmpty(q, session.answers?.[q.id])).length;
-    return { answered, total: required.length };
-}
-
-function groupForQuestion(questionId) {
-    const question = (schema?.questions || []).find((q) => q.id === questionId);
-    return question?.group || null;
-}
-
-function expandQuestionGroup(questionId) {
-    const question = (schema?.questions || []).find((q) => q.id === questionId);
-    if (!question?.group) return;
-    collapsedQuestionGroups.delete(questionGroupKey(question.section, question.group));
-}
-
-function orderedQuestionGroups(sectionId) {
-    const groups = [];
-    for (const question of visibleQuestions(sectionId)) {
-        if (question.group && !groups.includes(question.group)) groups.push(question.group);
-    }
-    return groups;
-}
-
-function autoCollapseCompletedGroups(sectionId, activeQuestionId = null) {
-    if (!sectionId) return;
-    const activeGroup = activeQuestionId ? groupForQuestion(activeQuestionId) : null;
-    const groupOrder = orderedQuestionGroups(sectionId);
-    const activeGroupIndex = activeGroup ? groupOrder.indexOf(activeGroup) : -1;
-    const questions = visibleQuestions(sectionId);
-    let index = 0;
-    let groupIndex = 0;
-    while (index < questions.length) {
-        const question = questions[index];
-        if (!question.group) {
-            index += 1;
-            continue;
-        }
-        const groupName = question.group;
-        const groupQuestions = [];
-        while (index < questions.length && questions[index].group === groupName) {
-            groupQuestions.push(questions[index]);
-            index += 1;
-        }
-        const key = questionGroupKey(sectionId, groupName);
-        const progress = groupProgress(groupQuestions);
-        const complete = progress.total > 0 && progress.answered === progress.total;
-        const isFutureGroup = activeGroupIndex >= 0 && groupIndex > activeGroupIndex;
-
-        if (!complete) {
-            collapsedQuestionGroups.delete(key);
-            groupIndex += 1;
-            continue;
-        }
-        if (isFutureGroup) {
-            groupIndex += 1;
-            continue;
-        }
-        collapsedQuestionGroups.add(key);
-        groupIndex += 1;
-    }
-}
-
-function questionCardIsVisible(el) {
-    if (!el) return false;
-    const groupBody = el.closest('.dfsc-group-body');
-    if (groupBody?.hasAttribute('hidden')) return false;
-    return el.getBoundingClientRect().height > 0;
-}
-
-function scrollAnchorElement(snapshot) {
-    let el = document.querySelector(`[data-question-id="${CSS.escape(snapshot.questionId)}"]`);
-    if (el && questionCardIsVisible(el)) return el;
-    if (snapshot.groupKey) {
-        return document.querySelector(
-            `.dfsc-group[data-group-key="${CSS.escape(snapshot.groupKey)}"] .dfsc-subsection-toggle`
-        );
-    }
-    return el;
-}
-
-function pageScrollY() {
-    return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
-}
-
-function setPageScrollY(y) {
-    window.scrollTo(0, y);
-    document.documentElement.scrollTop = y;
-    document.body.scrollTop = y;
-}
-
-function captureScrollAnchor(questionId) {
-    if (!questionId) return null;
-    const el = document.querySelector(`[data-question-id="${CSS.escape(questionId)}"]`);
-    if (!el) return null;
-    const groupEl = el.closest('.dfsc-group');
-    const rect = el.getBoundingClientRect();
-    return {
-        questionId,
-        groupKey: groupEl?.dataset?.groupKey || null,
-        offsetTop: rect.top + pageScrollY(),
-        scrollY: pageScrollY(),
-    };
-}
-
-function restoreScrollAnchor(snapshot) {
-    if (!snapshot?.questionId) return;
-    const apply = () => {
-        if (Number.isFinite(snapshot.scrollY)) {
-            setPageScrollY(snapshot.scrollY);
-        }
-        const el = scrollAnchorElement(snapshot);
-        if (!el) return;
-        const nextOffset = el.getBoundingClientRect().top + pageScrollY();
-        const delta = nextOffset - snapshot.offsetTop;
-        if (Math.abs(delta) > 0.5) {
-            setPageScrollY(pageScrollY() + delta);
-        }
-    };
-    apply();
-    requestAnimationFrame(() => requestAnimationFrame(apply));
-}
-
 function renderQuestionGroupBlock(sectionId, groupName, groupQuestions) {
-    const key = questionGroupKey(sectionId, groupName);
-    const domId = questionGroupDomId(key);
-    const collapsed = collapsedQuestionGroups.has(key);
-    const progress = groupProgress(groupQuestions);
-    const complete = progress.total > 0 && progress.answered === progress.total;
-    return `
-        <div class="dfsc-group${collapsed ? ' is-collapsed' : ''}" data-group-key="${escapeHtml(key)}">
-            <button type="button" class="dfsc-subsection dfsc-subsection-toggle"
-                data-toggle-group="${escapeHtml(key)}"
-                aria-expanded="${collapsed ? 'false' : 'true'}"
-                aria-controls="${escapeHtml(domId)}">
-                <span class="dfsc-subsection-progress${complete ? ' is-complete' : ''}">${progress.answered}/${progress.total}</span>
-                <span class="dfsc-subsection-title">${escapeHtml(groupName)}</span>
-                <span class="dfsc-subsection-chevron" aria-hidden="true"></span>
-            </button>
-            <div class="dfsc-group-body" id="${escapeHtml(domId)}"${collapsed ? ' hidden' : ''}>
-                ${groupQuestions.map((question) => renderQuestion(question)).join('')}
-            </div>
-        </div>`;
-}
-
-function toggleQuestionGroup(groupKey) {
-    if (collapsedQuestionGroups.has(groupKey)) {
-        collapsedQuestionGroups.delete(groupKey);
-    } else {
-        collapsedQuestionGroups.add(groupKey);
-    }
-    const wrap = document.querySelector(`.dfsc-group[data-group-key="${CSS.escape(groupKey)}"]`);
-    const btn = wrap?.querySelector('[data-toggle-group]');
-    const body = wrap?.querySelector('.dfsc-group-body');
-    const collapsed = collapsedQuestionGroups.has(groupKey);
-    wrap?.classList.toggle('is-collapsed', collapsed);
-    btn?.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    body?.toggleAttribute('hidden', collapsed);
+    return renderGroupShell({
+        sectionId,
+        groupName,
+        groupQuestions,
+        session,
+        renderQuestion,
+    });
 }
 
 function toggleSectionSkip(groupId, checked) {
@@ -1882,8 +1736,14 @@ function renderQuestionArea({ scrollToTop = false, scrollAnchorQuestionId = null
     if (!section) return;
 
     const scrollAnchor = scrollAnchorQuestionId ? captureScrollAnchor(scrollAnchorQuestionId) : null;
-    if (!['actions', 'signOff'].includes(section.id)) {
-        autoCollapseCompletedGroups(section.id, scrollAnchorQuestionId || null);
+    if (!AUTO_COLLAPSE_SKIP_SECTIONS.has(section.id)) {
+        autoCollapseCompletedGroups({
+            sectionId: section.id,
+            activeQuestionId: scrollAnchorQuestionId || null,
+            schema,
+            session,
+            visibleQuestions,
+        });
     }
 
     const progress = sectionProgress(section.id);
@@ -2219,15 +2079,7 @@ function formatDuration(minutes) {
 }
 
 function renderLandingToolbar() {
-    return `
-        <div class="dfsc-landing-toolbar dfsc-landing-toolbar--actions">
-            <button type="button" class="dfsc-btn dfsc-btn-secondary dfsc-btn-toolbar" id="dfsc-core-report-btn">
-                Report for CORE
-            </button>
-            <button type="button" class="dfsc-btn dfsc-btn-secondary dfsc-btn-toolbar" id="dfsc-history-btn">
-                Inspection history
-            </button>
-        </div>`;
+    return '';
 }
 
 async function downloadCoreReport() {
@@ -2741,8 +2593,6 @@ function renderLandingView() {
     }, 30000);
 
     document.getElementById('dfsc-begin-btn').addEventListener('click', () => startSession(false));
-    document.getElementById('dfsc-core-report-btn')?.addEventListener('click', downloadCoreReport);
-    document.getElementById('dfsc-history-btn')?.addEventListener('click', openInspectionHistory);
     bindOpenAuditEvents();
     bindTodayCompletedEvents();
 
@@ -2857,7 +2707,11 @@ async function init() {
     }
     mountBackNav();
     try {
-        context = await fetchJson(apiUrl('/api/dfsc/context', { store: STORE_NUMBER }));
+        const [, contextData] = await Promise.all([
+            window.AuditPreferences?.init?.(),
+            fetchJson(apiUrl('/api/dfsc/context', { store: STORE_NUMBER })),
+        ]);
+        context = contextData;
         schema = context.schema;
 
         if (IS_AUDIT_VIEW || (await loadSessionFromQuery())) return;
@@ -2869,7 +2723,7 @@ async function init() {
             denied
                 ? 'DFSC is not available on shared store login accounts. Ask your manager to create a personal crew account for you.'
                 : err.message
-        )}</div><p style="margin-top:1rem;text-align:center"><a class="dfsc-btn dfsc-btn-secondary" href="${escapeHtml(window.AppPaths?.micOverview?.() || '/MIC/Overview')}">Back to MIC</a></p></div>`;
+        )}</div><p style="margin-top:1rem;text-align:center"><a class="dfsc-btn dfsc-btn-secondary" href="${escapeHtml(window.AppPaths?.overview?.() || '/overview')}">Back to MIC</a></p></div>`;
     }
 }
 

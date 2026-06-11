@@ -113,6 +113,24 @@ function parseBuildToPrefix(parts) {
     const first = String(parts[0] || '').trim();
     if (!first) return null;
 
+    const ohDaysPlus = first.match(/^oh:(\d{1,2})\+([\d.]+)$/i);
+    if (ohDaysPlus) {
+        const days = Number(ohDaysPlus[1]);
+        const add = Number(ohDaysPlus[2]);
+        if (days >= 1 && days <= 31 && Number.isFinite(add) && add >= 0) {
+            return {
+                buildToManual: false,
+                buildToOrderManual: false,
+                skipKeyItemCount: true,
+                skipStockCount: true,
+                buildToDays: days,
+                buildToAdd: add,
+                buildToFixed: null,
+                rest: parts.slice(1),
+            };
+        }
+    }
+
     const ohMatch = first.match(/^oh:(\d{1,2})$/i);
     if (ohMatch) {
         const days = Number(ohMatch[1]);
@@ -329,7 +347,7 @@ function parseStoreBuildToHint(part) {
     return null;
 }
 
-/** Optional trailing location token: order:FRG | order:DRY | order:FRZ | no-order */
+/** Optional trailing location token: order:FRG | order:DRY | order:FRZ | no-order | Key | Daily */
 function parseLocationPartHints(part) {
     const raw = String(part || '').trim();
     const orderClassMatch = raw.match(/^order:(FRG|DRY|FRZ)$/i);
@@ -338,6 +356,12 @@ function parseLocationPartHints(part) {
     }
     if (/^no-order$/i.test(raw)) {
         return { skipVendorOrder: true, isHint: true };
+    }
+    if (/^key$/i.test(raw)) {
+        return { includeKeyItem: true, isHint: true };
+    }
+    if (/^daily$/i.test(raw)) {
+        return { includeDaily: true, isHint: true };
     }
     return { isHint: false };
 }
@@ -436,6 +460,8 @@ function parseCatalogText(text, def) {
         const storeBuildTo = {};
         let mmxOrderClassOverride = '';
         let skipVendorOrder = false;
+        let includeDaily = false;
+        let includeKeyItemExplicit = false;
         for (const part of locationParts) {
             if (/^\d+(\.\d+)?$/.test(part)) {
                 innerPerCarton = Number(part);
@@ -451,6 +477,8 @@ function parseCatalogText(text, def) {
             if (hint.isHint) {
                 if (hint.mmxOrderClass) mmxOrderClassOverride = hint.mmxOrderClass;
                 if (hint.skipVendorOrder) skipVendorOrder = true;
+                if (hint.includeDaily) includeDaily = true;
+                if (hint.includeKeyItem) includeKeyItemExplicit = true;
                 continue;
             }
             locNames.push(part);
@@ -478,6 +506,8 @@ function parseCatalogText(text, def) {
             buildToFixed:
                 buildToFixed != null && Number.isFinite(buildToFixed) ? buildToFixed : null,
             storeBuildTo: Object.keys(storeBuildTo).length ? storeBuildTo : undefined,
+            includeDaily: Boolean(includeDaily),
+            includeKeyItemExplicit: Boolean(includeKeyItemExplicit),
         });
     }
 
@@ -564,6 +594,16 @@ function getVendorCatalog(slug, options = {}) {
             ...catalog,
             items: normalizeItems(countable),
             locations: buildCatalogLocations(countable, catalog.locationOrder, []),
+        };
+    }
+
+    if (options.forDailyCount) {
+        const dailyItems = catalog.items.filter((item) => !item.skipStockCount && item.includeDaily);
+        if (!dailyItems.length) return null;
+        return {
+            ...catalog,
+            items: normalizeItems(dailyItems),
+            locations: buildCatalogLocations(dailyItems, catalog.locationOrder, []),
         };
     }
 

@@ -6,9 +6,14 @@
 #   //              3806                //
 #   //||||||||||||||||||||||||||||||||||//
 #
-# access: * or all = Admin (all stores). Otherwise comma-separated store numbers = Store level.
+# access (4th line):
+#   * or all          = Super-admin (all stores; break-glass only)
+#   Market 1          = Market scope — all areas in that market (see config/markets.json)
+#   Area 22           = Area scope — stores in that area only
+#   3811              = Store scope — single-store MIC
+#   3806, 3811        = Store scope — multiple stores (comma-separated)
+#
 # Admin accounts can ONLY be created by editing this file — not via the dashboard UI.
-# Named admins: NicholasAntonello, ThomasRead, AshOwens
 #
 # Usernames are case-insensitive at login. Passwords are case-sensitive.
 # Passwords: use temporary plaintext for first sign-in only — users are prompted to
@@ -16,31 +21,37 @@
 # Or pre-hash with scripts/hash-dashboard-password.js if you do not want the first-login prompt.
 #
 # Password rules after first login:
-#   Admin (* access): 8+ chars, must include capital letter, special character, AND number.
-#   Store accounts:   8+ chars, must include at least ONE of capital, special, or number.
+#   Super-admin (* access): 8+ chars, must include capital letter, special character, AND number.
+#   Store accounts:         8+ chars, must include at least ONE of capital, special, or number.
 # Optional CB username (e.g. CB3811): same password and welcome name, opens the dashboard
 # with blue/yellow/red colours instead of green/yellow/red (colour-blind friendly).
 #
 # Store logins see two sign-in buttons: "Login to dashboard" and "Login as MIC".
-# Admin logins see a single Sign in button.
+# Market and area logins use the unified overview at /overview.
 
-# Admin — Nicholas Antonello
-NicholasAntonello |
-CBNicholasAntonello |
-changeme-admin-password |
-*
-
-# Admin — Thomas Read
-ThomasRead |
-CBThomasRead |
-changeme-admin-password |
-*
-
-# Admin — Ash Owens
+# Super-admin — Ash Owens (break-glass)
 AshOwens |
 CBAshOwens |
 changeme-admin-password |
 *
+
+# Market 1 — Nicholas Antonello
+NicholasAntonello |
+CBNicholasAntonello |
+changeme-market-password |
+Market 1
+
+# Area 22 — Thomas Read
+ThomasRead |
+CBThomasRead |
+changeme-area-password |
+Area 22
+
+# Area 22 — Tomas Read
+TomasRead |
+CBTomasRead |
+changeme-area-password |
+Area 22
 
 //||||||||||||||||||||||||||||||||||//
 //              3811                //
@@ -57,8 +68,3 @@ changeme-3811-password |
 CB3806 |
 changeme-3806-password |
 3806
-
-# Regional manager (multiple stores, Store level — not Admin)
-# regional |
-# changeme-regional |
-# 3806, 3808, 3811

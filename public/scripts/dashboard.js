@@ -154,6 +154,7 @@ async function applyAdminStoreSlice(storeNum) {
     updateGrid();
     updatePendingVendorsPanel();
     window.AdminStoreTabs?.updateActiveStore?.(STORE_NUMBER);
+    window.MicSettings?.setStoreContext?.({ storeNumber: STORE_NUMBER });
     return true;
 }
 
@@ -364,10 +365,77 @@ function stockCountPathForVendor(label) {
 /** One stock-count flow for all pending vendors (CombinedOrders branch). */
 function combinedStockCountPath() {
     if (!STORE_NUMBER) return null;
-    const visible = getVisiblePendingVendors();
+    return combinedStockCountPathForStore(STORE_NUMBER, pendingVendors);
+}
+
+function visiblePendingVendorsForList(list) {
+    const lastMondayMonth = isMelbourneLastMondayOfMonth();
+    return (Array.isArray(list) ? list : []).filter((v) => {
+        if (!lastMondayMonth && matchesLastMondayOnlyVendor(v)) return false;
+        return true;
+    });
+}
+
+function combinedStockCountPathForStore(storeNum, pendingList) {
+    const num = String(storeNum || '').trim().toLowerCase();
+    if (!num) return null;
+    const visible = visiblePendingVendorsForList(pendingList);
     const hasCountable = visible.some((name) => vendorHasStockCount(name));
-    if (!hasCountable) return null;
-    return `/${STORE_NUMBER}/stock-count/combined`;
+    if (!hasCountable) {
+        if (!isMelbourneMonday() && !isMelbourneLastMondayOfMonth()) return null;
+    }
+    return `/${num}/stock-count/combined`;
+}
+
+function adminStockCountPickerOptions() {
+    const options = [];
+    for (const [num, slice] of adminAreaSalesCache) {
+        const path = combinedStockCountPathForStore(num, slice.pendingVendors);
+        if (!path) continue;
+        const name = String(slice.storeName || num).trim();
+        const visible = visiblePendingVendorsForList(slice.pendingVendors || []);
+        let sub = 'Open stock count';
+        if (visible.length) {
+            sub = `${visible.length} vendor${visible.length === 1 ? '' : 's'} to count`;
+        } else if (isMelbourneMonday()) {
+            sub = 'Monday orders — open stock count';
+        } else if (isMelbourneLastMondayOfMonth()) {
+            sub = 'Monthly orders — open stock count';
+        }
+        options.push({
+            id: num,
+            label: name && name !== num ? `${num} — ${name}` : num,
+            sub,
+            href: path,
+        });
+    }
+    return options.sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
+}
+
+let adminStockCountPickerBound = false;
+
+function bindAdminStockCountPicker() {
+    if (adminStockCountPickerBound || !IS_ADMIN_AREA_DASHBOARD) return;
+    adminStockCountPickerBound = true;
+    document.addEventListener(
+        'click',
+        (event) => {
+            const link = event.target.closest('a.pending-vendor-chip--combined');
+            if (!link || !IS_ADMIN_AREA_DASHBOARD) return;
+            const options = adminStockCountPickerOptions();
+            if (options.length <= 1) return;
+            event.preventDefault();
+            window.AdminStorePicker?.open({
+                title: 'Select store',
+                hint: 'Choose a store to start stock count.',
+                options,
+                onPick: (_id, option) => {
+                    if (option?.href) window.location.assign(option.href);
+                },
+            });
+        },
+        true
+    );
 }
 
 /* -----------------------------------------------------------
@@ -380,6 +448,39 @@ const AUDIT_FALLBACK_ITEMS = [
     'Dining Room',
     'Restrooms',
 ];
+
+/** Weekly audits with an in-app form — chip links to the audit page instead of dismiss-only. */
+const AUDIT_FORM_ROUTES = {
+    'Pest Walk': (store) => `/${store}/pest-walk`,
+    'RGM Cleaning Checklist': (store) => `/${store}/rgm-cleaning`,
+    'Period Safety Inspection': (store) => `/${store}/psi`,
+};
+
+const CORE_WEEKLY_AUDIT_LABELS = new Set(Object.keys(AUDIT_FORM_ROUTES));
+
+function adminAreaNameForTacaudit() {
+    if (!ADMIN_AREA_CODE) return '';
+    const n = ADMIN_AREA_CODE.replace(/^A/i, '');
+    return n ? `Area ${n}` : '';
+}
+
+function auditFormPath(label) {
+    if (IS_ADMIN_STORE_DASHBOARD && STORE_NUMBER) {
+        const row = window.AppPaths?.tacauditRowForAuditLabel?.(label) || '';
+        return (
+            window.AppPaths?.tacauditAdminSummary?.({
+                area: adminAreaNameForTacaudit(),
+                row,
+            }) || null
+        );
+    }
+    const route = AUDIT_FORM_ROUTES[label];
+    if (route && STORE_NUMBER) return route(STORE_NUMBER);
+    if (STORE_NUMBER && label && !CORE_WEEKLY_AUDIT_LABELS.has(label)) {
+        return `/${STORE_NUMBER}/square-one`;
+    }
+    return null;
+}
 
 let cachedAuditSchedule = null;
 let auditPeriodKey = null;
@@ -2059,12 +2160,16 @@ function updateAuditsPanel() {
     const visible = getVisibleAudits();
     const html = visible.length
         ? visible
-              .map(
-                  (name) =>
-                      `<div class="audit-item"><button type="button" class="audit-chip" data-audit="${encodeURIComponent(
-                          name
-                      )}" aria-label="Mark ${escapeHtml(name)} as done">${escapeHtml(name)}</button></div>`
-              )
+              .map((name) => {
+                  const formPath = auditFormPath(name);
+                  if (formPath) {
+                      const auditAction = IS_ADMIN_STORE_DASHBOARD ? 'View' : 'Start';
+                      return `<div class="audit-item"><a class="audit-chip audit-chip--link" href="${escapeHtml(formPath)}" aria-label="${auditAction} ${escapeHtml(name)}">${escapeHtml(name)}</a></div>`;
+                  }
+                  return `<div class="audit-item"><button type="button" class="audit-chip" data-audit="${encodeURIComponent(
+                      name
+                  )}" aria-label="Mark ${escapeHtml(name)} as done">${escapeHtml(name)}</button></div>`;
+              })
               .join('')
         : '';
 
@@ -2114,6 +2219,7 @@ function updatePendingVendorsPanel() {
 
 function handleFooterChipDismissClick(e) {
     if (e.target.closest('a.pending-vendor-chip--link')) return;
+    if (e.target.closest('a.audit-chip--link')) return;
 
     const aBtn = e.target.closest('button.audit-chip');
     if (aBtn && !aBtn.classList.contains('audit-chip--dismissing')) {
@@ -2188,6 +2294,7 @@ function bindDashboardSettings() {
     window.MicSettings.bind({
         getViewAccountsOptions: () => (IS_ADMIN_STORE_DASHBOARD ? { isAdmin: true } : {}),
         resolveViewAccountsVisibility: !IS_ADMIN_STORE_DASHBOARD,
+        storeNumber: STORE_NUMBER || '',
     });
 }
 
@@ -2198,6 +2305,7 @@ function renderDashboardSettingsChrome() {
         ${window.MicSettings.renderPanel({
             viewAccountsHidden: !IS_ADMIN_STORE_DASHBOARD,
             darkModeHint: 'Dark background on dashboard pages that support it.',
+            storeNumber: STORE_NUMBER || '',
         })}
     `;
 }
@@ -2352,7 +2460,7 @@ function renderDashboard() {
                 <div class="rotate-hint-icon" aria-hidden="true">↻</div>
                 <h2>Rotate to landscape</h2>
                 <p>The sales grid is built for a wide view. Turn your phone sideways for the best layout.</p>
-                <a class="rotate-hint-back" href="${IS_ADMIN_STORE_DASHBOARD ? (window.AppPaths?.adminOverview?.() || '/Admin/Overview') : '/'}">← ${
+                <a class="rotate-hint-back" href="${IS_ADMIN_STORE_DASHBOARD ? (window.AppPaths?.overview?.() || '/overview') : '/'}">← ${
                     IS_ADMIN_STORE_DASHBOARD ? 'Admin overview' : 'All stores'
                 }</a>
             </div>
@@ -2486,12 +2594,12 @@ function renderDashboard() {
             });
         } else if (isMicStoreEntry) {
             window.DashboardNavBack.mountBackButton(document.getElementById('dashboard-nav-back'), {
-                fallback: window.AppPaths?.micOverview?.() || '/MIC/Overview',
+                fallback: window.AppPaths?.overview?.() || '/overview',
                 alwaysFallback: true,
             });
         } else if (!isKioskEntry) {
             window.DashboardNavBack.mountBackButton(document.getElementById('dashboard-nav-back'), {
-                fallback: '/stores',
+                fallback: window.AppPaths?.overview?.() || '/overview',
                 alwaysFallback: true,
                 fadeToStores: true,
             });
@@ -2677,6 +2785,7 @@ function initMobileLandscape() {
     lastPortraitLayout = isPortraitMobileView();
     applyDashboardScale();
     renderDashboard();
+    bindAdminStockCountPicker();
     if (IS_ADMIN_AREA_DASHBOARD) {
         showGridSkeleton();
         try {

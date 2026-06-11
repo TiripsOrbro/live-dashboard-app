@@ -7,16 +7,16 @@
 # --- Freezer (13 items) ---
 12        | 40109  | FRIES SUPERCRISP 6X2KG                         | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use |
 10        | 37597  | TB CHURROS MINI 72EA                           | Boxes | N/a     | Each | Freezer | N/a     | N/a  | In Use |
-13        | 39520  | TB MEAT BEEF COOKED                            | Boxes | Bags    | KGs  | Freezer | Fridge  | N/a  | In Use |
-10        | 39867A | TB MEAT CHICKEN COOKED 10X900G                 | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use |
+13        | 39520  | TB MEAT BEEF COOKED                            | Boxes | Bags    | KGs  | Freezer | Fridge  | Carryover | In Use | Key | Daily
+10        | 39867A | TB MEAT CHICKEN COOKED 10X900G                 | Boxes | Bags    | KGs  | Freezer | Carryover | N/a  | In Use | Key | Daily
 10        | 40303  | TB CHICKEN CRISPY 5X1EA                        | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use | 6
 13        | 37925  | TB TORTILLA FLOUR 12INCH 12x12EA               | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
 13        | 37923  | TB TORTILLA FLOUR 10.25INCH 12x12EA            | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
 13        | 37927  | TB TORTILLA FLOUR 6.5INCH 24x12EA              | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
 13        | 37928  | TB FLATBREAD 12x12EA                           | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
 13        | 37891  | TB TORTILLA CORN 6 INCH                        | Boxes | Bags    | Each | Freezer | Fridge  | N/a  | In Use | 
-10        | 38240  | TB BEANS BLACK COOKED 12X1KG                   | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use |
-10        | 14701  | GUACAMOLE 6x1.5KG                              | Boxes | Bags    | KGs  | Freezer | Fridge  | N/a  | In Use |
+10        | 38240  | TB BEANS BLACK COOKED 12X1KG                   | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use | Key | Daily
+10        | 14701  | GUACAMOLE 6x1.5KG                              | Boxes | Bags    | KGs  | Freezer | Fridge  | N/a  | In Use | Key | Daily
 13        | 39009  | TB CHIP NACHO 4.5KG                            | Boxes | N/a     | KGs  | Freezer | Fridge  | N/a  | In Use |
 
 # --- Fridge (MMX FRIDGE tab) — travel-path / Key Item Count ---
@@ -24,12 +24,12 @@
 10        | 38493  | TB SAUCE CHIPOTLE MAYO 15X1KG                  | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 10        | 38722  | TB SAUCE CREAMY JALAPENO 10X1KG                | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 10        | 38701  | TB LAVA SAUCE 10X1KG                           | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
-10        | 37876  | TB CHEESE 4 BLEND 6X2KG                        | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
+10        | 37876  | TB CHEESE 4 BLEND 6X2KG                        | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use | Key | Daily
 10        | 37911  | TB CHEESE CHEDD ANGEL HAIR/SFINE SHRED 6x2KG   | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
-10        | 37909  | TB SAUCE NACHO CHEESE 6X1.8KG                  | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
+10        | 37909  | TB SAUCE NACHO CHEESE 6X1.8KG                  | Boxes | Bags    | KGs  | N/a     | Fridge  | Carryover | In Use | Key | Daily
 10        | 37013  | TB SAUCE PICO DE GALLO 12X500GM                | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
 10        | 100457 | SAUCE FIRE 10X1KG                              | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
-10        | 37870  | TB SAUCE CHILLI MILD 10X1KG                    | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
+10        | 37870  | TB SAUCE CHILLI MILD 10X1KG                    | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use | Key | Daily
 
 # --- Fridge oh:10 — ISE × 10 build-to; SOH/SOO; not on Key Item Count ---
 oh:10     | 38088  | DESSERT CHOCETTES 2X2.5KG                      | Boxes | Bags    | KGs  | N/a     | Fridge  | N/a  | In Use |
@@ -56,7 +56,7 @@ oh:10     | 37991  | TB BAG TAKEAWAY BROWN LARGE 250EA              | Boxes | N/
 oh:10     | 39943A | TB BAG CHIP REGULAR 3000EA                     | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 39944A | TB BAG CHIPS LARGE / NACHO CHIPS REGULAR       | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 39942  | TB BAG CRUNCHWRAP 2000EA                       | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
-oh:10     | 40014  | TB BOX CANTINA 200EA                           | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
+oh:10+1   | 40014  | TB BOX CANTINA 200EA                           | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 38892  | TB BIG BELL BOX 250EA                          | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    | 3811=+2
 oh:10     | 39744  | TB DIPPING CUP 60ML 1000EA                     | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 39746  | TB LID CLEAR 60ML DIPPING CUP 1000EA           | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |

@@ -211,41 +211,6 @@
         };
     }
 
-    function getDayTotalPresentation(forecasts, actuals, ctx) {
-        const dayForecast = sumHourSlice(forecasts, 0, forecasts.length);
-        const dayActual = sumHourSlice(actuals, 0, actuals.length);
-        const { hour, minute, second } = zoneHourMinuteSecond(ctx.timeZone);
-        const nowHourFloat = hour + minute / 60 + second / 3600;
-        const mainClass = dayForecast > 0 ? getActualCellClass(dayActual, dayForecast) : 'cell-green';
-
-        if (nowHourFloat < ctx.lunchWallStart) {
-            return { phase: 'before', cellClass: '', liveLayersHtml: '', outcomeBorderColor: '' };
-        }
-
-        const hourProgress = getCurrentHourProgress(ctx.openHour, ctx.hourCount, ctx.timeZone);
-        const expectedSoFar = getPeriodExpectedSoFarSlice(forecasts, 0, forecasts.length, hourProgress);
-        const actualSoFar = getPeriodActualSoFarSlice(actuals, 0, actuals.length, hourProgress);
-        const elapsed = dayForecast > 0 ? expectedSoFar / dayForecast : 0;
-        const paceClass =
-            dayForecast <= 0
-                ? 'cell-green'
-                : expectedSoFar <= 0
-                  ? 'cell-green'
-                  : getPaceClass(actualSoFar, dayForecast, elapsed);
-
-        const wallPct = Math.round(getWallClockPeriodProgress(ctx.lunchWallStart, ctx.closeHour, ctx.timeZone) * 1000) / 10;
-        const fillPct = nowHourFloat >= ctx.closeHour ? 100 : wallPct;
-        const phase = nowHourFloat >= ctx.closeHour ? 'after' : 'during';
-        const liveLayersHtml = buildLiveProgressLayersHtml(fillPct, mainClass, paceClass);
-
-        return {
-            phase,
-            cellClass: phase === 'after' ? mainClass : '',
-            liveLayersHtml,
-            outcomeBorderColor: paceBorderMap[mainClass] || 'var(--blank-border)',
-        };
-    }
-
     function portraitSummaryItemStatusClass(pres, actual, forecast) {
         if (pres?.liveLayersHtml) return '';
         if (pres?.phase === 'before' || pres?.phase === 'during') return '';
@@ -257,13 +222,10 @@
     function buildPortraitSummaryItem(label, actual, forecast, pres = null, extraClass = '') {
         const liveHtml = pres?.liveLayersHtml || '';
         const statusClass = portraitSummaryItemStatusClass(pres, actual, forecast);
-        const borderStyle = pres?.outcomeBorderColor
-            ? ` style="border: var(--cell-border) ${pres.outcomeBorderColor}"`
-            : '';
         return `
             <div class="portrait-summary-item ${extraClass}">
                 <div class="portrait-summary-item-label">${label}</div>
-                <div class="portrait-summary-item-values ${statusClass}${liveHtml ? ' portrait-summary-item-values--live' : ''}"${borderStyle}>
+                <div class="portrait-summary-item-values ${statusClass}${liveHtml ? ' portrait-summary-item-values--live' : ''}">
                     ${liveHtml}
                     <div class="portrait-summary-item-amount">${formatCurrency(actual)} / ${formatCurrency(forecast)}</div>
                 </div>
@@ -324,13 +286,10 @@
     function buildMobileMealRow({ label, actual, forecast, pres }) {
         const liveHtml = pres?.liveLayersHtml || '';
         const statusClass = portraitSummaryItemStatusClass(pres, actual, forecast);
-        const borderStyle = pres?.outcomeBorderColor
-            ? ` style="border-color: ${pres.outcomeBorderColor}"`
-            : '';
         return `
             <div class="mic-meal-total-row">
                 <div class="mic-meal-total-label">${label}</div>
-                <div class="mic-meal-total-bar ${statusClass}${liveHtml ? ' mic-meal-total-bar--live' : ''}"${borderStyle}>
+                <div class="mic-meal-total-bar ${statusClass}${liveHtml ? ' mic-meal-total-bar--live' : ''}">
                     ${liveHtml}
                     <span class="mic-meal-total-amount">${formatCurrency(actual)} <span class="mic-meal-total-sep">/</span> ${formatCurrency(forecast)}</span>
                 </div>
@@ -346,8 +305,6 @@
         const lunchActual = sumHourSlice(actuals, 0, ctx.partLunchEnd);
         const dinnerForecast = sumHourSlice(forecasts, ctx.partLunchEnd, ctx.times.length);
         const dinnerActual = sumHourSlice(actuals, ctx.partLunchEnd, ctx.times.length);
-        const dayForecast = sumHourSlice(forecasts, 0, ctx.times.length);
-        const dayActual = sumHourSlice(actuals, 0, ctx.times.length);
 
         return {
             ctx,
@@ -382,12 +339,6 @@
                         ctx
                     ),
                 },
-                {
-                    label: 'Day Total',
-                    actual: dayActual,
-                    forecast: dayForecast,
-                    pres: getDayTotalPresentation(forecasts, actuals, ctx),
-                },
             ],
         };
     }
@@ -398,7 +349,7 @@
             return '<p class="mic-mini-dashboard-empty">Waiting for sales data</p>';
         }
         return `
-            <div class="mic-meal-totals" role="region" aria-label="Lunch, dinner and day totals">
+            <div class="mic-meal-totals" role="region" aria-label="Lunch and dinner totals">
                 ${data.summaries.map((row) => buildMobileMealRow(row)).join('')}
             </div>`;
     }
@@ -437,7 +388,7 @@
             .join('');
 
         return `
-            <div class="portrait-summary-box" role="region" aria-label="Lunch, dinner and day totals">
+            <div class="portrait-summary-box" role="region" aria-label="Lunch and dinner totals">
                 ${summaries
                     .map((row) =>
                         buildPortraitSummaryItem(row.label, row.actual, row.forecast, row.pres)
@@ -450,10 +401,78 @@
             ${hourRows}`;
     }
 
+    function renderMobileHourlyWindow(salesToday = {}, { before = 2, after = 1, allHours = false } = {}) {
+        const data = computeMealSummaries(salesToday);
+        if (!data) return '';
+
+        const { forecasts, actuals, ctx } = data;
+        const hourProgress = getCurrentHourProgress(ctx.openHour, ctx.hourCount, ctx.timeZone);
+        const lastIndex = ctx.times.length - 1;
+        let startIdx;
+        let endIdx;
+        if (allHours) {
+            startIdx = 0;
+            endIdx = ctx.times.length;
+        } else {
+            let focusIndex = hourProgress.hourIndex;
+            if (focusIndex < 0) focusIndex = 0;
+            if (focusIndex > lastIndex) focusIndex = lastIndex;
+            startIdx = Math.max(0, focusIndex - before);
+            endIdx = Math.min(ctx.times.length, focusIndex + after + 1);
+        }
+        const hourRows = ctx.times
+            .slice(startIdx, endIdx)
+            .map((time, offset) => {
+                const index = startIdx + offset;
+                const forecastCell = buildHourlyDataCell({
+                    index,
+                    hourProgress,
+                    forecast: forecasts[index],
+                    actual: actuals[index],
+                    displayValue: forecasts[index],
+                    portraitPastLive: true,
+                });
+                const actualCell = buildHourlyDataCell({
+                    index,
+                    hourProgress,
+                    forecast: forecasts[index],
+                    actual: actuals[index],
+                    displayValue: actuals[index],
+                    portraitPastLive: true,
+                });
+                const isCurrent = index === hourProgress.hourIndex;
+                return `
+                    <div class="mic-mobile-hour-row${isCurrent ? ' mic-mobile-hour-row--current' : ''}">
+                        <div class="mic-mobile-hour-time">${time}</div>
+                        ${actualCell}
+                        ${forecastCell}
+                    </div>`;
+            })
+            .join('');
+
+        return `
+            <div class="mic-mobile-hourly${allHours ? ' mic-mobile-hourly--scroll' : ''}" role="region" aria-label="Today's hourly sales">
+                <div class="mic-mobile-hourly-head">
+                    <span>Time</span>
+                    <span>Actual</span>
+                    <span>Forecast</span>
+                </div>
+                <div class="mic-mobile-hourly-body">
+                    ${hourRows}
+                </div>
+            </div>`;
+    }
+
+    function getTradingHourCount(salesToday = {}) {
+        return buildContext(salesToday).hourCount;
+    }
+
     window.MicMiniDashboard = {
         renderPortraitGrid,
         renderMobileMealTotals,
+        renderMobileHourlyWindow,
         resolveHourly,
         trimHourlyToTradingWindow,
+        getTradingHourCount,
     };
 })();

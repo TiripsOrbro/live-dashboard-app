@@ -32,6 +32,9 @@ const DEFAULT_CONFIG = {
     url: 'https://tacobellau.macromatix.net/MMS_Stores_StockCount.aspx?MenuCustomItemID=156',
     countTypeValue: '0',
     countTypeText: 'Key Item Count',
+    dailyCountTypeValue: '1',
+    dailyCountTypeText: 'Daily',
+    deleteCountButtonId: 'ctl00_ph_ButtonDelete',
     /** Dashboard storage location → MMX tab label. */
     locationTabMap: {
         Freezer: 'FREEZER',
@@ -498,8 +501,10 @@ async function openNewCountTab(page, cfg) {
     await waitForNewCountPanel(page, cfg);
 }
 
-async function selectCountType(page, cfg) {
+async function selectCountType(page, cfg, typeOverride = null) {
     const selId = cfg.countTypeSelectId;
+    const value = typeOverride?.value ?? cfg.countTypeValue;
+    const text = typeOverride?.text ?? cfg.countTypeText;
     await page.evaluate(
         ({ id, value, text }) => {
             const sel = document.getElementById(id);
@@ -516,9 +521,35 @@ async function selectCountType(page, cfg) {
             sel.selectedIndex = idx;
             sel.dispatchEvent(new Event('change', { bubbles: true }));
         },
-        { id: selId, value: cfg.countTypeValue, text: cfg.countTypeText }
+        { id: selId, value, text }
     );
     await waitForEnabledButton(page, cfg.createCountButtonId, 10000);
+}
+
+function countTypeConfig(cfg, kind = 'key-item') {
+    if (kind === 'daily') {
+        return {
+            value: cfg.dailyCountTypeValue ?? DEFAULT_CONFIG.dailyCountTypeValue,
+            text: cfg.dailyCountTypeText ?? DEFAULT_CONFIG.dailyCountTypeText,
+        };
+    }
+    return {
+        value: cfg.countTypeValue ?? DEFAULT_CONFIG.countTypeValue,
+        text: cfg.countTypeText ?? DEFAULT_CONFIG.countTypeText,
+    };
+}
+
+function countTitleMatchesType(cfg, optionText, kind = 'key-item') {
+    const want = String(countTypeConfig(cfg, kind).text || '')
+        .trim()
+        .toLowerCase();
+    const text = String(optionText || '')
+        .trim()
+        .toLowerCase();
+    if (kind === 'daily') {
+        return text.includes('daily');
+    }
+    return text.includes(want) || text.includes('key item');
 }
 
 async function clickButtonById(page, id, options = {}) {
@@ -636,11 +667,25 @@ async function selectInProgressCountOption(page, cfg, optionValue) {
 }
 
 function isKeyItemCountOption(cfg, optionText) {
-    const want = String(cfg.countTypeText || DEFAULT_CONFIG.countTypeText).trim().toLowerCase();
-    return String(optionText || '')
-        .trim()
-        .toLowerCase()
-        .includes(want);
+    return countTitleMatchesType(cfg, optionText, 'key-item');
+}
+
+async function listOpenCounts(page, cfg) {
+    if (!(await openCountInProgressTab(page, cfg))) return [];
+    const options = await listInProgressCountOptions(page, cfg);
+    const open = [];
+    for (const opt of options) {
+        await selectInProgressCountOption(page, cfg, opt.value);
+        const status = await readCountStatus(page, cfg);
+        if (!/^open$/i.test(status)) continue;
+        open.push({
+            value: opt.value,
+            batch: await readBatchNumber(page, cfg),
+            status,
+            countTitle: opt.text,
+        });
+    }
+    return open;
 }
 
 async function findOpenKeyItemCount(page, cfg) {
@@ -666,30 +711,27 @@ async function findOpenKeyItemCount(page, cfg) {
     return null;
 }
 
-async function ensureKeyItemCountEditable(page, cfg, { onPipelineStep } = {}) {
-    await waitForStockCountPageReady(page, cfg);
-
-    if (onPipelineStep) await onPipelineStep('Checking for existing Key Item Count');
-
-    const onInProgress = await openCountInProgressTab(page, cfg);
-    if (onInProgress) {
-        const openCount = await findOpenKeyItemCount(page, cfg);
-        if (openCount) {
-            log.info(
-                `Using in-progress Key Item Count batch ${openCount.batch} (status: ${openCount.status}) — ${openCount.countTitle}`
-            );
-            if (onPipelineStep) {
-                const batch = openCount.batch ? ` (batch ${openCount.batch})` : '';
-                await onPipelineStep(`Resuming existing Key Item Count${batch}`);
-            }
-            return { mode: 'in-progress', ...openCount };
-        }
-        log.info('Count in Progress tab — no open Key Item Count batch found');
-    } else {
-        log.info('Count in Progress tab unavailable — will create a new Key Item Count');
+async function deleteInProgressCount(page, cfg, optionValue) {
+    if (!(await openCountInProgressTab(page, cfg))) {
+        throw new Error('Count in Progress panel is not available.');
     }
+    if (optionValue != null && optionValue !== '') {
+        await selectInProgressCountOption(page, cfg, optionValue);
+    }
+    const deleteId = cfg.deleteCountButtonId || DEFAULT_CONFIG.deleteCountButtonId;
+    const enabled = await page.evaluate((id) => {
+        const el = document.getElementById(id);
+        return Boolean(el && !el.disabled && el.offsetParent !== null);
+    }, deleteId);
+    if (!enabled) {
+        throw new Error('Delete is not available for the selected count.');
+    }
+    log.info(`Deleting in-progress stock count via #${deleteId}`);
+    await clickButtonById(page, deleteId);
+    await page.waitForTimeout(1500);
+}
 
-    log.info('No open Key Item Count found — starting new count');
+async function createNewCountBatch(page, cfg, { countKind = 'key-item', onPipelineStep } = {}) {
     if (onPipelineStep) await onPipelineStep('Starting new count…');
     await openNewCountTab(page, cfg);
     if (!(await isNewCountPanelReady(page, cfg))) {
@@ -699,10 +741,11 @@ async function ensureKeyItemCountEditable(page, cfg, { onPipelineStep } = {}) {
             cfg.countTypeSelectId
         );
         throw new Error(
-            `New Count panel did not load (Key Item Count type missing). Count type select present: ${hasCountSelect}. Tabs seen: ${visible.join(', ') || 'none'}`
+            `New Count panel did not load. Count type select present: ${hasCountSelect}. Tabs seen: ${visible.join(', ') || 'none'}`
         );
     }
-    await selectCountType(page, cfg);
+    const typeCfg = countTypeConfig(cfg, countKind);
+    await selectCountType(page, cfg, typeCfg);
     const batchId = cfg.batchNumberInputId || DEFAULT_CONFIG.batchNumberInputId;
     await clickButtonById(page, cfg.createCountButtonId);
     await page
@@ -717,12 +760,90 @@ async function ensureKeyItemCountEditable(page, cfg, { onPipelineStep } = {}) {
         mode: 'created',
         batch: await readBatchNumber(page, cfg),
         status: await readCountStatus(page, cfg),
-        countTitle: await readSelectedCountTitle(page, cfg),
+        countTitle: typeCfg.text,
+        countKind,
     };
     log.info(
-        `Created Key Item Count batch ${created.batch || '(pending)'} (status: ${created.status || 'open'})`
+        `Created ${typeCfg.text} batch ${created.batch || '(pending)'} (status: ${created.status || 'open'})`
     );
     return created;
+}
+
+/**
+ * Open, resume, delete, or create a Macromatix stock count batch.
+ */
+async function ensureCountEditable(page, cfg, { countKind = 'key-item', resolution = 'create', openBatchValue, onPipelineStep } = {}) {
+    await waitForStockCountPageReady(page, cfg);
+
+    if (onPipelineStep) await onPipelineStep('Checking for existing counts');
+
+    if (resolution === 'overwrite') {
+        if (!openBatchValue) {
+            const openCounts = await listOpenCounts(page, cfg);
+            if (!openCounts.length) {
+                throw new Error('No open count to overwrite.');
+            }
+            const picked = openCounts[0];
+            await selectInProgressCountOption(page, cfg, picked.value);
+            log.info(`Resuming open count batch ${picked.batch} — ${picked.countTitle}`);
+            if (onPipelineStep) {
+                const batch = picked.batch ? ` (batch ${picked.batch})` : '';
+                await onPipelineStep(`Resuming existing count${batch}`);
+            }
+            return { mode: 'in-progress', ...picked, countKind };
+        }
+        await openCountInProgressTab(page, cfg);
+        await selectInProgressCountOption(page, cfg, openBatchValue);
+        const status = await readCountStatus(page, cfg);
+        const batch = await readBatchNumber(page, cfg);
+        const countTitle = await readSelectedCountTitle(page, cfg);
+        log.info(`Resuming selected count batch ${batch} (${status}) — ${countTitle}`);
+        return { mode: 'in-progress', value: openBatchValue, batch, status, countTitle, countKind };
+    }
+
+    if (resolution === 'delete') {
+        const openCounts = await listOpenCounts(page, cfg);
+        if (openCounts.length) {
+            const target = openBatchValue
+                ? openCounts.find((row) => String(row.value) === String(openBatchValue)) || openCounts[0]
+                : openCounts[0];
+            if (onPipelineStep) await onPipelineStep('Deleting old count…');
+            await deleteInProgressCount(page, cfg, target.value);
+        }
+        return createNewCountBatch(page, cfg, { countKind, onPipelineStep });
+    }
+
+    if (countKind === 'key-item') {
+        const onInProgress = await openCountInProgressTab(page, cfg);
+        if (onInProgress) {
+            const openCount = await findOpenKeyItemCount(page, cfg);
+            if (openCount) {
+                log.info(
+                    `Using in-progress Key Item Count batch ${openCount.batch} (status: ${openCount.status}) — ${openCount.countTitle}`
+                );
+                if (onPipelineStep) {
+                    const batch = openCount.batch ? ` (batch ${openCount.batch})` : '';
+                    await onPipelineStep(`Resuming existing Key Item Count${batch}`);
+                }
+                return { mode: 'in-progress', ...openCount, countKind: 'key-item' };
+            }
+            log.info('Count in Progress tab — no open Key Item Count batch found');
+        } else {
+            log.info('Count in Progress tab unavailable — will create a new Key Item Count');
+        }
+    } else {
+        const openCounts = await listOpenCounts(page, cfg);
+        if (openCounts.length) {
+            throw new Error('An open count already exists — choose Overwrite or Delete old count.');
+        }
+    }
+
+    log.info(`No open ${countKind} count found — starting new count`);
+    return createNewCountBatch(page, cfg, { countKind, onPipelineStep });
+}
+
+async function ensureKeyItemCountEditable(page, cfg, { onPipelineStep } = {}) {
+    return ensureCountEditable(page, cfg, { countKind: 'key-item', resolution: 'create', onPipelineStep });
 }
 
 async function scrapeCountGrid(page) {
@@ -1721,7 +1842,10 @@ async function enterCombinedStockCount(page, opts) {
         await waitForStockCountPageReady(page, cfg);
     }
 
-    const countMode = await ensureKeyItemCountEditable(page, cfg, {
+    const countMode = await ensureCountEditable(page, cfg, {
+        countKind: opts.countKind || 'key-item',
+        resolution: opts.countResolution || 'create',
+        openBatchValue: opts.openBatchValue,
         onPipelineStep: opts.onPipelineStep,
     });
 
@@ -1847,6 +1971,13 @@ module.exports = {
     enterCombinedStockCount,
     enterVendorStockCount,
     ensureKeyItemCountEditable,
+    ensureCountEditable,
+    listOpenCounts,
+    deleteInProgressCount,
+    createNewCountBatch,
+    countTypeConfig,
+    openCountInProgressTab,
+    listInProgressCountOptions,
     openKeyItemCountForVerification,
     verifyKeyItemCountCatalog,
     scrapeCountGrid,

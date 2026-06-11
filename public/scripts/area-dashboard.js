@@ -58,7 +58,7 @@ function mountAdminNavBack() {
     host.id = 'area-admin-nav-back';
     header.prepend(host);
     window.DashboardNavBack.mountBackButton(host, {
-        fallback: window.AppPaths?.adminOverview?.() || '/Admin/Overview',
+        fallback: window.AppPaths?.overview?.() || '/overview',
         alwaysFallback: true,
     });
 }
@@ -148,7 +148,7 @@ function adminStoreHref(storeNumber) {
     const num = String(storeNumber || '').replace(/[^0-9]/g, '');
     return num
         ? window.AppPaths?.adminStore?.(num) || `/Admin/${encodeURIComponent(num)}`
-        : window.AppPaths?.adminOverview?.() || '/Admin/Overview';
+        : window.AppPaths?.overview?.() || '/overview';
 }
 
 function syncFooterGridColumns(dashboards) {

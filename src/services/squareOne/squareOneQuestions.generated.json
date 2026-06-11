@@ -1,0 +1,898 @@
+{
+  "areas": [
+    {
+      "file": "Square One  Week 1 Dining Room.pdf",
+      "id": "dining-room",
+      "dashboardLabel": "Dining Room",
+      "week": 1,
+      "title": "Dining Room",
+      "questions": [
+        {
+          "id": "detail_clean_dining_room_and_patio_booth_1",
+          "label": "Detail clean dining room and patio booth seating - remove any black marks, food debris or dirt build up and use a cloth to wipe crumbs out of all creases, corners and joins. Use a Power Pad to remove stubborn marks (with MIC approval only). Check for any damage and notify the MIC.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "wipe_all_ledges_behind_booth_seating_sel_2",
+          "label": "Wipe all ledges behind booth seating.Select one",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_all_dining_room_and_patio_c_3",
+          "label": "Detail clean all dining room and patio chairs including the legs - remove any black marks, food debris or dirt build up. Use a Power Pad to remove stubborn marks (with MIC approval only). Check for any damage and notify the MIC.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_all_dining_room_and_patio_t_4",
+          "label": "Detail clean all dining room and patio tables including the legs - remove any black marks, food debris or dirt build up. Use a Power Pad to remove stubborn marks (with MIC approval only). Check for any damage and notify the MIC.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "clean_around_the_self_serve_drink_machin_5",
+          "label": "Clean around the self-serve drink machine to remove any syrup or dirt build up. Check the wall under and around the drink machine for sticky residue and clean if necessary.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "dust_the_front_back_top_and_sides_of_a_6",
+          "label": "Dust the front, back, top and sides of all front counter menu boards if safe to do so.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_front_counter_hand_out_ben_7",
+          "label": "Detail clean front counter, hand out benches and any surrounding ledges. Wipe under and around all registers, tablets, signage, condiment holders etc. Ensure surfaces are clean and free from dust build up.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_registers_front_and_back_8",
+          "label": "Detail clean registers (front and back), cords/cables, tablets, scanners, and EFTPOS pinpads",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "if_applicable_detail_clean_the_boh_entr_9",
+          "label": "If applicable, detail clean the BOH entrance door/gate at front counter. Remove any marks and polish stainless silver.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_front_entry_and_patio_entry_10",
+          "label": "Detail clean front entry and patio entry - scrub walls and floors to remove black marks, detail clean glass (doors and windows) and clean door frames and seals to remove build up or splatter marks.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_all_walls_to_ensure_no_dust_11",
+          "label": "Detail clean all walls to ensure no dust, dirt, black marks or food and drink debris is present. Pay close attention to walls around",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_all_dining_room_and_patio_g_12",
+          "label": "Detail clean all dining room and patio glass inside and out.Select one",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "wipe_over_the_bell_and_rope_to_remove_an_13",
+          "label": "Wipe over the bell and rope to remove any dust build up. Check for damage and notify MIC.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "wipe_over_all_skirting_boards_and_window_14",
+          "label": "Wipe over all skirting boards and window/glass/door ledges around the dining room to remove dirt and dust build up.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "wipe_over_all_kick_boards_under_booth_se_15",
+          "label": "Wipe over all kick boards under booth seating and counter. Ensure all black marks, dust build up and splatter marks are removed.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_dining_room_bins_remove_al_16",
+          "label": "Detail clean dining room bins. Remove all bin inserts and wash Select one them out with warm soapy water, clean/flush the sink drain (if applicable) and detail clean housing inside and out. Thoroughly dry inserts before putting them back in.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "if_applicable_remove_any_floor_mats_fro_17",
+          "label": "If applicable, remove any floor mats from the dining room, sweep them down and wash them if required. Leave to air dry before putting them back out.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "if_applicable_clean_crowd_dj_tablet_fr_18",
+          "label": "If applicable, clean Crowd DJ tablet (front and back) to remove any dust build up. Check for damage and notify MIC.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        },
+        {
+          "id": "scrub_dining_room_and_patio_floors_use_19",
+          "label": "Scrub dining room and patio floors - use mop to wet the floors with warm water and floor cleaner and allow to sit for 5-10 minutes. Scrub floors thoroughly including the corners and edges. Squeegee and dry mop once cleaned.",
+          "group": "DINING ROOM",
+          "allowNa": false
+        }
+      ]
+    },
+    {
+      "file": "Square One  Week 1 Restrooms.pdf",
+      "id": "restrooms",
+      "dashboardLabel": "Restrooms",
+      "week": 1,
+      "title": "Restrooms",
+      "questions": [
+        {
+          "id": "detail_clean_all_toilet_bowls_inside_and_1",
+          "label": "Detail clean all toilet bowls inside and outside, both sides of toilet seat, and top and back of toilet unit.",
+          "group": "RESTROOMS",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_sinks_and_tapware_ensuring_2",
+          "label": "Detail clean sinks and tapware, ensuring any mould or grime build up is removed from around fixtures and the sink drain. Detail clean the sink inside and out, including the under pipes. Check tapware for any damage and notify MIC.",
+          "group": "RESTROOMS",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_the_inside_outside_and_und_3",
+          "label": "Detail clean the inside, outside and underside of all soap and sanitiser dispensers. When cleaning inside, open the dispenser and remove the bottles before cleaning. Check dispensers are stocked and check expiry date of soap and sanitiser. Check dispensers are in good working order.",
+          "group": "RESTROOMS",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_all_hand_dryers_including_t_4",
+          "label": "Detail clean all hand dryers including the front, sides and bottom. Clean the groove around and under the blower where mould builds up. Check hand dryers are functioning and notify MIC.",
+          "group": "RESTROOMS",
+          "allowNa": false
+        },
+        {
+          "id": "wipe_over_toilet_paper_dispensers_inside_5",
+          "label": "Wipe over toilet paper dispensers inside and out to remove dust build up, and ensure dispensers are full and in good working order.",
+          "group": "RESTROOMS",
+          "allowNa": false
+        },
+        {
+          "id": "clean_mirrors_all_the_way_to_the_top_w_6",
+          "label": "Clean mirrors (all the way to the top) with glass cleaner and paper towel to remove splash marks and build up. Ensure mirrors are left streak free.",
+          "group": "RESTROOMS",
+          "allowNa": false
+        },
+        {
+          "id": "if_applicable_empty_restroom_bins_wipe_7",
+          "label": "If applicable, empty restroom bins, wipe the outside to remove marks and clean the inside if required. Don't forget to put a new bag liner in. (GENERAL WASTE BINS ONLY - NEVER TOUCH SANITARY BINS)",
+          "group": "RESTROOMS",
+          "allowNa": false
+        },
+        {
+          "id": "if_applicable_clean_and_sanitise_the_in_8",
+          "label": "If applicable, clean and sanitise the inside and outside of baby change table/s including the straps, and ensure liners are stocked. Check for any damage and notify MIC.",
+          "group": "RESTROOMS",
+          "allowNa": false
+        },
+        {
+          "id": "wipe_over_light_fittings_air_vents_and_9",
+          "label": "Wipe over light fittings, air vents and ceiling to remove dust and build up.",
+          "group": "RESTROOMS",
+          "allowNa": false
+        },
+        {
+          "id": "wipe_down_all_restroom_walls_and_baseboa_10",
+          "label": "Wipe down all restroom walls and baseboards to remove any dust build up or marks.",
+          "group": "RESTROOMS",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_both_sides_of_all_toilet_do_11",
+          "label": "Detail clean both sides of all toilet doors from top to bottom, and polish stainless steel kickboards.",
+          "group": "RESTROOMS",
+          "allowNa": false
+        },
+        {
+          "id": "clean_out_the_janitorial_cupboard_remo_12",
+          "label": "Clean out the janitorial cupboard - Remove all equipment and stock then detail clean the mop sink, shelves, walls and baseboards. Clean the cleaning equipment before storing back in the cupboard.",
+          "group": "RESTROOMS",
+          "allowNa": false
+        },
+        {
+          "id": "thoroughly_scrub_all_restroom_and_janito_13",
+          "label": "Thoroughly scrub all restroom and janitorial cupboard floors and drains, including the corners and any skirting boards.",
+          "group": "RESTROOMS",
+          "allowNa": false
+        },
+        {
+          "id": "if_applicable_detail_clean_public_showe_14",
+          "label": "If applicable, detail clean public shower.Select one Date/time / / :AM / PM Signature Date: / /",
+          "group": "RESTROOMS",
+          "allowNa": false
+        }
+      ]
+    },
+    {
+      "file": "Square One  Week 2 Production Line.pdf",
+      "id": "production-line",
+      "dashboardLabel": "Production Line",
+      "week": 2,
+      "title": "Production Line",
+      "questions": [
+        {
+          "id": "production_line_safety_alert_equipmen_1",
+          "label": "PRODUCTION LINE: SAFETY ALERT - EQUIPMENT MUST BE TURNED OFF AND ALLOWED TO COOL FOR THE REQUIRED TIME PRIOR TO COMPLETING EACH TASK. ONLY CLEAN LINE EQUIPMENT IF TRAINED TO DO SO AND USE AVAILABLE PPE AS NECESSARY.",
+          "group": "PRODUCTION LINE",
+          "allowNa": false
+        },
+        {
+          "id": "gto_cool_for_15_mins_detail_clean_the_2",
+          "label": "GTO (cool for 15 mins): Detail clean the plate including the sides the whole way around. Scrub the sides of the plate thoroughly to remove debris and build up from the grooves. Wipe over the guards and surrounding fixtures to remove grease and build up and clean the wall/glass and bench behind the GTO grill thoroughly.",
+          "group": "PRODUCTION LINE",
+          "allowNa": false
+        },
+        {
+          "id": "taco_tower_cool_for_5_mins_wipe_the_i_3",
+          "label": "Taco Tower (cool for 5 mins): Wipe the inside and outside (including back, sides and top) of the Taco Tower, taking care when cleaning around elements/bulbs. Check elements/ bulbs for damage and notify the MIC.",
+          "group": "PRODUCTION LINE",
+          "allowNa": false
+        },
+        {
+          "id": "nacho_chip_drawers_cool_for_10_mins_t_4",
+          "label": "Nacho Chip Drawers (cool for 10 mins): Take out the drawers (fully Select one remove from the unit) and thoroughly wipe out the inside to remove food debris and seasoning build up. Detail clean the front of the drawer and runners, ensuring all build up is removed from in and around the unit before re-inserting.",
+          "group": "PRODUCTION LINE",
+          "allowNa": false
+        },
+        {
+          "id": "steamer_cool_for_5_mins_conduct_a_ful_5",
+          "label": "Steamer (cool for 5 mins): Conduct a full weekly delimer clean to remove calcium build up from the generator and steam ports. Detail clean the tray and front, top, sides and back of the unit. Wipe over the water line and cord to remove any build up and check for damage and notify the MIC. Check the PSI of the steamer/s to ensure they are working as required.",
+          "group": "PRODUCTION LINE",
+          "allowNa": false
+        },
+        {
+          "id": "clamshell_grill_cool_for_20_mins_deta_6",
+          "label": "Clamshell Grill (cool for 20 mins): Detail clean the top and bottom plates including the sides and lid (make sure build up is removed from grooves) . Wipe over the guards and surrounding fixtures and clean out the catch pan. Clean the bench under and behind the grill and wipe over cords. Check cords are in good condition and notify MIC.",
+          "group": "PRODUCTION LINE",
+          "allowNa": false
+        },
+        {
+          "id": "chip_dump_cool_for_10_mins_remove_ins_7",
+          "label": "Chip Dump (cool for 10 mins): Remove insert and detail clean the inside and outside of the chip dump including the timer. If unit has overhead housing, detail clean the roof of the housing, guard around the heat element, and front overhead panel. Detail clean the bench under and behind the chip dump and wipe over the cords. Check cords and heat element for damage and notify MIC.",
+          "group": "PRODUCTION LINE",
+          "allowNa": false
+        },
+        {
+          "id": "underline_fridge_remove_all_shelving_an_8",
+          "label": "Underline Fridge: Remove all shelving and soak/ spray clean. Wipe out the inside of the fridges including top and sides. Detail clean the seals/gaskets to remove build up (notify MIC of any damage). Detail clean handles and front of doors and polish with stainless cleaner.",
+          "group": "PRODUCTION LINE",
+          "allowNa": false
+        },
+        {
+          "id": "hot_well_cool_for_5_mins_detail_clean_9",
+          "label": "Hot Well (cool for 5 mins): Detail clean inside the hot well including the lips around the edges to remove build up.",
+          "group": "PRODUCTION LINE",
+          "allowNa": false
+        },
+        {
+          "id": "cold_well_detail_clean_inside_the_cold_10",
+          "label": "Cold well: Detail clean inside the cold well including the lips around the edges to remove build up.",
+          "group": "PRODUCTION LINE",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_the_under_line_bin_storage_11",
+          "label": "Detail clean the under-line bin, storage containers/compartments on the line, and all shelving under expedite (including the underside of the benches).",
+          "group": "PRODUCTION LINE",
+          "allowNa": false
+        },
+        {
+          "id": "polish_all_stainless_steal_surfaces_with_12",
+          "label": "Polish all stainless steal surfaces with stainless cleaner.Select one",
+          "group": "PRODUCTION LINE",
+          "allowNa": false
+        },
+        {
+          "id": "if_applicable_wipe_over_all_walls_glass_13",
+          "label": "If applicable, wipe over all walls/glass and ledges at the back of the line",
+          "group": "PRODUCTION LINE",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_all_kds_screens_front_and_14",
+          "label": "Detail clean all KDS screens (front and back) including the cords/cables and any poles to remove dust, grime and other build up",
+          "group": "PRODUCTION LINE",
+          "allowNa": false
+        }
+      ]
+    },
+    {
+      "file": "Square One  Week 2 BOH Walls Floors  Shelving.pdf",
+      "id": "boh-walls-floors",
+      "dashboardLabel": "Walls, Floors, Drains, Shelves...",
+      "week": 2,
+      "title": "BOH Walls, Floors & Shelving",
+      "questions": [
+        {
+          "id": "dry_storage_area_behind_all_shelvingse_1",
+          "label": "Dry storage area - behind all shelvingSelect one",
+          "group": "WALLS",
+          "allowNa": false
+        },
+        {
+          "id": "walk_in_fridge_s_behind_all_shelving_2",
+          "label": "Walk in fridge/s - behind all shelving, back walls and around the fans, doors inside and out, seals/ gaskets, and walls surrounding the doors",
+          "group": "WALLS",
+          "allowNa": false
+        },
+        {
+          "id": "walk_in_freezer_behind_all_shelving_b_3",
+          "label": "Walk in freezer - behind all shelving, back walls and around the fans, doors inside and out, seals/ gaskets, and walls surrounding the doors",
+          "group": "WALLS",
+          "allowNa": false
+        },
+        {
+          "id": "clean_ceiling_around_the_whole_boh_area_4",
+          "label": "Clean ceiling around the whole BOH area to remove any dust, mould or other build up",
+          "group": "WALLS",
+          "allowNa": false
+        },
+        {
+          "id": "clean_all_ceiling_vents_to_remove_any_du_5",
+          "label": "Clean all ceiling vents to remove any dust, mould and other build up. If vent cover is removable, detail clean with warm soapy water and spray hose.",
+          "group": "WALLS",
+          "allowNa": false
+        },
+        {
+          "id": "dry_stock_shelvingselect_one_6",
+          "label": "Dry stock shelvingSelect one",
+          "group": "SHELVING",
+          "allowNa": false
+        },
+        {
+          "id": "tortilla_thawing_shelvesselect_one_7",
+          "label": "Tortilla thawing shelvesSelect one",
+          "group": "SHELVING",
+          "allowNa": false
+        },
+        {
+          "id": "walk_in_fridge_s_shelvingselect_one_8",
+          "label": "Walk in fridge/s shelvingSelect one",
+          "group": "SHELVING",
+          "allowNa": false
+        },
+        {
+          "id": "thawing_rack_fridge_select_one_9",
+          "label": "Thawing rack (fridge)Select one",
+          "group": "SHELVING",
+          "allowNa": false
+        },
+        {
+          "id": "front_counter_cupboards_under_counter_10",
+          "label": "Front counter cupboards & under counter shelvesSelect one",
+          "group": "SHELVING",
+          "allowNa": false
+        },
+        {
+          "id": "walk_in_freezer_shelvingselect_one_11",
+          "label": "Walk in freezer shelvingSelect one",
+          "group": "SHELVING",
+          "allowNa": false
+        },
+        {
+          "id": "scrub_the_topside_and_underside_of_drain_12",
+          "label": "Scrub the topside and underside of drain grates. Never leave grates open whilst unattended - they can cause serious injury",
+          "group": "FLOORS",
+          "allowNa": false
+        },
+        {
+          "id": "remove_drain_catchers_and_spray_them_out_13",
+          "label": "Remove drain catchers and spray them out at the mop sink. Once thoroughly sprayed out, wash and sanitiser to remove odour",
+          "group": "FLOORS",
+          "allowNa": false
+        },
+        {
+          "id": "thoroughly_clean_out_drain_pipes_to_remo_14",
+          "label": "Thoroughly clean out drain pipes to remove sludge and build up. Flush pipes with sanitiser to remove odour",
+          "group": "FLOORS",
+          "allowNa": false
+        }
+      ]
+    },
+    {
+      "file": "Square One  Week 3 External.pdf",
+      "id": "external",
+      "dashboardLabel": "External",
+      "week": 3,
+      "title": "External",
+      "questions": [
+        {
+          "id": "detail_clean_all_external_walls_of_the_b_1",
+          "label": "Detail clean all external walls of the building - use cobweb brush to remove cobwebs and dust, clean any bird droppings from",
+          "group": "EXTERNAL",
+          "allowNa": false
+        },
+        {
+          "id": "wipe_over_dt_menu_boards_and_speaker_box_2",
+          "label": "Wipe over DT menu boards and speaker box (including the tops, sides and backs) to remove dirt and dust build up. Make sure there is not sticky residue on the speaker box. Wipe menu board screens over multiple times to remove streaks. Check for damage and that all screens are working and notify MIC.",
+          "group": "walls/glass, scrub off any black marks on walls with warm soapy",
+          "allowNa": false
+        },
+        {
+          "id": "within_safe_reach_dust_wipe_over_the_po_3",
+          "label": "Within safe reach, dust/wipe over the poles and ceiling of the DT lane and speaker box awnings. Make sure all cob webs are removed from lights and cameras and clean any marks or build up on the poles. Check for lighting damage and notify MIC.",
+          "group": "walls/glass, scrub off any black marks on walls with warm soapy",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_all_external_carpark_bins_4",
+          "label": "Detail clean all external/carpark bins. Remove bin inserts (if applicable) and wash them out with warm soapy water then detail clean bin housing inside and out. Ensure any gum, black marks and debris are removed. Thoroughly dry inserts before putting them back in.",
+          "group": "walls/glass, scrub off any black marks on walls with warm soapy",
+          "allowNa": false
+        },
+        {
+          "id": "scrub_down_the_dt_lane_to_remove_grease_5",
+          "label": "Scrub down the DT lane to remove grease, gum or other debris and build up.",
+          "group": "walls/glass, scrub off any black marks on walls with warm soapy",
+          "allowNa": false
+        },
+        {
+          "id": "scrub_down_the_loading_dock_dumpster_ra_6",
+          "label": "Scrub down the loading dock/ dumpster ramp and back door entrance to remove grease, gum or other debris and build up.",
+          "group": "walls/glass, scrub off any black marks on walls with warm soapy",
+          "allowNa": false
+        },
+        {
+          "id": "scrub_down_any_walkways_to_remove_grease_7",
+          "label": "Scrub down any walkways to remove grease, gum or other debris and build up.",
+          "group": "walls/glass, scrub off any black marks on walls with warm soapy",
+          "allowNa": false
+        },
+        {
+          "id": "remove_any_rubbish_from_garden_beds_bus_8",
+          "label": "Remove any rubbish from garden beds, bushes and gutters.Select one",
+          "group": "walls/glass, scrub off any black marks on walls with warm soapy",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_front_entry_scrub_walls_an_9",
+          "label": "Detail clean front entry, scrub walls and floors to remove black marks, detail clean glass (doors and windows) and clean door frames and seals to remove build up or splatter marks.",
+          "group": "walls/glass, scrub off any black marks on walls with warm soapy",
+          "allowNa": false
+        },
+        {
+          "id": "use_a_cob_web_brush_or_broom_to_clean_th_10",
+          "label": "Use a cob web brush or broom to clean the front entrance TACO BELL sign, surrounding lights, and any other external restaurant signage. Make sure all signs are free from cob webs and dirt build up.",
+          "group": "walls/glass, scrub off any black marks on walls with warm soapy",
+          "allowNa": false
+        },
+        {
+          "id": "wipe_over_carpark_directional_signs_sele_11",
+          "label": "Wipe over carpark directional signs.Select one Date/time / / :AM / PM Signature Date: / /",
+          "group": "walls/glass, scrub off any black marks on walls with warm soapy",
+          "allowNa": false
+        }
+      ]
+    },
+    {
+      "file": "Square One  Week 3 Bins Bin Room  Miscellaneous.pdf",
+      "id": "bins-bin-room",
+      "dashboardLabel": "Bins, Bin Room, Office...",
+      "week": 3,
+      "title": "Bins, Bin Room & Miscellaneous",
+      "questions": [
+        {
+          "id": "clean_out_the_bin_room_ensure_there_is_1",
+          "label": "Clean out the bin room - ensure there is no food, packaging or chemicals stored in there and discard any old parts/ broken equipment that may be stored in there.",
+          "group": "BINS, BIN ROOM & MISCELLANEOUS",
+          "allowNa": false
+        },
+        {
+          "id": "if_applicable_detail_clean_shelving_in_2",
+          "label": "If applicable, detail clean shelving in the bin room including the underside of each shelf, sides of shelves and the poles, legs and feet.",
+          "group": "BINS, BIN ROOM & MISCELLANEOUS",
+          "allowNa": false
+        },
+        {
+          "id": "wipe_over_anything_else_stored_in_the_bi_3",
+          "label": "Wipe over anything else stored in the bin room i.e. oil disposal unit, ladder, toolbox etc.",
+          "group": "BINS, BIN ROOM & MISCELLANEOUS",
+          "allowNa": false
+        },
+        {
+          "id": "clean_all_walls_of_the_bin_room_and_the_4",
+          "label": "Clean all walls of the bin room and the ceiling if safe to do so.Select one",
+          "group": "BINS, BIN ROOM & MISCELLANEOUS",
+          "allowNa": false
+        },
+        {
+          "id": "thoroughly_scrub_bin_room_floors_and_bas_5",
+          "label": "Thoroughly scrub bin room floors and baseboards.Select one",
+          "group": "BINS, BIN ROOM & MISCELLANEOUS",
+          "allowNa": false
+        },
+        {
+          "id": "hose_down_and_spot_clean_roller_door_ins_6",
+          "label": "Hose down and spot clean roller door inside and out (and any gates/cages). Check that there are no pest entry points to the bin room and that the roller door is functioning correctly.",
+          "group": "BINS, BIN ROOM & MISCELLANEOUS",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_both_sides_of_the_door_into_7",
+          "label": "Detail clean both sides of the door into the bin room from top to bottom and polish the stainless steel.",
+          "group": "BINS, BIN ROOM & MISCELLANEOUS",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_the_exterior_of_the_general_8",
+          "label": "Detail clean the exterior of the general waste and cardboard industrial bins. Use a hose or bucket of water to thoroughly clean off spills and other build up from the top, sides, and wheels of the bins.",
+          "group": "BINS, BIN ROOM & MISCELLANEOUS",
+          "allowNa": false
+        },
+        {
+          "id": "clean_all_boh_bins_scrub_the_outsides_9",
+          "label": "Clean all BOH bins - scrub the outsides with warm soapy water to remove food build up and black scuff marks, then wash the insides with warm soapy water to remove debris and odour.",
+          "group": "BINS, BIN ROOM & MISCELLANEOUS",
+          "allowNa": false
+        },
+        {
+          "id": "clean_chemical_cage_shelf_organise_ch_10",
+          "label": "Clean chemical cage/ shelf - organise chemicals, check expiry dates, and wipe over the shelving thoroughly.",
+          "group": "BINS, BIN ROOM & MISCELLANEOUS",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_the_boh_mop_sink_mop_floor_11",
+          "label": "Detail clean the BOH mop sink/ mop floor drain and surrounding",
+          "group": "BINS, BIN ROOM & MISCELLANEOUS",
+          "allowNa": false
+        },
+        {
+          "id": "clean_all_foh_and_boh_cleaning_equipment_12",
+          "label": "Clean all FOH and BOH cleaning equipment (brooms, mops, spot sweeps etc). Soak in warm soapy water, scrub/spray clean, and leave to air-dry overnight.",
+          "group": "walls. Ensure drain is cleaned, inside and outside is wiped over and",
+          "allowNa": false
+        },
+        {
+          "id": "clean_all_wet_floor_signs_scrub_the_ou_13",
+          "label": "Clean all wet floor signs - scrub the outsides with warm soapy water to remove food build up and black scuff marks.",
+          "group": "walls. Ensure drain is cleaned, inside and outside is wiped over and",
+          "allowNa": false
+        },
+        {
+          "id": "clean_the_safety_step_and_check_the_cond_14",
+          "label": "Clean the safety step and check the condition of the grip tape. If new grip tape is required, notify the MIC to order.",
+          "group": "walls. Ensure drain is cleaned, inside and outside is wiped over and",
+          "allowNa": false
+        },
+        {
+          "id": "fire_equipment_wipe_over_all_fire_equi_15",
+          "label": "Fire Equipment - Wipe over all fire equipment, check extinguishers are full, and check evacuation plan is displayed.",
+          "group": "walls. Ensure drain is cleaned, inside and outside is wiped over and",
+          "allowNa": false
+        },
+        {
+          "id": "office_detail_clean_and_tidy_the_offic_16",
+          "label": "Office - Detail clean and tidy the office, bench and cupboards.Select one Date/time / / :AM / PM Signature Date: / /",
+          "group": "walls. Ensure drain is cleaned, inside and outside is wiped over and",
+          "allowNa": false
+        }
+      ]
+    },
+    {
+      "file": "Square One  Week 4 Drink Stations.pdf",
+      "id": "drink-stations",
+      "dashboardLabel": "Drink Station",
+      "week": 4,
+      "title": "Drink Stations",
+      "questions": [
+        {
+          "id": "clean_nozzles_and_diffusers_with_warm_so_1",
+          "label": "Clean nozzles and diffusers with warm soapy water and scrub thoroughly to remove build up. Leave nozzles to airdry.",
+          "group": "POST MIX MACHINES",
+          "allowNa": false
+        },
+        {
+          "id": "clean_the_inside_of_the_nozzle_connectio_2",
+          "label": "Clean the inside of the nozzle connections with the nozzle cleaning brush (you can also use a fork and cloth to get all the way up inside the edges). Use a torch to look inside the connection to ensure it is thoroughly cleaned. Ensure no cloth fibres remain on the machine.",
+          "group": "POST MIX MACHINES",
+          "allowNa": false
+        },
+        {
+          "id": "clean_the_front_sides_and_underside_of_3",
+          "label": "Clean the front, sides and underside of each dispensing head to remove syrup build up and mould.",
+          "group": "POST MIX MACHINES",
+          "allowNa": false
+        },
+        {
+          "id": "remove_the_ice_dispenser_leavers_and_was_4",
+          "label": "Remove the ice dispenser leavers and wash and sanitise to remove any mould.",
+          "group": "POST MIX MACHINES",
+          "allowNa": false
+        },
+        {
+          "id": "clean_the_ice_chutes_thoroughly_inside_a_5",
+          "label": "Clean the ice chutes thoroughly inside and out, making sure to get into the back corners of the dispenser where mould builds up.",
+          "group": "POST MIX MACHINES",
+          "allowNa": false
+        },
+        {
+          "id": "remove_drip_tray_racks_and_scrub_the_ins_6",
+          "label": "Remove drip tray racks and scrub the inside of the drip trays to remove syrup and mould build up. Use drain cleaner to flush out the drains.",
+          "group": "POST MIX MACHINES",
+          "allowNa": false
+        },
+        {
+          "id": "wipe_over_the_backsplash_front_sides_7",
+          "label": "Wipe over the backsplash, front, sides, top and back of machines, including any exposed syrup lines and drains.",
+          "group": "POST MIX MACHINES",
+          "allowNa": false
+        },
+        {
+          "id": "remove_filters_and_clean_thoroughly_in_w_8",
+          "label": "Remove filters and clean thoroughly in warm soapy water, ensuring they are dry before putting them back in.",
+          "group": "POST MIX MACHINES",
+          "allowNa": false
+        },
+        {
+          "id": "thoroughly_wipe_out_the_cupboard_under_t_9",
+          "label": "Thoroughly wipe out the cupboard under the drink machine. Remove any syrup build up and check for pest activity. Polish silver with stainless cleaner.",
+          "group": "POST MIX MACHINES",
+          "allowNa": false
+        },
+        {
+          "id": "clean_all_lid_straw_and_condiment_holde_10",
+          "label": "Clean all lid, straw and condiment holders/ storage containers at DT and FC.",
+          "group": "POST MIX MACHINES",
+          "allowNa": false
+        },
+        {
+          "id": "thoroughly_clean_the_inside_and_outside_11",
+          "label": "Thoroughly clean the inside and outside of each nozzle and handle making sure to get into every groove where build up occurs.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "wipe_over_the_faceplates_and_thoroughly_12",
+          "label": "Wipe over the faceplates and thoroughly clean around the pressure pin and corner bolts where build up occurs.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "wash_rinse_and_sanitise_the_drip_tray_an_13",
+          "label": "Wash rinse and sanitise the drip tray and clean out any syrup or build up where the tray sits.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "wipe_over_the_backsplash_front_sides_14",
+          "label": "Wipe over the backsplash, front, sides, top and back of the machine including any exposed syrup lines and drains.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "remove_the_filter_and_clean_thoroughly_w_15",
+          "label": "Remove the filter and clean thoroughly with warm soapy water, ensuring it is dry before putting it back in.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "if_syrups_are_stored_in_the_cupboard_und_16",
+          "label": "If syrups are stored in the cupboard under the machine, rinse and sanitise syrup line connections and check UBD on syrup boxes.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "clean_out_the_cupboard_under_the_machine_17",
+          "label": "Clean out the cupboard under the machine ensuring it is free from syrup. Wipe the shelves, inside walls of the cupboard and door frame inside and out. Polish silver with stainless cleaner.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "thoroughly_check_the_machine_over_for_an_18",
+          "label": "Thoroughly check the machine over for any damage/ chipping or missing parts. Ensure machine is functioning correctly and notify MIC.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "does_your_restaurant_have_a_margarita_ma_19",
+          "label": "Does your restaurant have a margarita machine in use?Select one 1.3, 1.4",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "1_0_thoroughly_clean_the_inside_and_out_20",
+          "label": "1.0. Thoroughly clean the inside and outside of each nozzle and handle making sure to get into every groove where build up occurs.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "1_1_wipe_over_the_barrels_select_one_21",
+          "label": "1.1. Wipe over the barrels.Select one",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "1_2_wash_rinse_and_sanitiser_the_drip_t_22",
+          "label": "1.2. Wash rinse and sanitiser the drip tray and clean out any syrup or build up from under where the tray sits.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "1_3_wipe_over_the_backsplash_front_si_23",
+          "label": "1.3. Wipe over the backsplash, front, sides, top and back of the machine.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "1_4_wipe_over_the_air_vents_to_remove_d_24",
+          "label": "1.4. Wipe over the air vents to remove dust build up.Select one DRINK DISPLAY FRIDGE",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "empty_the_fridge_and_remove_all_shelving_25",
+          "label": "Empty the fridge and remove all shelving and spray or soak in warm soapy water to remove build up.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "thoroughly_wipe_out_the_inside_of_the_fr_26",
+          "label": "Thoroughly wipe out the inside of the fridge including the top, base and sides.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_the_inside_of_the_door_and_27",
+          "label": "Detail clean the inside of the door and seals/gaskets to remove build up. Check for damage and notify MIC.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "use_glass_cleaner_to_clean_the_outside_o_28",
+          "label": "Use glass cleaner to clean the outside of the fridge door and handles to remove finger marks.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "wipe_over_the_bottom_sides_back_and_to_29",
+          "label": "Wipe over the bottom, sides, back and top of the fridge to remove build up and dust.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "rinse_and_sanitise_all_syrup_connections_30",
+          "label": "Rinse and sanitise all syrup connections and wipe over the syrup lines.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "clean_the_post_mix_shelving_including_th_31",
+          "label": "Clean the post mix shelving including the underside, sides, poles, legs and feet.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        },
+        {
+          "id": "check_ubd_of_all_syrup_boxes_and_ensure_32",
+          "label": "Check UBD of all syrup boxes and ensure they are rotated following FIFO.",
+          "group": "FROZEN DRINKS MACHINE",
+          "allowNa": false
+        }
+      ]
+    },
+    {
+      "file": "Square One  Week 4 Prep Equipment  Wash Up.pdf",
+      "id": "prep-washup",
+      "dashboardLabel": "Prep and Washup",
+      "week": 4,
+      "title": "Prep Equipment & Wash Up",
+      "questions": [
+        {
+          "id": "prep_equipment_wash_up_safety_alert_1",
+          "label": "PREP EQUIPMENT & WASH UP: SAFETY ALERT - EQUIPMENT MUST BE TURNED OFF AND ALLOWED TO COOL FOR THE REQUIRED TIME PRIOR TO COMPLETING EACH TASK. ONLY CLEAN PREP EQUIPMENT IF TRAINED TO DO SO AND USE AVAILABLE PPE AS NECESSARY.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "retherm_oven_detail_clean_the_unit_ins_2",
+          "label": "Retherm/ Oven: Detail clean the unit inside and out ensure all debris and build up removed. If you have an oven, detail clean the stand.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "rice_cooker_detail_clean_the_inside_ou_3",
+          "label": "Rice Cooker: Detail clean the inside, outside, underside and cord of the rice cooker, insert, and lid. Check for any damage and notify the MIC.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "fryer_clean_the_sides_back_and_lids_of_4",
+          "label": "Fryer: Clean the sides, back and lids of the fryer. NOTE: this can only be completed prior to fryers being turned on for the day!",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "fry_station_clean_the_fry_station_bench_5",
+          "label": "Fry Station: Clean the fry station bench and racks including the legs, underside of the bench and surrounding walls. Detail clean fry baskets.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "reach_in_freezer_spray_down_the_freezer_6",
+          "label": "Reach in Freezer: Spray down the freezer shelf and thoroughly wipe out the freezer including the base, sides and top. Detail clean the seal/gasket to remove seasoning build up and mould. Check for damage and notify the MIC.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "heated_cabinet_s_clean_the_shelves_in_w_7",
+          "label": "Heated Cabinet/s: Clean the shelves in warm soapy water and thoroughly wipe out the cabinet/s including the base, sides and top. Detail clean the seals/gaskets to remove build up. Check for damage and notify the MIC.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_the_sato_machine_including_8",
+          "label": "Detail clean the Sato Machine including the cord. Check for damage and notify the MIC.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_all_thermometers_and_holder_9",
+          "label": "Detail clean all thermometers and holders to remove build up.Select one",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "clean_the_oil_testo_and_check_the_best_b_10",
+          "label": "Clean the Oil Testo and check the best before date on the container - order replacement if expiring soon.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "detail_clean_the_entire_wash_up_sink_are_11",
+          "label": "Detail clean the entire wash up sink are - Scrub the inside of all sinks (including the scrape sink) and detail clean the sink drains and surrounding silicon. Remove the wash sink utensils compartment and scrub thoroughly inside and out making sure to remove any mould build up in the corners. Check sinks are labelled/ water level stickers are in place and wipe over and around stickers to remove any build up.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "clean_the_drain_pipes_front_and_sides_o_12",
+          "label": "Clean the drain pipes, front and sides of the sinks and lip around the front edge to remove build up then polish with stainless cleaner.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "thoroughly_inspect_the_cleanliness_of_al_13",
+          "label": "Thoroughly inspect the cleanliness of all pans and lids ensuring they are free from sticker residue.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "thoroughly_inspect_the_cleanliness_of_al_14",
+          "label": "Thoroughly inspect the cleanliness of all utensils ensuring they are free from build up and damage. If build up is unable to be cleaned or damage is identified, notify the MIC.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "thoroughly_inspect_the_cleanliness_of_al_15",
+          "label": "Thoroughly inspect the cleanliness of all sauce lids and bottles ensuring they are free from build up and damage. If build up is unable to be cleaned or damage is identified, notify the MIC.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "scrub_all_stainless_perforated_tubs_sto_16",
+          "label": "Scrub all stainless perforated tubs/ storage containers used to dry or store utensils and smallwares.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        },
+        {
+          "id": "clean_the_drying_rack_and_storage_rack_s_17",
+          "label": "Clean the drying rack and storage rack shelving including the underside, sides, poles, legs and feet.",
+          "group": "PREP EQUIPMENT & WASH UP",
+          "allowNa": false
+        }
+      ]
+    }
+  ]
+}

@@ -196,7 +196,7 @@
         const num = String(storeNumber || '').replace(/[^0-9]/g, '');
         return num
             ? global.AppPaths?.adminStore?.(num) || `/Admin/${encodeURIComponent(num)}`
-            : global.AppPaths?.adminOverview?.() || '/Admin/Overview';
+            : global.AppPaths?.overview?.() || '/overview';
     }
 
     function renderOutstandingLists(data) {

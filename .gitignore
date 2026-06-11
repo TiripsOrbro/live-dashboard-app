@@ -10,7 +10,6 @@ node_modules/
 .env.*
 !.env.example
 .Users
-.storelist
 tmp/
 .Users.test
 scripts/probe-stock-count.png

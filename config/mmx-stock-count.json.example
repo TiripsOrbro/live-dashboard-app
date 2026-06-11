@@ -2,6 +2,9 @@
   "url": "https://tacobellau.macromatix.net/MMS_Stores_StockCount.aspx?MenuCustomItemID=156",
   "countTypeValue": "0",
   "countTypeText": "Key Item Count",
+  "dailyCountTypeValue": "1",
+  "dailyCountTypeText": "Daily",
+  "deleteCountButtonId": "ctl00_ph_ButtonDelete",
   "locationTabMap": {
     "Freezer": "FREEZER",
     "Carryover": "CARRY OVER",

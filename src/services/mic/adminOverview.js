@@ -13,6 +13,9 @@ const {
     computeDaySalesPresentation,
 } = require('../salesProgress');
 const { buildStockCountTileState } = require('../stockCountTileState');
+const { buildAreaDailyStockCountTileStateAsync } = require('../dailyStockCountTileState');
+const { buildStoresNeedingAudits } = require('../weeklyAuditsTileState');
+const { buildAdminAuditTileSummaries } = require('../adminAuditTileSummaries');
 const { DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR, getStoreConfig } = require('../storeList');
 const { TIME_ZONE } = require('../upselling/upsellingConfig');
 const { getCachedSssgLy } = require('../macromatixScraper');
@@ -192,11 +195,17 @@ function buildAreaStockCountTileState(areaStores, liveByNum) {
     };
 }
 
-function buildAdminOverviewPayload(salesPayload, areaGroups) {
+async function buildAdminOverviewPayload(salesPayload, areaGroups, options = {}) {
+    const { auditStateByStore, requiredAudits } = options;
+    const resolveAreaGroups =
+        typeof options.ensureAllAreaGroups === 'function'
+            ? options.ensureAllAreaGroups
+            : ensureAllAreaGroups;
     const day = melbourneTodayIso();
     const liveByNum = new Map((salesPayload?.stores || []).map((s) => [String(s.storeNumber), s]));
 
-    const areas = ensureAllAreaGroups(areaGroups).map((group) => {
+    const areaGroupList = resolveAreaGroups(areaGroups);
+    const areas = await Promise.all(areaGroupList.map(async (group) => {
         const configs = group.stores || [];
         const areaStores = configs.map((cfg) => {
             const live = liveByNum.get(String(cfg.storeNumber)) || {};
@@ -238,8 +247,13 @@ function buildAdminOverviewPayload(salesPayload, areaGroups) {
             stockCount: buildAreaStockCountTileState(areaStores, liveByNum),
             sssgTodayPercent,
             sssgWtdPercent,
+            auditTileSummaries:
+                auditStateByStore instanceof Map && Array.isArray(requiredAudits)
+                    ? buildAdminAuditTileSummaries(configs, auditStateByStore, { requiredAudits })
+                    : [],
+            dailyStockCount: await buildAreaDailyStockCountTileStateAsync(configs),
         };
-    });
+    }));
 
     const vocByArea = areas.map((a) => ({
         name: a.name,
@@ -253,11 +267,19 @@ function buildAdminOverviewPayload(salesPayload, areaGroups) {
         .map((entry) => ({ label: entry.label, basePoints: Number(entry.points) || 0 }))
         .sort((a, b) => a.label.localeCompare(b.label));
 
+    const storesNeedingAudits =
+        auditStateByStore instanceof Map && Array.isArray(requiredAudits)
+            ? buildStoresNeedingAudits(areaGroups, auditStateByStore, requiredAudits, {
+                  ensureAllAreaGroups: resolveAreaGroups,
+              })
+            : [];
+
     return {
         day,
         areas,
         vocByArea,
-        storesNeedingOrders: buildStoresNeedingOrders(liveByNum, areaGroups),
+        storesNeedingOrders: buildStoresNeedingOrders(liveByNum, resolveAreaGroups(areaGroups)),
+        storesNeedingAudits,
         activeMultipliers: getAllActiveMultipliersForDay(day),
         items,
         defaultMultiplier: DEFAULT_ITEM_MULTIPLIER,

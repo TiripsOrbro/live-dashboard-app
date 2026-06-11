@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const { readUserAccountSecrets } = require('./mmxUserCredentials');
 const { isTestStore, normalizeStoreKey, TEST_STORE_SLUG } = require('./testStore');
+const { getStoreList } = require('./storeList');
+const { normalizeMarketLabel, normalizeAreaLabel, getAreasForMarket } = require('./marketsConfig');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const USERS_PATH = path.join(PROJECT_ROOT, '.Users');
@@ -22,6 +24,7 @@ const FIELD_LABELS = {
     access: ['access', 'stores', 'store'],
     colourBlind: ['colourblind', 'colorblind', 'color blind', 'colour blind'],
     micDarkMode: ['micdarkmode', 'mic dark mode', 'darkmode', 'dark mode'],
+    auditAutoCollapse: ['auditautocollapse', 'audit auto collapse', 'autocollapse', 'auto collapse'],
 };
 
 let usersCache = null;
@@ -158,17 +161,49 @@ function parseFieldLine(line, labels) {
     return stripTrailingPipe(parts[0]);
 }
 
-function parseAccessToken(raw) {
+function parseAccessScope(raw) {
     const token = stripTrailingPipe(raw);
     if (!token || token === '*' || /^all$/i.test(token)) {
-        return { role: 'admin', stores: '*' };
+        return { type: 'super', role: 'admin', stores: '*', markets: [], areas: [] };
     }
+
+    const parts = token
+        .split(/[,;]+/)
+        .map((p) => p.trim())
+        .filter(Boolean);
+    if (!parts.length) return null;
+
+    if (parts.length === 1 && /^market\s*\d+$/i.test(parts[0])) {
+        const market = normalizeMarketLabel(parts[0]);
+        return { type: 'market', role: 'market', stores: [], markets: [market], areas: [] };
+    }
+
+    if (parts.every((p) => /^area\s*\d+$/i.test(p))) {
+        const areas = [...new Set(parts.map(normalizeAreaLabel))];
+        return { type: 'area', role: 'area', stores: [], markets: [], areas };
+    }
+
+    const hasMarket = parts.some((p) => /^market\s*\d+$/i.test(p));
+    const hasArea = parts.some((p) => /^area\s*\d+$/i.test(p));
+    if (hasMarket || hasArea) {
+        console.warn('[Auth] Ambiguous access token (market/area mixed with other tokens):', token);
+        return null;
+    }
+
     const stores = token
         .split(/[,;\s]+/)
         .map((s) => s.replace(/[^0-9]/g, ''))
         .filter(Boolean);
-    if (!stores.length) return null;
-    return { role: 'store', stores: [...new Set(stores)] };
+    if (!stores.length) {
+        console.warn('[Auth] Unrecognized access token:', token);
+        return null;
+    }
+    return { type: 'store', role: 'store', stores: [...new Set(stores)], markets: [], areas: [] };
+}
+
+/** @deprecated use parseAccessScope */
+function parseAccessToken(raw) {
+    return parseAccessScope(raw);
 }
 
 function isCbUsername(name) {
@@ -213,6 +248,7 @@ function parseAccessBlock(block) {
     let accessRaw = '';
     let colourBlindPref = false;
     let micDarkModePref = false;
+    let auditAutoCollapsePref = true;
 
     for (const line of lines) {
         const trimmed = line.trim();
@@ -227,6 +263,11 @@ function parseAccessBlock(block) {
         if (FIELD_LABELS.micDarkMode.some((k) => lower.startsWith(`${k} `) || lower.startsWith(`${k}|`))) {
             const val = parseFieldLine(trimmed, FIELD_LABELS.micDarkMode);
             micDarkModePref = /^(1|true|yes|on)$/i.test(String(val || '').trim());
+            continue;
+        }
+        if (FIELD_LABELS.auditAutoCollapse.some((k) => lower.startsWith(`${k} `) || lower.startsWith(`${k}|`))) {
+            const val = parseFieldLine(trimmed, FIELD_LABELS.auditAutoCollapse);
+            auditAutoCollapsePref = !/^(0|false|no|off)$/i.test(String(val || '').trim());
             continue;
         }
         if (!username && FIELD_LABELS.username.some((k) => lower.startsWith(`${k} `) || lower.startsWith(`${k}|`))) {
@@ -261,7 +302,7 @@ function parseAccessBlock(block) {
 
     if (!username || !password || !accessRaw) return null;
 
-    const access = parseAccessToken(accessRaw);
+    const access = parseAccessScope(accessRaw);
     if (!access) return null;
 
     return {
@@ -269,9 +310,13 @@ function parseAccessBlock(block) {
         cbUsername,
         password,
         role: access.role,
+        accessType: access.type,
         stores: access.stores,
+        markets: access.markets || [],
+        areas: access.areas || [],
         colourBlindPref,
         micDarkModePref,
+        auditAutoCollapsePref,
     };
 }
 
@@ -298,17 +343,27 @@ function parseUsersFile(text) {
                 displayName: blockName,
                 password: row.password,
                 role: row.role,
+                accessType: row.accessType || (row.role === 'admin' ? 'super' : 'store'),
                 stores: row.stores,
+                markets: row.markets || [],
+                areas: row.areas || [],
             };
             const micDarkMode = Boolean(row.micDarkModePref);
+            const auditAutoCollapse = row.auditAutoCollapsePref !== false;
             if (row.username && !isCbUsername(row.username)) {
-                users.push({ ...base, username: row.username, colorBlind: Boolean(row.colourBlindPref), micDarkMode });
+                users.push({
+                    ...base,
+                    username: row.username,
+                    colorBlind: Boolean(row.colourBlindPref),
+                    micDarkMode,
+                    auditAutoCollapse,
+                });
             }
             if (row.cbUsername) {
-                users.push({ ...base, username: row.cbUsername, colorBlind: true, micDarkMode });
+                users.push({ ...base, username: row.cbUsername, colorBlind: true, micDarkMode, auditAutoCollapse });
             }
             if (row.username && isCbUsername(row.username)) {
-                users.push({ ...base, username: row.username, colorBlind: true, micDarkMode });
+                users.push({ ...base, username: row.username, colorBlind: true, micDarkMode, auditAutoCollapse });
             }
         }
         block = [];
@@ -351,9 +406,13 @@ function parseUsersFileBlocks(text) {
                 cbUsername: row.cbUsername || '',
                 password: row.password,
                 role: row.role,
+                accessType: row.accessType || (row.role === 'admin' ? 'super' : 'store'),
                 stores: row.stores,
+                markets: row.markets || [],
+                areas: row.areas || [],
                 colourBlindPref: Boolean(row.colourBlindPref),
                 micDarkModePref: Boolean(row.micDarkModePref),
+                auditAutoCollapsePref: row.auditAutoCollapsePref !== false,
             });
         }
         block = [];
@@ -380,8 +439,17 @@ function parseUsersFileBlocks(text) {
     return blocks;
 }
 
-function formatAccessRaw(stores) {
-    if (stores === '*') return '*';
+function formatAccessRaw(block) {
+    if (typeof block === 'string' || Array.isArray(block)) {
+        const stores = block;
+        if (stores === '*') return '*';
+        return [...new Set(stores.map(String))].join(', ');
+    }
+    const accessType = block.accessType || (block.stores === '*' ? 'super' : 'store');
+    if (accessType === 'super' || block.stores === '*') return '*';
+    if (accessType === 'market' && block.markets?.length) return block.markets[0];
+    if (accessType === 'area' && block.areas?.length) return block.areas.join(', ');
+    const stores = Array.isArray(block.stores) ? block.stores : [];
     return [...new Set(stores.map(String))].join(', ');
 }
 
@@ -391,9 +459,10 @@ function serializeUserBlock(block) {
     out.push(`${block.username} |`);
     if (block.cbUsername) out.push(`${block.cbUsername} |`);
     out.push(`${block.password} |`);
-    out.push(`${formatAccessRaw(block.stores)} |`);
+    out.push(`${formatAccessRaw(block)} |`);
     if (block.colourBlindPref) out.push('colourblind | on');
     if (block.micDarkModePref) out.push('micdarkmode | on');
+    if (block.auditAutoCollapsePref === false) out.push('auditautocollapse | off');
     out.push('');
     return out.join('\n');
 }
@@ -566,12 +635,12 @@ function isRealDashboardUser(user) {
 }
 
 function canUserCreateAccounts(user) {
-    return isRealDashboardUser(user) && !isAdminUser(user);
+    return isRealDashboardUser(user) && !isSuperAdminUser(user) && !hasMultiStoreScope(user);
 }
 
 function canUserManageStoreAccounts(user, storeNumber) {
     if (!user) return false;
-    if (isAdminUser(user)) return userCanAccessStore(user, storeNumber);
+    if (canViewCrossStoreAccounts(user)) return userCanAccessStore(user, storeNumber);
     return canUserCreateAccounts(user) && userCanAccessStore(user, storeNumber);
 }
 
@@ -579,8 +648,8 @@ function blockGrantsStore(block, storeNumber) {
     const store = normalizeStoreKey(storeNumber);
     if (!store || isTestStore(store)) return false;
     if (block?.stores === '*') return false;
-    const list = Array.isArray(block.stores) ? block.stores.map(String) : [];
-    return list.includes(store);
+    const normalized = normalizeUser(block);
+    return getEffectiveStoresForUser(normalized).includes(store);
 }
 
 /** Crew logins created via Create account — not the primary 3811 / CB3811 store login. */
@@ -787,6 +856,27 @@ function setAccountMicDarkModePreference(username, enabled) {
     return { ok: true, micDarkMode: Boolean(block.micDarkModePref) };
 }
 
+function setAccountAuditAutoCollapsePreference(username, enabled) {
+    const name = String(username || '').trim();
+    if (!name) {
+        return { ok: false, error: 'Not signed in.' };
+    }
+    const blocks = parseUsersFileBlocks(readUsersFileText());
+    const block = blocks.find((row) => blockMatchesUsername(row, name));
+    if (!block) {
+        return { ok: false, error: 'Account not found.' };
+    }
+    block.auditAutoCollapsePref = Boolean(enabled);
+    writeUsersFileText(serializeUsersFile(blocks));
+    appendAccountAudit({
+        action: 'audit-auto-collapse-pref',
+        username: block.username,
+        enabled: block.auditAutoCollapsePref,
+        setBy: name,
+    });
+    return { ok: true, auditAutoCollapse: Boolean(block.auditAutoCollapsePref) };
+}
+
 function appendStoreUser({ username, password, stores, displayName, createdBy, addCbAlias = false }) {
     const name = String(username || '').trim();
     const pass = String(password || '');
@@ -888,15 +978,27 @@ function authenticate(username, password) {
     return null;
 }
 
+function areaNameFromStoreEntry(store) {
+    const area = String(store?.area || '').trim();
+    return area || 'Area 22';
+}
+
 function normalizeUser(row) {
-    const stores = row.stores === '*' ? '*' : [...new Set(row.stores.map(String))];
+    const stores = row.stores === '*' ? '*' : [...new Set((row.stores || []).map(String))];
+    const accessType =
+        row.accessType ||
+        (row.role === 'admin' || stores === '*' ? 'super' : row.role === 'market' ? 'market' : row.role === 'area' ? 'area' : 'store');
     return {
         username: row.username,
         displayName: row.displayName || '',
-        role: row.role === 'admin' ? 'admin' : 'store',
+        role: row.role === 'admin' ? 'admin' : row.role || 'store',
+        accessType,
         stores,
+        markets: [...new Set((row.markets || []).map(normalizeMarketLabel))],
+        areas: [...new Set((row.areas || []).map(normalizeAreaLabel))],
         colorBlind: Boolean(row.colorBlind),
         micDarkMode: Boolean(row.micDarkMode),
+        auditAutoCollapse: row.auditAutoCollapse !== false,
     };
 }
 
@@ -935,28 +1037,51 @@ function parseSessionToken(token) {
         return null;
     }
     if (!payload?.u || !payload?.exp || Date.now() > Number(payload.exp)) return null;
-    const role = payload.r === 'admin' ? 'admin' : 'store';
+    const accessType =
+        payload.at ||
+        (payload.r === 'admin' ? 'super' : payload.r === 'market' ? 'market' : payload.r === 'area' ? 'area' : 'store');
+    const role =
+        accessType === 'super'
+            ? 'admin'
+            : accessType === 'market'
+              ? 'market'
+              : accessType === 'area'
+                ? 'area'
+                : 'store';
     const stores = payload.s === '*' ? '*' : String(payload.s || '').split(',').filter(Boolean);
-    if (role !== 'admin' && stores !== '*' && !stores.length) return null;
+    const markets = payload.mk ? String(payload.mk).split('|').filter(Boolean).map(normalizeMarketLabel) : [];
+    const areas = payload.ar ? String(payload.ar).split('|').filter(Boolean).map(normalizeAreaLabel) : [];
+    if (accessType === 'store' && stores !== '*' && !stores.length) return null;
+    if (accessType === 'market' && !markets.length) return null;
+    if (accessType === 'area' && !areas.length) return null;
     return {
         username: payload.u,
         role,
+        accessType,
         stores,
+        markets,
+        areas,
         displayName: String(payload.d || '').trim(),
         colorBlind: payload.c === 1,
         micDarkMode: payload.m === 1,
+        auditAutoCollapse: payload.ac !== 0,
     };
 }
 
 function createSessionToken(user) {
-    const stores = user.stores === '*' ? '*' : user.stores.join(',');
+    const accessType = getUserAccessScope(user).type;
+    const stores = user.stores === '*' ? '*' : (user.stores || []).join(',');
     return signSessionPayload({
         u: user.username,
         d: user.displayName || lookupDisplayName(user.username) || '',
         r: user.role,
+        at: accessType,
         s: stores,
+        mk: (user.markets || []).join('|'),
+        ar: (user.areas || []).join('|'),
         c: user.colorBlind ? 1 : 0,
         m: user.micDarkMode ? 1 : 0,
+        ac: user.auditAutoCollapse === false ? 0 : 1,
         exp: Date.now() + SESSION_MAX_AGE_MS,
     });
 }
@@ -1088,25 +1213,126 @@ function isAuthenticated(req, legacyAccessKey = '') {
     return Boolean(resolveUser(req, legacyAccessKey));
 }
 
+function isSuperAdminUser(user) {
+    return Boolean(user && (user.accessType === 'super' || user.stores === '*' || user.role === 'admin'));
+}
+
+/** Break-glass full access (`*` in `.Users`). */
 function isAdminUser(user) {
-    return Boolean(user && (user.role === 'admin' || user.stores === '*'));
+    return isSuperAdminUser(user);
+}
+
+function getUserAccessScope(user) {
+    if (!user) {
+        return { type: 'store', markets: [], areas: [], stores: [] };
+    }
+    if (isSuperAdminUser(user)) {
+        return { type: 'super', markets: [], areas: [], stores: '*' };
+    }
+    const type =
+        user.accessType ||
+        (user.role === 'market' ? 'market' : user.role === 'area' ? 'area' : 'store');
+    return {
+        type,
+        markets: [...new Set((user.markets || []).map(normalizeMarketLabel))],
+        areas: [...new Set((user.areas || []).map(normalizeAreaLabel))],
+        stores: user.stores === '*' ? [] : [...new Set((user.stores || []).map(String))],
+    };
+}
+
+function getAccessibleAreasForUser(user) {
+    if (!user) return [];
+    if (isSuperAdminUser(user)) {
+        return [...new Set(getStoreList().map(areaNameFromStoreEntry))];
+    }
+    const scope = getUserAccessScope(user);
+    if (scope.type === 'market') {
+        const areas = [];
+        for (const market of scope.markets) {
+            areas.push(...getAreasForMarket(market));
+        }
+        return [...new Set(areas.map(normalizeAreaLabel))];
+    }
+    if (scope.type === 'area') {
+        return scope.areas;
+    }
+    const storeNums = new Set(getEffectiveStoresForUser(user));
+    return [
+        ...new Set(
+            getStoreList()
+                .filter((s) => storeNums.has(String(s.storeNumber)))
+                .map(areaNameFromStoreEntry)
+        ),
+    ];
+}
+
+function getEffectiveStoresForUser(user) {
+    if (!user) return [];
+    if (isSuperAdminUser(user)) {
+        return getStoreList().map((s) => String(s.storeNumber));
+    }
+    const scope = getUserAccessScope(user);
+    if (scope.type === 'store') {
+        return scope.stores;
+    }
+    const allowedAreas = new Set(getAccessibleAreasForUser(user));
+    if (!allowedAreas.size) return [];
+    return getStoreList()
+        .filter((s) => allowedAreas.has(areaNameFromStoreEntry(s)))
+        .map((s) => String(s.storeNumber));
+}
+
+function userCanAccessMarket(user, marketLabel) {
+    if (!user) return false;
+    if (isSuperAdminUser(user)) return true;
+    const scope = getUserAccessScope(user);
+    if (scope.type !== 'market') return false;
+    const label = normalizeMarketLabel(marketLabel);
+    return scope.markets.includes(label);
+}
+
+function userCanAccessArea(user, areaName) {
+    if (!user) return false;
+    if (isSuperAdminUser(user)) return true;
+    const label = normalizeAreaLabel(areaName);
+    return getAccessibleAreasForUser(user).includes(label);
+}
+
+function hasMultiStoreScope(user) {
+    if (!user || isSuperAdminUser(user)) return true;
+    const scope = getUserAccessScope(user);
+    return scope.type === 'market' || scope.type === 'area';
+}
+
+function getOverviewScope(user) {
+    if (!user) return 'store';
+    if (isSuperAdminUser(user)) return 'super';
+    const scope = getUserAccessScope(user);
+    if (scope.type === 'market') return 'market';
+    if (scope.type === 'area') return 'area';
+    return 'store';
+}
+
+function canViewCrossStoreAccounts(user) {
+    if (!user) return false;
+    return isSuperAdminUser(user) || hasMultiStoreScope(user);
 }
 
 function userCanAccessStore(user, storeNumber) {
     if (!user) return false;
     if (isTestStore(storeNumber)) {
-        if (isAdminUser(user)) return true;
+        if (isSuperAdminUser(user)) return true;
         return false;
     }
-    if (isAdminUser(user)) return true;
+    if (isSuperAdminUser(user)) return true;
     const num = normalizeStoreKey(storeNumber);
     if (!num) return false;
-    return user.stores.includes(num);
+    return getEffectiveStoresForUser(user).includes(num);
 }
 
 function filterStoresForUser(user, stores) {
-    if (!user || isAdminUser(user)) return stores;
-    const allowed = new Set(user.stores.map(String));
+    if (!user || isSuperAdminUser(user)) return stores;
+    const allowed = new Set(getEffectiveStoresForUser(user).map(String));
     return stores.filter((s) => allowed.has(String(s.storeNumber)));
 }
 
@@ -1123,21 +1349,24 @@ function storeNumberFromUsername(username) {
 
 /** Single-store destination for store logins (3811, CB3811, etc.). Empty when picker applies. */
 function singleStoreForUser(user) {
-    if (!user || isAdminUser(user)) return '';
-    const stores = user.stores === '*' ? [] : Array.isArray(user.stores) ? user.stores.map(String) : [];
+    if (!user || isSuperAdminUser(user) || hasMultiStoreScope(user)) return '';
+    const stores = getEffectiveStoresForUser(user);
     if (stores.length === 1) return stores[0];
     const fromUsername = storeNumberFromUsername(user.username);
     if (fromUsername && stores.includes(fromUsername)) return fromUsername;
-    if (fromUsername && stores.length === 0) return fromUsername;
     return '';
 }
 
 function getAdminRedirectPath() {
-    return '/Admin/Overview';
+    return getMicOverviewPath();
 }
 
 function getMicOverviewPath() {
-    return '/MIC/Overview';
+    return '/overview';
+}
+
+function getOverviewPath() {
+    return getMicOverviewPath();
 }
 
 function getMicStorePath(storeNumber) {
@@ -1163,7 +1392,7 @@ function getKioskRedirectPath(user) {
 
 function getLoginRedirectPath(user, mode = 'mic') {
     if (!user) return '/login';
-    if (isAdminUser(user)) return getAdminRedirectPath();
+    if (isSuperAdminUser(user) || hasMultiStoreScope(user)) return getMicOverviewPath();
     const store = singleStoreForUser(user);
     if (store) return getMicOverviewPath();
     return '/login';
@@ -1217,6 +1446,7 @@ function userProfileForClient(user) {
             canViewManagedAccounts: false,
             colorBlind: false,
             micDarkMode: false,
+            auditAutoCollapse: true,
             nologin: true,
         };
     }
@@ -1228,39 +1458,47 @@ function userProfileForClient(user) {
             role: 'admin',
             stores: '*',
             skipStorePicker: false,
-            defaultPath: '/stores',
-            micPath: null,
+            defaultPath: getMicOverviewPath(),
+            micPath: getMicOverviewPath(),
             canCreateAccount: false,
             canViewManagedAccounts: true,
             colorBlind: false,
             micDarkMode: false,
+            auditAutoCollapse: true,
         };
     }
-    const stores = user.stores === '*' ? '*' : [...user.stores];
+    const overviewScope = getOverviewScope(user);
+    const effectiveStores = getEffectiveStoresForUser(user);
+    const stores = user.stores === '*' ? '*' : [...effectiveStores];
     const skipStorePicker = Boolean(singleStoreForUser(user));
     const displayName = String(user.displayName || lookupDisplayName(user.username) || '').trim();
     const welcomeName = lookupWelcomeName(user.username) || displayName || user.username;
     const store = singleStoreForUser(user);
     const mustChangePassword = isRealDashboardUser(user) && userNeedsPasswordChange(user.username);
+    const accessibleAreas = getAccessibleAreasForUser(user);
+    const scope = getUserAccessScope(user);
     return {
         username: user.username,
         displayName,
         welcomeName,
         role: user.role,
+        overviewScope,
+        accessibleAreas,
+        accessibleMarkets: scope.markets,
+        effectiveStores,
         stores,
         skipStorePicker,
-        defaultPath: mustChangePassword
-            ? '/change-password'
-            : isAdminUser(user)
-              ? getAdminRedirectPath()
-              : getLoginRedirectPath(user, 'mic'),
-        micPath: store ? getMicOverviewPath() : null,
+        defaultPath: mustChangePassword ? '/change-password' : getMicOverviewPath(),
+        micPath: getMicOverviewPath(),
+        isSuperAdmin: isSuperAdminUser(user),
         canCreateAccount: canUserCreateAccounts(user),
-        canViewManagedAccounts: canUserCreateAccounts(user),
+        canViewManagedAccounts: canUserCreateAccounts(user) || canViewCrossStoreAccounts(user),
+        canViewCrossStoreAccounts: canViewCrossStoreAccounts(user),
         canAccessDfsc: canUserAccessDfsc(user),
         conductorFullName: getDfscConductorName(user),
         colorBlind: Boolean(user.colorBlind),
         micDarkMode: Boolean(user.micDarkMode),
+        auditAutoCollapse: user.auditAutoCollapse !== false,
         mustChangePassword,
         passwordPolicy: mustChangePassword ? passwordPolicyForUser(user) : null,
     };
@@ -1286,6 +1524,16 @@ module.exports = {
     resolveUser,
     isAuthenticated,
     isAdminUser,
+    isSuperAdminUser,
+    getUserAccessScope,
+    getEffectiveStoresForUser,
+    getAccessibleAreasForUser,
+    userCanAccessArea,
+    userCanAccessMarket,
+    hasMultiStoreScope,
+    getOverviewScope,
+    canViewCrossStoreAccounts,
+    parseAccessScope,
     isNologinUser,
     isNologinStoreAllowed,
     verifyNologinSecret,
@@ -1299,6 +1547,7 @@ module.exports = {
     getAdminRedirectPath,
     getKioskRedirectPath,
     getMicOverviewPath,
+    getOverviewPath,
     getMicStorePath,
     getAdminAreaPath,
     singleStoreForUser,
@@ -1317,6 +1566,7 @@ module.exports = {
     isPasswordHashed,
     setAccountColourBlindPreference,
     setAccountMicDarkModePreference,
+    setAccountAuditAutoCollapsePreference,
     appendStoreUser,
     canUserCreateAccounts,
     canUserManageStoreAccounts,

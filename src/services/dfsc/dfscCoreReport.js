@@ -47,7 +47,7 @@ function buildCoreReportFilename(data) {
         .replace(/[^\w\s-]/g, '')
         .trim()
         .replace(/\s+/g, '-');
-    return `${day}-${month}-${year}-CORE-DFSC-${storeSlug || 'Store'}.pdf`;
+    return `${day}-${month}-${year}-CORE-Audit-${storeSlug || 'Store'}.pdf`;
 }
 
 function buildCoreReportHtml(data) {
@@ -119,11 +119,37 @@ function buildCoreReportHtml(data) {
         </table>`
         : '<p class="empty">No open corrective actions.</p>';
 
+    const pestRows = (data.pestWalkHistory || [])
+        .map(
+            (row) => `
+        <tr>
+            <td>${escapeHtml(formatDateTime(row.completedAt))}</td>
+            <td>${escapeHtml(row.conductorName || '—')}</td>
+            <td class="num">${row.score != null ? escapeHtml(String(row.score)) : '—'}</td>
+            <td class="num">${escapeHtml(String(row.nonCompliantCount ?? 0))}</td>
+        </tr>`
+        )
+        .join('');
+
+    const pestWalkHtml = (data.pestWalkHistory || []).length
+        ? `<table class="data-table">
+            <thead>
+                <tr>
+                    <th>Completed</th>
+                    <th>Conducted by</th>
+                    <th class="num">Score</th>
+                    <th class="num">Non-compliant</th>
+                </tr>
+            </thead>
+            <tbody>${pestRows}</tbody>
+        </table>`
+        : '<p class="empty">No completed pest walk audits on record.</p>';
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>CORE DFSC Report — ${escapeHtml(data.storeName || data.storeNumber)}</title>
+<title>CORE Audit Report — ${escapeHtml(data.storeName || data.storeNumber)}</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -229,7 +255,7 @@ function buildCoreReportHtml(data) {
 </head>
 <body>
     <header class="report-header">
-        <h1 class="report-title">DFSC Report for CORE</h1>
+        <h1 class="report-title">CORE Audit Report</h1>
         <p class="report-subtitle">
             ${escapeHtml(data.storeName || data.storeNumber)} · Store ${escapeHtml(data.storeNumber)}
             · ${escapeHtml(formatDateKey(data.fromDateKey))} to ${escapeHtml(formatDateKey(data.toDateKey))}
@@ -250,9 +276,13 @@ function buildCoreReportHtml(data) {
             <span>Open actions</span>
             <strong>${escapeHtml(String(data.totals?.openActions ?? 0))}</strong>
         </div>
+        <div class="summary-pill">
+            <span>Pest walks (last 12)</span>
+            <strong>${escapeHtml(String(data.totals?.pestWalkCompleted ?? 0))}</strong>
+        </div>
     </div>
 
-    <h2>Daily completions</h2>
+    <h2>DFSC daily completions (30 days)</h2>
     <table class="data-table">
         <thead>
             <tr>
@@ -279,7 +309,10 @@ function buildCoreReportHtml(data) {
     <h2>Open corrective actions</h2>
     ${openActionsHtml}
 
-    <p class="footer-note">Daily Food Safety Checklist · CORE summary report · Retention ${escapeHtml(String(data.periodDays || 30))} days</p>
+    <h2>Pest Walk — last 12 audits</h2>
+    ${pestWalkHtml}
+
+    <p class="footer-note">Tacaudit · CORE summary report · DFSC ${escapeHtml(String(data.periodDays || 30))} days · Pest Walk last 12</p>
 </body>
 </html>`;
 }
@@ -312,7 +345,7 @@ function resolveChromiumExecutablePath() {
 
 function buildCoreReportText(data) {
     const lines = [
-        `DFSC Report for CORE — ${data.storeName || data.storeNumber}`,
+        `CORE Audit Report — ${data.storeName || data.storeNumber}`,
         `${formatDateKey(data.fromDateKey)} to ${formatDateKey(data.toDateKey)}`,
         '',
         'Daily completions:',
@@ -321,6 +354,12 @@ function buildCoreReportText(data) {
         lines.push(`  ${row.dateKey}: AM ${row.am} · PM ${row.pm} · Total ${row.total}`);
     }
     lines.push('', `Open audits: ${data.totals?.openAudits ?? 0}`, `Open actions: ${data.totals?.openActions ?? 0}`);
+    lines.push('', 'Pest Walk — last 12 audits:');
+    for (const row of data.pestWalkHistory || []) {
+        lines.push(
+            `  ${formatDateTime(row.completedAt)} · ${row.conductorName || '—'} · score ${row.score ?? '—'} · NC ${row.nonCompliantCount ?? 0}`
+        );
+    }
     return lines.join('\n');
 }
 

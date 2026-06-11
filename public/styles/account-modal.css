@@ -196,3 +196,82 @@
     height: 1.1rem;
     display: block;
 }
+
+.admin-store-picker {
+    position: fixed;
+    inset: 0;
+    background: color-mix(in srgb, var(--charcoal) 55%, transparent);
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    z-index: 100;
+}
+
+.admin-store-picker[hidden] {
+    display: none !important;
+}
+
+.admin-store-picker-panel {
+    width: min(520px, calc(100% - 2rem));
+    max-height: min(70vh, 640px);
+    overflow: auto;
+    background: var(--white);
+    border: 2px solid var(--charcoal);
+    padding: 1rem;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.admin-store-picker-panel h2 {
+    margin: 0;
+    font-size: var(--font-size-3);
+}
+
+.admin-store-picker-hint {
+    margin: 0;
+    font-size: var(--font-size-4);
+    color: color-mix(in srgb, var(--charcoal) 70%, white);
+}
+
+.admin-store-picker-hint[hidden] {
+    display: none;
+}
+
+.admin-store-picker .mic-item-list {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.admin-store-picker .mic-item-option {
+    text-align: left;
+    border: 2px solid var(--charcoal);
+    background: var(--white);
+    padding: 0.75rem;
+    font: inherit;
+    cursor: pointer;
+}
+
+.admin-store-picker .mic-item-option:hover,
+.admin-store-picker .mic-item-option:focus-visible {
+    background: color-mix(in srgb, var(--tb-purple-light, #9b63d6) 10%, white);
+}
+
+.admin-store-picker .mic-item-option-points {
+    display: block;
+    font-size: var(--font-size-5);
+    color: color-mix(in srgb, var(--charcoal) 65%, white);
+    margin-top: 0.2rem;
+}
+
+.admin-store-picker-cancel {
+    align-self: center;
+    border: 2px solid var(--charcoal);
+    background: var(--white);
+    color: var(--charcoal);
+    font: inherit;
+    font-weight: var(--font-weight-semibold);
+    padding: 0.55rem 1rem;
+    cursor: pointer;
+}

@@ -11,16 +11,8 @@ const DEFAULT_RECURRENCE_PATH = path.join(__dirname, '../../data/audit-recurrenc
 
 const FIXED_AUDITS = ['Pest Walk', 'RGM Cleaning Checklist', 'Period Safety Inspection'];
 
-const SQUARE_ONE_PLACEHOLDERS = [
-    'Dining Room',
-    'Restrooms',
-    'Production Line',
-    'Walls, Floors, Drains, Shelves...',
-    'External',
-    'Bins, Bin Room, Office...',
-    'Drink Station',
-    'Prep and Washup',
-];
+const { SQUARE_ONE_DASHBOARD_LABELS } = require('../services/squareOne/squareOneAreas');
+const SQUARE_ONE_PLACEHOLDERS = SQUARE_ONE_DASHBOARD_LABELS;
 
 function gregorianToJd(y, m, d) {
     const a = Math.floor((14 - m) / 12);
@@ -322,6 +314,36 @@ function squareOneSlot(now, timeZone, rule) {
     }
 }
 
+function psiSlotIndex(now, timeZone, rule) {
+    assertRule(rule, 'psiPeriod');
+    const mod = Math.max(2, Math.floor(Number(rule.slotModulo) || 4));
+    switch (rule.type) {
+        case 'weekly':
+            return weeklySlotIndex(now, timeZone, rule, mod);
+        case 'intervalDays':
+            return intervalDaysSlotIndex(now, timeZone, rule, mod);
+        case 'monthlyDay':
+            return monthlySlotIndexFromAnchorMonth(now, timeZone, rule, mod);
+        case 'monthlyWeekday':
+            return monthlyWeekdaySlotIndex(now, timeZone, rule, mod);
+        default:
+            throw new Error(`Unknown psiPeriod.type: ${rule.type}`);
+    }
+}
+
+const PSI_WEEK_TITLES = {
+    1: 'Emergency Management',
+    2: 'PPE and Electrical Safety',
+    3: 'Hazard Management',
+    4: 'Building Safety',
+};
+
+function psiWeekNumberFromSlot(slot) {
+    const mod = 4;
+    const normalized = ((Number(slot) % mod) + mod) % mod;
+    return normalized + 1;
+}
+
 function buildAuditListItems(slot) {
     const i = slot * 2;
     const pair = [SQUARE_ONE_PLACEHOLDERS[i], SQUARE_ONE_PLACEHOLDERS[i + 1]];
@@ -338,6 +360,12 @@ function defaultConfig() {
             anchor: '2026-05-04',
         },
         squareOnePeriod: {
+            type: 'weekly',
+            intervalWeeks: 1,
+            anchor: '2026-05-04',
+            slotModulo: 4,
+        },
+        psiPeriod: {
             type: 'weekly',
             intervalWeeks: 1,
             anchor: '2026-05-04',
@@ -377,13 +405,33 @@ function getAuditSchedule(now = new Date(), explicitPath) {
     const timeZone = cfg.timeZone || 'Australia/Melbourne';
     const periodKey = dismissalPeriodKey(now, timeZone, cfg.dismissalPeriod);
     const squareSlot = squareOneSlot(now, timeZone, cfg.squareOnePeriod);
+    const psiRule = cfg.psiPeriod || cfg.squareOnePeriod;
+    const psiSlot = psiSlotIndex(now, timeZone, psiRule);
+    const psiWeek = psiWeekNumberFromSlot(psiSlot);
     const auditListItems = buildAuditListItems(squareSlot);
     return {
         timeZone,
         periodKey,
         weekKey: periodKey,
         squareSlot,
+        psiSlot,
+        psiWeek,
+        psiWeekTitle: PSI_WEEK_TITLES[psiWeek] || `Week ${psiWeek}`,
         auditListItems,
+    };
+}
+
+function getPsiRotation(now = new Date(), explicitPath) {
+    const cfg = loadAuditRecurrenceConfigSync(explicitPath);
+    const timeZone = cfg.timeZone || 'Australia/Melbourne';
+    const psiRule = cfg.psiPeriod || cfg.squareOnePeriod;
+    const psiSlot = psiSlotIndex(now, timeZone, psiRule);
+    const psiWeek = psiWeekNumberFromSlot(psiSlot);
+    return {
+        timeZone,
+        psiSlot,
+        psiWeek,
+        psiWeekTitle: PSI_WEEK_TITLES[psiWeek] || `Week ${psiWeek}`,
     };
 }
 
@@ -395,10 +443,13 @@ function getDismissalPeriodKey(now = new Date(), explicitPath) {
 
 module.exports = {
     getAuditSchedule,
+    getPsiRotation,
     getDismissalPeriodKey,
     loadAuditRecurrenceConfigSync,
     instantForYmdInTimeZone,
     defaultConfig,
     FIXED_AUDITS,
     SQUARE_ONE_PLACEHOLDERS,
+    PSI_WEEK_TITLES,
+    psiWeekNumberFromSlot,
 };

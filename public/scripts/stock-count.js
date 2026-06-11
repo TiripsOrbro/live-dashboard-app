@@ -219,6 +219,12 @@ function vendorHasCountableData() {
 }
 
 function currentLocationHasFormData() {
+    const cat = getActiveCatalog();
+    if (isCombinedMode() || viewMode === 'recount') {
+        if (!cat) return false;
+        const grouped = readFormValuesGroupedByVendor(getCurrentLocationName(cat));
+        return Object.values(grouped).some((items) => Object.keys(items).length > 0);
+    }
     return Object.keys(readFormValues()).length > 0;
 }
 
@@ -993,7 +999,11 @@ function scheduleAutoSave() {
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
     autoSaveTimer = setTimeout(() => {
         autoSaveTimer = null;
-        void saveCurrentLocation(false, { force: true });
+        void saveCurrentLocation(false, { force: true }).then((ok) => {
+            if (ok && !document.activeElement?.matches?.('.stock-count-input')) {
+                render();
+            }
+        });
     }, 700);
 }
 
@@ -1681,7 +1691,7 @@ function shouldRecoverApplyError(message) {
 }
 
 async function sendToMmx() {
-    if (!canShowSendToMmx() || saving || processing) return;
+    if (saving || processing) return;
     let preparedAutoApplied = false;
 
     if (autoSaveTimer) {
@@ -2446,10 +2456,7 @@ function buildView() {
         .join('');
 
     const clearDisabled = saving || processing;
-    const sendMmxBtn =
-        viewMode === 'recount' || canShowSendToMmx()
-            ? `<button type="button" class="stock-count-btn stock-count-btn--mmx" id="sc-send-mmx" ${saving ? 'disabled' : ''}>Send to MMX</button>`
-            : '';
+    const sendMmxBtn = `<button type="button" class="stock-count-btn stock-count-btn--mmx" id="sc-send-mmx" ${clearDisabled ? 'disabled' : ''}>Send to MMX</button>`;
     const panelTitle = locationName;
     const combinedTableClass =
         isCombinedMode() && combinedVendorSlugs.length > 1 ? ' stock-count-table--combined' : '';

@@ -6,6 +6,7 @@ const { loadPointsMap, normalizeLabel } = require('../upselling/pointsFile');
 const { getCachedSssgLy } = require('../macromatixScraper');
 const { computeStoreWtdSssgPercent, getStoreDateKey } = require('../sssg/sssgWeeklyLedger');
 const { buildStockCountTileState } = require('../stockCountTileState');
+const { buildDailyStockCountTileState } = require('../dailyStockCountTileState');
 const { buildDaySummary, storeDateKey: dfscStoreDateKey, listOpenAudits } = require('../dfsc/dfscStore');
 const { formatStoreTileSubtext } = require('../dfsc/dfscAdmin');
 const { loadScores, soldCountForItemLabel } = require('../upselling/leaderboardStore');
@@ -361,6 +362,7 @@ function buildMicPayload(storeNumber, storeSlice = {}, options = {}) {
         defaultMultiplier: DEFAULT_ITEM_MULTIPLIER,
         multiplierNothingLabel: MULTIPLIER_NOTHING_LABEL,
         stockCount: buildStockCountTileState(store, storeSlice),
+        dailyStockCount: buildDailyStockCountTileState(store),
         dfsc: canAccessDfsc
             ? {
                   href: `/${store}/dfsc`,

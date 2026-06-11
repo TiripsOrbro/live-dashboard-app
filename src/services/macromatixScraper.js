@@ -1136,6 +1136,9 @@ async function scrapePendingVendors(page, opts = {}) {
             await setScheduledOrdersToYmd(page, pickYmd.year, pickYmd.month, pickYmd.day);
         });
         await page.waitForTimeout(500);
+    } else {
+        const { applyScheduledOrdersListDateFromConfig } = require('./mmxReports/mmx-scheduled-orders');
+        await applyScheduledOrdersListDateFromConfig(page);
     }
 
     const parsed = await withPageContextRetry(page, 'scheduled orders vendors', async () => {
@@ -1341,27 +1344,20 @@ async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
     );
 
     let pendingVendors = [];
-    const skipPendingForCompletedToday =
-        !testScheduledOrdersPick && isScheduledOrdersCompleteToday(storeNumber, todayKey);
-    if (skipPendingForCompletedToday) {
-        console.log(`[Macromatix] Store ${label}: scheduled orders already complete today; skipping check`);
-        pendingVendors = getLastKnownPendingVendors(storeNumber, todayKey);
-    } else {
-        try {
-            const pendingResult = await scrapePendingVendors(page, {
-                storeNumber,
-                pickYmd: testScheduledOrdersPick ? pickYmd : null,
-                skipStoreSelect,
-            });
-            pendingVendors = pendingResult.vendors;
-            console.log(`[Macromatix] Store ${label} pending vendors:`, pendingVendors.join(', ') || '(none)');
-            if (!skipScheduledPersistence) {
-                recordScheduledOrdersResult(storeNumber, todayKey, pendingVendors);
-            }
-        } catch (vendorErr) {
-            console.warn(`[Macromatix] Store ${label} scheduled orders scrape failed:`, vendorErr.message);
-            pendingVendors = getLastKnownPendingVendors(storeNumber, todayKey);
+    try {
+        const pendingResult = await scrapePendingVendors(page, {
+            storeNumber,
+            pickYmd: testScheduledOrdersPick ? pickYmd : null,
+            skipStoreSelect,
+        });
+        pendingVendors = pendingResult.vendors;
+        console.log(`[Macromatix] Store ${label} pending vendors:`, pendingVendors.join(', ') || '(none)');
+        if (!skipScheduledPersistence) {
+            recordScheduledOrdersResult(storeNumber, todayKey, pendingVendors);
         }
+    } catch (vendorErr) {
+        console.warn(`[Macromatix] Store ${label} scheduled orders scrape failed:`, vendorErr.message);
+        pendingVendors = getLastKnownPendingVendors(storeNumber, todayKey);
     }
 
     const hours = resolveStoreHours(store, storeNumber);

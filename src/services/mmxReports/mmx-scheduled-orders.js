@@ -85,6 +85,17 @@ async function applyScheduledOrdersListDate(page, vendorOrdersCfg) {
     }
 }
 
+/** Same list date as scheduled-order entry (config vendor-orders.json → tomorrow by default). */
+async function applyScheduledOrdersListDateFromConfig(page) {
+    let vendorOrdersCfg = {};
+    try {
+        vendorOrdersCfg = require('../buildToOrderLines').loadVendorOrdersConfig();
+    } catch {
+        /* use MMX_ORDER_DATE / tomorrow fallback */
+    }
+    await applyScheduledOrdersListDate(page, vendorOrdersCfg);
+}
+
 async function waitForScheduledOrdersReady(page) {
     await waitForScheduledOrdersTable(page, SCHEDULED_TABLE_WAIT_MS);
 }
@@ -401,4 +412,6 @@ module.exports = {
     vendorRegex,
     classMatches,
     rowIsOpenable,
+    setScheduledOrdersListDate,
+    applyScheduledOrdersListDateFromConfig,
 };

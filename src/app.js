@@ -1897,9 +1897,19 @@ function stockCountVendorFromQuery(req) {
     return String(req.query.vendor || '').trim().toLowerCase();
 }
 
+function pendingVendorsFromSalesCache(storeNumber) {
+    if (!salesCache?.stores) return [];
+    const key = String(storeNumber || '').trim();
+    const store = salesCache.stores.find((s) => String(s.storeNumber) === key);
+    return Array.isArray(store?.pendingVendors) ? store.pendingVendors : [];
+}
+
 function pendingVendorLabelsForStockCount(req, storeNumber) {
     const dateKey = melbourneDateKey();
     let labels = getLastKnownPendingVendors(storeNumber, dateKey);
+    if (!labels.length) {
+        labels = pendingVendorsFromSalesCache(storeNumber);
+    }
     if (wantsTestStockCountPending(req)) {
         const configured = listConfiguredVendors().map((v) => v.label);
         labels = [...new Set([...(Array.isArray(labels) ? labels : []), ...configured])].sort((a, b) =>

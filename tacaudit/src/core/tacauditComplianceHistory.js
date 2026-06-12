@@ -9,6 +9,7 @@ const {
 } = require('../auditRecurrence');
 const {
     buildTacauditAdminSummary,
+    filterSummaryCoachVisitRows,
     normalizeSummaryRowLabels,
     storesForArea,
 } = require('./tacauditAdminSummary');
@@ -173,8 +174,9 @@ function getStoredAreaSummary(areaName, weekStartYmd) {
     return summary;
 }
 
-function resolveComplianceSummary(areaName, stores, weekStartYmd) {
+function resolveComplianceSummary(areaName, stores, weekStartYmd, options = {}) {
     ensureCompletedWeekSnapshotsCaptured();
+    const includeCoachVisitRows = options.includeCoachVisitRows !== false;
 
     const current = getCurrentOperationalWeek();
     const currentWeekStartYmd = current?.weekStartYmd || '';
@@ -203,7 +205,7 @@ function resolveComplianceSummary(areaName, stores, weekStartYmd) {
         }
         return {
             ok: true,
-            summary: stored,
+            summary: filterSummaryCoachVisitRows(stored, includeCoachVisitRows),
             complianceWeeks,
             complianceMeta: {
                 selectedWeekStartYmd: requested,
@@ -221,19 +223,23 @@ function resolveComplianceSummary(areaName, stores, weekStartYmd) {
             useTrackedStateOnly: true,
             weekStartYmd: currentWeekStartYmd,
             weekEndYmd: current?.weekEndYmd || '',
+            includeCoachVisitRows,
         }),
         areaName,
         { weekStartYmd: currentWeekStartYmd }
     );
     return {
         ok: true,
-        summary: {
-            ...summary,
-            weekStartYmd: currentWeekStartYmd,
-            weekEndYmd: current?.weekEndYmd || '',
-            readOnly: false,
-            isHistorical: false,
-        },
+        summary: filterSummaryCoachVisitRows(
+            {
+                ...summary,
+                weekStartYmd: currentWeekStartYmd,
+                weekEndYmd: current?.weekEndYmd || '',
+                readOnly: false,
+                isHistorical: false,
+            },
+            includeCoachVisitRows
+        ),
         complianceWeeks,
         complianceMeta: {
             selectedWeekStartYmd: currentWeekStartYmd,

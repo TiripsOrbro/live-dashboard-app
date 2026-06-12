@@ -1867,7 +1867,7 @@ function canViewTacauditAdminSummary(user) {
 function assertCoachAuditAccess(req, res) {
     const user = req.dashboardUser || getRequestUser(req);
     if (!canAccessCoachAudits(user)) {
-        res.status(403).json({ success: false, error: 'Area Coach access or above is required for this audit.' });
+        res.status(403).json({ success: false, error: 'Market access or above is required for this audit.' });
         return false;
     }
     return true;
@@ -4995,7 +4995,9 @@ app.get('/api/tacaudit/admin-summary', async (req, res) => {
             res.status(scope.status).json({ success: false, error: scope.error });
             return;
         }
-        const resolved = resolveComplianceSummary(scope.areaName, scope.stores, weekStart);
+        const resolved = resolveComplianceSummary(scope.areaName, scope.stores, weekStart, {
+            includeCoachVisitRows: canAccessCoachAudits(user),
+        });
         if (!resolved.ok) {
             res.status(resolved.status).json({
                 success: false,
@@ -5088,7 +5090,10 @@ app.put('/api/tacaudit/splash-state', async (req, res) => {
             res.status(400).json({ success: false, error: result.error });
             return;
         }
-        const summary = buildTacauditAdminSummary(scope.stores, { areaName: scope.areaName });
+        const summary = buildTacauditAdminSummary(scope.stores, {
+            areaName: scope.areaName,
+            includeCoachVisitRows: canAccessCoachAudits(user),
+        });
         res.json({ success: true, status: result.status, summary });
     } catch (error) {
         console.error('API: Error saving Tacaudit splash state:', error);

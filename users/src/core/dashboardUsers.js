@@ -221,11 +221,11 @@ function canUserStartAudits(user) {
     return canUserCompleteAudits(user);
 }
 
-/** Area Coach, Market Manager, IT — coach/customer visit audits. */
+/** Market Manager, IT — coach/customer visit audits (not area coaches). */
 function canAccessCoachAudits(user) {
     if (!user || isNologinUser(user)) return false;
     if (isSuperAdminUser(user)) return true;
-    return accountLevelRank(getAccountLevel(user)) >= accountLevelRank('area');
+    return accountLevelRank(getAccountLevel(user)) >= accountLevelRank('market');
 }
 
 let usersCache = null;

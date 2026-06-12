@@ -25,6 +25,8 @@ const ADMIN_ACCESS = { isAdmin: true, canAccessDfsc: true };
 
 const PLACEHOLDER_ROW_IDS = new Set([]);
 
+const COACH_VISIT_ROW_IDS = ['visit-coach', 'visit-customer'];
+
 const ROW_LABEL_BY_ID = {
     'core-ops': 'Operations',
     'core-food-safety': 'Food Safety',
@@ -176,7 +178,7 @@ function normalizeSummaryRowLabels(rows) {
     });
 }
 
-function buildRows(schedule) {
+function buildRows(schedule, options = {}) {
     const dueAreas = getDueAreasForSlot(schedule.squareSlot);
     const squareChildren = dueAreas.map((area) => ({
         id: `square-one:${area.id}`,
@@ -185,6 +187,19 @@ function buildRows(schedule) {
         areaId: area.id,
         dashboardLabel: area.dashboardLabel,
     }));
+
+    const coachVisitRows =
+        options.includeCoachVisitRows === false
+            ? []
+            : [
+                  { id: 'visit-coach', label: 'Coach visit', kind: 'weekly', auditLabel: 'Visiting as a Coach' },
+                  {
+                      id: 'visit-customer',
+                      label: 'Customer visit',
+                      kind: 'weekly',
+                      auditLabel: 'Visiting as a Customer',
+                  },
+              ];
 
     return [
         { id: 'psi', label: 'PSI', kind: 'weekly', auditLabel: 'Period Safety Inspection' },
@@ -209,9 +224,17 @@ function buildRows(schedule) {
         },
         { id: 'core-ops', label: 'Operations', kind: 'weekly', auditLabel: 'CORE Operations Self Score' },
         { id: 'core-food-safety', label: 'Food Safety', kind: 'weekly', auditLabel: 'CORE Food Safety Self Score' },
-        { id: 'visit-coach', label: 'Coach visit', kind: 'weekly', auditLabel: 'Visiting as a Coach' },
-        { id: 'visit-customer', label: 'Customer visit', kind: 'weekly', auditLabel: 'Visiting as a Customer' },
+        ...coachVisitRows,
     ];
+}
+
+function filterSummaryCoachVisitRows(summary, includeCoachVisitRows = true) {
+    if (includeCoachVisitRows || !summary) return summary;
+    const hide = new Set(COACH_VISIT_ROW_IDS);
+    const rows = (summary.rows || []).filter((row) => !hide.has(row.id));
+    const cells = { ...(summary.cells || {}) };
+    for (const id of COACH_VISIT_ROW_IDS) delete cells[id];
+    return { ...summary, rows, cells };
 }
 
 function flattenRows(rows) {
@@ -314,7 +337,9 @@ function buildTacauditAdminSummary(stores, options = {}) {
     const weekStartYmd = parseYmd(options.weekStartYmd || opWeek?.weekStartYmd);
     const weekEndYmd = parseYmd(options.weekEndYmd || opWeek?.weekEndYmd);
 
-    const rows = buildRows(schedule);
+    const rows = buildRows(schedule, {
+        includeCoachVisitRows: options.includeCoachVisitRows !== false,
+    });
     const storeList = (stores || [])
         .map((s) => ({
             storeNumber: String(s.storeNumber || '').trim(),
@@ -410,6 +435,7 @@ function storesForArea(areaName, allStores) {
 
 module.exports = {
     buildTacauditAdminSummary,
+    filterSummaryCoachVisitRows,
     flattenRows,
     normalizeSummaryRowLabels,
     storesForArea,

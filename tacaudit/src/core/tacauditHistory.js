@@ -313,7 +313,8 @@ function getTacauditContext(storeNumber, options = {}) {
     };
 }
 
-function buildAreaLaunchTiles(stores, periodKey) {
+function buildAreaLaunchTiles(stores, periodKey, options = {}) {
+    const coachOk = options.canAccessCoachAudits ?? false;
     const squareSchedule = getAuditSchedule();
     const squareSlot = squareSchedule.squareSlot;
     let dfscComplete = 0;
@@ -348,7 +349,7 @@ function buildAreaLaunchTiles(stores, periodKey) {
 
     const sub = (n) => `${n}/${total} stores complete`;
 
-    return [
+    const tiles = [
         { id: 'dfsc', label: 'DFSC', sub: sub(dfscComplete), complete: dfscComplete === total && total > 0 },
         { id: 'pest-walk', label: 'Pest Walk', sub: sub(pestComplete), complete: pestComplete === total && total > 0 },
         { id: 'rgm-cleaning', label: 'RGM Cleaning', sub: sub(rgmComplete), complete: rgmComplete === total && total > 0 },
@@ -366,19 +367,24 @@ function buildAreaLaunchTiles(stores, periodKey) {
             sub: sub(coreFsComplete),
             complete: coreFsComplete === total && total > 0,
         },
-        {
-            id: 'visit-coach',
-            label: 'Visiting as a Coach',
-            sub: sub(visitCoachComplete),
-            complete: visitCoachComplete === total && total > 0,
-        },
-        {
-            id: 'visit-customer',
-            label: 'Visiting as a Customer',
-            sub: sub(visitCustomerComplete),
-            complete: visitCustomerComplete === total && total > 0,
-        },
     ];
+    if (coachOk) {
+        tiles.push(
+            {
+                id: 'visit-coach',
+                label: 'Visiting as a Coach',
+                sub: sub(visitCoachComplete),
+                complete: visitCoachComplete === total && total > 0,
+            },
+            {
+                id: 'visit-customer',
+                label: 'Visiting as a Customer',
+                sub: sub(visitCustomerComplete),
+                complete: visitCustomerComplete === total && total > 0,
+            }
+        );
+    }
+    return tiles;
 }
 
 function getTacauditScopeMeta(user) {
@@ -419,7 +425,7 @@ function getTacauditAdminContext(stores, options = {}) {
         accessibleMarkets: options.accessibleMarkets || [],
         marketAreas: options.marketAreas || {},
         overviewScope: options.overviewScope || '',
-        launchTiles: buildAreaLaunchTiles(stores, periodKey),
+        launchTiles: buildAreaLaunchTiles(stores, periodKey, options),
         inProgressAudits,
         openActionsCount: listOpenActionsForStores(stores).length,
         auditTypes: auditTypesForUser(options),

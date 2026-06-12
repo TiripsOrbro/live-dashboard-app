@@ -707,7 +707,11 @@ app.get('/', (req, res) => {
         return;
     }
     const user = getRequestUser(req);
-    if (isRealDashboardUser(user) && userNeedsPasswordChange(user.username)) {
+    if (!isRealDashboardUser(user)) {
+        res.redirect('/login');
+        return;
+    }
+    if (userNeedsPasswordChange(user.username)) {
         res.redirect('/change-password');
         return;
     }
@@ -717,7 +721,11 @@ app.get('/', (req, res) => {
 app.get('/login', (req, res) => {
     if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
         const user = getRequestUser(req);
-        if (isRealDashboardUser(user) && userNeedsPasswordChange(user.username)) {
+        if (!isRealDashboardUser(user)) {
+            res.sendFile(path.join(paths.users.public, 'login.html'));
+            return;
+        }
+        if (userNeedsPasswordChange(user.username)) {
             res.redirect('/change-password');
             return;
         }

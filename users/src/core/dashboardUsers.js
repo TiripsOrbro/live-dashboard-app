@@ -1377,7 +1377,7 @@ function readUsersFileSync() {
 
 function usersFileConfigured() {
     try {
-        return fs.existsSync(USERS_PATH) && readUsersFileSync().length > 0;
+        return readUsersFileSync().length > 0;
     } catch {
         return false;
     }

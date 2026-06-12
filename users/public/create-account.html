@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en" class="page-scroll">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
+    <title>Create account — Step 1 — TBA Dashboard</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles/brand-mark.css">
+    <link rel="stylesheet" href="/styles/login.css">
+    <link rel="stylesheet" href="/styles/nav-back.css">
+    <link rel="stylesheet" href="/styles/page-scroll.css">
+</head>
+<body class="login-body">
+    <div class="login-root">
+        <section class="login-stage">
+            <div class="login-card">
+                <div class="nav-back-host" id="create-account-back"></div>
+                <header class="login-brand">
+                    <div class="login-brand-hero">
+                        <div class="login-logo" id="login-brand-mark"></div>
+                        <h1 class="login-title">CREATE ACCOUNT</h1>
+                    </div>
+                    <p class="login-subtitle">Step 1 — Sign in with Manager, Store, Area, Market, or IT access</p>
+                </header>
+                <form id="create-account-verify-form" class="login-form" novalidate>
+                    <label class="login-field">
+                        Username
+                        <input id="create-parent-username" name="username" type="text" autocomplete="username" autofocus>
+                    </label>
+                    <label class="login-field">
+                        Password
+                        <input id="create-parent-password" name="password" type="password" autocomplete="current-password" required>
+                    </label>
+                    <button type="submit" class="login-submit" id="create-account-proceed">Proceed</button>
+                    <p id="create-account-error" class="login-error" role="alert"></p>
+                </form>
+                <footer class="login-account-footer">
+                    <a class="login-link-btn" href="/login">Back to sign in</a>
+                </footer>
+            </div>
+        </section>
+    </div>
+    <script src="/scripts/brand-mark.js"></script>
+    <script src="/scripts/nav-back.js"></script>
+    <script src="/scripts/create-account.js"></script>
+</body>
+</html>

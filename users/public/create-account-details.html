@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en" class="page-scroll">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
+    <title>Create account — Step 2 — TBA Dashboard</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles/brand-mark.css">
+    <link rel="stylesheet" href="/styles/login.css">
+    <link rel="stylesheet" href="/styles/nav-back.css">
+    <link rel="stylesheet" href="/styles/page-scroll.css">
+</head>
+<body class="login-body">
+    <div class="login-root">
+        <section class="login-stage">
+            <div class="login-card">
+                <div class="nav-back-host" id="create-details-back"></div>
+                <header class="login-brand">
+                    <div class="login-brand-hero">
+                        <div class="login-logo" id="login-brand-mark"></div>
+                        <h1 class="login-title">NEW ACCOUNT</h1>
+                    </div>
+                    <p class="login-subtitle">Step 2 — Choose access level and sign-in details</p>
+                </header>
+                <form id="create-account-form" class="login-form" novalidate>
+                    <p class="login-section-label">Access level</p>
+                    <label class="login-field">
+                        Account level
+                        <select id="new-account-level" name="accountLevel" required></select>
+                    </label>
+                    <label class="login-field" id="create-store-field" hidden>
+                        Store
+                        <select id="new-store-number" name="storeNumber"></select>
+                    </label>
+                    <label class="login-field" id="create-market-field" hidden>
+                        Market
+                        <select id="new-market" name="market"></select>
+                    </label>
+                    <label class="login-field" id="create-area-field" hidden>
+                        Area
+                        <select id="new-area" name="area"></select>
+                    </label>
+
+                    <hr class="login-divider">
+
+                    <p class="login-section-label">Dashboard sign-in</p>
+                    <label class="login-field">
+                        New username
+                        <input id="new-username" name="username" type="text" autocomplete="username" required>
+                    </label>
+                    <label class="login-field" id="create-name-fields">
+                        First name
+                        <input id="new-first-name" name="firstName" type="text" autocomplete="given-name">
+                    </label>
+                    <label class="login-field" id="create-last-name-field">
+                        Last name
+                        <input id="new-last-name" name="lastName" type="text" autocomplete="family-name">
+                    </label>
+                    <label class="login-field">
+                        Password
+                        <input id="new-password" name="password" type="password" autocomplete="new-password" required>
+                    </label>
+                    <label class="login-field">
+                        Confirm password
+                        <input id="new-password-confirm" name="confirmPassword" type="password" autocomplete="new-password" required>
+                    </label>
+
+                    <div id="create-mmx-section" hidden>
+                        <hr class="login-divider">
+                        <p class="login-section-label">Macromatix (for Key Item Count)</p>
+                        <p class="login-path-card-desc" style="margin: 0 0 0.75rem;">
+                            Required for Manager and MIC accounts. Legal name and MMX login are stored encrypted.
+                        </p>
+                        <label class="login-field">
+                            MMX username
+                            <input id="mmx-username" name="mmxUsername" type="text" autocomplete="username">
+                        </label>
+                        <label class="login-field">
+                            MMX password
+                            <input id="mmx-password" name="mmxPassword" type="password" autocomplete="current-password">
+                        </label>
+                    </div>
+
+                    <button type="submit" class="login-submit" id="create-account-submit">Create account</button>
+                    <p id="create-details-error" class="login-error" role="alert"></p>
+                    <p id="create-details-status" class="login-error" style="color: var(--login-text-muted);" hidden></p>
+                </form>
+            </div>
+        </section>
+    </div>
+    <script src="/scripts/brand-mark.js"></script>
+    <script src="/scripts/nav-back.js"></script>
+    <script src="/scripts/create-account-details.js"></script>
+</body>
+</html>

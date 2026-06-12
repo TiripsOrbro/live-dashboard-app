@@ -1,6 +1,6 @@
 node_modules/
 
-# Vendor catalog + config (vendors/.Americold, .item-codes, etc.) — always tracked for Pi deploys
+# Vendor catalogs (vendors/catalogs/.Americold, etc.) — tracked for Pi deploys
 !vendors/
 !vendors/**
 !vendors/**/*
@@ -10,26 +10,85 @@ node_modules/
 .env.*
 !.env.example
 .Users
+.users
+.points
 tmp/
 .Users.test
-scripts/probe-stock-count.png
 *.log
+
+# Per-role account files (runtime)
+users/accounts/**/accounts.users
+users/data/account-audit.log
+users/data/mmx-users/
+users/data/webauthn/
+
+# Debug screenshots dumped by probe/debug scripts
+scripts/*.png
+/image.png
 .Employees
 .Employees.example
+
+# Legacy data/ paths (pre-migration — remove after Pi migrate-domain-layout.js)
 data/buildto-grid*.json
 data/buildto-grid*.xlsx
-data/upselling/*_leaderboard.json
-data/upselling/last-export.*
-data/upselling/*-upsell-by-cashier.*
-data/upselling/backfill-complete.json
-data/upselling/unassigned-review.json
-data/upselling/unassigned-review-log.jsonl
-data/mic/*.json
+
+# Dashboard runtime data
+dashboard/data/upselling/*_leaderboard.json
+dashboard/data/upselling/last-export.*
+dashboard/data/upselling/*-upsell-by-cashier.*
+dashboard/data/upselling/backfill-complete.json
+dashboard/data/upselling/unassigned-review.json
+dashboard/data/upselling/unassigned-review-log.jsonl
+dashboard/data/upselling/last-parse.json
+dashboard/data/upselling/last-sync.json
+dashboard/data/sales-snapshots/
+dashboard/data/sssg-lastyear/
+dashboard/data/sssg/grid-debug.json
+dashboard/data/sssg-weekly/*.json
+!dashboard/data/sssg-weekly/import-template.json
+
+# Stores runtime data
+stores/data/mic/*.json
+stores/.storelist
+
+# Vendors runtime data
+vendors/data/stock-count-state.json
+vendors/data/daily-stock-count-state.json
+vendors/data/mmx-pipeline-checkpoints.json
+vendors/data/orders-ready-for-review.json
+vendors/data/build-to-usage-*
+vendors/reports/
+
+# TacAudit runtime data
+tacaudit/data/dfsc/
+tacaudit/data/pest-walk/
+tacaudit/data/rgm-cleaning/
+tacaudit/data/periodic-safety/
+tacaudit/data/square-one/
+tacaudit/data/tacaudit/
+tacaudit/data/tacaudit-compliance-history.json
+tacaudit/data/tacaudit-splash-state.json
+tacaudit/data/audit-state.json
+
+# MMX runtime data
+mmx/data/report-download-schedule-state.json
+
+# Legacy root paths (until migration complete)
+data/upselling/
+data/mic/
 data/webauthn/
 data/mmx-users/
 data/account-audit.log
 data/sales-snapshots/
 data/sssg-lastyear/
-data/sssg/grid-debug.json
-data/sssg-weekly/*.json
-!data/sssg-weekly/import-template.json
+data/sssg-weekly/
+data/stock-count-state.json
+data/daily-stock-count-state.json
+data/mmx-pipeline-checkpoints.json
+data/dfsc/
+data/pest-walk/
+data/rgm-cleaning/
+data/periodic-safety/
+data/square-one/
+data/tacaudit/
+Reports/

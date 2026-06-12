@@ -1,7 +1,7 @@
 {
   "name": "live-dashboard-app",
-  "version": "1.0.0",
-  "description": "A live dashboard application that scrapes data from a website.",
+  "version": "0.4.0",
+  "description": "Live store dashboard that scrapes Macromatix sales/report data and serves store, area, and audit views.",
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
@@ -36,7 +36,10 @@
     "upsell-probe-export": "node scripts/probe-powerbi-export.js",
     "upsell-score-sample": "node scripts/upsell-score-sample.js",
     "probe-sssg-grid": "node scripts/probe-sssg-grid.js",
-    "import-sssg-weekly": "node scripts/import-sssg-weekly.js"
+    "import-sssg-weekly": "node scripts/import-sssg-weekly.js",
+    "migrate-domain-layout": "node scripts/migrate-domain-layout.js",
+    "split-users-file": "node users/scripts/split-users-file.js",
+    "import-audit-pdf": "node tacaudit/scripts/import-audit-pdf.js"
   },
   "engines": {
     "node": ">=18"
@@ -46,6 +49,7 @@
     "cors": "^2.8.6",
     "dotenv": "^10.0.0",
     "express": "^4.22.1",
+    "html2canvas": "^1.4.1",
     "nodemailer": "^6.9.16",
     "puppeteer": "10.4.0",
     "sharp": "^0.33.5",
@@ -54,8 +58,6 @@
   "devDependencies": {
     "nodemon": "^2.0.7"
   },
-  "author": "Your Name",
   "license": "ISC",
-  "keywords": [],
   "type": "commonjs"
 }

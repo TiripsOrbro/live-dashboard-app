@@ -1,0 +1,28 @@
+{
+  "timeZone": "Australia/Melbourne",
+  "operationalCalendar": {
+    "enabled": true,
+    "type": "intervalWeeks",
+    "anchor": "2026-05-04",
+    "periodWeeks": 4,
+    "resetEachYear": false
+  },
+  "dismissalPeriod": {
+    "type": "weekly",
+    "weekdays": [1],
+    "intervalWeeks": 1,
+    "anchor": "2026-05-04"
+  },
+  "squareOnePeriod": {
+    "type": "weekly",
+    "intervalWeeks": 1,
+    "anchor": "2026-05-04",
+    "slotModulo": 4
+  },
+  "psiPeriod": {
+    "type": "weekly",
+    "intervalWeeks": 1,
+    "anchor": "2026-05-04",
+    "slotModulo": 4
+  }
+}

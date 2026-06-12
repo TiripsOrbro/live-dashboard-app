@@ -4,24 +4,28 @@
 The Live Dashboard App is a web application designed to pull data from a website that requires user authentication. This application runs on a Raspberry Pi and provides a live dashboard interface to display the scraped data.
 
 ## Project Structure
+
+Domain-based layout — each area owns `src/`, `public/`, `data/`, and `config/`:
+
 ```
-live-dashboard-app
-├── src
-│   ├── app.js               # Entry point of the application
-│   ├── components
-│   │   └── Dashboard.js     # Manages the dashboard UI
-│   ├── services
-│   │   └── scraper.js       # Handles web scraping logic
-│   ├── utils
-│   │   └── auth.js          # Manages user authentication
-│   └── styles
-│       └── dashboard.css     # CSS styles for the dashboard
-├── public
-│   └── index.html           # Main HTML file for the web application
-├── package.json             # npm configuration file
-├── .env                     # Environment variables for the scraper
-└── README.md                # Project documentation
+live-dashboard-app/
+├── src/
+│   ├── app.js          # Express entry + schedulers
+│   ├── paths.js        # Central path registry
+│   └── services/       # Re-export shims (legacy require paths)
+├── dashboard/          # Sales grid, upselling, SSSG
+├── vendors/            # Stock counts, build-to, catalogs, reports
+├── stores/             # .storelist, markets, store hours
+├── users/              # Auth, MIC UI, per-role accounts/
+├── mmx/                # Macromatix Puppeteer scraping
+├── tacaudit/           # Operational audits (named audit folders)
+├── smg/                # SMG/VOC placeholder
+├── nsf/                # NSF/CORE scraping placeholder
+├── public/shared/      # Cross-cutting client assets
+└── scripts/            # CLI tools + migrate-domain-layout.js
 ```
+
+After pulling on the Pi, run `npm run migrate-domain-layout` once if upgrading from the old flat layout.
 
 ## Installation
 1. Clone the repository:

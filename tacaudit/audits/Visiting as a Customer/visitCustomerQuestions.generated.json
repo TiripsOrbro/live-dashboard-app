@@ -1,0 +1,483 @@
+{
+  "auditLabel": "Visiting as a Customer",
+  "passThreshold": null,
+  "sections": [
+    {
+      "id": "title_page",
+      "label": "Title Page",
+      "order": 0
+    },
+    {
+      "id": "conducted_on_date_time",
+      "label": "Conducted on Date/time",
+      "order": 1
+    },
+    {
+      "id": "location_text_answer",
+      "label": "Location Text answer",
+      "order": 2
+    },
+    {
+      "id": "area_coach_completing_the_check_text_ans",
+      "label": "Area Coach completing the check Text answer",
+      "order": 3
+    },
+    {
+      "id": "serving_up_mas",
+      "label": "SERVING UP MAS",
+      "order": 4
+    },
+    {
+      "id": "was_the_customer_shop_completed_through_",
+      "label": "Was the customer shop completed through Drive Thru or Front",
+      "order": 5
+    },
+    {
+      "id": "customer_shop_review",
+      "label": "Customer Shop Review",
+      "order": 6
+    },
+    {
+      "id": "if_dine_in_meals_are_assembled_as_open_p",
+      "label": "If dine in, meals are assembled as open plating/ a la carte",
+      "order": 7
+    },
+    {
+      "id": "the_brand_experience",
+      "label": "THE BRAND EXPERIENCE",
+      "order": 8
+    },
+    {
+      "id": "restaurant_exterior",
+      "label": "Restaurant Exterior",
+      "order": 9
+    },
+    {
+      "id": "parking_lot_drive_thru_lane_dumpster_pad",
+      "label": "Parking lot, drive thru lane, dumpster pad and sidewalks, are clean,",
+      "order": 10
+    },
+    {
+      "id": "exterior_lights_and_signage_are_clean_fr",
+      "label": "Exterior lights and signage are clean, free of buildup, in good",
+      "order": 11
+    },
+    {
+      "id": "exterior_rubbish_bins_are_clean_and_dump",
+      "label": "Exterior rubbish bins are clean and dumpster bin lids are kept",
+      "order": 12
+    },
+    {
+      "id": "exterior_walls_windows_and_doors_of_the_",
+      "label": "Exterior walls, windows and doors of the restaurant are clean, free",
+      "order": 13
+    },
+    {
+      "id": "drive_thru_windows_and_menu_boards_are_c",
+      "label": "Drive thru windows and menu boards are clean, free of build up, and",
+      "order": 14
+    },
+    {
+      "id": "restaurant_interior",
+      "label": "Restaurant Interior",
+      "order": 15
+    },
+    {
+      "id": "restrooms_are_clean_sink_toilet_fixtures",
+      "label": "Restrooms are clean (sink, toilet, fixtures, floors and walls are",
+      "order": 16
+    },
+    {
+      "id": "dining_room_floors_walls_and_ceilings_ar",
+      "label": "Dining room floors, walls, and ceilings are clean and in good",
+      "order": 17
+    },
+    {
+      "id": "dining_room_tables_and_chairs_and_trash_",
+      "label": "Dining room tables and chairs, and trash receptacles are clean and",
+      "order": 18
+    },
+    {
+      "id": "front_counter_drink_and_condiment_statio",
+      "label": "Front counter, drink and condiment stations are clean, stocked and",
+      "order": 19
+    },
+    {
+      "id": "interior_menu_boards_and_marketing_mater",
+      "label": "Interior menu boards and marketing materials are clean and in",
+      "order": 20
+    },
+    {
+      "id": "summary",
+      "label": "SUMMARY",
+      "order": 21
+    },
+    {
+      "id": "comments_and_feedback_text_answer",
+      "label": "Comments and Feedback Text answer",
+      "order": 22
+    },
+    {
+      "id": "by_signing_this_you_are_acknowledging_th",
+      "label": "By signing this, you are acknowledging that you have thoroughly",
+      "order": 23
+    },
+    {
+      "id": "instruction",
+      "label": "Instruction",
+      "order": 24
+    },
+    {
+      "id": "date",
+      "label": "Date: / /",
+      "order": 25
+    },
+    {
+      "id": "sign_off",
+      "label": "Sign Off",
+      "order": 26
+    }
+  ],
+  "questions": [
+    {
+      "id": "site_conducted_0",
+      "section": "title_page",
+      "type": "text",
+      "label": "Site conducted",
+      "group": "Title Page",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "greeted_within_5_seconds_with_a_friendly_greetin_1",
+      "section": "was_the_customer_shop_completed_through_",
+      "type": "yes_no_na",
+      "label": "Greeted within 5 seconds with a friendly greeting? (5PTS)",
+      "group": "Was the customer shop completed through Drive Thru or Front",
+      "required": true,
+      "points": 5,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "service_champion_offered_mild_fire_sauce_on_prod_2",
+      "section": "was_the_customer_shop_completed_through_",
+      "type": "yes_no_na",
+      "label": "Service Champion offered mild/fire sauce on products ('make it",
+      "group": "Was the customer shop completed through Drive Thru or Front",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "order_is_repeated_and_order_total_provided_3",
+      "section": "was_the_customer_shop_completed_through_",
+      "type": "yes_no_na",
+      "label": "Order is repeated and order total provided?",
+      "group": "Was the customer shop completed through Drive Thru or Front",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "a_friendly_invitation_to_pull_forward_to_the_win_4",
+      "section": "was_the_customer_shop_completed_through_",
+      "type": "yes_no_na",
+      "label": "A friendly invitation to pull forward to the window was offered?",
+      "group": "Was the customer shop completed through Drive Thru or Front",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "orders_are_repeated_while_being_handed_out_at_th_5",
+      "section": "was_the_customer_shop_completed_through_",
+      "type": "yes_no_na",
+      "label": "Orders are repeated while being handed out at the window?",
+      "group": "Was the customer shop completed through Drive Thru or Front",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "speed_meets_standard_during_the_shop_3_30_6",
+      "section": "was_the_customer_shop_completed_through_",
+      "type": "yes_no_na",
+      "label": "Speed meets standard during the shop? (3:30)",
+      "group": "Was the customer shop completed through Drive Thru or Front",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "1_10_1_11_1_12_1_13_8",
+      "section": "was_the_customer_shop_completed_through_",
+      "type": "compliant_nc",
+      "label": "1.10, 1.11, 1.12, 1.13",
+      "group": "Was the customer shop completed through Drive Thru or Front",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "greeted_within_5_seconds_of_entering_the_restaur_9",
+      "section": "was_the_customer_shop_completed_through_",
+      "type": "yes_no_na",
+      "label": "Greeted within 5 seconds of entering the restaurant with a",
+      "group": "Was the customer shop completed through Drive Thru or Front",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "asked_if_order_was_dine_in_10",
+      "section": "was_the_customer_shop_completed_through_",
+      "type": "yes_no_na",
+      "label": "Asked if order was dine in?",
+      "group": "Was the customer shop completed through Drive Thru or Front",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "order_is_repeated_and_order_total_provided_11",
+      "section": "was_the_customer_shop_completed_through_",
+      "type": "yes_no_na",
+      "label": "Order is repeated and order total provided?",
+      "group": "Was the customer shop completed through Drive Thru or Front",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "table_number_allocated_and_handed_out_for_dine_i_12",
+      "section": "was_the_customer_shop_completed_through_",
+      "type": "yes_no_na",
+      "label": "Table Number allocated and handed out for dine in?",
+      "group": "Was the customer shop completed through Drive Thru or Front",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "order_delivered_to_table_repeated_during_hand_ou_13",
+      "section": "was_the_customer_shop_completed_through_",
+      "type": "yes_no_na",
+      "label": "Order delivered to table & repeated during hand out?",
+      "group": "Was the customer shop completed through Drive Thru or Front",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "table_touch_completed_within_3_5_minutes_of_rece_14",
+      "section": "was_the_customer_shop_completed_through_",
+      "type": "yes_no_na",
+      "label": "Table Touch completed within 3-5 minutes of receiving order?",
+      "group": "Was the customer shop completed through Drive Thru or Front",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "table_cleared_within_2_minutes_of_finishing_meal_15",
+      "section": "was_the_customer_shop_completed_through_",
+      "type": "yes_no_na",
+      "label": "Table cleared within 2 minutes of finishing meal?",
+      "group": "Was the customer shop completed through Drive Thru or Front",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "if_answer_is_no_require_evidence_17",
+      "section": "customer_shop_review",
+      "type": "compliant_nc",
+      "label": "If answer is No Require Evidence",
+      "group": "Customer Shop Review",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "if_answer_is_no_require_evidence_19",
+      "section": "customer_shop_review",
+      "type": "compliant_nc",
+      "label": "If answer is No Require Evidence",
+      "group": "Customer Shop Review",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "shopped_products_are_hot_as_fresh_20",
+      "section": "customer_shop_review",
+      "type": "yes_no_na",
+      "label": "Shopped products are hot as fresh?",
+      "group": "Customer Shop Review",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "shopped_products_are_not_leaking_onto_wrappers_p_21",
+      "section": "customer_shop_review",
+      "type": "yes_no_na",
+      "label": "Shopped products are not leaking onto wrappers/packaging?",
+      "group": "Customer Shop Review",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "if_take_away_products_are_wrapped_and_marked_cor_22",
+      "section": "if_dine_in_meals_are_assembled_as_open_p",
+      "type": "yes_no_na",
+      "label": "If take-away, products are wrapped and marked correctly?",
+      "group": "If dine in, meals are assembled as open plating/ a la carte",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "if_answer_is_no_trigger_not_defined_24",
+      "section": "if_dine_in_meals_are_assembled_as_open_p",
+      "type": "compliant_nc",
+      "label": "If answer is No <trigger not defined>",
+      "group": "If dine in, meals are assembled as open plating/ a la carte",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "order_received_is_accurate_25",
+      "section": "if_dine_in_meals_are_assembled_as_open_p",
+      "type": "yes_no_na",
+      "label": "Order received is accurate?",
+      "group": "If dine in, meals are assembled as open plating/ a la carte",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "napkins_straws_utensils_are_provided_5_pts_26",
+      "section": "if_dine_in_meals_are_assembled_as_open_p",
+      "type": "yes_no_na",
+      "label": "Napkins, straws, utensils are provided (5 PTS)",
+      "group": "If dine in, meals are assembled as open plating/ a la carte",
+      "required": true,
+      "points": 5,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "is_restaurant_using_the_correct_nacho_cheese_tub_28",
+      "section": "if_dine_in_meals_are_assembled_as_open_p",
+      "type": "yes_no_na",
+      "label": "Is restaurant using the correct nacho cheese tube head? (Check for",
+      "group": "If dine in, meals are assembled as open plating/ a la carte",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "door_window_and_marketing_materials_are_in_good__29",
+      "section": "drive_thru_windows_and_menu_boards_are_c",
+      "type": "compliant_nc",
+      "label": "Door/ window and marketing materials are in good condition?",
+      "group": "Drive thru windows and menu boards are clean, free of build up, and",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "Compliant",
+        "Non-Compliant",
+        "N/A"
+      ]
+    },
+    {
+      "id": "full_name_and_signature_of_the_manager_who_compl_30",
+      "section": "instruction",
+      "type": "signature",
+      "label": "Full Name and signature of the manager who completed this visit",
+      "group": "Instruction",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    }
+  ]
+}

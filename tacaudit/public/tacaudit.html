@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en" class="page-scroll">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#7a3eb1">
+    <title>TacAudit</title>
+    <script>
+        try {
+            if (sessionStorage.getItem('dashboard-nav-transition') === 'from-stores') {
+                document.documentElement.className += ' page-nav-enter-pending';
+            }
+        } catch (e) { /* ignore */ }
+    </script>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles/brand-mark.css">
+    <link rel="stylesheet" href="/styles/dashboard.css">
+    <link rel="stylesheet" href="/styles/nav-back.css">
+    <link rel="stylesheet" href="/styles/dfsc.css">
+    <link rel="stylesheet" href="/styles/tacaudit.css">
+    <link rel="stylesheet" href="/styles/mic.css">
+    <link rel="stylesheet" href="/styles/page-transition.css">
+    <link rel="stylesheet" href="/styles/page-scroll.css">
+</head>
+<body class="dfsc-page tacaudit-page">
+    <div id="tacaudit-nav-back" class="nav-back-host"></div>
+    <div id="app">Loading…</div>
+    <script src="/scripts/page-transition.js"></script>
+    <script>
+        DashboardPageTransition.initEnterFade();
+        DashboardPageTransition.installDashboardPagehide();
+    </script>
+    <script src="/scripts/app-paths.js"></script>
+    <script src="/scripts/nav-back.js"></script>
+    <script src="/scripts/brand-mark.js"></script>
+    <script src="/scripts/audit-preferences.js"></script>
+    <script src="/scripts/mic-settings.js"></script>
+    <script src="/scripts/vendor/html2canvas.min.js"></script>
+    <script src="/scripts/tacaudit.js"></script>
+</body>
+</html>

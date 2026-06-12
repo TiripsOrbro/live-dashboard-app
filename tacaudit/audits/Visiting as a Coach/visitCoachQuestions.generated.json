@@ -1,0 +1,1893 @@
+{
+  "auditLabel": "Visiting as a Coach",
+  "passThreshold": null,
+  "sections": [
+    {
+      "id": "title_page",
+      "label": "Title Page",
+      "order": 0
+    },
+    {
+      "id": "step_1_plan_your_visit",
+      "label": "Step 1: Plan Your Visit",
+      "order": 1
+    },
+    {
+      "id": "bench_plan_and_previous_lp_audit_checkbo",
+      "label": "Bench Plan and Previous LP Audit). Checkbox",
+      "order": 2
+    },
+    {
+      "id": "notes_text_answer",
+      "label": "Notes: Text answer",
+      "order": 3
+    },
+    {
+      "id": "step_2_visit_as_a_customer_product_recog",
+      "label": "Step 2: Visit as a Customer / Product Recognition",
+      "order": 4
+    },
+    {
+      "id": "effective_from_round_2_double_points_wil",
+      "label": "Effective from round 2, double points will be lost for repeated cleanliness",
+      "order": 5
+    },
+    {
+      "id": "instruction",
+      "label": "Instruction",
+      "order": 6
+    },
+    {
+      "id": "product_recognition",
+      "label": "Product Recognition",
+      "order": 7
+    },
+    {
+      "id": "in_fy26_we_will_recognise_great_product_",
+      "label": "In FY26 we will recognise great product with a $50 gift card once per",
+      "order": 8
+    },
+    {
+      "id": "look_for",
+      "label": "Look for:",
+      "order": 9
+    },
+    {
+      "id": "step_3_food_safety_big6",
+      "label": "Step 3: Food Safety: Big6+",
+      "order": 10
+    },
+    {
+      "id": "proper_cooking_temperature",
+      "label": "PROPER COOKING TEMPERATURE",
+      "order": 11
+    },
+    {
+      "id": "prevent_contamination",
+      "label": "PREVENT CONTAMINATION",
+      "order": 12
+    },
+    {
+      "id": "observe_this_for_long_enough_to_get_a_re",
+      "label": "Observe this for long enough to get a real indication",
+      "order": 13
+    },
+    {
+      "id": "take_a_photo_of_each_broken_smallware_me",
+      "label": "Take a photo of each broken smallware Media",
+      "order": 14
+    },
+    {
+      "id": "proper_health_hygiene",
+      "label": "PROPER HEALTH & HYGIENE",
+      "order": 15
+    },
+    {
+      "id": "proper_temp_and_time_management",
+      "label": "PROPER TEMP AND TIME MANAGEMENT",
+      "order": 16
+    },
+    {
+      "id": "control_expiration_dates_shelf_life",
+      "label": "CONTROL EXPIRATION DATES & SHELF-LIFE",
+      "order": 17
+    },
+    {
+      "id": "prevent_pest_entry_harbourage_activity",
+      "label": "PREVENT PEST ENTRY, HARBOURAGE, & ACTIVITY",
+      "order": 18
+    },
+    {
+      "id": "step_4_observe_how_the_shift_is_being_ru",
+      "label": "Step 4: Observe How the Shift is Being Run",
+      "order": 19
+    },
+    {
+      "id": "step_5_coach_train_product_quality_stand",
+      "label": "Step 5: Coach/Train Product Quality Standards",
+      "order": 20
+    },
+    {
+      "id": "does_the_restaurant_have_crushed_nacho_c",
+      "label": "Does the restaurant have crushed nacho chips in the hot line with a",
+      "order": 21
+    },
+    {
+      "id": "step_6_support_lead_the_3_rights",
+      "label": "Step 6: Support/Lead the 3 Rights",
+      "order": 22
+    },
+    {
+      "id": "right_people",
+      "label": "RIGHT PEOPLE",
+      "order": 23
+    },
+    {
+      "id": "right_number",
+      "label": "RIGHT NUMBER",
+      "order": 24
+    },
+    {
+      "id": "right_places",
+      "label": "RIGHT PLACES",
+      "order": 25
+    },
+    {
+      "id": "step_7_review_restaurant_basics_trends",
+      "label": "Step 7: Review Restaurant Basics/Trends",
+      "order": 26
+    },
+    {
+      "id": "systems",
+      "label": "SYSTEMS",
+      "order": 27
+    },
+    {
+      "id": "ask_team_members_what_their_primary_and_",
+      "label": "Ask team members what their primary and secondary tasks are for",
+      "order": 28
+    },
+    {
+      "id": "date_time",
+      "label": "Date/time",
+      "order": 29
+    },
+    {
+      "id": "pop",
+      "label": "POP",
+      "order": 30
+    },
+    {
+      "id": "record_lead_names_instruction",
+      "label": "Record Lead names: Instruction",
+      "order": 31
+    },
+    {
+      "id": "customer_lead_text_answer",
+      "label": "Customer Lead Text answer",
+      "order": 32
+    },
+    {
+      "id": "people_lead_text_answer",
+      "label": "People Lead Text answer",
+      "order": 33
+    },
+    {
+      "id": "product_lead_text_answer",
+      "label": "Product Lead Text answer",
+      "order": 34
+    },
+    {
+      "id": "facility_lead_text_answer",
+      "label": "Facility Lead Text answer",
+      "order": 35
+    },
+    {
+      "id": "safety",
+      "label": "SAFETY",
+      "order": 36
+    },
+    {
+      "id": "retherm_racks_media",
+      "label": "Retherm racks Media",
+      "order": 37
+    },
+    {
+      "id": "inspect_the_retherm_racks_are_these_brok",
+      "label": "Inspect the retherm racks - are these broken and unsafe (product",
+      "order": 38
+    },
+    {
+      "id": "station_no_hanging_empty_baskets_no_hang",
+      "label": "Station (no hanging empty baskets, no hanging taco baskets etc)",
+      "order": 39
+    },
+    {
+      "id": "are_team_members_following_the_correct_s",
+      "label": "Are team members following the correct standards outlined in the",
+      "order": 40
+    },
+    {
+      "id": "maintenance_it",
+      "label": "Maintenance / IT",
+      "order": 41
+    },
+    {
+      "id": "text_answer",
+      "label": "Text answer",
+      "order": 42
+    },
+    {
+      "id": "marketing",
+      "label": "MARKETING",
+      "order": 43
+    },
+    {
+      "id": "is_the_current_promotion_banner_up_and_v",
+      "label": "Is the current promotion banner up and visible to customers",
+      "order": 44
+    },
+    {
+      "id": "is_the_current_promotion_posters_up_and_",
+      "label": "Is the current promotion posters up and visible to customer in the",
+      "order": 45
+    },
+    {
+      "id": "does_the_restaurant_only_display_current",
+      "label": "Does the restaurant only display current promotion material to",
+      "order": 46
+    },
+    {
+      "id": "square_one_cleaning_review",
+      "label": "SQUARE ONE & Cleaning Review",
+      "order": 47
+    },
+    {
+      "id": "rgm_weekly_cleaning_assessment",
+      "label": "RGM Weekly Cleaning Assessment",
+      "order": 48
+    },
+    {
+      "id": "review_the_last_4_rgm_weekly_cleaning_as",
+      "label": "Review the last 4 RGM Weekly Cleaning Assessments: Instruction",
+      "order": 49
+    },
+    {
+      "id": "have_the_actions_set_by_the_rgm_on_the_a",
+      "label": "Have the actions set by the RGM on the action plan page been",
+      "order": 50
+    },
+    {
+      "id": "step_8_recap_actions",
+      "label": "Step 8: Recap & Actions",
+      "order": 51
+    },
+    {
+      "id": "visit_as_a_coach_checkbox",
+      "label": "Visit as a Coach Checkbox",
+      "order": 52
+    },
+    {
+      "id": "agree_on_2_key_priorities_that_the_resta",
+      "label": "Agree on 2 key priorities that the restaurant team will work towards before",
+      "order": 53
+    },
+    {
+      "id": "coach_team_on_possible_actions_to_addres",
+      "label": "Coach team on possible actions to address as priorities. Allow the",
+      "order": 54
+    },
+    {
+      "id": "mic_rgm_to_get_back_to_you_within_48_hou",
+      "label": "MIC/RGM to get back to you within 48 hours with their actions.",
+      "order": 55
+    },
+    {
+      "id": "step_9_recognise_team_leave_the_review",
+      "label": "Step 9: Recognise Team & Leave the Review",
+      "order": 56
+    },
+    {
+      "id": "don_t_forget_to_recognise_the_team_and_o",
+      "label": "Don't forget to recognise the team and/or MIC where you can! Instruction",
+      "order": 57
+    },
+    {
+      "id": "email_the_visit_as_a_coach_to_the_restau",
+      "label": "Email the Visit as a Coach to the restaurant and print Instruction",
+      "order": 58
+    },
+    {
+      "id": "hand_the_mic_rgm_the_printed_copy_instru",
+      "label": "Hand the MIC/RGM the printed copy Instruction",
+      "order": 59
+    },
+    {
+      "id": "do_you_want_to_complete_a_tam_card_to_re",
+      "label": "Do you want to complete a TAM card to recognise the team or a TM",
+      "order": 60
+    },
+    {
+      "id": "submit",
+      "label": "SUBMIT",
+      "order": 61
+    },
+    {
+      "id": "date",
+      "label": "Date: / /",
+      "order": 62
+    },
+    {
+      "id": "sign_off",
+      "label": "Sign Off",
+      "order": 63
+    }
+  ],
+  "questions": [
+    {
+      "id": "site_conducted_0",
+      "section": "title_page",
+      "type": "text",
+      "label": "Site conducted",
+      "group": "Title Page",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "conducted_on_1",
+      "section": "title_page",
+      "type": "datetime",
+      "label": "Conducted on",
+      "group": "Title Page",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "prepared_by_2",
+      "section": "title_page",
+      "type": "text",
+      "label": "Prepared by",
+      "group": "Title Page",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "rgm_3",
+      "section": "title_page",
+      "type": "text",
+      "label": "RGM",
+      "group": "Title Page",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "mic_4",
+      "section": "title_page",
+      "type": "select",
+      "label": "MIC",
+      "group": "Title Page",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "have_you_or_will_you_complete_an_operations_self_5",
+      "section": "step_2_visit_as_a_customer_product_recog",
+      "type": "yes_no_na",
+      "label": "Have you or will you complete an Operations Self-Score CORE",
+      "group": "Step 2: Visit as a Customer / Product Recognition",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "1_0_have_you_completed_a_visit_as_a_customer_tod_6",
+      "section": "step_2_visit_as_a_customer_product_recog",
+      "type": "yes_no_na",
+      "label": "1.0. Have you completed a Visit as a Customer today?",
+      "group": "Step 2: Visit as a Customer / Product Recognition",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ],
+      "showWhenAnswer": {
+        "1_0_have_you_completed_a_visit_as_a_customer_tod_6": "no"
+      }
+    },
+    {
+      "id": "1_0_0_overall_result_7",
+      "section": "step_2_visit_as_a_customer_product_recog",
+      "type": "overall_result",
+      "label": "1.0.0. Overall result:",
+      "group": "Step 2: Visit as a Customer / Product Recognition",
+      "required": true,
+      "points": null,
+      "options": [
+        "Great!",
+        "Good",
+        "Fair",
+        "Poor",
+        "N/A"
+      ],
+      "showWhenAnswer": {
+        "1_0_0_overall_result_7": "yes"
+      }
+    },
+    {
+      "id": "1_1_overall_result_8",
+      "section": "step_2_visit_as_a_customer_product_recog",
+      "type": "select",
+      "label": "1.1. Overall result:",
+      "group": "Step 2: Visit as a Customer / Product Recognition",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "Pass",
+        "Fail",
+        "N/A"
+      ],
+      "showWhenAnswer": {
+        "1_1_overall_result_8": "yes"
+      }
+    },
+    {
+      "id": "are_there_any_outstanding_cleaning_deviations_fr_9",
+      "section": "instruction",
+      "type": "yes_no_na",
+      "label": "Are there any outstanding cleaning deviations from the previous",
+      "group": "Instruction",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "was_there_an_opportunity_to_recognise_great_prod_10",
+      "section": "instruction",
+      "type": "select",
+      "label": "Was there an opportunity to recognise great product builds today?",
+      "group": "Instruction",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "2_0_name_of_tm_mic_who_made_the_product_11",
+      "section": "look_for",
+      "type": "select",
+      "label": "2.0. Name of TM/MIC who made the product:",
+      "group": "Look for:",
+      "required": true,
+      "points": null,
+      "showWhenAnswer": {
+        "2_0_name_of_tm_mic_who_made_the_product_11": "yes"
+      }
+    },
+    {
+      "id": "2_1_photo_s_of_product_media_12",
+      "section": "look_for",
+      "type": "select",
+      "label": "2.1. Photo's of product: Media",
+      "group": "Look for:",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "have_you_completed_or_will_you_complete_a_food_s_13",
+      "section": "step_3_food_safety_big6",
+      "type": "yes_no_na",
+      "label": "Have you completed or will you complete a Food Safety Self-Score",
+      "group": "Step 3: Food Safety: Big6+",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "proteins_are_above_74_degrees_when_moved_into_pa_14",
+      "section": "proper_cooking_temperature",
+      "type": "select",
+      "label": "Proteins are above 74 degrees when moved into pans? Check temp",
+      "group": "PROPER COOKING TEMPERATURE",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ],
+      "showWhenAnswer": {
+        "1_0_have_you_completed_a_visit_as_a_customer_tod_6": "no"
+      }
+    },
+    {
+      "id": "is_rice_above_71_degrees_when_moved_into_pans_ch_15",
+      "section": "proper_cooking_temperature",
+      "type": "select",
+      "label": "Is Rice above 71 degrees when moved into pans? Check that the",
+      "group": "PROPER COOKING TEMPERATURE",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "proteins_are_moved_into_warmers_with_urgency_16",
+      "section": "proper_cooking_temperature",
+      "type": "select",
+      "label": "Proteins are moved into warmers with urgency?",
+      "group": "PROPER COOKING TEMPERATURE",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "check_production_areas_is_equipment_in_good_repa_17",
+      "section": "prevent_contamination",
+      "type": "select",
+      "label": "Check production areas - is equipment in good repair to prevent",
+      "group": "PREVENT CONTAMINATION",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "dry_stock_has_no_damage_split_boxes_leaking_torn_18",
+      "section": "prevent_contamination",
+      "type": "select",
+      "label": "Dry stock has no damage (split boxes, leaking, torn packaging and",
+      "group": "PREVENT CONTAMINATION",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "chemicals_correctly_labelled_and_stored_appropri_19",
+      "section": "prevent_contamination",
+      "type": "select",
+      "label": "Chemicals correctly labelled and stored appropriately?",
+      "group": "PREVENT CONTAMINATION",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "staff_drinks_meals_in_separate_container_20",
+      "section": "prevent_contamination",
+      "type": "select",
+      "label": "Staff drinks/meals in separate container?",
+      "group": "PREVENT CONTAMINATION",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "staff_handwashing_is_being_conducted_to_standard_21",
+      "section": "prevent_contamination",
+      "type": "select",
+      "label": "Staff handwashing is being conducted to standard when required?",
+      "group": "PREVENT CONTAMINATION",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "smallwares_are_in_good_condition_with_no_cracks__22",
+      "section": "observe_this_for_long_enough_to_get_a_re",
+      "type": "select",
+      "label": "Smallwares are in good condition, with no cracks, chips or missing",
+      "group": "Observe this for long enough to get a real indication",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "6_0_do_smallware_s_need_to_be_replaced_23",
+      "section": "observe_this_for_long_enough_to_get_a_re",
+      "type": "select",
+      "label": "6.0. Do smallware's need to be replaced?",
+      "group": "Observe this for long enough to get a real indication",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "showWhenAnswer": {
+        "6_0_do_smallware_s_need_to_be_replaced_23": "at risk"
+      }
+    },
+    {
+      "id": "no_team_members_or_managers_working_whilst_sick_24",
+      "section": "proper_health_hygiene",
+      "type": "select",
+      "label": "No Team Members or Managers working whilst sick?",
+      "group": "PROPER HEALTH & HYGIENE",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "gloves_are_worn_when_and_where_required_25",
+      "section": "proper_health_hygiene",
+      "type": "select",
+      "label": "Gloves are worn when and where required?",
+      "group": "PROPER HEALTH & HYGIENE",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "uniform_standards_are_met_hair_restrained_hat_wo_26",
+      "section": "proper_health_hygiene",
+      "type": "select",
+      "label": "Uniform Standards are met ( Hair restrained, Hat worn in BOH, and",
+      "group": "PROPER HEALTH & HYGIENE",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "hot_holding_equipment_at_correct_temperature_and_27",
+      "section": "proper_temp_and_time_management",
+      "type": "select",
+      "label": "Hot holding equipment at correct temperature and in good repair?",
+      "group": "PROPER TEMP AND TIME MANAGEMENT",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "cold_holding_equipment_at_correct_temperature_an_28",
+      "section": "proper_temp_and_time_management",
+      "type": "select",
+      "label": "Cold holding equipment at correct temperature and in good",
+      "group": "PROPER TEMP AND TIME MANAGEMENT",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "hot_line_and_warmer_products_above_required_temp_29",
+      "section": "proper_temp_and_time_management",
+      "type": "select",
+      "label": "Hot line and warmer products above required temperature?",
+      "group": "PROPER TEMP AND TIME MANAGEMENT",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "cold_line_and_fridge_products_below_required_tem_30",
+      "section": "proper_temp_and_time_management",
+      "type": "select",
+      "label": "Cold line and fridge products below required temperature?",
+      "group": "PROPER TEMP AND TIME MANAGEMENT",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "all_products_on_the_line_are_within_hold_time_31",
+      "section": "proper_temp_and_time_management",
+      "type": "select",
+      "label": "All products on the line are within hold time?",
+      "group": "PROPER TEMP AND TIME MANAGEMENT",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "all_products_in_warmers_within_hold_time_32",
+      "section": "proper_temp_and_time_management",
+      "type": "select",
+      "label": "All products in warmers within hold time?",
+      "group": "PROPER TEMP AND TIME MANAGEMENT",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "defrosting_proteins_are_labelled_correctly_and_w_33",
+      "section": "control_expiration_dates_shelf_life",
+      "type": "select",
+      "label": "Defrosting proteins are labelled correctly and within date?",
+      "group": "CONTROL EXPIRATION DATES & SHELF-LIFE",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "carryover_proteins_are_labelled_correct_and_with_34",
+      "section": "control_expiration_dates_shelf_life",
+      "type": "select",
+      "label": "Carryover proteins are labelled correct and within date?",
+      "group": "CONTROL EXPIRATION DATES & SHELF-LIFE",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "salads_dairy_are_rotated_correctly_and_within_sh_35",
+      "section": "control_expiration_dates_shelf_life",
+      "type": "select",
+      "label": "Salads & dairy are rotated correctly and within shelf life?",
+      "group": "CONTROL EXPIRATION DATES & SHELF-LIFE",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "pest_inspection_has_been_completed_each_week_for_36",
+      "section": "prevent_pest_entry_harbourage_activity",
+      "type": "select",
+      "label": "Pest Inspection has been completed each week for the last 4",
+      "group": "PREVENT PEST ENTRY, HARBOURAGE, & ACTIVITY",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "storage_areas_are_clean_and_no_harbourage_condit_37",
+      "section": "prevent_pest_entry_harbourage_activity",
+      "type": "select",
+      "label": "Storage areas are clean, and no harbourage conditions exist?",
+      "group": "PREVENT PEST ENTRY, HARBOURAGE, & ACTIVITY",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "there_is_no_product_under_the_lines_and_equipmen_38",
+      "section": "prevent_pest_entry_harbourage_activity",
+      "type": "select",
+      "label": "There is no product under the lines and equipment in BOH?",
+      "group": "PREVENT PEST ENTRY, HARBOURAGE, & ACTIVITY",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "there_are_no_pest_entry_points_into_the_restaura_39",
+      "section": "prevent_pest_entry_harbourage_activity",
+      "type": "select",
+      "label": "There are no pest entry points into the restaurant?",
+      "group": "PREVENT PEST ENTRY, HARBOURAGE, & ACTIVITY",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "back_door_is_kept_closed_throughout_the_day_40",
+      "section": "prevent_pest_entry_harbourage_activity",
+      "type": "select",
+      "label": "Back door is kept closed throughout the day?",
+      "group": "PREVENT PEST ENTRY, HARBOURAGE, & ACTIVITY",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "fcb_machine_is_clean_both_internal_and_external_41",
+      "section": "prevent_pest_entry_harbourage_activity",
+      "type": "select",
+      "label": "FCB machine is clean both internal and external?",
+      "group": "PREVENT PEST ENTRY, HARBOURAGE, & ACTIVITY",
+      "required": true,
+      "points": null,
+      "options": [
+        "Safe",
+        "At Risk",
+        "N/A"
+      ]
+    },
+    {
+      "id": "1_6_overall_result_42",
+      "section": "prevent_pest_entry_harbourage_activity",
+      "type": "select",
+      "label": "1.6. Overall result:",
+      "group": "PREVENT PEST ENTRY, HARBOURAGE, & ACTIVITY",
+      "required": true,
+      "points": null,
+      "options": [
+        "Pass",
+        "Fail",
+        "N/A"
+      ],
+      "showWhenAnswer": {
+        "1_6_overall_result_42": "yes"
+      }
+    },
+    {
+      "id": "are_there_any_other_food_safety_concerns_you_wou_43",
+      "section": "prevent_pest_entry_harbourage_activity",
+      "type": "yes_no_na",
+      "label": "Are there any other Food Safety concerns you would like to",
+      "group": "PREVENT PEST ENTRY, HARBOURAGE, & ACTIVITY",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "record_any_photos_media_44",
+      "section": "prevent_pest_entry_harbourage_activity",
+      "type": "select",
+      "label": "Record any photos: Media",
+      "group": "PREVENT PEST ENTRY, HARBOURAGE, & ACTIVITY",
+      "required": true,
+      "points": null,
+      "showWhenAnswer": {
+        "2_0_name_of_tm_mic_who_made_the_product_11": "yes"
+      }
+    },
+    {
+      "id": "record_any_notes_text_answer_45",
+      "section": "prevent_pest_entry_harbourage_activity",
+      "type": "select",
+      "label": "Record any notes: Text answer",
+      "group": "PREVENT PEST ENTRY, HARBOURAGE, & ACTIVITY",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "did_you_observed_a_customer_satisfaction_walk_be_46",
+      "section": "step_4_observe_how_the_shift_is_being_ru",
+      "type": "yes_no_na",
+      "label": "Did you observed a Customer Satisfaction Walk being conducted?",
+      "group": "Step 4: Observe How the Shift is Being Run",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "is_the_mic_observing_and_coaching_service_champi_47",
+      "section": "step_4_observe_how_the_shift_is_being_ru",
+      "type": "yes_no_na",
+      "label": "Is the MIC observing and coaching Service Champions on offering",
+      "group": "Step 4: Observe How the Shift is Being Run",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "is_the_mic_ensuring_that_open_plating_is_being_f_48",
+      "section": "step_4_observe_how_the_shift_is_being_ru",
+      "type": "yes_no_na",
+      "label": "Is the MIC ensuring that Open Plating is being followed for dine in",
+      "group": "Step 4: Observe How the Shift is Being Run",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "is_the_mic_coaching_service_champions_on_complet_49",
+      "section": "step_4_observe_how_the_shift_is_being_ru",
+      "type": "yes_no_na",
+      "label": "Is the MIC coaching Service Champions on completing Table",
+      "group": "Step 4: Observe How the Shift is Being Run",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "team_members_the_mic_aware_of_the_spice_matrix_a_50",
+      "section": "step_4_observe_how_the_shift_is_being_ru",
+      "type": "yes_no_na",
+      "label": "Team Members & the MIC aware of The Spice Matrix and how to",
+      "group": "Step 4: Observe How the Shift is Being Run",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "if_answer_is_no_trigger_not_defined_52",
+      "section": "step_4_observe_how_the_shift_is_being_ru",
+      "type": "select",
+      "label": "If answer is No <trigger not defined>",
+      "group": "Step 4: Observe How the Shift is Being Run",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "mic_is_relieving_bottlenecks_driving_speed_of_se_53",
+      "section": "step_4_observe_how_the_shift_is_being_ru",
+      "type": "yes_no_na",
+      "label": "MIC is relieving bottlenecks, driving Speed of Service & VOC, and",
+      "group": "Step 4: Observe How the Shift is Being Run",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "are_customers_being_prioritised_over_all_other_t_54",
+      "section": "step_4_observe_how_the_shift_is_being_ru",
+      "type": "yes_no_na",
+      "label": "Are customers being prioritised over all other tasks (expect",
+      "group": "Step 4: Observe How the Shift is Being Run",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "restaurant_has_a_functioning_bell_55",
+      "section": "step_4_observe_how_the_shift_is_being_ru",
+      "type": "yes_no_na",
+      "label": "Restaurant has a functioning bell?",
+      "group": "Step 4: Observe How the Shift is Being Run",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "9_0_does_the_team_cheer_when_the_bell_is_rung_by_56",
+      "section": "step_4_observe_how_the_shift_is_being_ru",
+      "type": "yes_no_na",
+      "label": "9.0. Does the Team cheer when the bell is rung by a customer?",
+      "group": "Step 4: Observe How the Shift is Being Run",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ],
+      "showWhenAnswer": {
+        "9_0_does_the_team_cheer_when_the_bell_is_rung_by_56": "yes"
+      }
+    },
+    {
+      "id": "team_members_can_explain_what_the_current_promot_57",
+      "section": "step_5_coach_train_product_quality_stand",
+      "type": "yes_no_na",
+      "label": "Team members can explain what the current promotions are (or",
+      "group": "Step 5: Coach/Train Product Quality Standards",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "prep_guide_is_available_team_is_using_crispy_chi_58",
+      "section": "step_5_coach_train_product_quality_stand",
+      "type": "yes_no_na",
+      "label": "Prep guide is available, team is using Crispy Chicken build to's",
+      "group": "Step 5: Coach/Train Product Quality Standards",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "if_answer_is_no_trigger_not_defined_60",
+      "section": "step_5_coach_train_product_quality_stand",
+      "type": "select",
+      "label": "If answer is No <trigger not defined>",
+      "group": "Step 5: Coach/Train Product Quality Standards",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "are_food_champions_portioning_sauces_correctly_f_61",
+      "section": "does_the_restaurant_have_crushed_nacho_c",
+      "type": "yes_no_na",
+      "label": "Are Food Champions portioning sauces correctly - full 11g portion",
+      "group": "Does the restaurant have crushed nacho chips in the hot line with a",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "if_answer_is_no_trigger_not_defined_63",
+      "section": "does_the_restaurant_have_crushed_nacho_c",
+      "type": "select",
+      "label": "If answer is No <trigger not defined>",
+      "group": "Does the restaurant have crushed nacho chips in the hot line with a",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "if_answer_is_no_trigger_not_defined_65",
+      "section": "does_the_restaurant_have_crushed_nacho_c",
+      "type": "select",
+      "label": "If answer is No <trigger not defined>",
+      "group": "Does the restaurant have crushed nacho chips in the hot line with a",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "are_fryers_within_oil_quality_spec_under_25_chec_66",
+      "section": "does_the_restaurant_have_crushed_nacho_c",
+      "type": "yes_no_na",
+      "label": "Are fryers within oil quality spec? (under 25, check with oil wand -",
+      "group": "Does the restaurant have crushed nacho chips in the hot line with a",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "if_answer_is_no_trigger_not_defined_68",
+      "section": "does_the_restaurant_have_crushed_nacho_c",
+      "type": "select",
+      "label": "If answer is No <trigger not defined>",
+      "group": "Does the restaurant have crushed nacho chips in the hot line with a",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "cold_line_finisher_position_procedures_are_prope_69",
+      "section": "does_the_restaurant_have_crushed_nacho_c",
+      "type": "yes_no_na",
+      "label": "Cold line - Finisher position procedures are properly followed",
+      "group": "Does the restaurant have crushed nacho chips in the hot line with a",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "if_answer_is_no_trigger_not_defined_71",
+      "section": "does_the_restaurant_have_crushed_nacho_c",
+      "type": "select",
+      "label": "If answer is No <trigger not defined>",
+      "group": "Does the restaurant have crushed nacho chips in the hot line with a",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "if_answer_is_no_trigger_not_defined_73",
+      "section": "right_people",
+      "type": "select",
+      "label": "If answer is No <trigger not defined>",
+      "group": "RIGHT PEOPLE",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "if_answer_is_no_trigger_not_defined_75",
+      "section": "right_people",
+      "type": "select",
+      "label": "If answer is No <trigger not defined>",
+      "group": "RIGHT PEOPLE",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "if_answer_is_no_trigger_not_defined_77",
+      "section": "right_people",
+      "type": "select",
+      "label": "If answer is No <trigger not defined>",
+      "group": "RIGHT PEOPLE",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "if_answer_is_no_trigger_not_defined_79",
+      "section": "right_people",
+      "type": "select",
+      "label": "If answer is No <trigger not defined>",
+      "group": "RIGHT PEOPLE",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "are_shift_leaders_being_trained_using_a_training_80",
+      "section": "right_people",
+      "type": "yes_no_na",
+      "label": "Are Shift Leaders being trained using a training plan?",
+      "group": "RIGHT PEOPLE",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "if_answer_is_no_trigger_not_defined_82",
+      "section": "right_number",
+      "type": "select",
+      "label": "If answer is No <trigger not defined>",
+      "group": "RIGHT NUMBER",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "if_answer_is_no_trigger_not_defined_84",
+      "section": "right_number",
+      "type": "select",
+      "label": "If answer is No <trigger not defined>",
+      "group": "RIGHT NUMBER",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "to_achieve_or_sustain_ftr_86",
+      "section": "right_number",
+      "type": "yes_no_na",
+      "label": "to achieve or sustain FTR)",
+      "group": "RIGHT NUMBER",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "people_lead_is_following_people_rhythms_througho_87",
+      "section": "right_number",
+      "type": "yes_no_na",
+      "label": "People Lead is following People Rhythms throughout the period",
+      "group": "RIGHT NUMBER",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "is_the_deployment_chart_filled_out_with_all_requ_88",
+      "section": "right_places",
+      "type": "yes_no_na",
+      "label": "Is the Deployment Chart filled out with all required details and the",
+      "group": "RIGHT PLACES",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "is_the_mic_in_the_correct_position_as_per_tred_d_89",
+      "section": "right_places",
+      "type": "yes_no_na",
+      "label": "Is the MIC in the correct position as per TRED Deployment",
+      "group": "RIGHT PLACES",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "are_tms_remaining_in_position_as_per_deployment__90",
+      "section": "right_places",
+      "type": "yes_no_na",
+      "label": "Are TMs remaining in position as per Deployment chart",
+      "group": "RIGHT PLACES",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "has_the_mic_used_the_appropriate_sections_of_the_91",
+      "section": "systems",
+      "type": "yes_no_na",
+      "label": "Has the MIC used the appropriate sections of the Manager",
+      "group": "SYSTEMS",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "are_team_members_using_their_own_your_zone_cards_92",
+      "section": "systems",
+      "type": "select",
+      "label": "Are team members using their Own Your Zone cards effectively?",
+      "group": "SYSTEMS",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "are_weekly_management_meetings_being_conducted_93",
+      "section": "ask_team_members_what_their_primary_and_",
+      "type": "yes_no_na",
+      "label": "Are weekly management meetings being conducted?",
+      "group": "Ask team members what their primary and secondary tasks are for",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "can_the_team_produce_the_last_health_inspection__94",
+      "section": "ask_team_members_what_their_primary_and_",
+      "type": "yes_no_na",
+      "label": "Can the team produce the last Health Inspection record?",
+      "group": "Ask team members what their primary and secondary tasks are for",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "4_0_what_is_the_date_of_the_last_health_95",
+      "section": "ask_team_members_what_their_primary_and_",
+      "type": "select",
+      "label": "4.0. What is the date of the last health",
+      "group": "Ask team members what their primary and secondary tasks are for",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "showWhenAnswer": {
+        "4_0_what_is_the_date_of_the_last_health_95": "no"
+      }
+    },
+    {
+      "id": "4_1_any_outstanding_issues_96",
+      "section": "date_time",
+      "type": "yes_no_na",
+      "label": "4.1. Any outstanding issues?",
+      "group": "Date/time",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "4_2_what_is_the_date_of_the_last_health_97",
+      "section": "date_time",
+      "type": "select",
+      "label": "4.2. What is the date of the last health",
+      "group": "Date/time",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "showWhenAnswer": {
+        "4_2_what_is_the_date_of_the_last_health_97": "yes"
+      }
+    },
+    {
+      "id": "4_3_any_outstanding_issues_98",
+      "section": "date_time",
+      "type": "yes_no_na",
+      "label": "4.3. Any outstanding issues?",
+      "group": "Date/time",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "can_the_team_produce_the_last_pest_service_recor_99",
+      "section": "date_time",
+      "type": "yes_no_na",
+      "label": "Can the team produce the last Pest Service record?",
+      "group": "Date/time",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "5_0_any_outstanding_corrective_actions_100",
+      "section": "date_time",
+      "type": "yes_no_na",
+      "label": "5.0. Any outstanding corrective actions?",
+      "group": "Date/time",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "showWhenAnswer": {
+        "5_0_any_outstanding_corrective_actions_100": "no"
+      }
+    },
+    {
+      "id": "5_1_any_outstanding_corrective_actions_101",
+      "section": "date_time",
+      "type": "yes_no_na",
+      "label": "5.1. Any outstanding corrective actions?",
+      "group": "Date/time",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "showWhenAnswer": {
+        "5_1_any_outstanding_corrective_actions_101": "yes"
+      }
+    },
+    {
+      "id": "review_the_previous_30_days_of_dfsc_are_these_co_102",
+      "section": "date_time",
+      "type": "yes_no_na",
+      "label": "Review the previous 30 days of DFSC. Are these completed to",
+      "group": "Date/time",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "review_previous_30_days_of_weekly_pest_inspectio_103",
+      "section": "date_time",
+      "type": "yes_no_na",
+      "label": "Review previous 30 days of Weekly Pest Inspections. Are these",
+      "group": "Date/time",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "review_food_safety_supervisor_compliance_do_all__104",
+      "section": "date_time",
+      "type": "yes_no_na",
+      "label": "Review Food Safety Supervisor compliance. Do all MICs have FSS",
+      "group": "Date/time",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "are_all_ffs_certificates_accessible_and_does_the_105",
+      "section": "date_time",
+      "type": "yes_no_na",
+      "label": "Are all FFS certificates accessible and does the MIC on today know",
+      "group": "Date/time",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "is_the_bellboard_working_as_intended_106",
+      "section": "date_time",
+      "type": "yes_no_na",
+      "label": "Is the bellboard working as intended?",
+      "group": "Date/time",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "are_pop_smart_actions_posted_in_the_office_and_v_107",
+      "section": "pop",
+      "type": "select",
+      "label": "Are POP SMART actions posted in the office and visible to the",
+      "group": "POP",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A",
+        "Nicholas Antonello",
+        "Nicholas Antonello"
+      ]
+    },
+    {
+      "id": "are_the_team_actively_working_towards_completing_108",
+      "section": "pop",
+      "type": "yes_no_na",
+      "label": "Are the team actively working towards completing their SMART",
+      "group": "POP",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "how_many_retherm_racks_are_broken_109",
+      "section": "inspect_the_retherm_racks_are_these_brok",
+      "type": "select",
+      "label": "How many retherm racks are broken",
+      "group": "Inspect the retherm racks - are these broken and unsafe (product",
+      "required": true,
+      "points": null,
+      "showWhenAnswer": {
+        "2_0_name_of_tm_mic_who_made_the_product_11": "at risk"
+      }
+    },
+    {
+      "id": "are_safe_work_practices_being_followed_ppe_used__110",
+      "section": "inspect_the_retherm_racks_are_these_brok",
+      "type": "yes_no_na",
+      "label": "Are safe work practices being followed? PPE used/ in good",
+      "group": "Inspect the retherm racks - are these broken and unsafe (product",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "are_team_members_following_the_correct_safety_pr_111",
+      "section": "inspect_the_retherm_racks_are_these_brok",
+      "type": "select",
+      "label": "Are Team Members following the correct safety procedures at Fry",
+      "group": "Inspect the retherm racks - are these broken and unsafe (product",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "can_the_mic_explain_what_to_do_if_oil_isn_t_pump_112",
+      "section": "station_no_hanging_empty_baskets_no_hang",
+      "type": "yes_no_na",
+      "label": "Can the MIC explain what to do if oil isn’t pumping and the bottom",
+      "group": "Station (no hanging empty baskets, no hanging taco baskets etc)",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "are_current_safety_alerts_posted_and_in_view_of__113",
+      "section": "station_no_hanging_empty_baskets_no_hang",
+      "type": "select",
+      "label": "Are current Safety Alerts posted and in view of Team Members?",
+      "group": "Station (no hanging empty baskets, no hanging taco baskets etc)",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "are_there_any_overdue_corrective_actions_sitting_114",
+      "section": "are_team_members_following_the_correct_s",
+      "type": "yes_no_na",
+      "label": "Are there any overdue corrective actions sitting in the restaurants",
+      "group": "Are team members following the correct standards outlined in the",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "are_there_any_open_incidents_that_still_need_to__115",
+      "section": "are_team_members_following_the_correct_s",
+      "type": "yes_no_na",
+      "label": "Are there any open incidents that still need to be closed out?",
+      "group": "Are team members following the correct standards outlined in the",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "are_there_any_outstanding_mex_requests_that_stil_116",
+      "section": "maintenance_it",
+      "type": "yes_no_na",
+      "label": "Are there any outstanding MEX requests that still need to be",
+      "group": "Maintenance / IT",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "1_0_document_mex_id_and_brief_description_of_the_117",
+      "section": "maintenance_it",
+      "type": "select",
+      "label": "1.0. Document MEX ID and brief description of the issue each each",
+      "group": "Maintenance / IT",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "showWhenAnswer": {
+        "1_0_have_you_completed_a_visit_as_a_customer_tod_6": "yes"
+      }
+    },
+    {
+      "id": "does_this_restaurant_have_recurring_118",
+      "section": "text_answer",
+      "type": "yes_no_na",
+      "label": "Does this restaurant have recurring",
+      "group": "Text answer",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "2_0_brief_description_of_each_issue_119",
+      "section": "text_answer",
+      "type": "select",
+      "label": "2.0. Brief description of each issue:",
+      "group": "Text answer",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "showWhenAnswer": {
+        "2_0_name_of_tm_mic_who_made_the_product_11": "yes"
+      }
+    },
+    {
+      "id": "has_square_1_been_completed_to_standard_this_wee_120",
+      "section": "square_one_cleaning_review",
+      "type": "yes_no_na",
+      "label": "Has Square 1 been completed to standard this week? Check",
+      "group": "SQUARE ONE & Cleaning Review",
+      "required": true,
+      "points": null,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "overall_cleanliness_statues_of_the_restaurant_121",
+      "section": "square_one_cleaning_review",
+      "type": "overall_result",
+      "label": "Overall cleanliness statues of the restaurant?",
+      "group": "SQUARE ONE & Cleaning Review",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "Great!",
+        "Good",
+        "Fair",
+        "Poor",
+        "N/A"
+      ]
+    },
+    {
+      "id": "record_prior_visit_as_a_coach_key_actions_122",
+      "section": "visit_as_a_coach_checkbox",
+      "type": "select",
+      "label": "Record prior Visit as a Coach key actions:",
+      "group": "Visit as a Coach Checkbox",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "have_these_actions_been_completed_and_closed_out_123",
+      "section": "visit_as_a_coach_checkbox",
+      "type": "yes_no_na",
+      "label": "Have these actions been completed and closed out?",
+      "group": "Visit as a Coach Checkbox",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "record_first_key_action_124",
+      "section": "instruction",
+      "type": "select",
+      "label": "Record first key action:",
+      "group": "Instruction",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "record_second_key_action_125",
+      "section": "instruction",
+      "type": "select",
+      "label": "Record second key action:",
+      "group": "Instruction",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "any_other_comments_or_notes_126",
+      "section": "instruction",
+      "type": "yes_no_na",
+      "label": "Any other comments or notes?",
+      "group": "Instruction",
+      "required": false,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "name_of_tm_being_recognised_text_answer_127",
+      "section": "do_you_want_to_complete_a_tam_card_to_re",
+      "type": "select",
+      "label": "Name of TM being recognised? Text answer",
+      "group": "Do you want to complete a TAM card to recognise the team or a TM",
+      "required": true,
+      "points": null,
+      "showWhenAnswer": {
+        "4_0_what_is_the_date_of_the_last_health_95": "yes"
+      }
+    },
+    {
+      "id": "thanks_a_million_for_text_answer_128",
+      "section": "do_you_want_to_complete_a_tam_card_to_re",
+      "type": "select",
+      "label": "Thanks A Million For: Text answer",
+      "group": "Do you want to complete a TAM card to recognise the team or a TM",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "type_of_card_129",
+      "section": "do_you_want_to_complete_a_tam_card_to_re",
+      "type": "select",
+      "label": "Type of card:",
+      "group": "Do you want to complete a TAM card to recognise the team or a TM",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "People at the Heart",
+        "Innovation Mindset",
+        "Operational Excellence",
+        "Ownership",
+        "Positive Mindset",
+        "Customer Driven"
+      ]
+    },
+    {
+      "id": "mic_rgm_signature_130",
+      "section": "submit",
+      "type": "signature",
+      "label": "MIC/RGM Signature",
+      "group": "SUBMIT",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "area_coach_signature_131",
+      "section": "date",
+      "type": "signature",
+      "label": "Area Coach Signature",
+      "group": "Date: / /",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "select_date_time_when_finished_132",
+      "section": "date",
+      "type": "select",
+      "label": "Select Date & Time when finished.",
+      "group": "Date: / /",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    }
+  ]
+}

@@ -1,0 +1,1087 @@
+.tacaudit-page .tacaudit-shell {
+
+    max-width: 820px;
+
+}
+
+.tacaudit-page .tacaudit-shell--summary {
+    max-width: min(1280px, 100%);
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+}
+
+/* Excel-style sheet: square corners only, no card rounding */
+.tacaudit-shell--summary .tacaudit-summary-scroll,
+.tacaudit-shell--summary .tacaudit-summary-table,
+.tacaudit-shell--summary .tacaudit-summary-table th,
+.tacaudit-shell--summary .tacaudit-summary-table td,
+.tacaudit-shell--summary .tacaudit-summary-cell-btn {
+    border-radius: 0 !important;
+}
+
+.tacaudit-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-top: 0.75rem;
+}
+
+.tacaudit-compliance-btn,
+.tacaudit-actions-btn {
+    min-width: 8.5rem;
+}
+
+.tacaudit-actions-btn--due {
+    color: #b45309;
+    border-color: color-mix(in srgb, #b45309 45%, var(--dfsc-border, #d1d5db));
+    background: color-mix(in srgb, var(--near, #f8cb6f) 18%, var(--dfsc-card-bg, #fff));
+}
+
+html.mic-dark-mode .tacaudit-actions-btn--due {
+    color: #fbbf24;
+    border-color: color-mix(in srgb, #fbbf24 40%, var(--dfsc-border, #444));
+    background: color-mix(in srgb, #f8cb6f 12%, var(--dfsc-card-bg, #1e1e1e));
+}
+
+.tacaudit-tab-in-progress {
+    margin-bottom: 0.75rem;
+}
+
+.tacaudit-tab-in-progress .dfsc-open-head {
+    margin-bottom: 0.35rem;
+}
+
+.tacaudit-tab-in-progress__heading {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.tacaudit-tab-in-progress .dfsc-open-hint {
+    margin: 0 0 0.5rem;
+}
+
+.tacaudit-scope-picker {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.65rem 1rem;
+    margin-top: 0.65rem;
+}
+
+.tacaudit-summary-toolbar__pickers {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.65rem 1rem;
+    margin-left: auto;
+}
+
+.tacaudit-view-toggle {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.45rem;
+}
+
+.tacaudit-summary-toolbar--sheet .tacaudit-scope-picker,
+.tacaudit-summary-toolbar--sheet .tacaudit-compliance-week-picker {
+    margin-top: 0;
+}
+
+.tacaudit-compliance-capture {
+    padding-top: 1.25rem;
+    margin-top: 0.35rem;
+    background: #fff;
+}
+
+.tacaudit-capture-header {
+    font-family: "Segoe UI", Calibri, Arial, sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--charcoal, #231e1f);
+    padding: 0 0 0.65rem 0.15rem;
+    line-height: 1.35;
+}
+
+.tacaudit-summary-historical {
+    margin: 0 0 0.35rem;
+    font-size: 0.82rem;
+    color: var(--dfsc-text-muted);
+}
+
+.tacaudit-summary-cell-btn--static {
+    cursor: default;
+}
+
+.tacaudit-scope-picker__field {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0;
+}
+
+.tacaudit-scope-picker__label {
+    font-size: 0.82rem;
+    color: var(--dfsc-text-muted);
+    white-space: nowrap;
+}
+
+.tacaudit-scope-picker__select {
+    min-width: 9rem;
+    max-width: 100%;
+}
+
+.tacaudit-summary-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+    margin-bottom: 0.5rem;
+}
+
+.tacaudit-summary-toolbar--sheet {
+    margin-bottom: 0.35rem;
+    align-items: center;
+}
+
+.tacaudit-summary-toolbar--sheet .tacaudit-summary-meta {
+    flex: 1 1 auto;
+    min-width: 8rem;
+}
+
+.tacaudit-summary-meta {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--dfsc-text-muted);
+}
+
+.tacaudit-summary-loading {
+    margin: 1rem 0;
+    color: var(--dfsc-text-muted);
+    font-size: 0.9rem;
+}
+
+.tacaudit-summary-scroll {
+    overflow-x: auto;
+    margin-bottom: 0.5rem;
+    margin-top: 0;
+    /* No wrapper border: the table's collapsed cell borders already draw the
+       outer edge, so an extra border here doubles the outline in captures. */
+    border: none;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: none;
+    padding: 0;
+}
+
+.tacaudit-summary-table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    border-spacing: 0;
+    font-family: "Segoe UI", Calibri, Arial, sans-serif;
+    font-size: 0.8125rem;
+    table-layout: fixed;
+    border-radius: 0;
+    margin: 0;
+}
+
+.tacaudit-summary-sheet {
+    --tacaudit-label-col-width: 11.25rem;
+    --tacaudit-label-pad-x: 0.35rem;
+    --tacaudit-body-row-height: 2.25rem;
+    --tacaudit-data-col-width: 4.5rem;
+}
+
+.tacaudit-col-label {
+    width: var(--tacaudit-label-col-width);
+}
+
+.tacaudit-col-data {
+    width: var(--tacaudit-data-col-width);
+}
+
+.tacaudit-summary-table th,
+.tacaudit-summary-table td {
+    border: 1px solid var(--tacaudit-grid-line, #000);
+    border-width: 1px;
+    padding: 0;
+    text-align: center;
+    vertical-align: middle;
+    box-sizing: border-box;
+}
+
+.tacaudit-summary-sheet tbody th,
+.tacaudit-summary-sheet tbody td {
+    height: var(--tacaudit-body-row-height);
+    min-height: var(--tacaudit-body-row-height);
+}
+
+.tacaudit-summary-band-row th {
+    height: 2.1rem;
+    border: 1px solid var(--tacaudit-grid-line, #000);
+    border-radius: 0;
+}
+
+.tacaudit-summary-band {
+    background: var(--dark-purple-border, #4b3a63);
+    color: #fff;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.72rem;
+    padding: 0.25rem 0.35rem;
+    border-radius: 0;
+}
+
+.tacaudit-summary-band--period {
+    text-align: center;
+}
+
+.tacaudit-summary-band--week {
+    text-align: center;
+}
+
+.tacaudit-summary-band-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-height: 2.1rem;
+    margin: 0;
+    padding: 0.25rem 0.35rem;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.tacaudit-summary-band-btn:hover:not(:disabled),
+.tacaudit-summary-band-btn:focus-visible {
+    background: color-mix(in srgb, #fff 12%, transparent);
+    outline: none;
+}
+
+.tacaudit-summary-band-btn:disabled {
+    cursor: default;
+    opacity: 1;
+}
+
+.tacaudit-band-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-height: min(16rem, 50vh);
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--tacaudit-grid-line, #000);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+}
+
+.tacaudit-band-picker__item {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 0.5rem 0.65rem;
+    border: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--tacaudit-grid-line, #000) 18%, #fff);
+    background: #fff;
+    color: var(--charcoal, #231e1f);
+    font: inherit;
+    font-size: 0.8rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.tacaudit-band-picker__item:last-child {
+    border-bottom: none;
+}
+
+.tacaudit-band-picker__item:hover,
+.tacaudit-band-picker__item:focus-visible {
+    background: color-mix(in srgb, var(--dark-purple-border, #4b3a63) 10%, #fff);
+    outline: none;
+}
+
+.tacaudit-band-picker__item.is-active {
+    background: color-mix(in srgb, var(--dark-purple-border, #4b3a63) 18%, #fff);
+    font-weight: 600;
+}
+
+.tacaudit-summary-corner {
+    background: #fff;
+    border-color: var(--tacaudit-grid-line, #000);
+}
+
+.tacaudit-summary-label-corner {
+    vertical-align: top;
+    padding: 0;
+}
+
+.tacaudit-summary-label-corner .tacaudit-summary-band-btn {
+    height: 2.1rem;
+    min-height: 2.1rem;
+    max-height: 2.1rem;
+    justify-content: center;
+    align-items: center;
+    padding: 0.25rem 0.35rem;
+}
+
+.tacaudit-summary-region {
+    background: var(--tb-teal, #0d9488);
+    color: #fff;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-size: 0.68rem;
+    height: 2.1rem;
+    padding: 0.25rem 0.2rem;
+    border: 1px solid var(--tacaudit-grid-line, #000);
+    border-radius: 0;
+}
+
+.tacaudit-summary-store {
+    background: #fff;
+    color: var(--charcoal, #231e1f);
+    font-weight: 600;
+    font-size: 0.68rem;
+    line-height: 1.05;
+    height: var(--tacaudit-body-row-height);
+    min-height: var(--tacaudit-body-row-height);
+    max-height: var(--tacaudit-body-row-height);
+    padding: 0.1rem 0.15rem;
+    white-space: normal;
+    hyphens: auto;
+    overflow: hidden;
+    border-color: var(--tacaudit-grid-line, #000);
+}
+
+.tacaudit-summary-label {
+    text-align: center;
+    font-weight: 600;
+    background: #fff;
+    color: var(--charcoal, #231e1f);
+    padding: 0.2rem var(--tacaudit-label-pad-x);
+    border-color: var(--tacaudit-grid-line, #000);
+    font-size: 0.8125rem;
+    line-height: 1.15;
+}
+
+.tacaudit-summary-label--row {
+    width: var(--tacaudit-label-col-width);
+    min-width: var(--tacaudit-label-col-width);
+    max-width: var(--tacaudit-label-col-width);
+    white-space: normal;
+    line-height: 1.1;
+    padding-top: 0.15rem;
+    padding-bottom: 0.15rem;
+}
+
+.tacaudit-summary-cell {
+    font-weight: 600;
+    padding: 0;
+    width: var(--tacaudit-data-col-width);
+    height: var(--tacaudit-body-row-height);
+}
+
+.tacaudit-summary-cell-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-height: var(--tacaudit-body-row-height);
+    border: none;
+    background: transparent;
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.72rem;
+    line-height: 1.05;
+    cursor: pointer;
+    color: inherit;
+    padding: 0.1rem;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.tacaudit-summary-cell-btn:focus {
+    outline: none;
+}
+
+.tacaudit-summary-cell--green {
+    background: var(--good, #99bb82);
+    color: var(--charcoal, #231e1f);
+}
+
+.tacaudit-summary-cell--orange {
+    background: var(--near, #f8cb6f);
+    color: var(--charcoal, #231e1f);
+}
+
+.tacaudit-summary-cell--red {
+    background: var(--bad, #d99792);
+    color: var(--charcoal, #231e1f);
+}
+
+.tacaudit-summary-footnote {
+    margin: 0.35rem 0 1rem;
+    font-size: 0.72rem;
+    color: var(--dfsc-text-muted);
+    line-height: 1.35;
+}
+
+.tacaudit-actions-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.tacaudit-action-item {
+    border: 1px solid var(--dfsc-border);
+    border-radius: 8px;
+    background: var(--dfsc-card-bg);
+    padding: 0.85rem 1rem;
+}
+
+.tacaudit-action-store {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--dfsc-text-muted);
+    margin-bottom: 0.25rem;
+}
+
+.tacaudit-action-label {
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+}
+
+.tacaudit-action-meta {
+    font-size: 0.78rem;
+    color: var(--dfsc-text-muted);
+    margin-bottom: 0.55rem;
+}
+
+.tacaudit-action-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.tacaudit-action-text {
+    width: 100%;
+    min-height: 4.5rem;
+    resize: vertical;
+}
+
+.tacaudit-history-card--compact {
+    margin-bottom: 1rem;
+    padding: 0.85rem 1rem;
+}
+
+.tacaudit-history-card--compact .tacaudit-launch-heading {
+    margin-bottom: 0.5rem;
+}
+
+.dfsc-history-row--static {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.65rem 0.75rem;
+    border: none;
+    background: transparent;
+}
+
+html.mic-dark-mode .tacaudit-shell--summary {
+    --tacaudit-grid-line: #9ca3af;
+}
+
+html.mic-dark-mode .tacaudit-compliance-capture {
+    background: #111827;
+}
+
+html.mic-dark-mode .tacaudit-capture-header {
+    color: #e5e7eb;
+}
+
+html.mic-dark-mode .tacaudit-band-picker {
+    background: #1f2937;
+    border-color: var(--tacaudit-grid-line, #9ca3af);
+}
+
+html.mic-dark-mode .tacaudit-band-picker__item {
+    background: #1f2937;
+    color: #e5e7eb;
+    border-bottom-color: #374151;
+}
+
+html.mic-dark-mode .tacaudit-band-picker__item:hover,
+html.mic-dark-mode .tacaudit-band-picker__item:focus-visible,
+html.mic-dark-mode .tacaudit-band-picker__item.is-active {
+    background: color-mix(in srgb, var(--dark-purple-border, #4b3a63) 35%, #1f2937);
+}
+
+html.mic-dark-mode .tacaudit-summary-scroll {
+    background: #111827;
+}
+
+html.mic-dark-mode .tacaudit-summary-corner,
+html.mic-dark-mode .tacaudit-summary-label {
+    background: #1f2937;
+    color: #e5e7eb;
+    border-color: var(--tacaudit-grid-line, #9ca3af);
+}
+
+html.mic-dark-mode .tacaudit-summary-label-corner {
+    background: color-mix(in srgb, var(--dark-purple-border, #4b3a63) 75%, #111827);
+    color: #fff;
+    border-color: var(--tacaudit-grid-line, #9ca3af);
+}
+
+html.mic-dark-mode .tacaudit-summary-store {
+    background: #1f2937;
+    color: #e5e7eb;
+    border-color: var(--tacaudit-grid-line, #9ca3af);
+}
+
+html.mic-dark-mode .tacaudit-summary-region {
+    background: var(--tb-teal-hover, #0f766e);
+    color: #fff;
+    border-color: var(--tacaudit-grid-line, #9ca3af);
+}
+
+html.mic-dark-mode .tacaudit-summary-band {
+    background: color-mix(in srgb, var(--dark-purple-border, #4b3a63) 75%, #111827);
+    border-color: var(--tacaudit-grid-line, #9ca3af);
+}
+
+html.mic-dark-mode .tacaudit-summary-table th,
+html.mic-dark-mode .tacaudit-summary-table td {
+    border-color: var(--tacaudit-grid-line, #9ca3af);
+}
+
+
+
+.tacaudit-page-header {
+
+    text-align: center;
+
+    padding: 1.5rem 1rem 0.75rem;
+
+}
+
+.tacaudit-page-header--with-settings {
+    position: relative;
+    padding-right: 3.5rem;
+}
+
+.tacaudit-settings-host {
+    position: fixed;
+    top: max(0.75rem, env(safe-area-inset-top));
+    right: max(0.75rem, env(safe-area-inset-right));
+    z-index: 40;
+}
+
+.tacaudit-settings-host .mic-settings-cog {
+    position: static;
+    width: 2.75rem;
+    height: 2.75rem;
+}
+
+.tacaudit-settings-host .mic-settings-cog-icon {
+    width: 1.35rem;
+    height: 1.35rem;
+}
+
+.tacaudit-core-section {
+    background: var(--dfsc-card-bg);
+    border: 1px solid var(--dfsc-border);
+    border-radius: 8px;
+    padding: 1rem 1.1rem;
+    margin: 0 0 1rem;
+}
+
+.tacaudit-core-section h2 {
+    margin: 0 0 0.35rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.tacaudit-core-section p {
+    margin: 0 0 0.75rem;
+    color: var(--dfsc-text-muted);
+    font-size: 0.85rem;
+}
+
+.tacaudit-core-section .dfsc-btn-toolbar {
+    width: 100%;
+    justify-content: center;
+}
+
+
+
+.tacaudit-page-header h1 {
+
+    margin: 0;
+
+    font-size: 1.85rem;
+
+    font-weight: 700;
+
+    letter-spacing: -0.02em;
+
+    color: var(--dfsc-text);
+
+    line-height: 1.15;
+
+}
+
+
+
+.tacaudit-page-header p {
+
+    margin: 0.4rem 0 0;
+
+    font-size: 0.88rem;
+
+    color: var(--dfsc-text-muted);
+
+}
+
+
+
+.tacaudit-launch-section {
+    margin-bottom: 1rem;
+}
+
+.tacaudit-in-progress-section {
+    margin: 0 0 1rem;
+}
+
+.dfsc-area-grid {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0 1rem 1rem;
+}
+
+.dfsc-area-card {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 1rem;
+    border: 1px solid rgba(122, 62, 177, 0.25);
+    border-radius: 12px;
+    background: #fff;
+    cursor: pointer;
+}
+
+.dfsc-area-card:disabled {
+    opacity: 0.65;
+    cursor: default;
+}
+
+.dfsc-area-card__title {
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+}
+
+.dfsc-area-card__sub {
+    font-size: 0.875rem;
+    color: #6b7280;
+}
+
+.tacaudit-launch-heading {
+    margin: 0 0 0.55rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--dfsc-text);
+}
+
+.tacaudit-launch-row {
+    display: flex;
+    gap: 0.65rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding: 0.1rem 0.1rem 0.45rem;
+    cursor: grab;
+    touch-action: pan-y;
+}
+
+.tacaudit-launch-row.is-drag-scroll {
+    cursor: grabbing;
+    scroll-snap-type: none;
+    user-select: none;
+}
+
+.tacaudit-launch-row.is-drag-scroll .tacaudit-launch-tile--link {
+    pointer-events: none;
+}
+
+.tacaudit-launch-tile {
+    flex: 0 0 calc((100% - 1.95rem) / 4);
+    min-width: 7.25rem;
+    scroll-snap-align: start;
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--dfsc-border);
+    border-radius: 8px;
+    background: var(--dfsc-card-bg);
+    text-decoration: none;
+    color: inherit;
+    box-sizing: border-box;
+}
+
+.tacaudit-launch-tile--link {
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tacaudit-launch-tile--link:hover,
+.tacaudit-launch-tile--link:focus-visible {
+    border-color: var(--dfsc-accent);
+    box-shadow: 0 0 0 1px var(--dfsc-accent);
+    outline: none;
+}
+
+.tacaudit-launch-tile--placeholder {
+    opacity: 0.72;
+    background: #f9fafb;
+}
+
+.tacaudit-launch-tile-body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.2rem;
+    padding: 0.75rem 0.55rem;
+    width: 100%;
+    min-height: 4.5rem;
+}
+
+.tacaudit-launch-tile-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--dfsc-text);
+}
+
+.tacaudit-launch-tile-sub {
+    font-size: 0.72rem;
+    line-height: 1.25;
+    color: var(--dfsc-text-muted);
+}
+
+.tacaudit-launch-tile--complete .tacaudit-launch-tile-sub {
+    color: #15803d;
+}
+
+.tacaudit-launch-tile--due .tacaudit-launch-tile-sub {
+    color: #b45309;
+}
+
+.tacaudit-settings-card {
+
+    background: var(--dfsc-card-bg);
+
+    border: 1px solid var(--dfsc-border);
+
+    border-radius: 8px;
+
+    padding: 1rem 1.1rem;
+
+    margin-bottom: 1rem;
+
+}
+
+
+
+.tacaudit-settings-card h2 {
+
+    margin: 0 0 0.35rem;
+
+    font-size: 0.95rem;
+
+    font-weight: 600;
+
+}
+
+
+
+.tacaudit-settings-card p {
+
+    margin: 0 0 0.75rem;
+
+    color: var(--dfsc-text-muted);
+
+    font-size: 0.85rem;
+
+}
+
+
+
+.tacaudit-settings-row {
+
+    display: flex;
+
+    flex-wrap: wrap;
+
+    gap: 0.5rem;
+
+    align-items: stretch;
+
+}
+
+
+
+.tacaudit-settings-row input[type="email"] {
+
+    flex: 1 1 200px;
+
+    min-width: 0;
+
+    border: 1px solid var(--dfsc-border);
+
+    border-radius: 6px;
+
+    padding: 0.55rem 0.65rem;
+
+    font: inherit;
+
+}
+
+
+
+.tacaudit-toolbar {
+
+    display: flex;
+
+    flex-wrap: wrap;
+
+    gap: 0.5rem;
+
+    margin-bottom: 1rem;
+
+}
+
+
+
+.tacaudit-toolbar .dfsc-btn-toolbar {
+
+    width: 100%;
+
+}
+
+
+
+.tacaudit-history-card {
+
+    margin-bottom: 1rem;
+
+    border: 1px solid var(--dfsc-border);
+
+    border-radius: 8px;
+
+    overflow: hidden;
+
+    background: var(--dfsc-card-bg);
+
+}
+
+
+
+.tacaudit-tabs {
+
+    display: flex;
+
+    width: 100%;
+
+    gap: 0;
+
+    margin: 0;
+
+    border-bottom: 1px solid var(--dfsc-border);
+
+}
+
+
+
+.tacaudit-tab {
+
+    flex: 1 1 0;
+
+    min-width: 0;
+
+    border: none;
+
+    border-right: 1px solid var(--dfsc-border);
+
+    border-radius: 0;
+
+    background: #f3f4f6;
+
+    color: var(--dfsc-text);
+
+    padding: 0.72rem 0.35rem;
+
+    font: inherit;
+
+    font-size: 0.78rem;
+
+    font-weight: 500;
+
+    line-height: 1.2;
+
+    text-align: center;
+
+    cursor: pointer;
+
+}
+
+
+
+.tacaudit-tab:last-child {
+
+    border-right: none;
+
+}
+
+
+
+.tacaudit-tab.is-active {
+
+    background: var(--dfsc-accent);
+
+    border-color: var(--dfsc-accent);
+
+    color: #fff;
+
+    font-weight: 600;
+
+}
+
+
+
+.tacaudit-history-card .tacaudit-history-section {
+
+    margin: 0;
+
+    border: none;
+
+    border-radius: 0;
+
+    background: transparent;
+
+}
+
+
+
+.tacaudit-history-card .tacaudit-placeholder {
+
+    margin: 0;
+
+    border: none;
+
+    border-radius: 0;
+
+    background: transparent;
+
+}
+
+
+
+.tacaudit-placeholder {
+
+    margin: 0;
+
+    padding: 1rem;
+
+    background: #f9fafb;
+
+    border: 1px dashed var(--dfsc-border);
+
+    border-radius: 8px;
+
+    color: var(--dfsc-text-muted);
+
+    font-size: 0.9rem;
+
+}
+
+
+
+.tacaudit-archive-badge {
+
+    display: inline-block;
+
+    margin-left: 0.35rem;
+
+    font-size: 0.72rem;
+
+    color: var(--dfsc-text-muted);
+
+    font-weight: 500;
+
+}
+
+
+
+html.mic-dark-mode .tacaudit-tab {
+    background: #374151;
+    color: #e5e7eb;
+}
+
+html.mic-dark-mode .tacaudit-tab.is-active {
+    background: var(--dfsc-accent);
+    color: #fff;
+}
+
+html.mic-dark-mode .tacaudit-launch-tile--placeholder {
+    background: #1f2937;
+}
+
+html.mic-dark-mode .tacaudit-launch-tile--complete .tacaudit-launch-tile-sub {
+    color: #86efac;
+}
+
+html.mic-dark-mode .tacaudit-launch-tile--due .tacaudit-launch-tile-sub {
+    color: #fcd34d;
+}
+
+@media (max-width: 480px) {
+
+    .tacaudit-tab {
+
+        font-size: 0.68rem;
+
+        padding: 0.65rem 0.2rem;
+
+    }
+
+
+
+    .tacaudit-page-header h1 {
+
+        font-size: 1.55rem;
+
+    }
+
+}
+

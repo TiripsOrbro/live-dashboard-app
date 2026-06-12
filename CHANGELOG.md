@@ -2,7 +2,7 @@
 
 Plain-English summary of what changed in each release — written for store managers and admins, not developers.
 
-**Current live branch:** `Version-0.3.7`
+**Current live branch:** `Version-0.4`
 
 ---
 
@@ -25,6 +25,34 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ---
 
 ## Release history
+
+### Version 0.4.0 — June 2026
+
+**Added**
+
+- **CORE Operations & CORE Food Safety self-score audits** — weekly store audits with PDF reports; all crew (above team member) can start and complete.
+- **Visiting as a Coach & Visiting as a Customer** — area-coach-and-above visit audits at each store, with role-gated hub tiles and APIs.
+- **Market compliance view** — market managers and IT see areas as columns on `/tacaudit/summary` with `n/total` rollups; **Area | Market** toggle on the compliance toolbar.
+- **Audit compliance grid** — Operations, Food Safety, Coach visit, and Customer visit rows now reflect live weekly completion (replacing manual splash clicks for CORE).
+- **Domain layout** — code reorganised into `dashboard/`, `tacaudit/`, `mmx/`, `stores/`, `users/`, `vendors/` modules with shared `src/paths.js` routing.
+- **PDF question import** — `npm run import-audit-pdf` regenerates audit schemas from source PDFs.
+
+**Changed**
+
+- **TacAudit compliance capture** — wider store columns; single outer border on copy-image captures (no double outline).
+- **Package version** — app reports **0.4.0** via Settings and login footer.
+
+**Fixed**
+
+- CORE and coach rows on the area grid use live audit status instead of manual placeholder splash state.
+
+**What you need to do**
+
+- On the Pi: `git pull origin Version-0.4 && npm install && pm2 restart dashboard`
+- Run `node scripts/migrate-domain-layout.js` once if upgrading from 0.3.x on an existing Pi data tree.
+- Hard refresh once (Ctrl+F5) on tablets after deploy.
+
+---
 
 ### Version 0.3.7 — June 2026
 

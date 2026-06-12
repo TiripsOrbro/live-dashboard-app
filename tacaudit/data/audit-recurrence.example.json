@@ -1,0 +1,48 @@
+{
+  "timeZone": "Australia/Melbourne",
+  "operationalCalendar": {
+    "enabled": true,
+    "type": "intervalWeeks",
+    "anchor": "2026-05-04",
+    "periodWeeks": 4,
+    "resetEachYear": false
+  },
+  "dismissalPeriod": {
+    "type": "weekly",
+    "weekdays": [1],
+    "intervalWeeks": 1,
+    "anchor": "2026-05-04"
+  },
+  "squareOnePeriod": {
+    "type": "weekly",
+    "intervalWeeks": 1,
+    "anchor": "2026-05-04",
+    "slotModulo": 4
+  },
+  "psiPeriod": {
+    "type": "weekly",
+    "intervalWeeks": 1,
+    "anchor": "2026-05-04",
+    "slotModulo": 4
+  },
+  "_examples": {
+    "operationalCalendar_explicitStarts": {
+      "enabled": true,
+      "type": "explicitStarts",
+      "starts": [
+        "2026-05-04",
+        "2026-06-01",
+        "2026-06-29",
+        "2026-07-27"
+      ],
+      "defaultPeriodWeeks": 4
+    },
+    "operationalCalendar_annualReset": {
+      "enabled": true,
+      "type": "intervalWeeks",
+      "anchor": "2026-01-01",
+      "periodWeeks": 4,
+      "resetEachYear": true
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "enabled": true,
+  "areaName": "Area 22",
+  "weekStartYmd": "2026-06-08",
+  "note": "One-off reference grid for PERIOD 2 · WEEK 2 (8–14 Jun 2026). Set enabled to false when live audit data should take over.",
+  "dfscMarkAllComplete": true,
+  "cells": {
+    "3806": {
+      "psi": "complete",
+      "pest-walk": "complete",
+      "open-actions": 0,
+      "rgm-cleaning": "complete",
+      "square-one:production-line": "complete",
+      "square-one:boh-walls-floors": "complete",
+      "core-ops": "blank",
+      "core-food-safety": "blank"
+    },
+    "3808": {
+      "psi": "complete",
+      "pest-walk": "complete",
+      "open-actions": 1,
+      "rgm-cleaning": "blank",
+      "square-one:production-line": "complete",
+      "square-one:boh-walls-floors": "complete",
+      "core-ops": "blank",
+      "core-food-safety": "blank"
+    },
+    "3811": {
+      "psi": "complete",
+      "pest-walk": "complete",
+      "open-actions": 0,
+      "rgm-cleaning": "blank",
+      "square-one:production-line": "opened",
+      "square-one:boh-walls-floors": "opened",
+      "core-ops": "blank",
+      "core-food-safety": "blank"
+    },
+    "3901": {
+      "psi": "complete",
+      "pest-walk": "complete",
+      "open-actions": 8,
+      "rgm-cleaning": "complete",
+      "square-one:production-line": "complete",
+      "square-one:boh-walls-floors": "blank",
+      "core-ops": "complete",
+      "core-food-safety": "complete"
+    },
+    "3902": {
+      "psi": "complete",
+      "pest-walk": "complete",
+      "open-actions": 0,
+      "rgm-cleaning": "complete",
+      "square-one:production-line": "complete",
+      "square-one:boh-walls-floors": "complete",
+      "core-ops": "blank",
+      "core-food-safety": "blank"
+    },
+    "3903": {
+      "psi": "blank",
+      "pest-walk": "complete",
+      "open-actions": 9,
+      "rgm-cleaning": "complete",
+      "square-one:production-line": "complete",
+      "square-one:boh-walls-floors": "complete",
+      "core-ops": "blank",
+      "core-food-safety": "blank"
+    },
+    "3904": {
+      "psi": "complete",
+      "pest-walk": "complete",
+      "open-actions": 12,
+      "rgm-cleaning": "complete",
+      "square-one:production-line": "complete",
+      "square-one:boh-walls-floors": "complete",
+      "core-ops": "blank",
+      "core-food-safety": "blank"
+    }
+  }
+}

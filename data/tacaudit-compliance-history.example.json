@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "snapshots": {
+    "2026-05-04": {
+      "weekStartYmd": "2026-05-04",
+      "weekEndYmd": "2026-05-10",
+      "periodNumber": 1,
+      "weekInPeriod": 1,
+      "capturedAt": "2026-05-11T00:00:05.000Z",
+      "byArea": {
+        "Area 22": {
+          "areaName": "Area 22",
+          "periodLabel": "PERIOD 1",
+          "weekLabel": "WEEK 1",
+          "weekStartYmd": "2026-05-04",
+          "weekEndYmd": "2026-05-10",
+          "regions": [],
+          "rows": [],
+          "cells": {}
+        }
+      }
+    }
+  }
+}

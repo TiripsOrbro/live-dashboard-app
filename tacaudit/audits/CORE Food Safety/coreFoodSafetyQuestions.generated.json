@@ -1,0 +1,810 @@
+{
+  "auditLabel": "CORE Food Safety Self Score",
+  "passThreshold": null,
+  "sections": [
+    {
+      "id": "title_page",
+      "label": "Title Page",
+      "order": 0
+    },
+    {
+      "id": "how_scoring_works_at_standard_9_or_less_",
+      "label": "How Scoring works: AT STANDARD = 9 or less secondary deviations &",
+      "order": 1
+    },
+    {
+      "id": "no_significant_deviations_underperformin",
+      "label": "No significant deviations. UNDERPERFORMING = 10 or more secondary",
+      "order": 2
+    },
+    {
+      "id": "recommended_it_is_recommended_that_you_u",
+      "label": "RECOMMENDED - It is recommended that you use this self-score in",
+      "order": 3
+    },
+    {
+      "id": "instruction",
+      "label": "Instruction",
+      "order": 4
+    },
+    {
+      "id": "section_1_proper_health_hygiene",
+      "label": "Section 1: Proper Health & Hygiene",
+      "order": 5
+    },
+    {
+      "id": "section_2_proper_temperature_or_time_man",
+      "label": "Section 2: Proper Temperature or Time Management",
+      "order": 6
+    },
+    {
+      "id": "section_3_proper_cooking_temperature",
+      "label": "Section 3: Proper Cooking Temperature",
+      "order": 7
+    },
+    {
+      "id": "section_4_control_expiration_dates_shelf",
+      "label": "Section 4: Control Expiration Dates & Shelf Life",
+      "order": 8
+    },
+    {
+      "id": "section_5_prevent_contamination",
+      "label": "Section 5: Prevent Contamination",
+      "order": 9
+    },
+    {
+      "id": "section_6_prevent_pest_entry_harborage_a",
+      "label": "Section 6: Prevent pest entry, harborage & activity",
+      "order": 10
+    },
+    {
+      "id": "professional_vendor",
+      "label": "Professional Vendor.",
+      "order": 11
+    },
+    {
+      "id": "section_7_restaurant_basics",
+      "label": "Section 7: Restaurant Basics",
+      "order": 12
+    },
+    {
+      "id": "powersoak_sink_is_functioning_properly",
+      "label": "PowerSoak sink is functioning properly.",
+      "order": 13
+    },
+    {
+      "id": "health_hazard",
+      "label": "HEALTH HAZARD)",
+      "order": 14
+    },
+    {
+      "id": "scoring",
+      "label": "Scoring",
+      "order": 15
+    },
+    {
+      "id": "comments_text_answer",
+      "label": "Comments: Text answer",
+      "order": 16
+    },
+    {
+      "id": "date",
+      "label": "Date: / /",
+      "order": 17
+    },
+    {
+      "id": "sign_off",
+      "label": "Sign Off",
+      "order": 18
+    }
+  ],
+  "questions": [
+    {
+      "id": "site_conducted_0",
+      "section": "title_page",
+      "type": "text",
+      "label": "Site conducted",
+      "group": "Title Page",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "conducted_on_1",
+      "section": "title_page",
+      "type": "datetime",
+      "label": "Conducted on",
+      "group": "Title Page",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "prepared_by_2",
+      "section": "title_page",
+      "type": "text",
+      "label": "Prepared by",
+      "group": "Title Page",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "mic_3",
+      "section": "title_page",
+      "type": "standard_rating",
+      "label": "MIC",
+      "group": "Title Page",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "taco_bell_employee_health_standard_is_posted_vis_4",
+      "section": "section_1_proper_health_hygiene",
+      "type": "standard_rating",
+      "label": "Taco Bell Employee Health Standard is posted visibly for",
+      "group": "Section 1: Proper Health & Hygiene",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "team_member_must_not_be_observed_working_with_5",
+      "section": "section_1_proper_health_hygiene",
+      "type": "standard_rating",
+      "label": "Team member must not be observed working with",
+      "group": "Section 1: Proper Health & Hygiene",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Significant"
+      ]
+    },
+    {
+      "id": "proper_hand_washing_procedures_followed_signific_6",
+      "section": "section_1_proper_health_hygiene",
+      "type": "standard_rating",
+      "label": "Proper hand washing procedures followed. (SIGNIFICANT)",
+      "group": "Section 1: Proper Health & Hygiene",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary",
+        "Significant"
+      ]
+    },
+    {
+      "id": "hand_washing_sinks_accessible_clean_functioning__7",
+      "section": "section_1_proper_health_hygiene",
+      "type": "standard_rating",
+      "label": "Hand washing sinks accessible, clean, functioning, in good",
+      "group": "Section 1: Proper Health & Hygiene",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "options": [
+        "At Standard",
+        "Secondary",
+        "Significant"
+      ]
+    },
+    {
+      "id": "thermometers_in_use_are_calibrated_significant_8",
+      "section": "section_2_proper_temperature_or_time_man",
+      "type": "standard_rating",
+      "label": "Thermometers in use are calibrated. (SIGNIFICANT)",
+      "group": "Section 2: Proper Temperature or Time Management",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Significant"
+      ]
+    },
+    {
+      "id": "cold_holding_and_storage_equipment_temperature_m_9",
+      "section": "section_2_proper_temperature_or_time_man",
+      "type": "standard_rating",
+      "label": "Cold holding and storage equipment temperature meets",
+      "group": "Section 2: Proper Temperature or Time Management",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "cold_temperature_controlled_for_safety_tcs_foods_10",
+      "section": "section_2_proper_temperature_or_time_man",
+      "type": "standard_rating",
+      "label": "Cold temperature controlled for safety (TCS) foods must be",
+      "group": "Section 2: Proper Temperature or Time Management",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Significant"
+      ]
+    },
+    {
+      "id": "hot_holding_and_storage_equipment_temperature_me_11",
+      "section": "section_2_proper_temperature_or_time_man",
+      "type": "standard_rating",
+      "label": "Hot holding and storage equipment temperature meets",
+      "group": "Section 2: Proper Temperature or Time Management",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "hot_temperature_controlled_for_safety_tcs_foods__12",
+      "section": "section_2_proper_temperature_or_time_man",
+      "type": "standard_rating",
+      "label": "Hot temperature controlled for safety (TCS) foods must be",
+      "group": "Section 2: Proper Temperature or Time Management",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Significant"
+      ]
+    },
+    {
+      "id": "time_controlled_for_safety_tcs_foods_using_only__13",
+      "section": "section_2_proper_temperature_or_time_man",
+      "type": "standard_rating",
+      "label": "Time controlled for safety (TCS) foods using only time for",
+      "group": "Section 2: Proper Temperature or Time Management",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Significant"
+      ]
+    },
+    {
+      "id": "frozen_foods_are_thawed_correctly_14",
+      "section": "section_2_proper_temperature_or_time_man",
+      "type": "standard_rating",
+      "label": "Frozen foods are thawed correctly.",
+      "group": "Section 2: Proper Temperature or Time Management",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "cooling_procedures_are_properly_followed_15",
+      "section": "section_2_proper_temperature_or_time_man",
+      "type": "standard_rating",
+      "label": "Cooling procedures are properly followed.",
+      "group": "Section 2: Proper Temperature or Time Management",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "options": [
+        "At Standard",
+        "Significant"
+      ]
+    },
+    {
+      "id": "foods_must_be_cooked_or_heated_to_the_proper_int_16",
+      "section": "section_3_proper_cooking_temperature",
+      "type": "standard_rating",
+      "label": "Foods must be cooked or heated to the proper internal food",
+      "group": "Section 3: Proper Cooking Temperature",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "options": [
+        "At Standard",
+        "Significant"
+      ]
+    },
+    {
+      "id": "ingredients_and_products_are_correctly_labeled_w_17",
+      "section": "section_4_control_expiration_dates_shelf",
+      "type": "standard_rating",
+      "label": "Ingredients and products are correctly labeled with an",
+      "group": "Section 4: Control Expiration Dates & Shelf Life",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary",
+        "Significant"
+      ]
+    },
+    {
+      "id": "spoiled_foods_or_ingredients_are_not_in_use_and__18",
+      "section": "section_4_control_expiration_dates_shelf",
+      "type": "standard_rating",
+      "label": "Spoiled foods or ingredients are not in use and not for sale.",
+      "group": "Section 4: Control Expiration Dates & Shelf Life",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "options": [
+        "At Standard",
+        "Secondary",
+        "Significant"
+      ]
+    },
+    {
+      "id": "food_and_packaging_are_properly_stored_and_in_go_19",
+      "section": "section_5_prevent_contamination",
+      "type": "standard_rating",
+      "label": "Food and packaging are properly stored and in good",
+      "group": "Section 5: Prevent Contamination",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "utensils_smallwares_and_food_contact_surfaces_ar_20",
+      "section": "section_5_prevent_contamination",
+      "type": "standard_rating",
+      "label": "Utensils, smallwares, and food contact surfaces are properly",
+      "group": "Section 5: Prevent Contamination",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "cross_contamination_or_conditions_that_could_lea_21",
+      "section": "section_5_prevent_contamination",
+      "type": "standard_rating",
+      "label": "Cross contamination or conditions that could lead to cross",
+      "group": "Section 5: Prevent Contamination",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Significant"
+      ]
+    },
+    {
+      "id": "team_members_meet_grooming_and_personal_hygiene_22",
+      "section": "section_5_prevent_contamination",
+      "type": "standard_rating",
+      "label": "Team members meet grooming and personal hygiene",
+      "group": "Section 5: Prevent Contamination",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "single_use_disposable_food_handling_gloves_and_b_23",
+      "section": "section_5_prevent_contamination",
+      "type": "standard_rating",
+      "label": "Single-use disposable food handling gloves and blue or",
+      "group": "Section 5: Prevent Contamination",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary",
+        "Significant"
+      ]
+    },
+    {
+      "id": "dish_washing_process_set_up_and_followed_correct_24",
+      "section": "section_5_prevent_contamination",
+      "type": "standard_rating",
+      "label": "Dish washing process set up and followed correctly, proper",
+      "group": "Section 5: Prevent Contamination",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary",
+        "Significant"
+      ]
+    },
+    {
+      "id": "equipment_is_properly_cleaned_and_free_of_excess_25",
+      "section": "section_5_prevent_contamination",
+      "type": "standard_rating",
+      "label": "Equipment is properly cleaned and free of excess debris,",
+      "group": "Section 5: Prevent Contamination",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "wiping_cloths_used_and_stored_properly_in_a_sani_26",
+      "section": "section_5_prevent_contamination",
+      "type": "standard_rating",
+      "label": "Wiping cloths used and stored properly in a sanitizer bucket",
+      "group": "Section 5: Prevent Contamination",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary",
+        "Significant"
+      ]
+    },
+    {
+      "id": "cleaning_supplies_e_g_mops_mop_bucket_etc_must_b_27",
+      "section": "section_5_prevent_contamination",
+      "type": "standard_rating",
+      "label": "Cleaning supplies (e.g., mops, mop bucket, etc.) must be",
+      "group": "Section 5: Prevent Contamination",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "restaurant_boh_floors_walls_ceiling_vents_exhaus_28",
+      "section": "section_5_prevent_contamination",
+      "type": "standard_rating",
+      "label": "Restaurant BOH floors, walls, ceiling, vents/exhaust hoods,",
+      "group": "Section 5: Prevent Contamination",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "lighting_sources_are_properly_shielded_or_have_s_29",
+      "section": "section_5_prevent_contamination",
+      "type": "standard_rating",
+      "label": "Lighting sources are properly shielded or have shatter proof",
+      "group": "Section 5: Prevent Contamination",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "back_flow_is_prevented_at_the_sink_sprayer_and_a_30",
+      "section": "section_5_prevent_contamination",
+      "type": "standard_rating",
+      "label": "Back flow is prevented at the sink sprayer and all hoses.",
+      "group": "Section 5: Prevent Contamination",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "current_and_approved_brand_bu_weekly_pest_walks__31",
+      "section": "section_6_prevent_pest_entry_harborage_a",
+      "type": "standard_rating",
+      "label": "Current and Approved Brand/BU Weekly Pest Walks must be",
+      "group": "Section 6: Prevent pest entry, harborage & activity",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "pest_control_devices_evident_and_installed_maint_32",
+      "section": "section_6_prevent_pest_entry_harborage_a",
+      "type": "standard_rating",
+      "label": "Pest control devices evident and installed, maintained",
+      "group": "Section 6: Prevent pest entry, harborage & activity",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "pest_activity_is_prevented_through_elimination_o_33",
+      "section": "professional_vendor",
+      "type": "standard_rating",
+      "label": "Pest activity is prevented through elimination of harborage",
+      "group": "Professional Vendor.",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "restaurant_boh_floors_walls_ceiling_vents_exhaus_34",
+      "section": "professional_vendor",
+      "type": "standard_rating",
+      "label": "Restaurant BOH floors, walls, ceiling, vents/exhaust hoods,",
+      "group": "Professional Vendor.",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "pest_infestation_or_activity_not_present_signifi_35",
+      "section": "professional_vendor",
+      "type": "standard_rating",
+      "label": "Pest infestation or Activity not present. (SIGNIFICANT) /",
+      "group": "Professional Vendor.",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "options": [
+        "At Standard",
+        "Secondary",
+        "Significant"
+      ]
+    },
+    {
+      "id": "in_regions_where_conducted_the_most_recent_healt_36",
+      "section": "section_7_restaurant_basics",
+      "type": "standard_rating",
+      "label": "In regions where conducted, the most recent health",
+      "group": "Section 7: Restaurant Basics",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "as_required_by_the_brand_bu_or_by_regulation_at__37",
+      "section": "section_7_restaurant_basics",
+      "type": "standard_rating",
+      "label": "As required by the Brand/BU or by regulation, at least 1",
+      "group": "Section 7: Restaurant Basics",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "team_member_brand_bu_food_safety_training_must_b_38",
+      "section": "section_7_restaurant_basics",
+      "type": "standard_rating",
+      "label": "Team member Brand/BU food safety training must be",
+      "group": "Section 7: Restaurant Basics",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "current_and_approved_brand_bu_food_safety_checkl_39",
+      "section": "section_7_restaurant_basics",
+      "type": "standard_rating",
+      "label": "Current and Approved Brand/BU food safety checklists must",
+      "group": "Section 7: Restaurant Basics",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "only_approved_ingredients_or_food_evident_signif_40",
+      "section": "section_7_restaurant_basics",
+      "type": "standard_rating",
+      "label": "Only approved ingredients or food evident. (SIGNIFICANT)",
+      "group": "Section 7: Restaurant Basics",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Significant"
+      ]
+    },
+    {
+      "id": "only_approved_equipment_and_smallwares_in_use_41",
+      "section": "section_7_restaurant_basics",
+      "type": "standard_rating",
+      "label": "Only approved equipment and smallwares in use.",
+      "group": "Section 7: Restaurant Basics",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "gaskets_on_refrigeration_freezer_units_ice_machi_42",
+      "section": "section_7_restaurant_basics",
+      "type": "standard_rating",
+      "label": "Gaskets on refrigeration/freezer units, ice machines, hot",
+      "group": "Section 7: Restaurant Basics",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "trash_receptacles_are_of_sufficient_availability_43",
+      "section": "section_7_restaurant_basics",
+      "type": "standard_rating",
+      "label": "Trash receptacles are of sufficient availability, capacity,",
+      "group": "Section 7: Restaurant Basics",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "three_compartment_sink_prep_sink_dishwasher_or_44",
+      "section": "section_7_restaurant_basics",
+      "type": "standard_rating",
+      "label": "Three-compartment sink, prep sink, dishwasher or",
+      "group": "Section 7: Restaurant Basics",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "approved_chemicals_are_properly_labeled_stored_a_45",
+      "section": "powersoak_sink_is_functioning_properly",
+      "type": "standard_rating",
+      "label": "Approved chemicals are properly labeled, stored, and",
+      "group": "PowerSoak sink is functioning properly.",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary"
+      ]
+    },
+    {
+      "id": "restaurant_has_electric_power_or_an_alternate_po_46",
+      "section": "powersoak_sink_is_functioning_properly",
+      "type": "standard_rating",
+      "label": "Restaurant has electric power or an alternate power source",
+      "group": "PowerSoak sink is functioning properly.",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Significant"
+      ]
+    },
+    {
+      "id": "hot_water_49_c_120_f_is_available_in_the_kitchen_47",
+      "section": "powersoak_sink_is_functioning_properly",
+      "type": "standard_rating",
+      "label": "Hot water ≥ 49°C (120°F) is available in the kitchen as",
+      "group": "PowerSoak sink is functioning properly.",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "minimum_of_one_functioning_toilet_available_in_t_48",
+      "section": "health_hazard",
+      "type": "standard_rating",
+      "label": "Minimum of one functioning toilet available in the facility for",
+      "group": "HEALTH HAZARD)",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Significant"
+      ]
+    },
+    {
+      "id": "drains_not_clogged_and_functioning_properly_sign_49",
+      "section": "health_hazard",
+      "type": "standard_rating",
+      "label": "Drains not clogged and functioning properly. (SIGNIFICANT) /",
+      "group": "HEALTH HAZARD)",
+      "required": true,
+      "points": null,
+      "options": [
+        "At Standard",
+        "Secondary",
+        "Significant"
+      ]
+    },
+    {
+      "id": "water_is_from_an_approved_source_significant_50",
+      "section": "health_hazard",
+      "type": "standard_rating",
+      "label": "Water is from an approved source. (SIGNIFICANT) /",
+      "group": "HEALTH HAZARD)",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "options": [
+        "At Standard",
+        "Significant"
+      ]
+    },
+    {
+      "id": "secondary_score_51",
+      "section": "instruction",
+      "type": "standard_rating",
+      "label": "Secondary Score:",
+      "group": "Instruction",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "significant_score_52",
+      "section": "instruction",
+      "type": "standard_rating",
+      "label": "Significant Score:",
+      "group": "Instruction",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "overall_rating_53",
+      "section": "instruction",
+      "type": "standard_rating",
+      "label": "Overall Rating:",
+      "group": "Instruction",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "At Standard",
+        "Underperforming"
+      ]
+    },
+    {
+      "id": "mic_signature_54",
+      "section": "comments_text_answer",
+      "type": "signature",
+      "label": "MIC Signature:",
+      "group": "Comments: Text answer",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "auditor_signature_55",
+      "section": "date",
+      "type": "signature",
+      "label": "Auditor Signature:",
+      "group": "Date: / /",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    }
+  ]
+}

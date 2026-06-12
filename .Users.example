@@ -13,7 +13,15 @@
 #   3811              = Store scope — single-store MIC
 #   3806, 3811        = Store scope — multiple stores (comma-separated)
 #
-# Admin accounts can ONLY be created by editing this file — not via the dashboard UI.
+# level (optional 5th+ line) — what the account can do within its scope:
+#   it | market | area | store | manager | mic | tm
+#   Omitted levels are inferred (e.g. * → it, 3811 login → store, crew accounts → manager).
+#   tm = team member: sales dashboard + contribute to in-progress collaborative audits only;
+#        cannot start audits or mark them complete.
+#
+# IT, Market, Area, Store, and Manager accounts can create sub-accounts via the dashboard
+# (Account → Create account), choosing level and scope within their permissions.
+# MIC and Team Member accounts cannot create accounts.
 #
 # Usernames are case-insensitive at login. Passwords are case-sensitive.
 # Passwords: use temporary plaintext for first sign-in only — users are prompted to

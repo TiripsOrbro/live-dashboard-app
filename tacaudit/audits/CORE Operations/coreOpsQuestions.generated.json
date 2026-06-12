@@ -1,0 +1,713 @@
+{
+  "auditLabel": "CORE Operations Self Score",
+  "passThreshold": 20,
+  "sections": [
+    {
+      "id": "title_page",
+      "label": "Title Page",
+      "order": 0
+    },
+    {
+      "id": "serving_up_mas",
+      "label": "Serving Up MAS",
+      "order": 1
+    },
+    {
+      "id": "the_customer_experience",
+      "label": "The Customer Experience",
+      "order": 2
+    },
+    {
+      "id": "customer_shop_review",
+      "label": "Customer Shop Review",
+      "order": 3
+    },
+    {
+      "id": "correct_weights_and_finished_the_right_w",
+      "label": "CORRECT WEIGHTS AND FINISHED THE RIGHT WAY (CORRECT WRAP,",
+      "order": 4
+    },
+    {
+      "id": "kitchen_101",
+      "label": "Kitchen 101",
+      "order": 5
+    },
+    {
+      "id": "back_of_house_fundamentals",
+      "label": "Back of House Fundamentals",
+      "order": 6
+    },
+    {
+      "id": "right_people_right_team",
+      "label": "Right People, Right Team",
+      "order": 7
+    },
+    {
+      "id": "the_brand_experience",
+      "label": "The Brand Experience",
+      "order": 8
+    },
+    {
+      "id": "technology_check",
+      "label": "Technology Check",
+      "order": 9
+    },
+    {
+      "id": "outside_your_taco_bell",
+      "label": "Outside your Taco Bell",
+      "order": 10
+    },
+    {
+      "id": "sidewalks_are_clean_free_of_build_up_and",
+      "label": "SIDEWALKS, ARE CLEAN, FREE OF BUILD-UP, AND IN GOOD",
+      "order": 11
+    },
+    {
+      "id": "inside_your_taco_bell",
+      "label": "Inside your Taco Bell",
+      "order": 12
+    },
+    {
+      "id": "evaluation_watch_outs",
+      "label": "Evaluation Watch Outs",
+      "order": 13
+    },
+    {
+      "id": "scoring",
+      "label": "Scoring",
+      "order": 14
+    },
+    {
+      "id": "add_up_point_deviations_and_record_the_s",
+      "label": "Add up point deviations and record the score below. 0-20 points = PASS /",
+      "order": 15
+    },
+    {
+      "id": "instruction",
+      "label": "Instruction",
+      "order": 16
+    },
+    {
+      "id": "comments_text_answer",
+      "label": "Comments Text answer",
+      "order": 17
+    },
+    {
+      "id": "date",
+      "label": "Date: / /",
+      "order": 18
+    },
+    {
+      "id": "sign_off",
+      "label": "Sign Off",
+      "order": 19
+    }
+  ],
+  "questions": [
+    {
+      "id": "site_conducted_0",
+      "section": "title_page",
+      "type": "text",
+      "label": "Site conducted",
+      "group": "Title Page",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "conducted_on_1",
+      "section": "title_page",
+      "type": "datetime",
+      "label": "Conducted on",
+      "group": "Title Page",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "prepared_by_2",
+      "section": "title_page",
+      "type": "text",
+      "label": "Prepared by",
+      "group": "Title Page",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "mic_3",
+      "section": "title_page",
+      "type": "yes_no_points",
+      "label": "MIC",
+      "group": "Title Page",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "h1_1_customers_are_greeted_within_5_seconds_5_pt_4",
+      "section": "the_customer_experience",
+      "type": "yes_no_points",
+      "label": "H1.1: CUSTOMERS ARE GREETED WITHIN 5 SECONDS (5 PTS)",
+      "group": "The Customer Experience",
+      "required": true,
+      "points": 5,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "h1_2_friendly_greeting_5_pts_5",
+      "section": "the_customer_experience",
+      "type": "yes_no_points",
+      "label": "H1.2: FRIENDLY GREETING (5 PTS)",
+      "group": "The Customer Experience",
+      "required": true,
+      "points": 5,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "h1_5_the_digital_business_measuring_the_delivery_6",
+      "section": "the_customer_experience",
+      "type": "yes_no_points",
+      "label": "H1.5: THE DIGITAL BUSINESS: MEASURING THE DELIVERY AND",
+      "group": "The Customer Experience",
+      "required": true,
+      "points": null,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "h2_2_friendly_close_with_eye_contact_3_pts_7",
+      "section": "the_customer_experience",
+      "type": "yes_no_points",
+      "label": "H2.2: FRIENDLY CLOSE WITH EYE CONTACT. (3 PTS)",
+      "group": "The Customer Experience",
+      "required": true,
+      "points": 3,
+      "noPoints": 3,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "a1_3_order_is_repeated_or_confirmed_on_ocb_with__8",
+      "section": "the_customer_experience",
+      "type": "yes_no_points",
+      "label": "A1.3: ORDER IS REPEATED OR CONFIRMED ON OCB WITH TOTAL (5",
+      "group": "The Customer Experience",
+      "required": true,
+      "points": null,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "s1_1_dine_in_and_or_drive_thru_time_meets_standa_9",
+      "section": "the_customer_experience",
+      "type": "yes_no_points",
+      "label": "S1.1: DINE-IN AND/OR DRIVE-THRU TIME MEETS STANDARDS",
+      "group": "The Customer Experience",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "p1_1_food_meets_appearance_standards_looks_full_10",
+      "section": "customer_shop_review",
+      "type": "yes_no_points",
+      "label": "P1.1: FOOD MEETS APPEARANCE STANDARDS, LOOKS FULL,",
+      "group": "Customer Shop Review",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "1_0_a4_2_customer_receives_what_they_order_5_pts_11",
+      "section": "correct_weights_and_finished_the_right_w",
+      "type": "yes_no_points",
+      "label": "1.0. A4.2: CUSTOMER RECEIVES WHAT THEY ORDER (5 PTS)",
+      "group": "CORRECT WEIGHTS AND FINISHED THE RIGHT WAY (CORRECT WRAP,",
+      "required": true,
+      "points": 5,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ],
+      "showWhenAnswer": {
+        "1_0_a4_2_customer_receives_what_they_order_5_pts_11": "yes"
+      }
+    },
+    {
+      "id": "a4_3_customers_gets_the_extras_with_their_order__12",
+      "section": "correct_weights_and_finished_the_right_w",
+      "type": "yes_no_points",
+      "label": "A4.3: CUSTOMERS GETS THE EXTRAS WITH THEIR ORDER (5 PTS)",
+      "group": "CORRECT WEIGHTS AND FINISHED THE RIGHT WAY (CORRECT WRAP,",
+      "required": true,
+      "points": 5,
+      "_awaitingSelectOne": true,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "cm4_5_kitchen_sightlines_counter_clean_and_maint_13",
+      "section": "back_of_house_fundamentals",
+      "type": "yes_no_points",
+      "label": "CM4.5 KITCHEN SIGHTLINES/COUNTER CLEAN AND MAINTAINED (5",
+      "group": "Back of House Fundamentals",
+      "required": true,
+      "points": null,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "s2_1_equipment_readiness_5_pts_14",
+      "section": "back_of_house_fundamentals",
+      "type": "yes_no_points",
+      "label": "S2.1: EQUIPMENT READINESS (5 PTS)",
+      "group": "Back of House Fundamentals",
+      "required": true,
+      "points": 5,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "s2_2_deployment_chart_posted_and_filled_out_tred_15",
+      "section": "back_of_house_fundamentals",
+      "type": "yes_no_points",
+      "label": "S2.2: DEPLOYMENT CHART POSTED AND FILLED OUT (TRED) (5 PTS)",
+      "group": "Back of House Fundamentals",
+      "required": true,
+      "points": 5,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "p2_1_ingredients_properly_prepped_ready_5_pts_16",
+      "section": "back_of_house_fundamentals",
+      "type": "yes_no_points",
+      "label": "P2.1: INGREDIENTS PROPERLY PREPPED & READY (5 PTS)",
+      "group": "Back of House Fundamentals",
+      "required": true,
+      "points": 5,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "p2_2_oil_is_clean_and_ready_to_fry_3_pts_17",
+      "section": "back_of_house_fundamentals",
+      "type": "yes_no_points",
+      "label": "P2.2: OIL IS CLEAN AND READY TO FRY (3 PTS)",
+      "group": "Back of House Fundamentals",
+      "required": true,
+      "points": 3,
+      "noPoints": 3,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "p2_4_packaging_stocked_on_the_line_3_pts_18",
+      "section": "back_of_house_fundamentals",
+      "type": "yes_no_points",
+      "label": "P2.4: PACKAGING STOCKED ON THE LINE (3 PTS)",
+      "group": "Back of House Fundamentals",
+      "required": true,
+      "points": 3,
+      "noPoints": 3,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "p3_1_kitchen_utensils_are_available_and_used_5_p_19",
+      "section": "back_of_house_fundamentals",
+      "type": "yes_no_points",
+      "label": "P3.1: KITCHEN UTENSILS ARE AVAILABLE AND USED (5 PTS)",
+      "group": "Back of House Fundamentals",
+      "required": true,
+      "points": 5,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "p3_6_ingredients_stirred_on_the_line_5_pts_20",
+      "section": "back_of_house_fundamentals",
+      "type": "yes_no_points",
+      "label": "P3.6: INGREDIENTS STIRRED ON THE LINE (5 PTS)",
+      "group": "Back of House Fundamentals",
+      "required": true,
+      "points": 5,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "p5_1_prep_guide_is_complete_and_followed_3_pts_21",
+      "section": "back_of_house_fundamentals",
+      "type": "yes_no_points",
+      "label": "P5.1: PREP GUIDE IS COMPLETE AND FOLLOWED (3 PTS)",
+      "group": "Back of House Fundamentals",
+      "required": true,
+      "points": 3,
+      "_awaitingSelectOne": true,
+      "noPoints": 3,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "tr1_1_mic_certified_in_role_5_pts_22",
+      "section": "right_people_right_team",
+      "type": "yes_no_points",
+      "label": "TR1.1 MIC CERTIFIED IN ROLE (5 PTS)",
+      "group": "Right People, Right Team",
+      "required": true,
+      "points": 5,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "h3_1_team_is_in_correct_uniform_5_pts_23",
+      "section": "right_people_right_team",
+      "type": "yes_no_points",
+      "label": "H3.1: TEAM IS IN CORRECT UNIFORM (5 PTS)",
+      "group": "Right People, Right Team",
+      "required": true,
+      "points": 5,
+      "_awaitingSelectOne": true,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "cm5_2_kiosk_is_clean_in_good_repair_if_not_avail_24",
+      "section": "technology_check",
+      "type": "yes_no_points",
+      "label": "CM5.2: KIOSK IS CLEAN & IN GOOD REPAIR *IF NOT AVAILABLE",
+      "group": "Technology Check",
+      "required": true,
+      "points": null,
+      "noPoints": 3,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "cm5_3_pos_kds_credit_card_terminal_are_clean_in__25",
+      "section": "technology_check",
+      "type": "yes_no_points",
+      "label": "CM5.3: POS/KDS & CREDIT CARD TERMINAL ARE CLEAN & IN GOOD",
+      "group": "Technology Check",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "noPoints": 3,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "cm1_1_parking_lot_drive_thru_lane_dumpster_pad_26",
+      "section": "outside_your_taco_bell",
+      "type": "yes_no_points",
+      "label": "CM1.1: PARKING LOT, DRIVE-THRU LANE, DUMPSTER PAD &",
+      "group": "Outside your Taco Bell",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "cm1_2_landscaping_is_clean_in_good_repair_2_pts_27",
+      "section": "sidewalks_are_clean_free_of_build_up_and",
+      "type": "yes_no_points",
+      "label": "CM1.2: LANDSCAPING IS CLEAN & IN GOOD REPAIR (2 PTS)",
+      "group": "SIDEWALKS, ARE CLEAN, FREE OF BUILD-UP, AND IN GOOD",
+      "required": true,
+      "points": 2,
+      "noPoints": 2,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "cm1_4_outside_of_building_signage_walls_windows_28",
+      "section": "sidewalks_are_clean_free_of_build_up_and",
+      "type": "yes_no_points",
+      "label": "CM1.4: OUTSIDE OF BUILDING, SIGNAGE, WALLS, WINDOWS,",
+      "group": "SIDEWALKS, ARE CLEAN, FREE OF BUILD-UP, AND IN GOOD",
+      "required": true,
+      "points": null,
+      "noPoints": 3,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "cm1_6_drive_thru_window_is_clean_in_good_repair__29",
+      "section": "sidewalks_are_clean_free_of_build_up_and",
+      "type": "yes_no_points",
+      "label": "CM1.6: DRIVE-THRU WINDOW IS CLEAN & IN GOOD REPAIR (3 PTS)",
+      "group": "SIDEWALKS, ARE CLEAN, FREE OF BUILD-UP, AND IN GOOD",
+      "required": true,
+      "points": 3,
+      "noPoints": 3,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "cm2_1_exterior_menuboard_clean_correct_pricing_i_30",
+      "section": "sidewalks_are_clean_free_of_build_up_and",
+      "type": "yes_no_points",
+      "label": "CM2.1: EXTERIOR MENUBOARD CLEAN, CORRECT PRICING & IN",
+      "group": "SIDEWALKS, ARE CLEAN, FREE OF BUILD-UP, AND IN GOOD",
+      "required": true,
+      "points": null,
+      "noPoints": 2,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "cm2_2_window_signage_open_hours_posted_1_pts_31",
+      "section": "sidewalks_are_clean_free_of_build_up_and",
+      "type": "yes_no_points",
+      "label": "CM2.2: WINDOW SIGNAGE & OPEN HOURS POSTED 1 PTS)",
+      "group": "SIDEWALKS, ARE CLEAN, FREE OF BUILD-UP, AND IN GOOD",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "noPoints": 1,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "cm3_1_restroom_walls_floors_fixtures_are_clean_s_32",
+      "section": "inside_your_taco_bell",
+      "type": "yes_no_points",
+      "label": "CM3.1: RESTROOM WALLS, FLOORS, FIXTURES ARE CLEAN, STOCKED",
+      "group": "Inside your Taco Bell",
+      "required": true,
+      "points": null,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "cm4_1_dining_room_furniture_walls_ceilings_and_f_33",
+      "section": "inside_your_taco_bell",
+      "type": "yes_no_points",
+      "label": "CM4.1: DINING ROOM FURNITURE, WALLS, CEILINGS AND FLOORS",
+      "group": "Inside your Taco Bell",
+      "required": true,
+      "points": null,
+      "noPoints": 5,
+      "options": [
+        "Yes",
+        "No",
+        "N/A"
+      ]
+    },
+    {
+      "id": "cm4_3_dining_room_drink_station_condiment_statio_34",
+      "section": "inside_your_taco_bell",
+      "type": "yes_no_points",
+      "label": "CM4.3: DINING ROOM DRINK STATION,CONDIMENT STATION",
+      "group": "Inside your Taco Bell",
+      "required": true,
+      "points": null,
+      "noPoints": 2,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "cm5_1_interior_menuboard_clean_and_in_good_repai_35",
+      "section": "inside_your_taco_bell",
+      "type": "yes_no_points",
+      "label": "CM5.1: INTERIOR MENUBOARD CLEAN AND IN GOOD REPAIR WITH",
+      "group": "Inside your Taco Bell",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false,
+      "noPoints": 2,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "arl_involvement_10_pts_36",
+      "section": "evaluation_watch_outs",
+      "type": "select",
+      "label": "ARL INVOLVEMENT (10 PTS)",
+      "group": "Evaluation Watch Outs",
+      "required": true,
+      "points": 10,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "parking_a_car_during_a_visit_10_pts_37",
+      "section": "evaluation_watch_outs",
+      "type": "select",
+      "label": "PARKING A CAR DURING A VISIT (10 PTS)",
+      "group": "Evaluation Watch Outs",
+      "required": true,
+      "points": 10,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "brand_protection_10_pts_38",
+      "section": "evaluation_watch_outs",
+      "type": "select",
+      "label": "BRAND PROTECTION (10 PTS)",
+      "group": "Evaluation Watch Outs",
+      "required": true,
+      "points": 10,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "box_meals_received_in_designated_box_10_pts_39",
+      "section": "evaluation_watch_outs",
+      "type": "yes_no_points",
+      "label": "BOX MEALS RECEIVED IN DESIGNATED BOX (10 PTS)",
+      "group": "Evaluation Watch Outs",
+      "required": true,
+      "points": 10,
+      "noPoints": 10,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "voc_integrity_10_pts_40",
+      "section": "evaluation_watch_outs",
+      "type": "select",
+      "label": "VOC INTEGRITY (10 PTS)",
+      "group": "Evaluation Watch Outs",
+      "required": true,
+      "points": 10,
+      "_awaitingSelectOne": true,
+      "options": [
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "id": "score_41",
+      "section": "instruction",
+      "type": "yes_no_points",
+      "label": "Score:",
+      "group": "Instruction",
+      "required": true,
+      "points": null
+    },
+    {
+      "id": "select_score_rating_42",
+      "section": "instruction",
+      "type": "standard_rating",
+      "label": "Select Score Rating:",
+      "group": "Instruction",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": true,
+      "options": [
+        "PASS",
+        "Not at Standard"
+      ]
+    },
+    {
+      "id": "mic_signature_43",
+      "section": "comments_text_answer",
+      "type": "signature",
+      "label": "MIC Signature",
+      "group": "Comments Text answer",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    },
+    {
+      "id": "auditor_signature_44",
+      "section": "date",
+      "type": "signature",
+      "label": "Auditor Signature",
+      "group": "Date: / /",
+      "required": true,
+      "points": null,
+      "_awaitingSelectOne": false
+    }
+  ]
+}

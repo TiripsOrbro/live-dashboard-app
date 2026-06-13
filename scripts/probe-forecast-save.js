@@ -35,6 +35,14 @@ function listButtons(page) {
 
 async function main() {
     const store = process.argv[2] || '3806';
+    const confirm = process.argv.includes('--confirm');
+    if (!confirm && !/^(1|true|yes)$/i.test(String(process.env.PROBE_FORECAST_SAVE_CONFIRM || '').trim())) {
+        console.error(
+            '[probe-forecast-save] Refusing to write test forecast ($8888/hr) to Macromatix without confirmation.'
+        );
+        console.error('Re-run with --confirm or set PROBE_FORECAST_SAVE_CONFIRM=1 if you really mean it.');
+        process.exit(1);
+    }
     const cred = resolveMacromatixCredentialsForStore(store);
     let browser;
     try {

@@ -5759,6 +5759,7 @@ function buildStoresCfgWithAreas() {
 }
 
 async function buildAreaDashboardPayload(areaParam, user, salesPayload, auditStateByStore) {
+    const adminUser = isAdminUser(user);
     const storesCfg = buildStoresCfgWithAreas();
 
     let areaStoresCfg = storesCfg.filter((s) => areaParamMatchesStore(areaParam, s));

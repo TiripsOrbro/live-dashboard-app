@@ -350,8 +350,14 @@
                 if (areaTotalsViewActive) {
                     global.AdminAreaDashboard?.showStoreView?.();
                 } else {
-                    global.AdminAreaDashboard?.showAreaTotals?.();
+                    void global.AdminAreaDashboard?.showAreaTotals?.();
                 }
+                return;
+            }
+            const areaTotalsTab = e.target.closest('[data-area-totals-tab]');
+            if (areaTotalsTab) {
+                e.preventDefault();
+                if (!areaTotalsViewActive) void global.AdminAreaDashboard?.showAreaTotals?.();
                 return;
             }
             const tab = e.target.closest('.admin-store-tabs__tab[data-store-select]');
@@ -488,7 +494,7 @@
         const areaStoreTab = e.target.closest('#admin-store-tabs [data-area-totals-tab]');
         if (areaStoreTab) {
             e.preventDefault();
-            if (!areaTotalsViewActive) global.AdminAreaDashboard?.showAreaTotals?.();
+            if (!areaTotalsViewActive) void global.AdminAreaDashboard?.showAreaTotals?.();
             return;
         }
         const areaTotalsBtn = e.target.closest('#admin-store-tabs [data-area-totals-view]');
@@ -497,7 +503,7 @@
         if (areaTotalsViewActive) {
             global.AdminAreaDashboard?.showStoreView?.();
         } else {
-            global.AdminAreaDashboard?.showAreaTotals?.();
+            void global.AdminAreaDashboard?.showAreaTotals?.();
         }
     });
 })(window);

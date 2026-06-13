@@ -129,9 +129,29 @@ function rememberAdminAreaStore(storeNum) {
     }
 }
 
+function sumHourlySlice(values) {
+    if (!Array.isArray(values)) return 0;
+    return values.reduce((sum, v) => sum + (Number(v) || 0), 0);
+}
+
 async function applyAdminStoreSlice(storeNum) {
     const key = String(storeNum || '').toLowerCase();
-    const slice = adminAreaSalesCache.get(key);
+    let slice = adminAreaSalesCache.get(key);
+    if (!slice) {
+        try {
+            const res = await fetch(
+                `${window.location.origin}/api/sales?store=${encodeURIComponent(key)}`,
+                { credentials: 'include' }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data.success) {
+                slice = data;
+                adminAreaSalesCache.set(key, slice);
+            }
+        } catch {
+            /* fall through */
+        }
+    }
     if (!slice) return false;
 
     STORE_NUMBER = key;
@@ -150,6 +170,11 @@ async function applyAdminStoreSlice(storeNum) {
     await loadAuditState();
     updateTimestamp(slice.timestamp);
     updateSalesStatus(slice);
+    if (!sumHourlySlice(slice.actual) && !sumHourlySlice(slice.forecast)) {
+        updateSalesStatus({
+            warning: 'No hourly sales loaded for this store yet (outside trading hours or waiting on scrape).',
+        });
+    }
     salesDataLoadedOnce = true;
     updateGrid();
     updatePendingVendorsPanel();
@@ -216,10 +241,42 @@ async function switchAdminStore(storeNum) {
     return ok;
 }
 
-async function showAdminAreaTotals() {
-    if (!IS_ADMIN_AREA_DASHBOARD || !ADMIN_AREA_CODE) return;
-    await window.AdminAreaPanel?.show?.(ADMIN_AREA_CODE);
-    applyDashboardScale();
+async function showAdminAreaTotals(options = {}) {
+    if (!IS_ADMIN_AREA_DASHBOARD || !ADMIN_AREA_CODE) return false;
+    const quiet = Boolean(options.quiet);
+    const panel = document.getElementById('admin-area-view');
+    const grids = document.getElementById('admin-area-grids');
+    try {
+        if (panel && grids && !quiet) {
+            panel.hidden = false;
+            document.body.classList.add('admin-showing-area-totals');
+            grids.innerHTML = '<p class="admin-accounts-meta">Loading area totals…</p>';
+            window.AdminStoreTabs?.setViewMode?.('area');
+        } else if (panel && !quiet) {
+            panel.hidden = false;
+            document.body.classList.add('admin-showing-area-totals');
+            window.AdminStoreTabs?.setViewMode?.('area');
+        }
+        if (options.refresh) window.AdminAreaPanel?.invalidateCache?.();
+        await window.AdminAreaPanel?.show?.(ADMIN_AREA_CODE);
+        applyDashboardScale();
+        return true;
+    } catch (err) {
+        console.error('Failed to load area totals:', err);
+        if (!quiet) {
+            window.AdminStoreTabs?.setViewMode?.('store');
+            showAdminStoreView();
+        }
+        updateSalesStatus({
+            warning: err.message || 'Could not load area dashboard. Try again in a moment.',
+        });
+        return false;
+    }
+}
+
+async function refreshAdminAreaTotalsIfVisible() {
+    if (!document.body.classList.contains('admin-showing-area-totals')) return;
+    await showAdminAreaTotals({ quiet: true, refresh: true });
 }
 
 function showAdminStoreView() {
@@ -733,12 +790,14 @@ function updateStoreHeader() {
 
 async function loadSalesData() {
     salesDataLoading = true;
-    if (!salesDataLoadedOnce) {
+    const areaTotalsVisible = document.body.classList.contains('admin-showing-area-totals');
+    if (!salesDataLoadedOnce && !areaTotalsVisible) {
         updateGrid();
     }
     try {
         if (IS_ADMIN_AREA_DASHBOARD) {
             await loadAdminAreaSales();
+            await refreshAdminAreaTotalsIfVisible();
             return;
         }
 
@@ -773,7 +832,12 @@ async function loadSalesData() {
         }
     } finally {
         salesDataLoading = false;
-        if (document.querySelector('.dashboard-grid') && !document.querySelector('.grid-error')) {
+        const areaTotalsVisible = document.body.classList.contains('admin-showing-area-totals');
+        if (
+            !areaTotalsVisible &&
+            document.querySelector('.dashboard-grid') &&
+            !document.querySelector('.grid-error')
+        ) {
             salesDataLoadedOnce = true;
             updateGrid();
         }

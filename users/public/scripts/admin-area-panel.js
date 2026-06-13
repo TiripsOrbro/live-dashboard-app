@@ -267,6 +267,11 @@
         return cachedPayload;
     }
 
+    function invalidateCache() {
+        cachedPayload = null;
+        cachedKey = '';
+    }
+
     async function show(areaCode) {
         const panel = document.getElementById('admin-area-view');
         if (!panel) return;
@@ -288,5 +293,5 @@
         ensurePayload(areaCode).catch(() => {});
     }
 
-    global.AdminAreaPanel = { show, hide, preload, renderPayload };
+    global.AdminAreaPanel = { show, hide, preload, renderPayload, invalidateCache };
 })(window);

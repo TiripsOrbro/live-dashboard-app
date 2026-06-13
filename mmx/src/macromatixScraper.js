@@ -125,6 +125,19 @@ function setCachedForecast(storeNumber, dateKey, values) {
     forecastCacheByStore.set(storeStateKey(storeNumber), { dateKey, values });
 }
 
+function warnIfSuspiciousForecast(storeNumber, forecast) {
+    const values = (Array.isArray(forecast) ? forecast : [])
+        .map((v) => Number(v) || 0)
+        .filter((v) => v > 0);
+    if (values.length < 3) return;
+    const first = values[0];
+    if (first >= 5000 && values.every((v) => v === first)) {
+        console.warn(
+            `[Macromatix] Store ${storeNumber}: uniform forecast $${first}/hr on ${values.length} hours — likely test data in Macromatix (check Forecasting/Edit for today)`
+        );
+    }
+}
+
 function getConfirmedEmptyOrderChecks() {
     return Number.isFinite(CONFIRMED_EMPTY_ORDER_CHECKS) && CONFIRMED_EMPTY_ORDER_CHECKS > 0
         ? Math.floor(CONFIRMED_EMPTY_ORDER_CHECKS)
@@ -1351,6 +1364,7 @@ async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
         sales.forecast = cachedForecast;
     } else {
         setCachedForecast(storeNumber, todayKey, sales.forecast);
+        warnIfSuspiciousForecast(storeNumber, sales.forecast);
     }
 
     console.log(

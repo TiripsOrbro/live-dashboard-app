@@ -699,6 +699,7 @@ module.exports = {
     aggregateCounts,
     normalizeUnitSlots,
     buildCatalogBuildToIndex,
+    catalogItemBuildToRule,
     parseBuildToPrefix,
     parseStoreBuildToHint,
     UNIT_SLOTS,

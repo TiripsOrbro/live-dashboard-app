@@ -1,4 +1,4 @@
-﻿const { parseLastYearGridRows } = require('./sssgGridParser');
+﻿const { parseLastYearGridRows } = require('../../../dashboard/src/sssg/sssgGridParser');
 
 function getMacromatixScraper() {
     return require('../macromatixScraper');

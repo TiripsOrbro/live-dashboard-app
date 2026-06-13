@@ -2191,8 +2191,8 @@ function collectStoreMmxCredentials(storeNumber) {
     const store = String(storeNumber || '').trim().replace(/\D/g, '');
     if (!store) return [];
 
-    const { usersFileConfigured, listManagedStoreAccounts } = require('./dashboardUsers');
-    const { readMmxCredentialsForUser } = require('./mmxUserCredentials');
+    const { usersFileConfigured, listManagedStoreAccounts } = require('../../users/src/core/dashboardUsers');
+    const { readMmxCredentialsForUser } = require('../../users/src/core/mmxUserCredentials');
     if (!usersFileConfigured()) return [];
 
     const out = [];
@@ -2248,8 +2248,8 @@ function listMacromatixCredentialCandidatesForStore(storeNumber, options = {}) {
         });
     }
 
-    const { listManagedStoreAccounts } = require('./dashboardUsers');
-    const { readMmxCredentialsForUser, hasMmxCredentialFileForUser } = require('./mmxUserCredentials');
+    const { listManagedStoreAccounts } = require('../../users/src/core/dashboardUsers');
+    const { readMmxCredentialsForUser, hasMmxCredentialFileForUser } = require('../../users/src/core/mmxUserCredentials');
     const managedAccounts = listManagedStoreAccounts(store);
     const managedUsernames = new Set(
         managedAccounts.map((row) => String(row.username || '').trim().toLowerCase()).filter(Boolean)
@@ -2312,7 +2312,7 @@ function resolveMacromatixCredentials(options = {}) {
     const storeNumber = String(options.storeNumber || '').trim();
     const dashUser = String(options.dashboardUsername || '').trim();
     if (storeNumber && options.preferDashboardMmxCredentials && dashUser) {
-        const { readMmxCredentialsForUser } = require('./mmxUserCredentials');
+        const { readMmxCredentialsForUser } = require('../../users/src/core/mmxUserCredentials');
         const stored = readMmxCredentialsForUser(dashUser);
         if (stored?.username && stored?.password) {
             console.log(
@@ -2337,7 +2337,7 @@ function resolveMacromatixCredentials(options = {}) {
         };
     }
     if (dashUser) {
-        const { readMmxCredentialsForUser } = require('./mmxUserCredentials');
+        const { readMmxCredentialsForUser } = require('../../users/src/core/mmxUserCredentials');
         const stored = readMmxCredentialsForUser(dashUser);
         if (stored?.username && stored?.password) {
             console.log(`[Macromatix] Using saved MMX credentials for dashboard user "${dashUser}"`);

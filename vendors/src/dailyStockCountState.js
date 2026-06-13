@@ -54,8 +54,8 @@ async function getStateAll() {
     return stateCache;
 }
 
-function getCatalog() {
-    return buildDailyStockCountCatalog();
+function getCatalog(storeNumber) {
+    return buildDailyStockCountCatalog(storeNumber);
 }
 
 function normalizeCounts(counts) {
@@ -93,7 +93,7 @@ function normalizeLocationPayload(catalog, locationPayload, locationName) {
 }
 
 async function getDraft(storeNumber, dateKey = melbourneDateKey()) {
-    const catalog = getCatalog();
+    const catalog = getCatalog(storeNumber);
     if (!catalog) return null;
 
     const all = await getStateAll();
@@ -125,7 +125,7 @@ function summaryHasCounts(items) {
 }
 
 async function saveDraftLocation(storeNumber, locationName, itemCounts, dateKey = melbourneDateKey()) {
-    const catalog = getCatalog();
+    const catalog = getCatalog(storeNumber);
     if (!catalog) return null;
 
     const loc = String(locationName || '').trim();
@@ -167,7 +167,7 @@ async function setStartResolution(storeNumber, { resolution, openBatchValue }, d
 }
 
 async function getSummary(storeNumber, dateKey = melbourneDateKey()) {
-    const catalog = getCatalog();
+    const catalog = getCatalog(storeNumber);
     if (!catalog) return null;
     const draft = await getDraft(storeNumber, dateKey);
     if (!draft) return null;

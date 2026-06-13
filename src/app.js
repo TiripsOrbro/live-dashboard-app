@@ -299,7 +299,17 @@ const {
 const { buildDfscReportPdf, buildReportFilename } = require('./services/dfsc/dfscReport');
 const { buildCoreReportPdf } = require('./services/dfsc/dfscCoreReport');
 const { buildStatusForStores, getTargetForecastWeekStarts } = require('../dashboard/src/forecast/forecastStatusLedger');
-const { runForecastForStores, previewForecastForStore, previewForecastForStores } = require('../dashboard/src/forecast/forecastRunner');
+const {
+    runForecastForStores,
+    runLifeLenzForecastForStores,
+    runCombinedForecastForStores,
+    previewForecastForStore,
+    previewForecastForStores,
+} = require('../dashboard/src/forecast/forecastRunner');
+const {
+    readManualEntryPack,
+    buildManualEntryPlainText,
+} = require('../dashboard/src/forecast/forecastManualPack');
 const {
     buildHistoryCoverageForStores,
     buildHistoryHourGrid,
@@ -406,8 +416,15 @@ const {
     resolveCreateAccountParent,
 } = require('./services/createAccountGate');
 const { saveUserAccountSecrets, deleteMmxCredentialsForUser } = require('./services/mmxUserCredentials');
+const {
+    saveUserLifeLenzSecrets,
+    getLifeLenzCredentialsStatus,
+    deleteLifeLenzCredentialsForUser,
+    readLifeLenzCredentialsForUser,
+} = require('./services/lifelenzUserCredentials');
 const { getDashboardMeta, readChangelogMarkdown } = require('./services/dashboardMeta');
 const { verifyMacromatixLogin } = require('./services/macromatixScraper');
+const { verifyLifeLenzLogin } = require('../lifelenz/src/lifelenzAuth');
 const {
     createRegistrationOptions,
     verifyRegistration,
@@ -1212,7 +1229,7 @@ function postCloseSnapshotPath(storeNumber) {
 
 function computeSssgForStore(store) {
     if (!store || !storeHasMeaningfulData(store)) return null;
-    const dateKey = melbourneDateKey();
+    const dateKey = getStoreDateKey(store);
     const slots = getCachedSssgLy(store.storeNumber, dateKey);
     if (!Array.isArray(slots) || !slots.length) return store.sssgPercent != null ? store.sssgPercent : null;
     const cfg = getStoreConfig(store.storeNumber);
@@ -1228,6 +1245,7 @@ function computeSssgForStore(store) {
         openHour: store.openHour,
         closeHour: store.closeHour,
         timeZone,
+        storeNumber: store.storeNumber,
     });
 }
 
@@ -1261,7 +1279,7 @@ function finalizeEndOfYesterdaySssg(store, now = new Date()) {
 
 function syncSssgWeeklyForStore(store, { finalize = false } = {}) {
     if (!store?.storeNumber || !storeHasMeaningfulData(store)) return;
-    const slots = getCachedSssgLy(store.storeNumber, melbourneDateKey());
+    const slots = getCachedSssgLy(store.storeNumber, getStoreDateKey(store));
     if (!Array.isArray(slots) || !slots.length) return;
     if (finalize) {
         captureEndOfDaySssg(store, slots);
@@ -2782,6 +2800,7 @@ app.delete('/api/account/managed-accounts', (req, res) => {
         return;
     }
     deleteMmxCredentialsForUser(result.username);
+    deleteLifeLenzCredentialsForUser(result.username);
     res.json({ success: true, storeNumber: normalizeStoreKey(store), username: result.username });
 });
 
@@ -2894,6 +2913,68 @@ app.post('/api/admin/forecast/preview', (req, res) => {
     });
 });
 
+app.get('/api/admin/forecast/lifelenz/status', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const status = getLifeLenzCredentialsStatus(user.username);
+    res.json({ success: true, ...status });
+});
+
+app.post('/api/admin/forecast/lifelenz/verify', async (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const email = String(req.body?.email || '').trim();
+    const password = String(req.body?.password || '');
+    const save = req.body?.save === true;
+    if (!email || !password) {
+        res.status(400).json({ success: false, error: 'LifeLenz email and password are required.' });
+        return;
+    }
+    try {
+        const verifyResult = await verifyLifeLenzLogin(email, password, { headless: true, skipSlowMo: true });
+        if (!verifyResult.ok) {
+            res.status(401).json({ success: false, error: verifyResult.error || 'LifeLenz login failed.' });
+            return;
+        }
+        let saved = null;
+        if (save) {
+            saved = saveUserLifeLenzSecrets(user.username, email, password);
+            if (!saved.ok) {
+                res.status(500).json({ success: false, error: saved.error || 'Could not save LifeLenz credentials.' });
+                return;
+            }
+        }
+        res.json({
+            success: true,
+            stores: verifyResult.stores,
+            saved: Boolean(save && saved?.ok),
+            updatedAt: saved?.updatedAt || null,
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message || 'LifeLenz verification failed.' });
+    }
+});
+
+app.delete('/api/admin/forecast/lifelenz/credentials', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const result = deleteLifeLenzCredentialsForUser(user.username);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({ success: true, removed: result.removed });
+});
+
 app.post('/api/admin/forecast/run', async (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     if (!canUserAccessAdminMenu(user)) {
@@ -2933,31 +3014,55 @@ app.post('/api/admin/forecast/run', async (req, res) => {
         const headed =
             req.body?.headed === true ||
             /^(0|false|no|off)$/i.test(String(process.env.FORECAST_SCRAPER_HEADLESS ?? '').trim());
-        const results = await runForecastForStores(storeNumbers, {
+        const lifelenzHeaded =
+            req.body?.lifelenzHeaded === true ||
+            /^(0|false|no|off)$/i.test(String(process.env.LIFELENZ_SCRAPER_HEADLESS ?? '').trim());
+        const headless = headed ? false : true;
+        const lifelenzHeadless = lifelenzHeaded ? false : true;
+
+        const oneTimeEmail = String(req.body?.lifelenzCredentials?.email || '').trim();
+        const oneTimePassword = String(req.body?.lifelenzCredentials?.password || '');
+        const savedCreds = readLifeLenzCredentialsForUser(user.username);
+        const lifelenzCredentials =
+            savedCreds ||
+            (oneTimeEmail && oneTimePassword ? { email: oneTimeEmail, password: oneTimePassword } : null);
+
+        writeSse('platform-started', { platform: 'mmx', storeNumbers });
+        if (lifelenzCredentials) {
+            writeSse('platform-started', { platform: 'lifelenz', storeNumbers });
+        }
+
+        const combined = await runCombinedForecastForStores(storeNumbers, {
             completedBy: user.username,
-            headless: headed ? false : true,
+            headless,
+            lifelenzCredentials,
             keepBrowserOpen: headed && req.body?.keepBrowserOpen === true,
             onProgress: (payload) => writeSse('progress', payload),
         });
-        const failed = results.filter((row) => !row.ok);
-        if (failed.length === results.length) {
-            const payload = {
-                success: false,
-                error: failed[0]?.error || 'Forecast run failed for all stores.',
-                results,
-            };
-            if (streamProgress) {
-                writeSse('complete', payload);
-                res.end();
-                return;
-            }
-            res.status(502).json(payload);
-            return;
-        }
-        const payload = { success: true, results, targetWeeks: getTargetForecastWeekStarts() };
+
+        const mmxResults = combined.mmxResults || [];
+        const lifelenzResults = combined.lifelenzResults || [];
+        const allMmxFailed = mmxResults.length && mmxResults.every((row) => !row.ok);
+        const allFailed =
+            allMmxFailed && (!lifelenzCredentials || (lifelenzResults.length && lifelenzResults.every((row) => !row.ok)));
+
+        const payload = {
+            success: !allFailed,
+            mmx: mmxResults,
+            lifelenz: lifelenzResults,
+            lifelenzSkipped: combined.lifelenzSkipped === true,
+            manualSaved: combined.manualSaved || [],
+            results: mmxResults,
+            targetWeeks: combined.targetWeeks || getTargetForecastWeekStarts(),
+            error: allFailed ? mmxResults.find((row) => !row.ok)?.error || 'Forecast run failed for all stores.' : undefined,
+        };
         if (streamProgress) {
             writeSse('complete', payload);
             res.end();
+            return;
+        }
+        if (allFailed) {
+            res.status(502).json(payload);
             return;
         }
         res.json(payload);
@@ -2972,6 +3077,27 @@ app.post('/api/admin/forecast/run', async (req, res) => {
     } finally {
         releaseMmxResource('forecast tool');
     }
+});
+
+app.get('/api/admin/forecast/manual/:storeNumber', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const store = String(req.params.storeNumber || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    const weekStart = String(req.query.weekStart || getTargetForecastWeekStarts()[0] || '').trim();
+    const pack = readManualEntryPack(weekStart, store);
+    if (!pack) {
+        res.status(404).json({ success: false, error: 'No manual entry pack found for this store and week.' });
+        return;
+    }
+    res.json({
+        success: true,
+        pack,
+        plainText: buildManualEntryPlainText(pack),
+    });
 });
 
 app.get('/api/admin/build-to/catalog', (req, res) => {
@@ -3206,7 +3332,7 @@ app.get('/api/stock-count/catalog', (req, res) => {
             res.status(400).json({ success: false, error: 'Store is required.' });
             return;
         }
-        const catalog = buildCombinedStockCountCatalog(pendingVendorLabelsForStockCount(req, store));
+        const catalog = buildCombinedStockCountCatalog(pendingVendorLabelsForStockCount(req, store), store);
         if (!catalog.items.length) {
             res.status(404).json({
                 success: false,
@@ -3218,7 +3344,11 @@ app.get('/api/stock-count/catalog', (req, res) => {
         return;
     }
     const fullCatalog = /^(1|true|yes)$/i.test(String(req.query.full || req.query.match || ''));
-    const catalog = getVendorCatalog(vendorSlug, fullCatalog ? {} : { forStockCount: true });
+    const store = stockCountStoreFromQuery(req);
+    const catalog = getVendorCatalog(vendorSlug, {
+        ...(fullCatalog ? {} : { forStockCount: true }),
+        storeNumber: store || undefined,
+    });
     if (!catalog) {
         res.status(404).json({ success: false, error: 'Vendor catalog not found.' });
         return;
@@ -3580,7 +3710,7 @@ app.get('/api/daily-stock-count/catalog', (req, res) => {
     try {
         const store = dailyCountStoreFromQuery(req);
         if (!store || !assertStoreAccess(req, res, store)) return;
-        const catalog = buildDailyStockCountCatalog();
+        const catalog = buildDailyStockCountCatalog(store);
         if (!catalog) {
             res.status(404).json({
                 success: false,

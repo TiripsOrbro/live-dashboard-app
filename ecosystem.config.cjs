@@ -72,5 +72,21 @@ module.exports = {
                 REPORT_DOWNLOAD_SCHEDULE_ENABLED: env.REPORT_DOWNLOAD_SCHEDULE_ENABLED || '1',
             },
         },
+        {
+            name: 'forecast-scheduler',
+            cwd: ROOT,
+            script: 'scripts/run-forecast-scheduler.js',
+            interpreter: 'node',
+            autorestart: true,
+            max_restarts: 50,
+            min_uptime: '30s',
+            restart_delay: 10000,
+            max_memory_restart: '500M',
+            kill_timeout: 180000,
+            env: {
+                ...env,
+                FORECAST_SCHEDULE_ENABLED: env.FORECAST_SCHEDULE_ENABLED || '1',
+            },
+        },
     ],
 };

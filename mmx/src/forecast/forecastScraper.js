@@ -859,7 +859,6 @@ async function writeForecastPlanToSpa(page, storeNumber, plan, options = {}) {
 }
 
 async function writeForecastPlanToMmx(storeNumber, plan, options = {}) {
-    const { getTargetForecastWeekStarts, markStoreWeekComplete } = require('../../../dashboard/src/forecast/forecastStatusLedger');
     const scraper = getMacromatixScraper();
     const sssg = getSssgScraper();
     const store = String(storeNumber || '').trim();
@@ -887,12 +886,6 @@ async function writeForecastPlanToMmx(storeNumber, plan, options = {}) {
         const applied = await writeForecastPlanToSpa(page, store, plan, {
             onProgress: options.onProgress,
         });
-
-        for (const weekStart of getTargetForecastWeekStarts()) {
-            markStoreWeekComplete(weekStart, store, {
-                completedBy: options.completedBy || null,
-            });
-        }
 
         return {
             storeNumber: store,

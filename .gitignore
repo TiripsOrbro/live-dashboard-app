@@ -20,6 +20,7 @@ tmp/
 users/accounts/**/accounts.users
 users/data/account-audit.log
 users/data/mmx-users/
+users/data/lifelenz-users/
 users/data/webauthn/
 
 # Debug screenshots dumped by probe/debug scripts
@@ -78,6 +79,7 @@ data/upselling/
 data/mic/
 data/webauthn/
 data/mmx-users/
+data/lifelenz-users/
 data/account-audit.log
 data/sales-snapshots/
 data/sssg-lastyear/

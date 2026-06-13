@@ -2,6 +2,7 @@
 const path = require('path');
 
 const paths = require('../../../src/paths');
+const { getStoreDateKey } = require('./sssgWeeklyLedger');
 const SSSG_LY_DIR = path.join(paths.dashboard.data, 'sssg-lastyear');
 
 /** @type {Map<string, { dateKey: string, slots: object[] }>} */
@@ -72,9 +73,13 @@ function hasSssgLyCachedToday(storeNumber, dateKey) {
     return Boolean(getCachedSssgLy(storeNumber, dateKey)?.length);
 }
 
-function needsSssgLyScrape(stores, dateKey) {
+function sssgDateKeyForStore(storeOrNumber, now = new Date()) {
+    return getStoreDateKey(storeOrNumber, now);
+}
+
+function needsSssgLyScrape(stores, _legacyDateKey) {
     if (!Array.isArray(stores) || !stores.length) return false;
-    return stores.some((s) => !hasSssgLyCachedToday(s.storeNumber, dateKey));
+    return stores.some((s) => !hasSssgLyCachedToday(s.storeNumber, sssgDateKeyForStore(s)));
 }
 
 function clearSssgLyCache(storeNumber) {
@@ -115,6 +120,7 @@ function resetSssgForNewDay(storeNumber) {
 
 module.exports = {
     SSSG_LY_DIR,
+    sssgDateKeyForStore,
     getCachedSssgLy,
     setCachedSssgLy,
     loadSssgLyFromDisk,

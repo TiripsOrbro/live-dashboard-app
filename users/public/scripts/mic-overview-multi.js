@@ -112,6 +112,56 @@
         return areas[areaIndex % areas.length];
     }
 
+    function mergeMarketHourly(areas) {
+        const list = areas || [];
+        let openHour = 10;
+        let closeHour = 22;
+        let maxHours = 0;
+        const chunks = [];
+        for (const area of list) {
+            const st = area.salesToday || {};
+            const actualHourly = Array.isArray(st.actualHourly) ? st.actualHourly : [];
+            const forecastHourly = Array.isArray(st.forecastHourly) ? st.forecastHourly : [];
+            if (!actualHourly.length && !forecastHourly.length) continue;
+            chunks.push({ actualHourly, forecastHourly });
+            maxHours = Math.max(maxHours, actualHourly.length, forecastHourly.length);
+            if (Number.isFinite(st.openHour)) openHour = st.openHour;
+            if (Number.isFinite(st.closeHour)) closeHour = st.closeHour;
+        }
+        const actual = new Array(maxHours).fill(0);
+        const forecast = new Array(maxHours).fill(0);
+        for (const chunk of chunks) {
+            for (let i = 0; i < maxHours; i++) {
+                actual[i] += Number(chunk.actualHourly[i]) || 0;
+                forecast[i] += Number(chunk.forecastHourly[i]) || 0;
+            }
+        }
+        return { actual, forecast, openHour, closeHour, hours: maxHours };
+    }
+
+    function computeMarketProgress(areas, actual, forecast) {
+        const hourly = mergeMarketHourly(areas);
+        if (hourly.hours > 0 && global.SalesProgress?.computeDaySalesPresentation) {
+            return global.SalesProgress.computeDaySalesPresentation({
+                actual: hourly.actual,
+                forecast: hourly.forecast,
+                openHour: hourly.openHour,
+                closeHour: hourly.closeHour,
+                timeZone: TIME_ZONE,
+            });
+        }
+        const outcomeClass = global.SalesProgress?.getActualCellClass?.(actual, forecast) || 'cell-green';
+        const sample = (areas || [])
+            .map((area) => area.salesToday?.progress)
+            .find((progress) => progress && progress.timeFillPercent != null);
+        return {
+            phase: sample?.phase || 'during',
+            timeFillPercent: sample?.timeFillPercent ?? 0,
+            outcomeClass,
+            paceClass: sample?.paceClass || outcomeClass,
+        };
+    }
+
     function buildMarketAggregate(areas) {
         const list = areas || [];
         const storeSales = sortStoresByNumber(list.flatMap((a) => a.storeSales || []));
@@ -122,11 +172,7 @@
             actual += Number(st.actual) || 0;
             forecast += Number(st.forecast) || 0;
         }
-        const ratio = forecast > 0 ? actual / forecast : 1;
-        let paceClass = 'cell-green';
-        if (ratio < 0.85) paceClass = 'cell-red';
-        else if (ratio < 0.95) paceClass = 'cell-yellow';
-        const progress = { paceClass, timeFillPercent: Math.min(100, Math.round(ratio * 100)) };
+        const progress = computeMarketProgress(list, actual, forecast);
         const wtdValues = list
             .map((a) => a.sssgWtdTotals)
             .filter((t) => t && (Number(t.lyTotal) > 0 || Number(t.actualTotal) > 0));
@@ -318,8 +364,12 @@
         const forecast = Number(sales?.forecast) || 0;
         const progress = sales?.progress || {};
         const paceClass = progress.paceClass || 'cell-green';
+        const outcomeClass = progress.outcomeClass || paceClass;
         const timeFill = global.SalesProgress?.paceFillPercentFromProgress?.(progress) ?? 0;
-        const layers = global.SalesProgress?.buildPaceStripHtml?.(timeFill, paceClass) || '';
+        const layers =
+            global.SalesProgress?.buildLiveProgressLayersHtml?.(timeFill, outcomeClass, paceClass) ||
+            global.SalesProgress?.buildPaceStripHtml?.(timeFill, paceClass) ||
+            '';
         return `
         <div class="mic-store-lead-sales-stack">
             <div class="mic-store-lead-total-amount">${formatMoney(actual)} / ${formatMoney(forecast)}</div>

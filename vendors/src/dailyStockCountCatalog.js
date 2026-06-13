@@ -1,19 +1,21 @@
 ﻿const { listConfiguredVendors, getVendorCatalog } = require('./vendorCatalog');
+const { effectiveIncludeDaily, effectiveSkipStockCount } = require('./buildToAdminOverrides');
 
 const DAILY_SLUG = 'daily';
 
 /**
  * Merge daily-tagged items from all vendor catalogs into one location-tabbed list.
  */
-function buildDailyStockCountCatalog() {
+function buildDailyStockCountCatalog(storeNumber) {
+    const store = String(storeNumber || '').trim();
     const items = [];
     const locationOrder = [];
     const seenLocs = new Set();
     const vendorLabels = [];
 
     for (const vendor of listConfiguredVendors()) {
-        const cat = getVendorCatalog(vendor.slug, { forDailyCount: true });
-        if (!cat) continue;
+        const cat = getVendorCatalog(vendor.slug);
+        if (!cat?.items?.length) continue;
         vendorLabels.push(cat.label);
 
         for (const loc of cat.locations || []) {
@@ -24,6 +26,8 @@ function buildDailyStockCountCatalog() {
         }
 
         for (const item of cat.items) {
+            if (effectiveSkipStockCount(item, store)) continue;
+            if (!effectiveIncludeDaily(item, store)) continue;
             items.push({
                 ...item,
                 key: `${vendor.slug}::${item.key}`,
@@ -36,11 +40,15 @@ function buildDailyStockCountCatalog() {
 
     if (!items.length) return null;
 
+    const locations = locationOrder.length
+        ? locationOrder
+        : [...new Set(items.flatMap((item) => item.locations || []))];
+
     return {
         slug: DAILY_SLUG,
         label: vendorLabels.length ? `Daily Count (${vendorLabels.join(', ')})` : 'Daily Count',
-        locations: locationOrder,
-        locationOrder,
+        locations,
+        locationOrder: locations,
         items,
         vendorSlugs: [...new Set(items.map((i) => i.sourceVendorSlug))],
         vendorLabels,

@@ -218,9 +218,31 @@ async function loadAdminAreaSales() {
     window.AdminStoreTabs?.refreshFromAreaSales?.(list, STORE_NUMBER, ADMIN_AREA_CODE);
 
     if (window.location.search) {
-        history.replaceState({ area: ADMIN_AREA_CODE, store: STORE_NUMBER }, '', window.location.pathname);
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('store')) {
+            params.delete('store');
+            const qs = params.toString();
+            history.replaceState(
+                { area: ADMIN_AREA_CODE, store: STORE_NUMBER },
+                '',
+                qs ? `${window.location.pathname}?${qs}` : window.location.pathname
+            );
+        }
     }
     return true;
+}
+
+function setAdminAreaTotalsUrl(active) {
+    if (!IS_ADMIN_AREA_DASHBOARD) return;
+    try {
+        const url = new URL(window.location.href);
+        if (active) url.searchParams.set('view', 'area');
+        else url.searchParams.delete('view');
+        const next = `${url.pathname}${url.search}`;
+        history.replaceState({ area: ADMIN_AREA_CODE, store: STORE_NUMBER, view: active ? 'area' : '' }, '', next);
+    } catch {
+        /* ignore */
+    }
 }
 
 function wantsAdminAreaTotalsView() {
@@ -235,6 +257,8 @@ async function switchAdminStore(storeNum) {
     if (!IS_ADMIN_AREA_DASHBOARD) return false;
     if (document.body.classList.contains('admin-showing-area-totals')) {
         window.AdminAreaPanel?.hide?.();
+        setAdminAreaTotalsUrl(false);
+        window.AdminStoreTabs?.setViewMode?.('store');
     }
     const ok = await applyAdminStoreSlice(storeNum);
     if (ok) applyDashboardScale();
@@ -252,10 +276,12 @@ async function showAdminAreaTotals(options = {}) {
             document.body.classList.add('admin-showing-area-totals');
             grids.innerHTML = '<p class="admin-accounts-meta">Loading area totals…</p>';
             window.AdminStoreTabs?.setViewMode?.('area');
+            setAdminAreaTotalsUrl(true);
         } else if (panel && !quiet) {
             panel.hidden = false;
             document.body.classList.add('admin-showing-area-totals');
             window.AdminStoreTabs?.setViewMode?.('area');
+            setAdminAreaTotalsUrl(true);
         }
         if (options.refresh) window.AdminAreaPanel?.invalidateCache?.();
         await window.AdminAreaPanel?.show?.(ADMIN_AREA_CODE);
@@ -282,6 +308,7 @@ async function refreshAdminAreaTotalsIfVisible() {
 function showAdminStoreView() {
     if (!IS_ADMIN_AREA_DASHBOARD) return;
     window.AdminAreaPanel?.hide?.();
+    setAdminAreaTotalsUrl(false);
     applyDashboardScale();
 }
 
@@ -755,6 +782,9 @@ async function saveAuditState() {
 function applySalesPayload(data) {
     if (Number.isFinite(data.openHour) && Number.isFinite(data.closeHour)) {
         setTradingHours(data.openHour, data.closeHour);
+    }
+    if (data.timeZone) {
+        setDashboardTimeZone(data.timeZone);
     }
     if (data.postCloseRetainHours != null) {
         setPostCloseGridColourHours(data.postCloseRetainHours);
@@ -2760,7 +2790,8 @@ function initMobileLandscape() {
             window.AdminAreaPanel?.preload?.(ADMIN_AREA_CODE);
             if (wantsAdminAreaTotalsView()) {
                 await showAdminAreaTotals();
-                history.replaceState({ area: ADMIN_AREA_CODE, store: STORE_NUMBER }, '', window.location.pathname);
+            } else {
+                setAdminAreaTotalsUrl(false);
             }
         } catch (err) {
             console.error('Failed to load admin area sales:', err);

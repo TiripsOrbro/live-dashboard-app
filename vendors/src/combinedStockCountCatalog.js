@@ -18,15 +18,16 @@ function vendorSlugsFromPendingLabels(pendingLabels) {
 /**
  * Merge stock-count catalogs for today's pending vendors into one location-tabbed list.
  */
-function buildCombinedStockCountCatalog(pendingLabels) {
+function buildCombinedStockCountCatalog(pendingLabels, storeNumber) {
     const vendorSlugs = vendorSlugsFromPendingLabels(pendingLabels);
     const items = [];
     const locationOrder = [];
     const seenLocs = new Set();
     const vendorLabels = [];
+    const catalogOpts = { forStockCount: true, storeNumber };
 
     for (const slug of vendorSlugs) {
-        const cat = getVendorCatalog(slug, { forStockCount: true });
+        const cat = getVendorCatalog(slug, catalogOpts);
         if (!cat) continue;
         vendorLabels.push(cat.label);
 

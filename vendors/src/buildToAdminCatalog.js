@@ -1,6 +1,12 @@
 const { listConfiguredVendors, getVendorCatalog, catalogItemBuildToRule } = require('./vendorCatalog');
 const { buildToOverridesForStore, mergeBuildToRules } = require('./buildToStoreOverrides');
-const { adminOverridesForStore, readOverridesDoc } = require('./buildToAdminOverrides');
+const {
+    adminOverridesForStore,
+    readOverridesDoc,
+    effectiveSkipKeyItemCount,
+    effectiveSkipStockCount,
+    effectiveIncludeDaily,
+} = require('./buildToAdminOverrides');
 const { normalizeItemCode } = require('./reportReader');
 const {
     DEFAULT_BUILD_TO_DAYS,
@@ -22,8 +28,10 @@ function defaultDaysForItem(itemCode, description) {
         : DEFAULT_BUILD_TO_DAYS;
 }
 
-function describeRuleType(rule, description, itemCode, item) {
-    if (item?.skipKeyItemCount && !item?.buildToOrderManual && !item?.buildToManual) return 'on-hand';
+function describeRuleType(rule, description, itemCode, item, skipKeyItemCount) {
+    const manual = Boolean(rule?.buildToManual || item?.buildToManual);
+    const orderManual = Boolean(rule?.buildToOrderManual || item?.buildToOrderManual);
+    if (skipKeyItemCount && !orderManual && !manual) return 'on-hand';
     if (!rule) return 'default';
     if (rule.buildToManual) return 'manual';
     if (rule.buildToOrderManual) return 'order-manual';
@@ -31,6 +39,16 @@ function describeRuleType(rule, description, itemCode, item) {
     if (rule.onHandOnly) return 'on-hand';
     if (rule.buildToDays != null || rule.buildToAdd) return 'days';
     return 'default';
+}
+
+function isOnHandBuildToCatalogItem(item) {
+    return Boolean(
+        item?.skipStockCount &&
+        item?.skipKeyItemCount &&
+        !item?.buildToManual &&
+        !item?.buildToOrderManual &&
+        item?.buildToDays != null
+    );
 }
 
 function effectiveRuleForCatalogItem(item, vendorSlug, storeNumber) {
@@ -42,14 +60,38 @@ function effectiveRuleForCatalogItem(item, vendorSlug, storeNumber) {
     effective = mergeBuildToRules(effective, adminMap.get(code));
 
     const description = item.name || item.description || '';
-    const ruleType = describeRuleType(effective, description, code, item);
+    const skipKeyItemCount = effectiveSkipKeyItemCount(item, storeNumber);
+    const skipStockCount = effectiveSkipStockCount(item, storeNumber);
+    const ruleType = describeRuleType(effective, description, code, item, skipKeyItemCount);
     const defaultDays = defaultDaysForItem(code, description);
+    const doc = readOverridesDoc();
+    const storeKey = String(storeNumber || '').trim();
+    const storeRule = storeKey ? doc.stores?.[storeKey]?.[code] : null;
+    const globalRule = doc.global?.[code] || null;
 
     return {
         itemCode: code,
         name: item.name || item.description || code,
         vendorSlug,
         ruleType,
+        needsCount: !skipStockCount,
+        catalogNeedsCount: !Boolean(item.skipStockCount),
+        skipKeyItemCount,
+        skipStockCount,
+        storeSkipStockCountOverride:
+            storeRule && typeof storeRule.skipStockCount === 'boolean' ? storeRule.skipStockCount : null,
+        globalSkipStockCountOverride:
+            globalRule && typeof globalRule.skipStockCount === 'boolean' ? globalRule.skipStockCount : null,
+        storeSkipKeyItemCountOverride:
+            storeRule && typeof storeRule.skipKeyItemCount === 'boolean' ? storeRule.skipKeyItemCount : null,
+        globalSkipKeyItemCountOverride:
+            globalRule && typeof globalRule.skipKeyItemCount === 'boolean' ? globalRule.skipKeyItemCount : null,
+        includeDaily: effectiveIncludeDaily(item, storeNumber),
+        catalogIncludeDaily: Boolean(item.includeDaily),
+        storeIncludeDailyOverride:
+            storeRule && typeof storeRule.includeDaily === 'boolean' ? storeRule.includeDaily : null,
+        globalIncludeDailyOverride:
+            globalRule && typeof globalRule.includeDaily === 'boolean' ? globalRule.includeDaily : null,
         buildToDays:
             effective?.buildToDays != null && Number.isFinite(effective.buildToDays)
                 ? effective.buildToDays
@@ -76,7 +118,7 @@ function buildAdminBuildToCatalog(storeNumber) {
         const items = [];
         for (const item of catalog.items) {
             const code = String(item.itemCode || '').trim();
-            if (!code || item.skipStockCount) continue;
+            if (!code || (item.skipStockCount && !isOnHandBuildToCatalogItem(item))) continue;
             items.push(effectiveRuleForCatalogItem(item, vendor.slug, store));
         }
         if (items.length) {
@@ -100,5 +142,6 @@ module.exports = {
     buildAdminBuildToCatalog,
     effectiveRuleForCatalogItem,
     filterOverridesForActor,
+    isOnHandBuildToCatalogItem,
     readOverridesDoc,
 };

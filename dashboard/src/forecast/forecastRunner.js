@@ -1,6 +1,10 @@
 const { assessHistoryReadiness, dailyRowsFromHistory, sumHourly, formatHourLabel, WEEKDAY_LABELS } = require('./forecastHistoryLedger');
-const { getTargetForecastWeekStarts, addDaysToIso } = require('./forecastStatusLedger');
-const { getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../../../stores/src/storeList');
+const {
+    getTargetForecastWeekStarts,
+    addDaysToIso,
+    markStoreWeekPlatformComplete,
+} = require('./forecastStatusLedger');
+const { saveManualEntryPacksForRun } = require('./forecastManualPack');const { getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../../../stores/src/storeList');
 
 /**
  * Trim highest and lowest weekday totals from up to 5 weeks, average the remaining three.
@@ -274,25 +278,164 @@ async function runForecastForStore(storeNumber, options = {}) {
 }
 
 async function runForecastForStores(storeNumbers, options = {}) {
+    const targetWeeks = getTargetForecastWeekStarts();
     const results = [];
     for (const storeNumber of storeNumbers || []) {
         try {
             const result = await runForecastForStore(storeNumber, options);
             results.push({ storeNumber, ok: true, ...result });
+            if (options.markPlatformComplete !== false) {
+                for (const weekStart of targetWeeks) {
+                    markStoreWeekPlatformComplete(weekStart, storeNumber, 'mmx', {
+                        completedBy: options.completedBy || null,
+                    });
+                }
+            }
             if (typeof options.onProgress === 'function') {
-                options.onProgress({ type: 'store-complete', storeNumber, ok: true, ...result });
+                options.onProgress({ platform: 'mmx', type: 'store-complete', storeNumber, ok: true, ...result });
             }
         } catch (err) {
             const error = err.message || String(err);
             results.push({ storeNumber, ok: false, error });
             if (typeof options.onProgress === 'function') {
-                options.onProgress({ type: 'store-error', storeNumber, error });
+                options.onProgress({ platform: 'mmx', type: 'store-error', storeNumber, error });
             }
         }
     }
     return results;
 }
+async function runLifeLenzForecastForStores(storeNumbers, credentials, options = {}) {
+    const { createAuthenticatedLifeLenzSession } = require('../../../lifelenz/src/lifelenzAuth');
+    const { writeForecastPlanOnPage } = require('../../../lifelenz/src/lifelenzForecastScraper');
+    const { closeBrowserQuietly } = require('../../../mmx/src/macromatixScraper');
+    const targetWeeks = getTargetForecastWeekStarts();
 
+    const email = String(credentials?.email || '').trim();
+    const password = String(credentials?.password || '');
+    if (!email || !password) {
+        throw new Error('LifeLenz credentials are required.');
+    }
+
+    let browser;
+    let page;
+    let accessibleStores = [];
+    const results = [];
+
+    try {
+        if (typeof options.onProgress === 'function') {
+            options.onProgress({ platform: 'lifelenz', type: 'session-start', storeNumbers });
+        }
+        const session = await createAuthenticatedLifeLenzSession(email, password, options);
+        browser = session.browser;
+        page = session.page;
+        accessibleStores = session.stores || [];
+
+        for (const storeNumber of storeNumbers || []) {
+            const store = String(storeNumber || '').trim();
+            try {
+                const preview = previewForecastForStore(store, options);
+                if (typeof options.onProgress === 'function') {
+                    options.onProgress({
+                        platform: 'lifelenz',
+                        type: 'store-start',
+                        storeNumber: store,
+                        storeName: preview.storeName,
+                        dayCount: preview.plan?.length || 0,
+                    });
+                }
+                const applied = await writeForecastPlanOnPage(page, store, preview.plan, accessibleStores, {
+                    headless: options.headless,
+                    onProgress: (payload) => {
+                        if (typeof options.onProgress === 'function') {
+                            options.onProgress({ platform: 'lifelenz', storeNumber: store, ...payload });
+                        }
+                    },
+                });
+                if (options.markPlatformComplete !== false) {
+                    for (const weekStart of targetWeeks) {
+                        markStoreWeekPlatformComplete(weekStart, store, 'lifelenz', {
+                            completedBy: options.completedBy || null,
+                        });
+                    }
+                }
+                results.push({
+                    storeNumber: store,
+                    ok: true,
+                    storeName: preview.storeName,
+                    forecastDays: applied.length,
+                    lifelenz: applied,
+                });
+                if (typeof options.onProgress === 'function') {
+                    options.onProgress({
+                        platform: 'lifelenz',
+                        type: 'store-complete',
+                        storeNumber: store,
+                        ok: true,
+                        forecastDays: applied.length,
+                    });
+                }
+            } catch (err) {
+                const error = err.message || String(err);
+                results.push({ storeNumber: store, ok: false, error });
+                if (typeof options.onProgress === 'function') {
+                    options.onProgress({
+                        platform: 'lifelenz',
+                        type: 'store-error',
+                        storeNumber: store,
+                        error,
+                    });
+                }
+            }
+        }
+    } finally {
+        if (!options.keepBrowserOpen) {
+            await closeBrowserQuietly(browser, 'lifelenz-forecast-batch');
+        }
+    }
+
+    return results;
+}
+
+async function runCombinedForecastForStores(storeNumbers, options = {}) {
+    const targetWeeks = getTargetForecastWeekStarts();
+    const onProgress = options.onProgress;
+
+    const mmxOptions = {
+        ...options,
+        onProgress: (payload) => onProgress?.({ platform: 'mmx', ...payload }),
+    };
+
+    const mmxPromise = runForecastForStores(storeNumbers, mmxOptions);
+
+    let lifelenzPromise = Promise.resolve([]);
+    if (options.lifelenzCredentials) {
+        lifelenzPromise = runLifeLenzForecastForStores(storeNumbers, options.lifelenzCredentials, {
+            ...options,
+            onProgress: (payload) => onProgress?.({ platform: 'lifelenz', ...payload }),
+        });
+    }
+
+    const [mmxResults, lifelenzResults] = await Promise.all([mmxPromise, lifelenzPromise]);
+
+    const manualSaved =
+        options.saveManualOnFailure !== false
+            ? saveManualEntryPacksForRun(
+                  storeNumbers,
+                  mmxResults,
+                  lifelenzResults,
+                  targetWeeks,
+                  (store) => previewForecastForStore(store, { force: options.force }).plan
+              )
+            : [];
+
+    return {
+        mmxResults,
+        lifelenzResults,
+        lifelenzSkipped: !options.lifelenzCredentials,
+        targetWeeks,
+        manualSaved,
+    };
+}
 module.exports = {
     computeTrimmedWeekdayAverages,
     computeTrimmedWeekdayHourlyMix,
@@ -305,4 +448,6 @@ module.exports = {
     previewForecastForStores,
     runForecastForStore,
     runForecastForStores,
+    runLifeLenzForecastForStores,
+    runCombinedForecastForStores,
 };

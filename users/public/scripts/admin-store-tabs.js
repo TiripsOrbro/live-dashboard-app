@@ -77,7 +77,9 @@
 
     function areaHref(areaName) {
         const code = areaCodeFromName(areaName);
-        if (code) return global.AppPaths?.adminArea?.(code) || `/Admin/${code}`;
+        if (code) {
+            return global.AppPaths?.adminArea?.(code, { view: 'area' }) || `/Admin/${code}?view=area`;
+        }
         return global.AppPaths?.overview?.() || '/overview';
     }
 

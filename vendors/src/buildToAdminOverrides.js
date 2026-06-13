@@ -60,7 +60,83 @@ function normalizeRule(raw) {
     if (raw.buildToManual === true) rule.buildToManual = true;
     if (raw.buildToOrderManual === true) rule.buildToOrderManual = true;
     if (raw.onHandOnly === true) rule.onHandOnly = true;
+    if (raw.skipKeyItemCount === true) rule.skipKeyItemCount = true;
+    if (raw.skipKeyItemCount === false) rule.skipKeyItemCount = false;
+    if (raw.skipStockCount === true) rule.skipStockCount = true;
+    if (raw.skipStockCount === false) rule.skipStockCount = false;
+    if (raw.includeDaily === true) rule.includeDaily = true;
+    if (raw.includeDaily === false) rule.includeDaily = false;
     return Object.keys(rule).length ? rule : null;
+}
+
+function effectiveSkipStockCount(catalogItem, storeNumber) {
+    if (!catalogItem) return true;
+    const code = normalizeItemCode(catalogItem.itemCode);
+    if (!code) return Boolean(catalogItem.skipStockCount);
+    const adminRule = adminOverridesForStore(storeNumber).get(code);
+    if (adminRule && typeof adminRule.skipStockCount === 'boolean') {
+        return adminRule.skipStockCount;
+    }
+    return Boolean(catalogItem.skipStockCount);
+}
+
+function effectiveSkipKeyItemCount(catalogItem, storeNumber) {
+    if (!catalogItem) return true;
+    const code = normalizeItemCode(catalogItem.itemCode);
+    if (!code) return Boolean(catalogItem.skipKeyItemCount);
+    const adminRule = adminOverridesForStore(storeNumber).get(code);
+    if (adminRule && typeof adminRule.skipKeyItemCount === 'boolean') {
+        return adminRule.skipKeyItemCount;
+    }
+    return Boolean(catalogItem.skipKeyItemCount);
+}
+
+function effectiveIncludeDaily(catalogItem, storeNumber) {
+    if (!catalogItem) return false;
+    const code = normalizeItemCode(catalogItem.itemCode);
+    if (!code) return Boolean(catalogItem.includeDaily);
+    const adminRule = adminOverridesForStore(storeNumber).get(code);
+    if (adminRule && typeof adminRule.includeDaily === 'boolean') {
+        return adminRule.includeDaily;
+    }
+    return Boolean(catalogItem.includeDaily);
+}
+
+function applySkipKeyItemCountOverridesToCatalog(catalog, storeNumber) {
+    return applyAdminCatalogOverrides(catalog, storeNumber);
+}
+
+function applyAdminCatalogOverrides(catalog, storeNumber) {
+    if (!catalog?.items?.length) return catalog;
+    const store = String(storeNumber || '').trim();
+    if (!store) return catalog;
+    return {
+        ...catalog,
+        items: catalog.items.map((item) => ({
+            ...item,
+            skipStockCount: effectiveSkipStockCount(item, store),
+            skipKeyItemCount: effectiveSkipKeyItemCount(item, store),
+        })),
+    };
+}
+
+function mergeItemOverridePatch(existing, itemPatch) {
+    const merged = { ...(existing || {}), ...itemPatch };
+    const clearKeys = [
+        'skipKeyItemCount',
+        'skipStockCount',
+        'includeDaily',
+        'buildToDays',
+        'buildToAdd',
+        'buildToFixed',
+        'buildToManual',
+        'buildToOrderManual',
+        'onHandOnly',
+    ];
+    for (const key of clearKeys) {
+        if (itemPatch?.[key] === null) delete merged[key];
+    }
+    return Object.keys(merged).length ? merged : null;
 }
 
 function registerOverrideKeys(map, itemCode, rule) {
@@ -100,9 +176,15 @@ function adminOverridesForStore(storeNumber) {
 function patchOverrides({ global = null, stores = null }) {
     const doc = readOverridesDoc();
     if (global && typeof global === 'object') {
-        doc.global = { ...doc.global, ...global };
-        for (const key of Object.keys(global)) {
-            if (global[key] == null) delete doc.global[key];
+        doc.global = doc.global || {};
+        for (const [itemCode, itemPatch] of Object.entries(global)) {
+            if (itemPatch == null) {
+                delete doc.global[itemCode];
+                continue;
+            }
+            const merged = mergeItemOverridePatch(doc.global[itemCode], itemPatch);
+            if (merged) doc.global[itemCode] = merged;
+            else delete doc.global[itemCode];
         }
     }
     if (stores && typeof stores === 'object') {
@@ -114,9 +196,15 @@ function patchOverrides({ global = null, stores = null }) {
                 delete doc.stores[sk];
                 continue;
             }
-            doc.stores[sk] = { ...(doc.stores[sk] || {}), ...patch };
-            for (const itemCode of Object.keys(patch)) {
-                if (patch[itemCode] == null) delete doc.stores[sk][itemCode];
+            doc.stores[sk] = doc.stores[sk] || {};
+            for (const [itemCode, itemPatch] of Object.entries(patch)) {
+                if (itemPatch == null) {
+                    delete doc.stores[sk][itemCode];
+                    continue;
+                }
+                const merged = mergeItemOverridePatch(doc.stores[sk][itemCode], itemPatch);
+                if (merged) doc.stores[sk][itemCode] = merged;
+                else delete doc.stores[sk][itemCode];
             }
             if (!Object.keys(doc.stores[sk]).length) delete doc.stores[sk];
         }
@@ -131,4 +219,9 @@ module.exports = {
     patchOverrides,
     adminOverridesForStore,
     normalizeRule,
+    effectiveSkipKeyItemCount,
+    effectiveSkipStockCount,
+    effectiveIncludeDaily,
+    applySkipKeyItemCountOverridesToCatalog,
+    applyAdminCatalogOverrides,
 };

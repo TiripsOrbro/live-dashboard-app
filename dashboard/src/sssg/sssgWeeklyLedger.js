@@ -8,6 +8,7 @@ const {
     computeActualSalesSoFar,
     computeLastYearSalesSoFar,
     computeSssgPercentFromTotals,
+    getLyGridOffsetMinutes,
 } = require('./sssgCalc');
 
 const paths = require('../../../src/paths');
@@ -211,7 +212,14 @@ function computeStoreTodayPartial(store, slots, now = new Date()) {
         timeZone,
         now
     );
-    const lyTotal = computeLastYearSalesSoFar(slots, openHour, closeHour, timeZone, now);
+    const lyTotal = computeLastYearSalesSoFar(
+        slots,
+        openHour,
+        closeHour,
+        timeZone,
+        now,
+        getLyGridOffsetMinutes(store)
+    );
     return { actualTotal, lyTotal };
 }
 

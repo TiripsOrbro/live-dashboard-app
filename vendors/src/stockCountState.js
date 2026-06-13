@@ -96,7 +96,7 @@ function normalizeLocationPayload(catalog, locationPayload, locationName) {
 }
 
 async function getDraft(storeNumber, vendorSlug, dateKey = melbourneDateKey()) {
-    const catalog = getVendorCatalog(vendorSlug, { forStockCount: true });
+    const catalog = getVendorCatalog(vendorSlug, { forStockCount: true, storeNumber });
     if (!catalog) return null;
 
     const all = await getStateAll();
@@ -140,7 +140,7 @@ async function getStockCountQueueStatus(storeNumber, options = {}) {
     for (const slug of Object.keys(store).sort()) {
         const day = store[slug]?.[dateKey];
         if (!day) continue;
-        const catalog = getVendorCatalog(slug, { forStockCount: true });
+        const catalog = getVendorCatalog(slug, { forStockCount: true, storeNumber });
         if (!catalog) continue;
         const hasDraft =
             day.locations &&
@@ -177,7 +177,7 @@ async function getStockCountQueueStatus(storeNumber, options = {}) {
 
     for (const slug of ensureSlugs) {
         if (!slug || seen.has(slug) || isCombinedStockCountSlug(slug)) continue;
-        const catalog = getVendorCatalog(slug, { forStockCount: true });
+        const catalog = getVendorCatalog(slug, { forStockCount: true, storeNumber });
         if (!catalog) continue;
         const day = store[slug]?.[dateKey];
         queue.push({
@@ -217,7 +217,7 @@ async function saveDraftLocation(
     dateKey = melbourneDateKey(),
     options = {}
 ) {
-    const catalog = getVendorCatalog(vendorSlug, { forStockCount: true });
+    const catalog = getVendorCatalog(vendorSlug, { forStockCount: true, storeNumber });
     if (!catalog) return null;
 
     const loc = String(locationName || '').trim();
@@ -260,7 +260,7 @@ async function saveDraftLocation(
 }
 
 async function getSummary(storeNumber, vendorSlug, dateKey = melbourneDateKey()) {
-    const catalog = getVendorCatalog(vendorSlug, { forStockCount: true });
+    const catalog = getVendorCatalog(vendorSlug, { forStockCount: true, storeNumber });
     if (!catalog) return null;
 
     const draft = await getDraft(storeNumber, vendorSlug, dateKey);
@@ -278,7 +278,7 @@ async function getSummary(storeNumber, vendorSlug, dateKey = melbourneDateKey())
 }
 
 async function submitStockCount(storeNumber, vendorSlug, dateKey = melbourneDateKey()) {
-    const catalog = getVendorCatalog(vendorSlug, { forStockCount: true });
+    const catalog = getVendorCatalog(vendorSlug, { forStockCount: true, storeNumber });
     if (!catalog) return null;
 
     const summary = await getSummary(storeNumber, vendorSlug, dateKey);
@@ -400,7 +400,7 @@ async function getCompletedVendorLabelsForStore(storeNumber, dateKey = melbourne
     for (const [vendorSlug, days] of Object.entries(store)) {
         const day = days?.[dateKey];
         if (!day?.mmxSentAt) continue;
-        const catalog = getVendorCatalog(vendorSlug, { forStockCount: true });
+        const catalog = getVendorCatalog(vendorSlug, { forStockCount: true, storeNumber });
         labels.push(catalog?.label || vendorSlug);
     }
     return labels.sort((a, b) => a.localeCompare(b));

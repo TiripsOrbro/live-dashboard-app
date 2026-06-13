@@ -1,6 +1,6 @@
 {
   "name": "live-dashboard-app",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Live store dashboard that scrapes Macromatix sales/report data and serves store, area, and audit views.",
   "main": "src/app.js",
   "scripts": {
@@ -41,8 +41,14 @@
     "import-forecast-history-csv": "node scripts/import-forecast-history-csv.js",
     "import-forecast-history-xlsx": "node scripts/import-forecast-history-xlsx.js",
     "probe-forecast-submit": "node scripts/probe-forecast-submit.js",
+    "probe-lifelenz-login": "node scripts/probe-lifelenz-login.js",
+    "probe-lifelenz-forecast": "node scripts/probe-lifelenz-forecast.js",
+    "probe-lifelenz-full-run": "node scripts/probe-lifelenz-full-run.js",
+    "probe-forecast-full-run": "node scripts/probe-forecast-full-run.js",
     "probe-forecast-date": "node scripts/probe-forecast-date.js",
     "benchmark-forecast-submit": "node scripts/benchmark-forecast-submit.js",
+    "benchmark-lifelenz-quirk": "node scripts/benchmark-lifelenz-quirk-timing.js",
+    "forecast-scheduler": "node scripts/run-forecast-scheduler.js",
     "migrate-domain-layout": "node scripts/migrate-domain-layout.js",
     "split-users-file": "node users/scripts/split-users-file.js",
     "import-audit-pdf": "node tacaudit/scripts/import-audit-pdf.js"

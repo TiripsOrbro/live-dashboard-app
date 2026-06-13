@@ -26,9 +26,12 @@
         return '/overview';
     }
 
-    function adminArea(areaCodeOrName) {
+    function adminArea(areaCodeOrName, options = {}) {
         const code = areaCodeFromName(areaCodeOrName) || String(areaCodeOrName || '').trim();
-        return code ? `/Admin/${code}` : adminOverview();
+        if (!code) return adminOverview();
+        const base = `/Admin/${code}`;
+        if (options && options.view === 'area') return `${base}?view=area`;
+        return base;
     }
 
     function adminAreaWithStore(areaCodeOrName, storeNumber) {

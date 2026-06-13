@@ -576,6 +576,12 @@ function getVendorCatalog(slug, options = {}) {
     const catalog = readCatalogForDefinition(def);
     if (!catalog || !catalog.items.length) return null;
 
+    let sourceItems = catalog.items;
+    if (options.storeNumber) {
+        const { applyAdminCatalogOverrides } = require('./buildToAdminOverrides');
+        sourceItems = applyAdminCatalogOverrides(catalog, options.storeNumber).items;
+    }
+
     const normalizeItems = (items) =>
         items.map((item) => {
             const displayName = stockCountDisplayName(item.itemCode, item.name);
@@ -588,7 +594,7 @@ function getVendorCatalog(slug, options = {}) {
         });
 
     if (options.forStockCount) {
-        const countable = catalog.items.filter((item) => !item.skipStockCount);
+        const countable = sourceItems.filter((item) => !item.skipStockCount);
         if (!countable.length) return null;
         return {
             ...catalog,
@@ -598,7 +604,7 @@ function getVendorCatalog(slug, options = {}) {
     }
 
     if (options.forDailyCount) {
-        const dailyItems = catalog.items.filter((item) => !item.skipStockCount && item.includeDaily);
+        const dailyItems = sourceItems.filter((item) => !item.skipStockCount && item.includeDaily);
         if (!dailyItems.length) return null;
         return {
             ...catalog,
@@ -609,7 +615,7 @@ function getVendorCatalog(slug, options = {}) {
 
     return {
         ...catalog,
-        items: normalizeItems(catalog.items),
+        items: normalizeItems(sourceItems),
     };
 }
 

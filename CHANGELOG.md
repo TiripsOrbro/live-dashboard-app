@@ -27,6 +27,31 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.2 – June 2026
+
+**Added**
+
+- **Sales progress chart** — hourly actual vs last-year pace on the live dashboard.
+- **Forecast scheduler** — scheduled forecast runs via PM2 and manual-pack helpers.
+- **Lifelenz forecast scraper** — login, day-parts, and probe scripts for Lifelenz integration.
+
+**Changed**
+
+- **MIC overview SSSG** — recomputed live from hourly actuals and scraped LY slots instead of stale snapshot values.
+- **Admin forecast & build-to** — expanded settings UI, styles, and catalog override tooling.
+
+**Fixed**
+
+- **SSSG for WA stores** — last-year Macromatix grid uses Melbourne-time rows (+2h offset for Perth stores) so SSSG matches Macromatix cumulative display.
+- **SSSG date keys** — Perth stores use local trading date, not Melbourne date, for LY cache lookups.
+
+**What you need to do**
+
+- On the Pi: `git pull origin Version-0.4 && npm install && pm2 restart dashboard`
+- Hard refresh once (Ctrl+F5) on MIC overview after deploy.
+
+---
+
 ### Version 0.4.1 – June 2026
 
 **Added**

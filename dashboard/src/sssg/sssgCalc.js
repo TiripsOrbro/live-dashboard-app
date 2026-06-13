@@ -1,34 +1,70 @@
 ﻿const { trimHourlyToTradingWindow, zoneHourMinuteSecond } = require('../salesProgress');
+const { getStoreConfig } = require('../../../stores/src/storeList');
+
+/** Macromatix Forecasting LY grid timestamps are fleet (Melbourne); WA stores need +2h. */
+function getLyGridOffsetMinutes(storeOrNumber) {
+    const cfg =
+        typeof storeOrNumber === 'object' && storeOrNumber
+            ? storeOrNumber
+            : getStoreConfig(storeOrNumber);
+    const timeZone = String(cfg?.timeZone || '').trim();
+    return timeZone === 'Australia/Perth' ? 120 : 0;
+}
 
 /**
- * Sum Last Year sales from store open up to `now`, using 15-minute slots with
- * linear interpolation within the current partial slot.
+ * Sum Last Year sales from store open up to `now`, using 15-minute slots in the
+ * store's local timezone (Australia/Perth for WA stores).
+ *
+ * Macromatix Forecasting grid row times are in fleet (Melbourne) time. For WA
+ * stores, `lyGridOffsetMinutes` (+120) shifts the LY cutoff so TY (Perth local)
+ * compares to the matching row on the grid.
+ *
+ * Cutoff rules on the shifted timeline:
+ * - First quarter of each hour (minutes 0–14): full hour of LY quarters
+ * - Otherwise: every started quarter in full, including the active 15-minute slot
  */
-function computeLastYearSalesSoFar(slots, openHour, closeHour, timeZone, now = new Date()) {
+function computeLastYearSalesSoFar(
+    slots,
+    openHour,
+    closeHour,
+    timeZone,
+    now = new Date(),
+    lyGridOffsetMinutes = 0
+) {
     if (!Array.isArray(slots) || !slots.length) return 0;
 
     const { hour, minute, second } = zoneHourMinuteSecond(timeZone, now);
     const nowMinutes = hour * 60 + minute + second / 60;
     const openMinutes = Math.trunc(openHour) * 60;
     const closeMinutes = Math.trunc(closeHour) * 60;
+    const lyNowMinutes = Math.min(
+        nowMinutes + (Number(lyGridOffsetMinutes) || 0),
+        closeMinutes
+    );
 
-    if (nowMinutes <= openMinutes) return 0;
+    if (lyNowMinutes <= openMinutes) return 0;
+    if (lyNowMinutes >= closeMinutes) {
+        return computeFullDayLyTotal(slots, openHour, closeHour);
+    }
+
+    const hourStart = Math.floor(lyNowMinutes / 60) * 60;
+    const hourEnd = Math.min(hourStart + 60, closeMinutes);
+    const lyMinute = lyNowMinutes % 60;
+    const inFirstQuarterOfHour = lyMinute < 15;
 
     let total = 0;
     for (const slot of slots) {
         if (slot.endMinutes <= openMinutes) continue;
         if (slot.startMinutes >= closeMinutes) continue;
-        if (slot.startMinutes >= nowMinutes) break;
+        if (slot.startMinutes >= hourEnd) break;
 
-        const value = Number(slot.value) || 0;
-        if (nowMinutes >= slot.endMinutes) {
-            total += value;
-        } else {
-            const slotDuration = slot.endMinutes - slot.startMinutes;
-            if (slotDuration <= 0) continue;
-            const elapsed = Math.max(0, nowMinutes - slot.startMinutes);
-            total += value * (elapsed / slotDuration);
+        if (inFirstQuarterOfHour && slot.startMinutes >= hourStart) {
+            total += Number(slot.value) || 0;
+            continue;
         }
+
+        if (slot.startMinutes > lyNowMinutes) break;
+        total += Number(slot.value) || 0;
     }
 
     return total;
@@ -110,9 +146,25 @@ function computeSssgPercent(options = {}) {
         closeHour,
         timeZone,
         now = new Date(),
+        lyGridOffsetMinutes,
+        storeNumber,
     } = options;
 
-    const ly = computeLastYearSalesSoFar(slots, openHour, closeHour, timeZone, now);
+    const offset =
+        lyGridOffsetMinutes != null
+            ? lyGridOffsetMinutes
+            : storeNumber != null
+              ? getLyGridOffsetMinutes(storeNumber)
+              : 0;
+
+    const ly = computeLastYearSalesSoFar(
+        slots,
+        openHour,
+        closeHour,
+        timeZone,
+        now,
+        offset
+    );
     if (ly <= 0) return null;
 
     const actualSoFar = computeActualSalesSoFar(actual, forecast, openHour, closeHour, timeZone, now);
@@ -121,6 +173,7 @@ function computeSssgPercent(options = {}) {
 }
 
 module.exports = {
+    getLyGridOffsetMinutes,
     computeLastYearSalesSoFar,
     computeActualSalesSoFar,
     computeFullDayActualTotal,

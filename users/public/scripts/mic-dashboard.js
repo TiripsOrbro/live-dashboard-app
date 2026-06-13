@@ -158,14 +158,18 @@ function renderSalesStack(sales) {
     const forecast = Number(sales?.forecast) || 0;
     const progress = sales?.progress || {};
     const paceClass = progress.paceClass || 'cell-green';
+    const outcomeClass = progress.outcomeClass || paceClass;
     const timeFill = window.SalesProgress?.paceFillPercentFromProgress?.(progress) ?? 0;
-    const layers = window.SalesProgress?.buildPaceStripHtml?.(timeFill, paceClass) || '';
+    const layers =
+        window.SalesProgress?.buildLiveProgressLayersHtml?.(timeFill, outcomeClass, paceClass) ||
+        window.SalesProgress?.buildPaceStripHtml?.(timeFill, paceClass) ||
+        '';
     const amounts =
         sales?.hours > 0
             ? `${formatMoney(actual)} / ${formatMoney(forecast)}`
             : 'Waiting for sales data';
     return `
-        <div class="mic-store-lead-sales-stack mic-store-lead-sales-stack--pace-only">
+        <div class="mic-store-lead-sales-stack">
             <div class="mic-store-lead-pace-band mic-store-lead-pace-band--with-amounts">
                 ${layers}
                 <span class="mic-store-lead-pace-amounts">${escapeHtml(amounts)}</span>

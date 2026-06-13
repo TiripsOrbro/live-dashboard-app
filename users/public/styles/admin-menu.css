@@ -43,6 +43,47 @@
     width: min(1080px, 100%);
 }
 
+.admin-modal--build-to {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.admin-modal--build-to > h2,
+.admin-modal--build-to > .admin-modal-toolbar,
+.admin-modal--build-to > #admin-buildto-body,
+.admin-modal--build-to > .admin-modal-error,
+.admin-modal--build-to > .admin-modal-actions {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+}
+
+.admin-modal--build-to .admin-tabs--full {
+    display: flex;
+    width: 100%;
+    gap: 0;
+    margin: 0 0 1rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.admin-modal--build-to .admin-tabs--full .admin-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    border: none;
+    border-radius: 0;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -1px;
+    background: #f5f5f5;
+    padding: 0.7rem 1rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+.admin-modal--build-to .admin-tabs--full .admin-tab.is-active {
+    background: #fff;
+    color: #7a3eb1;
+    border-bottom-color: #7a3eb1;
+}
+
 .admin-modal h2 {
     margin: 0 0 1rem;
     font-size: 1.25rem;
@@ -113,6 +154,27 @@ html.mic-dark-mode .admin-btn-primary {
 
 .admin-table th {
     font-weight: 600;
+}
+
+.admin-table-check {
+    text-align: center;
+    vertical-align: middle;
+}
+
+.admin-table-check input[type='checkbox'] {
+    width: 1rem;
+    height: 1rem;
+    cursor: pointer;
+}
+
+.admin-buildto-type-select {
+    min-width: 6.5rem;
+    max-width: 100%;
+    font-size: 0.85rem;
+}
+
+.admin-table td[data-buildto-group][hidden] {
+    display: none;
 }
 
 .admin-status-dot {
@@ -191,6 +253,21 @@ html.mic-dark-mode .admin-tab {
     background: #2a2a32;
     border-color: rgba(255, 255, 255, 0.12);
     color: #f2f2f2;
+}
+
+html.mic-dark-mode .admin-modal--build-to .admin-tabs--full {
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+html.mic-dark-mode .admin-modal--build-to .admin-tabs--full .admin-tab {
+    background: #2a2a32;
+    border-bottom-color: transparent;
+}
+
+html.mic-dark-mode .admin-modal--build-to .admin-tabs--full .admin-tab.is-active {
+    background: #1e1e24;
+    color: #c9a8e8;
+    border-bottom-color: #c9a8e8;
 }
 
 .admin-modal-backdrop--stacked {
@@ -419,6 +496,130 @@ html.mic-dark-mode .admin-history-hour {
     cursor: not-allowed;
 }
 
+.admin-forecast-progress-unified {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    min-height: 0;
+    flex: 1;
+}
+
+.admin-forecast-progress-week {
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.admin-forecast-progress-week-head,
+.admin-forecast-progress-week-row {
+    display: grid;
+    grid-template-columns: 4.5rem 1fr 1fr;
+    gap: 0.65rem;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+}
+
+.admin-forecast-progress-week-head {
+    background: #f3f3f5;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #666;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.admin-forecast-progress-week-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.admin-forecast-progress-week-row {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    font-size: 0.84rem;
+}
+
+.admin-forecast-progress-week-row:last-child {
+    border-bottom: none;
+}
+
+.admin-forecast-progress-week-day {
+    font-weight: 600;
+}
+
+.admin-forecast-progress-week-mmx,
+.admin-forecast-progress-week-ll {
+    color: #444;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-forecast-progress-week-row--active,
+.admin-forecast-progress-week-row.is-active {
+    background: color-mix(in srgb, var(--primary, #702283) 10%, #fff);
+}
+
+.admin-forecast-progress-week-row--done {
+    background: color-mix(in srgb, #4caf50 10%, #fff);
+}
+
+.admin-forecast-progress-week-row--error {
+    background: color-mix(in srgb, #b00020 8%, #fff);
+}
+
+.admin-forecast-progress-detail-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.85rem;
+    min-height: 220px;
+    max-height: 38vh;
+}
+
+.admin-forecast-progress-detail-pane {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    padding: 0.65rem;
+    background: #fff;
+}
+
+.admin-forecast-progress-detail-pane .admin-forecast-progress-detail {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    border: none;
+    padding: 0;
+    background: transparent;
+}
+
+.admin-forecast-progress-detail--lifelenz {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+
+.admin-forecast-progress-pane-title {
+    margin: 0 0 0.5rem;
+    font-size: 0.95rem;
+}
+
+.admin-forecast-progress-manual-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.admin-forecast-manual-actions {
+    margin: 0.5rem 0 1rem;
+}
+
 .admin-forecast-progress-layout {
     display: grid;
     grid-template-columns: minmax(160px, 220px) 1fr;
@@ -426,6 +627,20 @@ html.mic-dark-mode .admin-history-hour {
     flex: 1;
     min-height: 280px;
     max-height: 52vh;
+}
+
+@media (max-width: 720px) {
+    .admin-forecast-progress-detail-split {
+        grid-template-columns: 1fr;
+        max-height: none;
+    }
+
+    .admin-forecast-progress-week-head,
+    .admin-forecast-progress-week-row {
+        grid-template-columns: 3.5rem 1fr 1fr;
+        gap: 0.45rem;
+        padding: 0.45rem 0.55rem;
+    }
 }
 
 .admin-forecast-progress-days {
@@ -593,20 +808,89 @@ html.mic-dark-mode .admin-history-hour {
 }
 
 .admin-forecast-progress-done {
-    text-align: center;
-    padding: 1.5rem 1rem 0.5rem;
+    padding: 0.25rem 0 0;
 }
 
-.admin-forecast-progress-done-icon {
-    width: 3rem;
-    height: 3rem;
-    margin: 0 auto 0.75rem;
-    border-radius: 50%;
-    background: color-mix(in srgb, #2e7d32 18%, white);
-    color: #2e7d32;
-    font-size: 1.75rem;
-    line-height: 3rem;
-    font-weight: 700;
+.admin-forecast-progress-done h2 {
+    margin: 0 0 0.35rem;
+    text-align: center;
+    font-size: 1.25rem;
+}
+
+.admin-forecast-progress-done-meta {
+    text-align: center;
+    margin: 0 0 1rem;
+}
+
+.admin-forecast-progress-done-results {
+    max-height: min(52vh, 480px);
+    overflow: auto;
+}
+
+.admin-forecast-progress-done-store + .admin-forecast-progress-done-store {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.admin-forecast-progress-done-store h3 {
+    margin: 0 0 0.65rem;
+    font-size: 1rem;
+}
+
+.admin-forecast-progress-done-error {
+    margin: 0 0 0.65rem;
+}
+
+.admin-forecast-progress-done-table-wrap {
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.admin-forecast-progress-done-table {
+    width: 100%;
+    margin: 0;
+}
+
+.admin-forecast-progress-done-table thead th {
+    background: #f3f3f5;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #666;
+}
+
+.admin-forecast-progress-done-table tbody th {
+    font-weight: 600;
+    width: 3.5rem;
+}
+
+.admin-forecast-progress-done-table tfoot th,
+.admin-forecast-progress-done-table tfoot td {
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    background: color-mix(in srgb, #4caf50 8%, #fff);
+}
+
+.admin-forecast-progress-done-cell--bad {
+    color: #b00020;
+    font-weight: 600;
+}
+
+html.mic-dark-mode .admin-forecast-progress-done-table-wrap {
+    background: #1e1e24;
+    border-color: #444;
+}
+
+html.mic-dark-mode .admin-forecast-progress-done-table thead th {
+    background: #2a2a32;
+    color: #aaa;
+}
+
+html.mic-dark-mode .admin-forecast-progress-done-table tfoot th,
+html.mic-dark-mode .admin-forecast-progress-done-table tfoot td {
+    background: color-mix(in srgb, #4caf50 12%, #1e1e24);
 }
 
 .admin-forecast-progress-summary {
@@ -625,6 +909,32 @@ html.mic-dark-mode .admin-history-hour {
 
 .admin-forecast-progress-summary-bad {
     color: #c62828;
+}
+
+html.mic-dark-mode .admin-forecast-progress-week,
+html.mic-dark-mode .admin-forecast-progress-detail-pane {
+    background: #1e1e24;
+    border-color: #444;
+}
+
+html.mic-dark-mode .admin-forecast-progress-week-head {
+    background: #2a2a32;
+    color: #aaa;
+    border-color: #444;
+}
+
+html.mic-dark-mode .admin-forecast-progress-week-mmx,
+html.mic-dark-mode .admin-forecast-progress-week-ll {
+    color: #ccc;
+}
+
+html.mic-dark-mode .admin-forecast-progress-week-row {
+    border-color: #333;
+}
+
+html.mic-dark-mode .admin-forecast-progress-week-row--active,
+html.mic-dark-mode .admin-forecast-progress-week-row.is-active {
+    background: color-mix(in srgb, var(--primary, #702283) 18%, #1e1e24);
 }
 
 html.mic-dark-mode .admin-forecast-progress-days,
@@ -658,4 +968,178 @@ html.mic-dark-mode .admin-forecast-progress-hour-row--failed {
 
 html.mic-dark-mode .admin-forecast-progress-day--done {
     background: color-mix(in srgb, #66bb6a 16%, #1e1e24);
+}
+
+.admin-forecast-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.admin-forecast-lifelenz-status {
+    font-size: var(--font-size-0, 0.875rem);
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    background: #e8e8e8;
+    color: #333;
+}
+
+.admin-forecast-lifelenz-status--ok {
+    background: color-mix(in srgb, #66bb6a 22%, #fff);
+    color: #1b5e20;
+}
+
+.admin-forecast-lifelenz-status--warn {
+    background: color-mix(in srgb, #ffb74d 28%, #fff);
+    color: #6d4c00;
+}
+
+.admin-modal--lifelenz-setup {
+    width: min(480px, 100%);
+}
+
+.admin-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.admin-modal-header h2 {
+    margin: 0;
+}
+
+.admin-modal-close {
+    flex: 0 0 auto;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #666;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+}
+
+.admin-modal-close:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: #222;
+}
+
+.admin-modal-actions--lifelenz {
+    justify-content: flex-end;
+}
+
+.admin-modal-actions--lifelenz #admin-forecast-lifelenz-remove:not([hidden]) {
+    margin-right: auto;
+}
+
+html.mic-dark-mode .admin-modal-close {
+    color: #bbb;
+}
+
+html.mic-dark-mode .admin-modal-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+.admin-forecast-lifelenz-privacy {
+    margin: 0 0 1rem;
+    padding: 0.75rem 0.85rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--primary, #702283) 8%, #fff);
+    border: 1px solid color-mix(in srgb, var(--primary, #702283) 18%, #ddd);
+    font-size: var(--font-size-0, 0.875rem);
+    line-height: 1.45;
+}
+
+.admin-forecast-lifelenz-form label {
+    display: block;
+    margin-bottom: 0.75rem;
+}
+
+.admin-forecast-lifelenz-form input[type='email'],
+.admin-forecast-lifelenz-form input[type='password'] {
+    display: block;
+    width: 100%;
+    margin-top: 0.25rem;
+}
+
+.admin-forecast-lifelenz-save {
+    margin: 0.5rem 0 0;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.admin-forecast-lifelenz-save legend {
+    font-size: var(--font-size-0, 0.875rem);
+    padding: 0 0.25rem;
+}
+
+.admin-forecast-lifelenz-save label {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-bottom: 0.35rem;
+}
+
+.admin-forecast-lifelenz-stores ul {
+    margin: 0.35rem 0 0;
+    padding-left: 1.2rem;
+    max-height: 14rem;
+    overflow: auto;
+}
+
+.admin-forecast-lifelenz-connected {
+    font-weight: 600;
+    margin-bottom: 0.15rem;
+}
+
+.admin-forecast-lifelenz-schedule-note {
+    margin-top: 0.65rem;
+    font-size: var(--font-size-0, 0.875rem);
+    color: #666;
+}
+
+html.mic-dark-mode .admin-forecast-lifelenz-schedule-note {
+    color: #aaa;
+}
+
+.admin-forecast-preview-lifelenz-note {
+    margin: 0 1.5rem 0.5rem;
+}
+
+.admin-forecast-progress-summary-heading {
+    list-style: none;
+    margin-top: 0.65rem;
+    font-size: var(--font-size-0, 0.875rem);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #666;
+}
+
+html.mic-dark-mode .admin-forecast-lifelenz-privacy {
+    background: color-mix(in srgb, var(--primary, #702283) 14%, #1e1e24);
+    border-color: #444;
+}
+
+html.mic-dark-mode .admin-forecast-lifelenz-status {
+    background: #333;
+    color: #eee;
+}
+
+html.mic-dark-mode .admin-forecast-lifelenz-status--ok {
+    background: color-mix(in srgb, #66bb6a 22%, #1e1e24);
+    color: #a5d6a7;
+}
+
+html.mic-dark-mode .admin-forecast-lifelenz-status--warn {
+    background: color-mix(in srgb, #ffb74d 22%, #1e1e24);
+    color: #ffcc80;
 }

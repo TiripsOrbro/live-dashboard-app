@@ -67,16 +67,54 @@ function writeLedger(ledger) {
     return ledger;
 }
 
-function markStoreWeekComplete(weekStart, storeNumber, meta = {}) {
+function normalizeStoreWeekRow(row = {}) {
+    const mmxCompleted = Boolean(row.mmxCompleted ?? row.completed);
+    const lifelenzCompleted = Boolean(row.lifelenzCompleted);
+    const completed = Boolean(row.completed && row.mmxCompleted != null && row.lifelenzCompleted != null
+        ? row.completed
+        : mmxCompleted && lifelenzCompleted);
+    return {
+        mmxCompleted,
+        lifelenzCompleted,
+        completed,
+        completedAt: row.completedAt || null,
+        mmxCompletedAt: row.mmxCompletedAt || null,
+        lifelenzCompletedAt: row.lifelenzCompletedAt || null,
+        completedBy: row.completedBy || null,
+    };
+}
+
+function markStoreWeekPlatformComplete(weekStart, storeNumber, platform, meta = {}) {
     const store = String(storeNumber || '').trim();
+    const plat = String(platform || '').trim().toLowerCase();
+    if (!store || !['mmx', 'lifelenz'].includes(plat)) {
+        throw new Error('storeNumber and platform (mmx|lifelenz) are required.');
+    }
+
     const ledger = readLedger(weekStart);
     ledger.stores[store] = ledger.stores[store] || {};
-    ledger.stores[store][weekStart] = {
-        completed: true,
-        completedAt: meta.completedAt || new Date().toISOString(),
-        completedBy: String(meta.completedBy || '').trim() || null,
+    const prev = ledger.stores[store][weekStart] || {};
+    const now = meta.completedAt || new Date().toISOString();
+    const completedBy = String(meta.completedBy || prev.completedBy || '').trim() || null;
+
+    const next = {
+        ...prev,
+        mmxCompleted: plat === 'mmx' ? true : Boolean(prev.mmxCompleted ?? prev.completed),
+        lifelenzCompleted: plat === 'lifelenz' ? true : Boolean(prev.lifelenzCompleted),
+        completedBy,
     };
+    if (plat === 'mmx') next.mmxCompletedAt = now;
+    if (plat === 'lifelenz') next.lifelenzCompletedAt = now;
+    next.completed = Boolean(next.mmxCompleted && next.lifelenzCompleted);
+    if (next.completed) next.completedAt = now;
+
+    ledger.stores[store][weekStart] = next;
     return writeLedger(ledger);
+}
+
+/** @deprecated Use markStoreWeekPlatformComplete for each platform. */
+function markStoreWeekComplete(weekStart, storeNumber, meta = {}) {
+    return markStoreWeekPlatformComplete(weekStart, storeNumber, 'mmx', meta);
 }
 
 function buildStatusForStores(storeNumbers, fromDate = new Date()) {
@@ -88,12 +126,8 @@ function buildStatusForStores(storeNumbers, fromDate = new Date()) {
         stores[store] = {};
         for (const weekStart of targetWeeks) {
             const ledger = readLedger(weekStart);
-            const row = ledger.stores?.[store]?.[weekStart];
-            stores[store][weekStart] = {
-                completed: Boolean(row?.completed),
-                completedAt: row?.completedAt || null,
-                completedBy: row?.completedBy || null,
-            };
+            const row = normalizeStoreWeekRow(ledger.stores?.[store]?.[weekStart] || {});
+            stores[store][weekStart] = row;
         }
     }
     return { targetWeeks, stores };
@@ -108,5 +142,7 @@ module.exports = {
     readLedger,
     writeLedger,
     markStoreWeekComplete,
+    markStoreWeekPlatformComplete,
+    normalizeStoreWeekRow,
     buildStatusForStores,
 };

@@ -965,9 +965,36 @@ html.mic-dark-mode .mic-audit-stat--complete {
     overflow: hidden;
 }
 
-.mic-store-lead-pace-band--with-amounts .mic-pace-strip-layers {
+.mic-store-lead-pace-band--with-amounts .mic-pace-strip-layers,
+.mic-store-lead-pace-band--with-amounts .grid-cell-live-layers {
     position: absolute;
     inset: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.mic-store-lead-pace-band--with-amounts .grid-cell-live-main-frame {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.mic-store-lead-pace-band--with-amounts .grid-cell-live-pace-row {
+    flex: 0 0 32%;
+    min-height: calc(10px * var(--dashboard-scale));
+    max-height: calc(18px * var(--dashboard-scale));
+}
+
+.mic-store-lead-pace-band--with-amounts .grid-cell-live-pace-grow {
+    height: 100%;
+    display: flex;
+    align-items: stretch;
+}
+
+.mic-store-lead-pace-band--with-amounts .grid-cell-live-pace-bar {
+    height: 100%;
+    min-height: calc(10px * var(--dashboard-scale));
+    flex: 1 1 auto;
+    border-top-width: calc(2px * var(--dashboard-scale));
 }
 
 .mic-store-lead-pace-amounts {
@@ -1260,7 +1287,8 @@ html.mic-dark-mode .mic-audit-stat--complete {
     z-index: 1;
 }
 
-.mic-store-lead-pace-band .mic-pace-strip-layers {
+.mic-store-lead-pace-band .mic-pace-strip-layers,
+.mic-store-lead-pace-band .grid-cell-live-layers {
     position: absolute;
     inset: 0;
     display: flex;
@@ -1270,13 +1298,24 @@ html.mic-dark-mode .mic-audit-stat--complete {
     height: 100%;
 }
 
-.mic-store-lead-pace-band .grid-cell-live-pace-row {
+.mic-store-lead-pace-band .grid-cell-live-main-frame {
     flex: 1 1 auto;
+    min-height: 0;
+}
+
+.mic-store-lead-pace-band .grid-cell-live-pace-row {
+    flex: 0 0 32%;
+    min-height: calc(10px * var(--dashboard-scale));
+    max-height: calc(18px * var(--dashboard-scale));
     width: 100%;
-    min-height: 100%;
-    max-height: none;
     display: flex;
     align-items: stretch;
+}
+
+.mic-store-lead-pace-band .mic-pace-strip-layers .grid-cell-live-pace-row {
+    flex: 1 1 auto;
+    min-height: 100%;
+    max-height: none;
 }
 
 .mic-store-lead-pace-band .grid-cell-live-pace-grow {

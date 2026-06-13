@@ -2151,14 +2151,15 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
 }
 
 /** Attach SSSG percent to a scrape result when LY slots are available. */
-function attachSssgToResult(result, todayKey) {
+function attachSssgToResult(result, _todayKey) {
     if (!result || result.error) return result;
     try {
         const { computeSssgPercent } = require('../../dashboard/src/sssg/sssgCalc');
-        const { getCachedSssgLy } = require('../../dashboard/src/sssg/sssgCache');
+        const { getCachedSssgLy, sssgDateKeyForStore } = require('../../dashboard/src/sssg/sssgCache');
         const cfg = getStoreConfig(result.storeNumber);
         const timeZone = cfg?.timeZone || DASHBOARD_TIME_ZONE;
-        const slots = getCachedSssgLy(result.storeNumber, todayKey);
+        const dateKey = sssgDateKeyForStore(result.storeNumber);
+        const slots = getCachedSssgLy(result.storeNumber, dateKey);
         result.sssgPercent = computeSssgPercent({
             slots,
             actual: result.actual,
@@ -2166,6 +2167,7 @@ function attachSssgToResult(result, todayKey) {
             openHour: result.openHour,
             closeHour: result.closeHour,
             timeZone,
+            storeNumber: result.storeNumber,
         });
         if (result.sssgPercent != null) {
             console.log(`[Macromatix] Store ${result.storeNumber} SSSG: ${result.sssgPercent}%`);
@@ -2205,22 +2207,25 @@ async function scrapeSingleStoreSession(page, store, ctx, credentials) {
 }
 
 /** One login → loop Change Store in SPA for all stores needing LY → logout. */
-async function runBatchSssgLyScrape(browser, stores, todayKey, credentials) {
+async function runBatchSssgLyScrape(browser, stores, _todayKey, credentials) {
     const {
         needsSssgLyScrape,
         hasSssgLyCachedToday,
         setCachedSssgLy,
         loadSssgLyFromDisk,
+        sssgDateKeyForStore,
     } = require('../../dashboard/src/sssg/sssgCache');
     const { scrapeSssgLastYearAllStores } = require('./sssg/sssgScraper');
 
     for (const store of stores) {
-        loadSssgLyFromDisk(store.storeNumber, todayKey);
+        loadSssgLyFromDisk(store.storeNumber, sssgDateKeyForStore(store));
     }
 
-    if (!needsSssgLyScrape(stores, todayKey)) return;
+    if (!needsSssgLyScrape(stores)) return;
 
-    const storesNeedingLy = stores.filter((s) => !hasSssgLyCachedToday(s.storeNumber, todayKey));
+    const storesNeedingLy = stores.filter(
+        (s) => !hasSssgLyCachedToday(s.storeNumber, sssgDateKeyForStore(s))
+    );
     if (!storesNeedingLy.length) return;
 
     console.log(
@@ -2240,7 +2245,7 @@ async function runBatchSssgLyScrape(browser, stores, todayKey, credentials) {
         const lyResults = await scrapeSssgLastYearAllStores(lyPage, storesNeedingLy, { credentials });
         for (const r of lyResults) {
             if (r.slots?.length) {
-                setCachedSssgLy(r.storeNumber, todayKey, r.slots);
+                setCachedSssgLy(r.storeNumber, sssgDateKeyForStore(r.storeNumber), r.slots);
             }
         }
     } catch (err) {
@@ -3064,6 +3069,8 @@ module.exports.useSingleStoreLoginMode = useSingleStoreLoginMode;
 module.exports.assertMacromatixAuthenticated = assertMacromatixAuthenticated;
 module.exports.isMacromatixLoginPage = isMacromatixLoginPage;
 module.exports.closeBrowserQuietly = closeBrowserQuietly;
+module.exports.getPuppeteerLaunchOptions = getPuppeteerLaunchOptions;
+module.exports.applyResourceBlocking = applyResourceBlocking;
 module.exports.probePendingOrdersForStores = probePendingOrdersForStores;
 module.exports.selectStoreOnPage = selectStoreOnPage;
 module.exports.setScheduledOrdersToYmd = setScheduledOrdersToYmd;

@@ -4,7 +4,7 @@ const { getDailyCountPipelineStatus } = require('./dailyStockCountMmxPipeline');
 
 function buildDailyStockCountTileState(storeNumber) {
     const store = String(storeNumber || '').trim();
-    const catalog = buildDailyStockCountCatalog();
+    const catalog = buildDailyStockCountCatalog(store);
     const href = catalog && store ? `/${store}/daily-stock-count` : null;
 
     return {
@@ -41,7 +41,7 @@ async function buildDailyStockCountTileStateAsync(storeNumber) {
 }
 
 function buildAreaDailyStockCountTileState(areaStores) {
-    const catalog = buildDailyStockCountCatalog();
+    const catalog = buildDailyStockCountCatalog(areaStores?.[0]);
     const stores = (areaStores || [])
         .map((cfg) => String(cfg.storeNumber || '').trim())
         .filter(Boolean);

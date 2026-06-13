@@ -4,6 +4,7 @@ const log = require('./util-logging');
 const { lookupKeysForMmx } = require('../../../vendors/src/itemCodes');
 const { enrichVariancesWithFilledItems } = require('../../../vendors/src/varianceCatalogMatch');
 const { getVendorCatalog } = require('../../../vendors/src/vendorCatalog');
+const { applySkipKeyItemCountOverridesToCatalog } = require('../../../vendors/src/buildToAdminOverrides');
 const { GOTO_OPTS } = require('./mmx-browser');
 const {
     stockCountUrlTest,
@@ -1262,6 +1263,11 @@ function findGridRowWithAliases(byCode, grid, item, lookupKeysForMmx) {
  */
 async function verifyKeyItemCountCatalog(page, catalog, cfg, options = {}) {
     const lookupKeysForMmx = options.lookupKeysForMmx || null;
+    const storeNumber = String(options.storeNumber || '').trim();
+    const effectiveCatalog =
+        storeNumber && catalog?.items?.length
+            ? applySkipKeyItemCountOverridesToCatalog(catalog, storeNumber)
+            : catalog;
     const results = {
         vendor: catalog.label,
         slug: catalog.slug,
@@ -1277,7 +1283,7 @@ async function verifyKeyItemCountCatalog(page, catalog, cfg, options = {}) {
         },
     };
 
-    for (const item of catalog.items || []) {
+    for (const item of effectiveCatalog.items || []) {
         if (item.skipKeyItemCount) {
             results.skippedKeyItemCount.push({
                 itemCode: item.itemCode,
@@ -1290,7 +1296,7 @@ async function verifyKeyItemCountCatalog(page, catalog, cfg, options = {}) {
 
     const tabGroups = groupLocationsByMmxTab(cfg, catalog.locations || []);
     for (const { mmxTab, locationNames } of tabGroups.values()) {
-        const items = (catalog.items || []).filter(
+        const items = (effectiveCatalog.items || []).filter(
             (item) =>
                 !item.skipKeyItemCount &&
                 item.locations.some((loc) => locationNames.includes(loc))

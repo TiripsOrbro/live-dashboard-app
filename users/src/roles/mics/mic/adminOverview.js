@@ -19,11 +19,13 @@ const { buildAdminAuditTileSummaries } = require('../../../../../dashboard/src/a
 const { DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR, getStoreConfig } = require('../../../../../stores/src/storeList');
 const { TIME_ZONE } = require('../../../../../dashboard/src/upselling/upsellingConfig');
 const { getCachedSssgLy } = require('../../../../../mmx/src/macromatixScraper');
-const { computeAreaWtdSssgPercent, sumAreaWtdTotals } = require('../../../../../dashboard/src/sssg/sssgWeeklyLedger');
+const { computeAreaWtdSssgPercent, sumAreaWtdTotals, getStoreDateKey } = require('../../../../../dashboard/src/sssg/sssgWeeklyLedger');
 const {
     computeActualSalesSoFar,
     computeLastYearSalesSoFar,
+    computeSssgPercent,
     computeSssgPercentFromTotals,
+    getLyGridOffsetMinutes,
 } = require('../../../../../dashboard/src/sssg/sssgCalc');
 
 /** Same areas as store picker — always rotate through these even with no stores/data. */
@@ -105,7 +107,14 @@ function computeAreaSssgToday(areaStores, getSlotsForStore, now = new Date()) {
         const openHour = Number.isFinite(store.openHour) ? store.openHour : DEFAULT_OPEN_HOUR;
         const closeHour = Number.isFinite(store.closeHour) ? store.closeHour : DEFAULT_CLOSE_HOUR;
         const timeZone = resolveStoreTimeZone(store);
-        const ly = computeLastYearSalesSoFar(slots, openHour, closeHour, timeZone, now);
+        const ly = computeLastYearSalesSoFar(
+            slots,
+            openHour,
+            closeHour,
+            timeZone,
+            now,
+            getLyGridOffsetMinutes(store)
+        );
         if (ly <= 0) continue;
         lyTotal += ly;
         actualTotal += computeActualSalesSoFar(
@@ -128,6 +137,27 @@ function computeAreaSssgToday(areaStores, getSlotsForStore, now = new Date()) {
     if (!values.length) return null;
     const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
     return Math.round(avg * 10) / 10;
+}
+
+function computeLiveStoreSssgPercent(store, now = new Date()) {
+    if (!store?.storeNumber) return null;
+    const openHour = Number.isFinite(store.openHour) ? store.openHour : DEFAULT_OPEN_HOUR;
+    const closeHour = Number.isFinite(store.closeHour) ? store.closeHour : DEFAULT_CLOSE_HOUR;
+    const timeZone = resolveStoreTimeZone(store);
+    const slots = getCachedSssgLy(store.storeNumber, getStoreDateKey(store, now));
+    if (!Array.isArray(slots) || !slots.length) {
+        return store.sssgPercent != null ? store.sssgPercent : null;
+    }
+    return computeSssgPercent({
+        slots,
+        actual: store.actual,
+        forecast: store.forecast,
+        openHour,
+        closeHour,
+        timeZone,
+        now,
+        storeNumber: store.storeNumber,
+    });
 }
 
 function computeStoreSalesToday(store) {
@@ -154,7 +184,7 @@ function computeStoreSalesToday(store) {
         forecast: Math.round(forecastTotal),
         trackClass: progress.paceClass || 'cell-green',
         progress,
-        sssgPercent: store.sssgPercent != null ? store.sssgPercent : null,
+        sssgPercent: computeLiveStoreSssgPercent(store),
     };
 }
 
@@ -178,6 +208,8 @@ function computeAreaSalesToday(areaStores) {
         hours,
         openHour: DEFAULT_OPEN_HOUR,
         closeHour: DEFAULT_CLOSE_HOUR,
+        actualHourly: actual,
+        forecastHourly: forecast,
         progress,
     };
 }
@@ -271,13 +303,19 @@ async function buildAdminOverviewPayload(salesPayload, areaGroups, options = {})
                   )
             : [];
         const sssgTodayPercent = hasStores
-            ? computeAreaSssgToday(areaStores, (s) => getCachedSssgLy(s.storeNumber, day))
+            ? computeAreaSssgToday(areaStores, (s) =>
+                  getCachedSssgLy(s.storeNumber, getStoreDateKey(s))
+              )
             : null;
         const sssgWtdTotals = hasStores
-            ? sumAreaWtdTotals(areaStores, (s) => getCachedSssgLy(s.storeNumber, day))
+            ? sumAreaWtdTotals(areaStores, (s) =>
+                  getCachedSssgLy(s.storeNumber, getStoreDateKey(s))
+              )
             : { actualTotal: 0, lyTotal: 0 };
         const sssgWtdPercent = hasStores
-            ? computeAreaWtdSssgPercent(areaStores, (s) => getCachedSssgLy(s.storeNumber, day))
+            ? computeAreaWtdSssgPercent(areaStores, (s) =>
+                  getCachedSssgLy(s.storeNumber, getStoreDateKey(s))
+              )
             : null;
 
         return {

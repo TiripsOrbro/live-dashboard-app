@@ -1,72 +1,35 @@
-﻿const { getFastScrapePlan } = require('./scrapePresence');
-const { isMmxResourceBusy } = require('../../mmx/src/mmxResourceGate');
+﻿const { isMmxResourceBusy } = require('../../mmx/src/mmxResourceGate');
+const { anyStoreInActiveScrapeWindow } = require('./scrapeSchedule');
 
 const TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
-const FAST_INTERVAL_MS = Math.max(30, Number(process.env.SCRAPE_FAST_INTERVAL_SECONDS || 120)) * 1000;
-
-function melbourneWallClock(now = new Date()) {
-    const parts = new Intl.DateTimeFormat('en-AU', {
-        timeZone: TIME_ZONE,
-        hour: 'numeric',
-        minute: 'numeric',
-        second: 'numeric',
-        hour12: false,
-    }).formatToParts(now);
-    const get = (type) => Number(parts.find((p) => p.type === type)?.value || 0);
-    return { hour: get('hour'), minute: get('minute'), second: get('second') };
-}
-
-/** Milliseconds until the next top-of-hour in the dashboard timezone. */
-function msUntilNextHourBoundary(now = new Date()) {
-    const { minute, second } = melbourneWallClock(now);
-    const ms = now.getMilliseconds();
-    const secondsRemaining = (60 - minute - 1) * 60 + (60 - second);
-    return Math.max(0, secondsRemaining * 1000 - ms);
-}
+const INTERVAL_MS = Math.max(30, Number(process.env.SCRAPE_FAST_INTERVAL_SECONDS || 120)) * 1000;
 
 /**
  * @param {{
  *   runFullScrape: (opts?: object) => Promise<unknown>,
- *   runFastScrape: (plan: { mode: string, storeNumbers: string[], reason: string }) => Promise<unknown>,
  *   shouldPrimeOnBoot?: () => boolean,
  *   isScrapeInFlight?: () => boolean,
  * }} handlers
  */
 function startSalesScrapeScheduler(handlers) {
-    const { runFullScrape, runFastScrape, shouldPrimeOnBoot, isScrapeInFlight } = handlers;
+    const { runFullScrape, shouldPrimeOnBoot, isScrapeInFlight } = handlers;
 
-    let hourlyTimeoutId = null;
-    let fastIntervalId = null;
+    let intervalId = null;
     let bootTimeoutId = null;
 
-    const scheduleHourly = () => {
-        const delay = msUntilNextHourBoundary();
-        hourlyTimeoutId = setTimeout(async () => {
-            try {
-                await runFullScrape({ scrapeReason: 'hourly' });
-            } catch (error) {
-                console.warn('[Dashboard] Hourly sales scrape failed:', error.message);
-            }
-            scheduleHourly();
-        }, delay);
-        hourlyTimeoutId.unref?.();
-    };
-
-    const fastTick = async () => {
+    const intervalTick = async () => {
         try {
-            const plan = getFastScrapePlan();
-            if (plan.mode === 'skip') return;
+            if (!anyStoreInActiveScrapeWindow()) return;
             if (isScrapeInFlight?.()) return;
             if (isMmxResourceBusy()) return;
-            await runFastScrape(plan);
+            await runFullScrape({ scrapeReason: 'interval' });
         } catch (error) {
-            console.warn('[Dashboard] Fast sales scrape failed:', error.message);
+            console.warn('[Dashboard] Interval sales scrape failed:', error.message);
         }
     };
 
-    scheduleHourly();
-    fastIntervalId = setInterval(fastTick, FAST_INTERVAL_MS);
-    fastIntervalId.unref?.();
+    intervalId = setInterval(intervalTick, INTERVAL_MS);
+    intervalId.unref?.();
 
     if (shouldPrimeOnBoot?.()) {
         bootTimeoutId = setTimeout(async () => {
@@ -79,15 +42,13 @@ function startSalesScrapeScheduler(handlers) {
         bootTimeoutId.unref?.();
     }
 
-    const nextHourMin = Math.round(msUntilNextHourBoundary() / 60000);
     console.log(
-        `[Dashboard] Sales scrape scheduler — hourly full market (next in ~${nextHourMin}m ${TIME_ZONE}), fast every ${FAST_INTERVAL_MS / 1000}s when users/kiosks active`
+        `[Dashboard] Sales scrape scheduler — full market every ${INTERVAL_MS / 1000}s during store active hours (${TIME_ZONE})`
     );
 
     return {
         cancel() {
-            if (hourlyTimeoutId) clearTimeout(hourlyTimeoutId);
-            if (fastIntervalId) clearInterval(fastIntervalId);
+            if (intervalId) clearInterval(intervalId);
             if (bootTimeoutId) clearTimeout(bootTimeoutId);
         },
     };
@@ -95,5 +56,4 @@ function startSalesScrapeScheduler(handlers) {
 
 module.exports = {
     startSalesScrapeScheduler,
-    msUntilNextHourBoundary,
 };

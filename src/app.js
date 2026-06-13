@@ -78,7 +78,7 @@ const {
     startUpsellingScheduler,
     cancelSchedulerHandle,
 } = require('./services/upselling/upsellingScheduler');
-const { touchPresence, getFastScrapePlan } = require('./services/scrapePresence');
+const { touchPresence } = require('./services/scrapePresence');
 const { startSalesScrapeScheduler } = require('./services/salesScrapeScheduler');
 const {
     getLastKnownPendingVendors,
@@ -133,7 +133,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 /** Multi-store scrapes take minutes (≈45-60s per store), so cache the whole cycle for a while. */
 const SALES_CACHE_SECONDS = Number(process.env.SALES_CACHE_SECONDS || 300);
-/** @deprecated Replaced by presence-based scheduler (hourly full + fast when users active). */
+/** @deprecated Replaced by interval scheduler (SCRAPE_FAST_INTERVAL_SECONDS, default 120s). */
 const SALES_REFRESH_SECONDS = Number(process.env.SALES_REFRESH_SECONDS || 240);
 /** Full Macromatix run (login + every store's labour + scheduled orders). ~1 min/store, so allow plenty for a slow Pi. */
 const SCRAPE_TIMEOUT_MS = Number(process.env.SCRAPE_TIMEOUT_MS || 900000);
@@ -1481,12 +1481,7 @@ async function getSalesDataCached() {
 
     if (salesCache) {
         if (anyStoreInActiveScrapeWindow() && !isSalesCacheFresh() && !salesInFlight) {
-            const plan = getFastScrapePlan();
-            if (plan.mode !== 'skip') {
-                const opts = { scrapeReason: 'on-demand' };
-                if (plan.mode === 'partial') opts.storeNumbers = plan.storeNumbers;
-                runScrapeIntoCache(opts);
-            }
+            runScrapeIntoCache({ scrapeReason: 'on-demand' });
         }
         return salesCache;
     }
@@ -1498,16 +1493,7 @@ async function getSalesDataCached() {
         return salesCache;
     }
 
-    const plan = getFastScrapePlan();
-    if (plan.mode === 'skip') {
-        salesCache = buildCacheShellFromStoreList();
-        salesCacheAt = Date.now();
-        applyScrapeScheduleToCache(salesCache);
-        return salesCache;
-    }
-    const opts = { scrapeReason: 'on-demand' };
-    if (plan.mode === 'partial') opts.storeNumbers = plan.storeNumbers;
-    return runScrapeIntoCache(opts);
+    return runScrapeIntoCache({ scrapeReason: 'on-demand' });
 }
 
 /** Trading hours for a store from `.storelist`, falling back to defaults. */
@@ -5779,17 +5765,9 @@ function startBackgroundRefresh() {
     salesScrapeSchedulerTimer = startSalesScrapeScheduler({
         runFullScrape: (opts) =>
             runScrapeIntoCache(opts).catch((error) => {
-                notifyScrapeFailure(error, 'hourly scrape').catch(() => {});
+                notifyScrapeFailure(error, 'interval scrape').catch(() => {});
                 throw error;
             }),
-        runFastScrape: (plan) => {
-            const opts = { scrapeReason: plan.reason };
-            if (plan.mode === 'partial') opts.storeNumbers = plan.storeNumbers;
-            return runScrapeIntoCache(opts).catch((error) => {
-                notifyScrapeFailure(error, 'fast scrape').catch(() => {});
-                throw error;
-            });
-        },
         shouldPrimeOnBoot: shouldPrimeSalesCacheOnBoot,
         isScrapeInFlight: () => Boolean(salesInFlight),
     });

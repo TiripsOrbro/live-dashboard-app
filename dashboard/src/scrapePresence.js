@@ -124,39 +124,14 @@ function storesInActiveScrapeWindow(storeNumbers) {
 }
 
 /**
- * @returns {{ mode: 'full' | 'partial' | 'skip', storeNumbers: string[], reason: string }}
+ * @returns {{ mode: 'full' | 'skip', storeNumbers: string[], reason: string }}
  */
 function getFastScrapePlan(now = new Date()) {
-    const active = activeSessions(now.getTime());
-    if (!active.length) {
-        return { mode: 'skip', storeNumbers: [], reason: 'no-presence' };
-    }
-
-    if (active.some((s) => s.tier === 'market')) {
-        const all = storesInActiveScrapeWindow(getStoreList().map((s) => String(s.storeNumber)));
-        if (!all.length) {
-            return { mode: 'skip', storeNumbers: [], reason: 'no-active-window' };
-        }
-        return { mode: 'full', storeNumbers: all, reason: 'presence:market' };
-    }
-
-    const union = new Set();
-    for (const session of active) {
-        for (const num of session.storeNumbers) union.add(String(num));
-    }
-    const filtered = storesInActiveScrapeWindow([...union]);
-    if (!filtered.length) {
+    const all = storesInActiveScrapeWindow(getStoreList().map((s) => String(s.storeNumber)), now);
+    if (!all.length) {
         return { mode: 'skip', storeNumbers: [], reason: 'no-active-window' };
     }
-
-    const reason =
-        filtered.length === 1
-            ? `presence:${filtered[0]}`
-            : active.length === 1 && active[0].tier === 'area'
-              ? 'presence:area'
-              : `presence:${filtered.length}-stores`;
-
-    return { mode: 'partial', storeNumbers: filtered, reason };
+    return { mode: 'full', storeNumbers: all, reason: 'interval' };
 }
 
 module.exports = {

@@ -29,6 +29,9 @@ const DATE_PICKER_SEL = '#mx-forecast-dateselection-dropdown-edit';
 const MANAGER_OVERRIDE_INPUT = '#overrideInput';
 const FILL_CELL_SETTLE_MS = 25;
 const VERIFY_READ_MS = 120;
+const VERIFY_POLL_MS = 80;
+const VERIFY_TIMEOUT_MS = 2500;
+const POST_DATE_GRID_MS = 350;
 const GRID_SETTLE_MS = 100;
 const DATE_CHANGE_MS = 6000;
 const SAVE_SETTLE_MS = 2500;
@@ -326,6 +329,34 @@ async function waitForForecastGrid(page, { settleMs = GRID_SETTLE_MS } = {}) {
     if (settleMs > 0) await page.waitForTimeout(settleMs);
 }
 
+/** Wait until manager-forecast hour rows are present (grid finished reloading after date change). */
+async function waitForForecastHourRows(page, { minRows = 8, timeoutMs = GRID_WAIT_MS } = {}) {
+    await page
+        .waitForFunction(
+            (min) => {
+                const rows = [...document.querySelectorAll('tr.mx-fg-hour')].filter((tr) =>
+                    tr.querySelector('[id*="managerforecast"], td.mx-grid-column-input')
+                );
+                return rows.length >= min;
+            },
+            { timeout: timeoutMs },
+            minRows
+        )
+        .catch(() => {});
+    await page.waitForTimeout(POST_DATE_GRID_MS);
+}
+
+async function dismissForecastOverrideEditor(page) {
+    await page.keyboard.press('Escape').catch(() => {});
+    await page.evaluate(() => {
+        const inp = document.querySelector('#overrideInput');
+        if (inp) inp.blur();
+        const header = document.querySelector('#ForecastGridHeader, .mx-grid-header-container');
+        header?.click();
+    });
+    await page.waitForTimeout(40);
+}
+
 async function ensureManagerForecastDollarMode(page, { skipWait = false } = {}) {
     await page.evaluate(() => {
         for (const btn of document.querySelectorAll('#ForecastGridHeader button.mx-panel-button')) {
@@ -339,9 +370,9 @@ async function ensureManagerForecastDollarMode(page, { skipWait = false } = {}) 
 
 function parseForecastDollar(text) {
     if (text == null || text === '') return null;
-    const cleaned = String(text).replace(/[^0-9.\-]/g, '');
-    if (!cleaned) return null;
-    const n = Number(cleaned);
+    const match = String(text).match(/-?\$?\s*([\d,]+(?:\.\d+)?)/);
+    if (!match) return null;
+    const n = Number(String(match[1]).replace(/,/g, ''));
     return Number.isFinite(n) ? Math.round(n) : null;
 }
 
@@ -377,8 +408,7 @@ async function readManagerForecastCell(page, wantLabel) {
             if (rowLabel !== label) continue;
             const cell =
                 tr.querySelector('[id*="managerforecast"]') ||
-                tr.querySelector('td.mx-grid-column-input') ||
-                tr.querySelector('td:last-child');
+                tr.querySelector('td.mx-grid-column-input');
             if (!cell) return null;
             return (cell.textContent || '').replace(/\s+/g, ' ').trim();
         }
@@ -386,8 +416,34 @@ async function readManagerForecastCell(page, wantLabel) {
     }, wantLabel);
 }
 
+async function waitForManagerForecastValue(page, wantLabel, forecast, timeoutMs = VERIFY_TIMEOUT_MS) {
+    const wanted = Math.round(Number(forecast) || 0);
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const readText = await readManagerForecastCell(page, wantLabel);
+        if (forecastValuesMatch(readText, wanted)) {
+            return { ok: true, read: parseForecastDollar(readText), readText };
+        }
+        await page.waitForTimeout(VERIFY_POLL_MS);
+    }
+    const readText = await readManagerForecastCell(page, wantLabel);
+    return {
+        ok: forecastValuesMatch(readText, wanted),
+        read: parseForecastDollar(readText),
+        readText,
+    };
+}
+
 /** Click hour row Manager Forecast cell, fill #overrideInput (MMX inline editor). */
 async function fillForecastHourCell(page, wantLabel, forecast) {
+    const wanted = Math.round(Number(forecast) || 0);
+    await dismissForecastOverrideEditor(page);
+
+    const existing = await readManagerForecastCell(page, wantLabel);
+    if (forecastValuesMatch(existing, wanted)) {
+        return 'already';
+    }
+
     const clicked = await page.evaluate((label) => {
         for (const tr of document.querySelectorAll('tr.mx-fg-hour')) {
             const labelSpan = tr.querySelector('[id^="mx-forecast-grid-interval-directive-list-hour-"]');
@@ -407,12 +463,13 @@ async function fillForecastHourCell(page, wantLabel, forecast) {
     if (!clicked) return false;
 
     try {
-        await page.waitForSelector(MANAGER_OVERRIDE_INPUT, { visible: true, timeout: 2500 });
+        await page.waitForSelector(MANAGER_OVERRIDE_INPUT, { visible: true, timeout: 3500 });
     } catch {
-        return false;
+        const afterClick = await readManagerForecastCell(page, wantLabel);
+        return forecastValuesMatch(afterClick, wanted) ? 'already' : false;
     }
 
-    const value = String(Math.round(Number(forecast) || 0));
+    const value = String(wanted);
     const ok = await page.evaluate(
         (sel, val) => {
             const el = document.querySelector(sel);
@@ -428,11 +485,26 @@ async function fillForecastHourCell(page, wantLabel, forecast) {
         value
     );
     if (!ok) return false;
+    await dismissForecastOverrideEditor(page);
     await page.waitForTimeout(FILL_CELL_SETTLE_MS);
     return true;
 }
 
 async function enterAndVerifyForecastSlot(page, slot, onProgress, { retry = false } = {}) {
+    const preRead = await readManagerForecastCell(page, slot.label);
+    if (forecastValuesMatch(preRead, slot.forecast)) {
+        const read = parseForecastDollar(preRead);
+        emitSlotProgress(onProgress, {
+            type: 'hour-confirmed',
+            hour: slot.hour,
+            label: slot.label,
+            forecast: slot.forecast,
+            read,
+            skipped: true,
+        });
+        return { ok: true, read };
+    }
+
     emitSlotProgress(onProgress, {
         type: 'hour-entering',
         hour: slot.hour,
@@ -459,34 +531,34 @@ async function enterAndVerifyForecastSlot(page, slot, onProgress, { retry = fals
         label: slot.label,
         forecast: slot.forecast,
     });
-    await page.waitForTimeout(VERIFY_READ_MS);
 
-    const readText = await readManagerForecastCell(page, slot.label);
-    if (!forecastValuesMatch(readText, slot.forecast)) {
+    const verified = await waitForManagerForecastValue(page, slot.label, slot.forecast);
+    if (!verified.ok) {
         if (!retry) {
             return enterAndVerifyForecastSlot(page, slot, onProgress, { retry: true });
         }
-        const read = parseForecastDollar(readText);
         emitSlotProgress(onProgress, {
             type: 'hour-failed',
             hour: slot.hour,
             label: slot.label,
             forecast: slot.forecast,
-            read,
-            reason: read == null ? 'Could not read cell after entry' : `Read $${read}, expected $${slot.forecast}`,
+            read: verified.read,
+            reason:
+                verified.read == null
+                    ? 'Could not read cell after entry'
+                    : `Read $${verified.read}, expected $${slot.forecast}`,
         });
-        return { ok: false, reason: 'mismatch', read };
+        return { ok: false, reason: 'mismatch', read: verified.read };
     }
 
-    const read = parseForecastDollar(readText);
     emitSlotProgress(onProgress, {
         type: 'hour-confirmed',
         hour: slot.hour,
         label: slot.label,
         forecast: slot.forecast,
-        read,
+        read: verified.read,
     });
-    return { ok: true, read };
+    return { ok: true, read: verified.read };
 }
 
 /** Fill each hour, verify read-back, retry once on mismatch. */
@@ -533,7 +605,6 @@ async function verifyForecastDay(page, hourly, options = {}) {
             forecast: slot.forecast,
             phase: 'day-check',
         });
-        await page.waitForTimeout(VERIFY_READ_MS);
 
         const readText = await readManagerForecastCell(page, slot.label);
         if (forecastValuesMatch(readText, slot.forecast)) {
@@ -549,7 +620,7 @@ async function verifyForecastDay(page, hourly, options = {}) {
             continue;
         }
 
-        const fix = await enterAndVerifyForecastSlot(page, slot, onProgress);
+        const fix = await enterAndVerifyForecastSlot(page, slot, onProgress, { retry: false });
         if (fix.ok) {
             confirmed += 1;
         } else {
@@ -673,6 +744,9 @@ async function setForecastPageDate(page, isoDate, options = {}) {
         throw new Error(`Forecast date did not stick: wanted ${displayStr}, still ${verified}`);
     }
 
+    await waitForForecastGrid(page, { settleMs: GRID_SETTLE_MS });
+    await waitForForecastHourRows(page, { minRows: 1 });
+
     return { date: isoDate, display: displayStr, ...result };
 }
 
@@ -729,6 +803,8 @@ async function writeForecastPlanToSpa(page, storeNumber, plan, options = {}) {
             skipScroll: dayIndex > 0,
             fast: dayIndex > 0,
         });
+        await waitForForecastHourRows(page, { minRows: Math.min(8, hourly.length) });
+        await dismissForecastOverrideEditor(page);
         emit({ type: 'day-filling', date: day.date });
 
         await ensureManagerForecastDollarMode(page, { skipWait: true });

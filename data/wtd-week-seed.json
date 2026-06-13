@@ -1,0 +1,14 @@
+{
+  "mondayKey": "2026-06-01",
+  "capturedAt": "2026-06-06T00:00:00.000Z",
+  "source": "MMX sales report screenshot",
+  "stores": {
+    "3903": { "wtdActual": 41009.92, "salesLyDayTotal": 8347.98 },
+    "3806": { "wtdActual": 31240.36, "salesLyDayTotal": 6631.13 },
+    "3808": { "wtdActual": 30942.22, "salesLyDayTotal": 7055.69 },
+    "3811": { "wtdActual": 25208.05, "salesLyDayTotal": 7646.36 },
+    "3904": { "wtdActual": 32767.76, "salesLyDayTotal": 5483.9 },
+    "3902": { "wtdActual": 20843.73, "salesLyDayTotal": 4611.11 },
+    "3901": { "wtdActual": 25520.34, "salesLyDayTotal": 4750.16 }
+  }
+}

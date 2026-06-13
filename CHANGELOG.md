@@ -26,6 +26,18 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 
 ## Release history
 
+
+### Version 0.4.1 – June 2026
+
+**Added**
+
+- **Admin settings menu** — forecast submit/history, global build-to overrides, and managed store accounts (role-gated from MIC settings).
+- **Forecast automation** — Macromatix forecast scraper, history/status ledgers, dashboard APIs, and import/probe npm scripts.
+- **FORECAST_SCRAPER_HEADLESS** — optional env flag for watching forecast browser sessions (see .env.example).
+
+**Changed**
+
+- Dashboard and MIC settings use the shared admin menu shell; Macromatix scraper exports helpers used by forecast and SSSG fast paths.
 ### Version 0.4.0 — June 2026
 
 **Added**

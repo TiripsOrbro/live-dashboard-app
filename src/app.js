@@ -30,7 +30,7 @@ process.env.SCRAPER_HEADLESS = 'true';
 
 const scrapeData = require('./services/scraper');
 const { notifyScrapeFailure } = require('./services/alertNotifier');
-const { isMmxResourceBusy } = require('./services/mmxResourceGate');
+const { isMmxResourceBusy, acquireMmxResource, releaseMmxResource, abortCompetingMmxWork } = require('./services/mmxResourceGate');
 const {
     MmxWorkAbortedError,
     resetSalesScrapeAbort,
@@ -254,9 +254,15 @@ const {
     validateCreateAccountPayload,
     requiresMmxForAccountLevel,
     canUserCreateAccounts,
+    canUserAccessAdminMenu,
+    canUserEditGlobalBuildTo,
     canUserManageStoreAccounts,
     listManagedStoreAccounts,
+    updateManagedStoreAccount,
+    listLoginHistoryForStore,
     deleteManagedStoreAccount,
+    appendAuthEvent,
+    appendAccountAudit,
     isRealDashboardUser,
     canUserAccessDfsc,
     getAccountLevel,
@@ -292,7 +298,16 @@ const {
 } = require('./services/dfsc/dfscStore');
 const { buildDfscReportPdf, buildReportFilename } = require('./services/dfsc/dfscReport');
 const { buildCoreReportPdf } = require('./services/dfsc/dfscCoreReport');
-const { buildAdminDfscStatus } = require('./services/dfsc/dfscAdmin');
+const { buildStatusForStores, getTargetForecastWeekStarts } = require('../dashboard/src/forecast/forecastStatusLedger');
+const { runForecastForStores, previewForecastForStore, previewForecastForStores } = require('../dashboard/src/forecast/forecastRunner');
+const {
+    buildHistoryCoverageForStores,
+    buildHistoryHourGrid,
+    recordForecastHistoryFromStore,
+    importForecastHistory,
+} = require('../dashboard/src/forecast/forecastHistoryLedger');
+const { buildAdminBuildToCatalog, filterOverridesForActor, readOverridesDoc } = require('../vendors/src/buildToAdminCatalog');
+const { patchOverrides } = require('../vendors/src/buildToAdminOverrides');
 const {
     getContext: getPestWalkContext,
     createSession: createPestWalkSession,
@@ -545,12 +560,26 @@ function logAuthLogin(req, user) {
     const label = profile.welcomeName || user.username;
     const access = user.stores === '*' ? 'all stores' : user.stores.join(', ');
     console.log(`[Auth] Login: ${user.username} (${label}) — ${access} from ${ip}`);
+    appendAuthEvent({
+        username: user.username,
+        success: true,
+        ip,
+        stores: user.stores,
+    });
 }
 
 function logAuthLoginFailed(req, username, reason = 'invalid credentials') {
     const ip = getRequestIp(req);
     const who = String(username || '').trim() || '(no username)';
     console.log(`[Auth] Login failed: ${who} — ${reason} from ${ip}`);
+    if (who && who !== '(no username)') {
+        appendAuthEvent({
+            username: who,
+            success: false,
+            ip,
+            reason,
+        });
+    }
 }
 
 function ipAllowlistMiddleware(req, res, next) {
@@ -1240,7 +1269,7 @@ function syncSssgWeeklyForStore(store, { finalize = false } = {}) {
     }
 }
 
-function capturePostCloseSnapshot(store) {
+function capturePostCloseSnapshot(store, options = {}) {
     if (!storeHasMeaningfulData(store)) return;
     const sssgPercent =
         store.sssgPercent != null ? store.sssgPercent : computeSssgForStore(store);
@@ -1257,6 +1286,18 @@ function capturePostCloseSnapshot(store) {
         fsSync.writeFileSync(postCloseSnapshotPath(store.storeNumber), JSON.stringify(snap, null, 2), 'utf8');
     } catch (err) {
         console.warn(`[Dashboard] Could not write post-close snapshot for ${store.storeNumber}:`, err.message);
+    }
+    if (options.recordForecastHistory) {
+        try {
+            recordForecastHistoryFromStore(store, options.historyDateKey, {
+                source: options.historySource || 'live-scrape',
+            });
+        } catch (err) {
+            console.warn(
+                `[Forecast] Could not record hourly history for ${store.storeNumber}:`,
+                err.message
+            );
+        }
     }
 }
 
@@ -1390,7 +1431,7 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
                 restorePostCloseSnapshot(store);
             }
             if (storeHasMeaningfulData(store)) {
-                capturePostCloseSnapshot(store);
+                capturePostCloseSnapshot(store, { recordForecastHistory: true });
             }
             store.scrapePhase = 'retain';
         } else {
@@ -2741,6 +2782,262 @@ app.delete('/api/account/managed-accounts', (req, res) => {
     }
     deleteMmxCredentialsForUser(result.username);
     res.json({ success: true, storeNumber: normalizeStoreKey(store), username: result.username });
+});
+
+app.patch('/api/account/managed-accounts', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    const store = String(req.body?.store || '').trim();
+    const username = String(req.body?.username || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    const patch = {};
+    if (req.body?.accountLevel != null) patch.accountLevel = req.body.accountLevel;
+    if (req.body?.stores != null) patch.stores = req.body.stores;
+    const result = updateManagedStoreAccount(user, store, username, patch);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({ success: true, ...result, storeNumber: normalizeStoreKey(store) });
+});
+
+app.get('/api/account/login-history', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    const store = String(req.query.store || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    const result = listLoginHistoryForStore(user, store, {
+        username: req.query.username,
+        limit: req.query.limit,
+    });
+    if (!result.ok) {
+        res.status(403).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({ success: true, ...result });
+});
+
+app.get('/api/admin/forecast/status', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const storeNumbers = getEffectiveStoresForUser(user).filter((s) => !isTestStore(s));
+    const payload = buildStatusForStores(storeNumbers);
+    const history = buildHistoryCoverageForStores(storeNumbers);
+    res.json({ success: true, ...payload, history });
+});
+
+app.get('/api/admin/forecast/history-grid', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const store = String(req.query.store || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    const weekdayRaw = req.query.weekday;
+    const weekday = weekdayRaw === undefined || weekdayRaw === '' ? undefined : Number(weekdayRaw);
+    if (weekdayRaw !== undefined && weekdayRaw !== '' && (!Number.isFinite(weekday) || weekday < 0 || weekday > 6)) {
+        res.status(400).json({ success: false, error: 'weekday must be 0–6 (Sun–Sat).' });
+        return;
+    }
+    const maxWeeks = Number(req.query.weeks) || 5;
+    const includeForecast = req.query.includeForecast !== '0';
+    try {
+        const grid = buildHistoryHourGrid(store, { weekday, maxWeeks });
+        let forecastWeek = null;
+        if (includeForecast) {
+            try {
+                const preview = previewForecastForStore(store);
+                forecastWeek = {
+                    targetWeeks: preview.targetWeeks,
+                    grid: preview.grid,
+                };
+            } catch (err) {
+                forecastWeek = { error: err.message || 'Could not build forecast preview.' };
+            }
+        }
+        res.json({ success: true, grid, forecastWeek });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message || 'Could not build history grid.' });
+    }
+});
+
+app.post('/api/admin/forecast/preview', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const allowed = new Set(getEffectiveStoresForUser(user).map(String));
+    const requested = Array.isArray(req.body?.storeNumbers) ? req.body.storeNumbers.map(String) : [];
+    const storeNumbers = requested.filter((s) => allowed.has(String(s)) && !isTestStore(s));
+    if (!storeNumbers.length) {
+        res.status(400).json({ success: false, error: 'No valid stores selected.' });
+        return;
+    }
+    const previews = previewForecastForStores(storeNumbers);
+    const ok = previews.filter((row) => row.ok);
+    if (!ok.length) {
+        res.status(400).json({
+            success: false,
+            error: previews[0]?.error || 'Could not build forecast preview.',
+            previews,
+        });
+        return;
+    }
+    res.json({
+        success: true,
+        targetWeeks: ok[0]?.targetWeeks || getTargetForecastWeekStarts(),
+        previews,
+    });
+});
+
+app.post('/api/admin/forecast/run', async (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const allowed = new Set(getEffectiveStoresForUser(user).map(String));
+    const requested = Array.isArray(req.body?.storeNumbers) ? req.body.storeNumbers.map(String) : [];
+    const storeNumbers = requested.filter((s) => allowed.has(String(s)) && !isTestStore(s));
+    if (!storeNumbers.length) {
+        res.status(400).json({ success: false, error: 'No valid stores selected.' });
+        return;
+    }
+    if (isMmxResourceBusy()) {
+        res.status(409).json({ success: false, error: 'Macromatix is busy with another task. Try again shortly.' });
+        return;
+    }
+    abortCompetingMmxWork('forecast tool');
+    acquireMmxResource('forecast tool');
+
+    const streamProgress = req.body?.streamProgress === true;
+    const writeSse = (event, data) => {
+        if (!streamProgress) return;
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    if (streamProgress) {
+        res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-cache, no-transform');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders?.();
+        writeSse('started', { storeNumbers, targetWeeks: getTargetForecastWeekStarts() });
+    }
+
+    try {
+        const headed =
+            req.body?.headed === true ||
+            /^(0|false|no|off)$/i.test(String(process.env.FORECAST_SCRAPER_HEADLESS ?? '').trim());
+        const results = await runForecastForStores(storeNumbers, {
+            completedBy: user.username,
+            headless: headed ? false : true,
+            keepBrowserOpen: headed && req.body?.keepBrowserOpen === true,
+            onProgress: (payload) => writeSse('progress', payload),
+        });
+        const failed = results.filter((row) => !row.ok);
+        if (failed.length === results.length) {
+            const payload = {
+                success: false,
+                error: failed[0]?.error || 'Forecast run failed for all stores.',
+                results,
+            };
+            if (streamProgress) {
+                writeSse('complete', payload);
+                res.end();
+                return;
+            }
+            res.status(502).json(payload);
+            return;
+        }
+        const payload = { success: true, results, targetWeeks: getTargetForecastWeekStarts() };
+        if (streamProgress) {
+            writeSse('complete', payload);
+            res.end();
+            return;
+        }
+        res.json(payload);
+    } catch (err) {
+        const payload = { success: false, error: err.message || 'Forecast run failed.' };
+        if (streamProgress) {
+            writeSse('error', payload);
+            res.end();
+            return;
+        }
+        res.status(500).json(payload);
+    } finally {
+        releaseMmxResource('forecast tool');
+    }
+});
+
+app.get('/api/admin/build-to/catalog', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const store = String(req.query.store || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    res.json({ success: true, ...buildAdminBuildToCatalog(store) });
+});
+
+app.get('/api/admin/build-to/overrides', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const doc = readOverridesDoc();
+    const filtered = filterOverridesForActor(
+        doc,
+        getEffectiveStoresForUser(user),
+        canUserEditGlobalBuildTo(user)
+    );
+    res.json({ success: true, overrides: filtered });
+});
+
+app.put('/api/admin/build-to/overrides', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const allowedStores = new Set(getEffectiveStoresForUser(user).map(String));
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const patch = { stores: {} };
+
+    if (body.global && canUserEditGlobalBuildTo(user)) {
+        patch.global = body.global;
+    } else if (body.global && !canUserEditGlobalBuildTo(user)) {
+        res.status(403).json({ success: false, error: 'Area access or above is required for global build-to changes.' });
+        return;
+    }
+
+    if (body.stores && typeof body.stores === 'object') {
+        for (const [storeNumber, storePatch] of Object.entries(body.stores)) {
+            const store = normalizeStoreKey(storeNumber);
+            if (!store || !allowedStores.has(String(store))) {
+                res.status(403).json({ success: false, error: `Store ${storeNumber} is outside your scope.` });
+                return;
+            }
+            patch.stores[store] = storePatch;
+        }
+    }
+
+    const overrides = patchOverrides(patch);
+    appendAccountAudit({
+        action: 'update-build-to-overrides',
+        updatedBy: user.username,
+        patch,
+    });
+    res.json({ success: true, overrides: filterOverridesForActor(
+        overrides,
+        getEffectiveStoresForUser(user),
+        canUserEditGlobalBuildTo(user)
+    ) });
 });
 
 app.get('/api/account/create-options', (req, res) => {

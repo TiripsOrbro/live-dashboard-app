@@ -1012,8 +1012,8 @@
     }
 
     function renderShell(promoBannerHtml) {
-        const viewAccountsBtn = meProfile?.canViewCrossStoreAccounts
-            ? '<button type="button" class="mic-account-btn" id="mic-view-accounts-btn">View accounts</button>'
+        const adminMenuHost = meProfile?.canAccessAdminMenu
+            ? '<span id="mic-admin-menu-header-host"></span>'
             : '';
         app.innerHTML = `
         <div class="mic-page mic-page--admin" id="mic-page">
@@ -1026,7 +1026,7 @@
                 </div>
                 ${promoBannerHtml || ''}
                 <div class="mic-header-actions">
-                    ${viewAccountsBtn}
+                    ${adminMenuHost}
                     <div class="mic-clock">
                         <span class="mic-clock-label">Current time</span>
                         <span class="mic-clock-value" id="mic-clock">${formatTime(new Date())}</span>
@@ -1038,20 +1038,20 @@
         </div>
         ${global.MicSettings?.renderCog?.() || ''}
         ${global.MicSettings?.renderPanel?.({
-            viewAccountsHidden: !meProfile?.canViewCrossStoreAccounts,
+            adminMenuHidden: !meProfile?.canAccessAdminMenu,
             darkModeHint: 'Dark background and tiles on this MIC page.',
         }) || ''}`;
 
-        document.getElementById('mic-view-accounts-btn')?.addEventListener('click', () => {
-            global.DashboardAccount?.openViewAccountsModal?.({
-                isAdmin: Boolean(meProfile?.canViewCrossStoreAccounts),
+        if (meProfile?.canAccessAdminMenu) {
+            global.AdminMenu?.mountHeaderTrigger?.(document.getElementById('mic-admin-menu-header-host'), {
+                hidden: false,
             });
-        });
+        }
         global.MicSettings?.bind?.({
             getViewAccountsOptions: () => ({
                 isAdmin: Boolean(meProfile?.canViewCrossStoreAccounts),
             }),
-            resolveViewAccountsVisibility: !meProfile?.canViewCrossStoreAccounts,
+            resolveAdminMenuVisibility: !meProfile?.canAccessAdminMenu,
         });
         global.MicSettings?.initPreferences?.();
     }

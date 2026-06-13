@@ -14,6 +14,7 @@ const {
 
 const USERS_PATH = path.join(paths.root, '.Users');
 const ACCOUNT_AUDIT_LOG = path.join(paths.users.data, 'account-audit.log');
+const AUTH_EVENTS_LOG = path.join(paths.users.data, 'auth-events.log');
 const ACCOUNTS_FILE_NAME = 'accounts.users';
 
 const ROLE_FOLDER_ORDER = ['admins', 'area-coaches', 'stores', 'managers', 'mics', 'tms'];
@@ -801,6 +802,64 @@ function appendAccountAudit(entry) {
     }
 }
 
+function appendAuthEvent(entry) {
+    try {
+        fs.mkdirSync(path.dirname(AUTH_EVENTS_LOG), { recursive: true });
+        fs.appendFileSync(AUTH_EVENTS_LOG, `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`, 'utf8');
+    } catch (err) {
+        console.warn('[Auth] Auth events log write failed:', err.message);
+    }
+}
+
+function readAuthEventsForUser(username, limit = 50) {
+    const name = String(username || '').trim().toLowerCase();
+    const cap = Math.min(Math.max(Number(limit) || 50, 1), 200);
+    if (!name || !fs.existsSync(AUTH_EVENTS_LOG)) return [];
+    try {
+        const lines = fs.readFileSync(AUTH_EVENTS_LOG, 'utf8').split('\n').filter(Boolean);
+        const out = [];
+        for (let i = lines.length - 1; i >= 0 && out.length < cap; i -= 1) {
+            try {
+                const row = JSON.parse(lines[i]);
+                if (String(row.username || '').trim().toLowerCase() !== name) continue;
+                out.push(row);
+            } catch {
+                /* skip malformed */
+            }
+        }
+        return out;
+    } catch {
+        return [];
+    }
+}
+
+function accountCreatedAtFromAudit(username) {
+    const name = String(username || '').trim().toLowerCase();
+    if (!name || !fs.existsSync(ACCOUNT_AUDIT_LOG)) return null;
+    try {
+        const lines = fs.readFileSync(ACCOUNT_AUDIT_LOG, 'utf8').split('\n').filter(Boolean);
+        for (const line of lines) {
+            try {
+                const row = JSON.parse(line);
+                if (row.action !== 'create-account') continue;
+                if (String(row.username || '').trim().toLowerCase() !== name) continue;
+                return row.at || null;
+            } catch {
+                /* skip */
+            }
+        }
+    } catch {
+        /* ignore */
+    }
+    return null;
+}
+
+function lastLoginAtForUser(username) {
+    const events = readAuthEventsForUser(username, 20);
+    const hit = events.find((row) => row.success !== false);
+    return hit?.at || null;
+}
+
 function isPrimaryStoreLogin(user) {
     if (!user || isAdminUser(user)) return false;
     return isStorePatternUsername(user.username);
@@ -866,6 +925,15 @@ function isRealDashboardUser(user) {
 function canUserCreateAccounts(user) {
     if (!isRealDashboardUser(user)) return false;
     return accountLevelRank(getAccountLevel(user)) >= accountLevelRank('store');
+}
+
+function canUserAccessAdminMenu(user) {
+    return canUserCreateAccounts(user);
+}
+
+function canUserEditGlobalBuildTo(user) {
+    if (!isRealDashboardUser(user)) return false;
+    return accountLevelRank(getAccountLevel(user)) >= accountLevelRank('area');
 }
 
 function buildCreateAccountParentFromUser(user, via = 'session') {
@@ -1061,9 +1129,19 @@ function listManagedStoreAccounts(storeNumber) {
         .map((block) => {
             const secrets = readUserAccountSecrets(block.username);
             const fullName = fullNameFromSecrets(secrets);
+            const username = String(block.username || '').trim();
+            const normalized = normalizeUser(block);
+            const stores =
+                normalized.stores === '*'
+                    ? []
+                    : [...new Set((normalized.stores || []).map(String))].filter(Boolean);
             return {
-                username: String(block.username || '').trim(),
+                username,
                 nickname: fullName || String(block.displayName || block.username || '').trim(),
+                accountLevel: getAccountLevel(block),
+                stores,
+                createdAt: accountCreatedAtFromAudit(username),
+                lastLoginAt: lastLoginAtForUser(username),
             };
         })
         .filter((row) => row.username)
@@ -1110,6 +1188,123 @@ function deleteManagedStoreAccount(actor, storeNumber, targetUsername) {
         deletedBy: String(actor?.username || '').trim(),
     });
     return { ok: true, username: removed.username, nickname: removed.displayName || removed.username };
+}
+
+function findManagedAccountBlock(storeNumber, targetUsername) {
+    const store = normalizeStoreKey(storeNumber);
+    const target = String(targetUsername || '').trim();
+    if (!store || !target) return null;
+    const blocks = parseUsersFileBlocks(readUsersFileText());
+    const index = blocks.findIndex(
+        (block) =>
+            blockGrantsStore(block, store) &&
+            isManagedStoreAccountBlock(block) &&
+            usernameMatches(block.username, target)
+    );
+    if (index < 0) return null;
+    return { blocks, index, block: blocks[index] };
+}
+
+function updateManagedStoreAccount(actor, storeNumber, targetUsername, patch = {}) {
+    const store = normalizeStoreKey(storeNumber);
+    const target = String(targetUsername || '').trim();
+    if (!store) {
+        return { ok: false, error: 'Store is required.' };
+    }
+    if (!target) {
+        return { ok: false, error: 'Account username is required.' };
+    }
+    if (!canUserManageStoreAccounts(actor, store)) {
+        return { ok: false, error: 'You do not have permission to manage accounts for this store.' };
+    }
+    if (isStorePatternUsername(target) || isCbUsername(target)) {
+        return { ok: false, error: 'Primary store logins cannot be edited from the dashboard.' };
+    }
+
+    const found = findManagedAccountBlock(store, target);
+    if (!found) {
+        return { ok: false, error: 'Account not found for this store.' };
+    }
+
+    const { blocks, index, block } = found;
+    const nextLevel = patch.accountLevel != null ? normalizeAccountLevel(patch.accountLevel) : null;
+    const nextStoresRaw = patch.stores != null ? patch.stores : null;
+
+    if (nextLevel) {
+        if (!canActorAssignAccountLevel(actor, nextLevel)) {
+            return { ok: false, error: 'You cannot assign that account level.' };
+        }
+        block.accountLevel = nextLevel;
+        const inferred = inferAccountLevel(block);
+        block.role =
+            nextLevel === 'it'
+                ? 'admin'
+                : nextLevel === 'market'
+                  ? 'market'
+                  : nextLevel === 'area'
+                    ? 'area'
+                    : 'store';
+        block.accessType =
+            nextLevel === 'it' ? 'super' : nextLevel === 'market' ? 'market' : nextLevel === 'area' ? 'area' : 'store';
+        if (!inferred) block.accountLevel = nextLevel;
+    }
+
+    if (Array.isArray(nextStoresRaw)) {
+        const allowed = new Set(getEffectiveStoresForUser(actor).map(String));
+        const cleaned = [...new Set(nextStoresRaw.map((s) => normalizeStoreKey(s)).filter(Boolean))];
+        if (!cleaned.length) {
+            return { ok: false, error: 'At least one store is required.' };
+        }
+        for (const s of cleaned) {
+            if (!allowed.has(String(s))) {
+                return { ok: false, error: `Store ${s} is outside your scope.` };
+            }
+        }
+        block.stores = cleaned;
+        block.accessType = 'store';
+        block.role = 'store';
+        if (!nextLevel) {
+            block.accountLevel = normalizeAccountLevel(block.accountLevel) || 'mic';
+        }
+    }
+
+    blocks[index] = block;
+    writeUsersFileText(serializeUsersFile(blocks));
+    appendAccountAudit({
+        action: 'update-managed-account',
+        username: block.username,
+        store,
+        updatedBy: String(actor?.username || '').trim(),
+        accountLevel: getAccountLevel(block),
+        stores: block.stores,
+    });
+    return {
+        ok: true,
+        username: block.username,
+        accountLevel: getAccountLevel(block),
+        stores: block.stores === '*' ? [] : [...(block.stores || [])].map(String),
+    };
+}
+
+function listLoginHistoryForStore(actor, storeNumber, options = {}) {
+    const store = normalizeStoreKey(storeNumber);
+    if (!store || !canUserManageStoreAccounts(actor, store)) {
+        return { ok: false, error: 'You do not have permission to view login history for this store.' };
+    }
+    const usernameFilter = String(options.username || '').trim();
+    const limit = Math.min(Math.max(Number(options.limit) || 50, 1), 200);
+    const accounts = listManagedStoreAccounts(store);
+    const usernames = usernameFilter
+        ? accounts.filter((row) => usernameMatches(row.username, usernameFilter)).map((row) => row.username)
+        : accounts.map((row) => row.username);
+    const events = [];
+    for (const name of usernames) {
+        for (const row of readAuthEventsForUser(name, limit)) {
+            events.push({ ...row, username: name });
+        }
+    }
+    events.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+    return { ok: true, storeNumber: store, events: events.slice(0, limit) };
 }
 
 function changeUserPassword(username, currentPassword, newPassword) {
@@ -1926,6 +2121,8 @@ function userProfileForClient(user) {
         canCreateAccount: canUserCreateAccounts(user),
         canViewManagedAccounts: canUserCreateAccounts(user) || canViewCrossStoreAccounts(user),
         canViewCrossStoreAccounts: canViewCrossStoreAccounts(user),
+        canAccessAdminMenu: canUserAccessAdminMenu(user),
+        canEditGlobalBuildTo: canUserEditGlobalBuildTo(user),
         canAccessDfsc: canUserAccessDfsc(user),
         accountLevel: getAccountLevel(user),
         canCompleteAudits: canUserCompleteAudits(user),
@@ -2011,10 +2208,17 @@ module.exports = {
     canActorAssignAccountLevel,
     requiresMmxForAccountLevel,
     canUserCreateAccounts,
+    canUserAccessAdminMenu,
+    canUserEditGlobalBuildTo,
+    appendAuthEvent,
+    readAuthEventsForUser,
+    appendAccountAudit,
     canUserManageStoreAccounts,
     findPrimaryStoreDashboardUsername,
     listStoreMacromatixDashboardUsers,
     listManagedStoreAccounts,
+    updateManagedStoreAccount,
+    listLoginHistoryForStore,
     deleteManagedStoreAccount,
     isRealDashboardUser,
     isPrimaryStoreLogin,

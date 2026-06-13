@@ -1,0 +1,12 @@
+{
+  "weekStart": "2026-06-22",
+  "stores": {
+    "3806": {
+      "2026-06-22": {
+        "completed": true,
+        "completedAt": "2026-06-13T04:53:27.743Z",
+        "completedBy": null
+      }
+    }
+  }
+}

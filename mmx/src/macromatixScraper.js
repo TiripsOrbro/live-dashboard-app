@@ -2842,8 +2842,8 @@ async function openMacromatixBrowser(options = {}) {
     );
 
     const launchOpts = getPuppeteerLaunchOptions({
-        ...(options.browserOptions || {}),
-        skipSlowMo: options.browserOptions?.skipSlowMo !== false,
+        ...(options.browserOptions || options.launchOptions || {}),
+        skipSlowMo: options.browserOptions?.skipSlowMo ?? options.launchOptions?.skipSlowMo,
     });
     const browser = await puppeteer.launch(launchOpts);
     if (!launchOpts.headless) {
@@ -2889,6 +2889,8 @@ module.exports.isMacromatixLoginPage = isMacromatixLoginPage;
 module.exports.closeBrowserQuietly = closeBrowserQuietly;
 module.exports.probePendingOrdersForStores = probePendingOrdersForStores;
 module.exports.selectStoreOnPage = selectStoreOnPage;
+module.exports.setScheduledOrdersToYmd = setScheduledOrdersToYmd;
+module.exports.openDayViewAndReadSales = openDayViewAndReadSales;
 module.exports.confirmStoreContextOnPage = confirmStoreContextOnPage;
 module.exports.resolveStoreOnCurrentPage = resolveStoreOnCurrentPage;
 module.exports.getLastKnownPendingVendors = getLastKnownPendingVendors;

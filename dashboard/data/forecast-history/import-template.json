@@ -1,0 +1,25 @@
+{
+  "_note": "Area 22 hourly sales backfill for forecast shaping. Import: npm run import-forecast-history -- dashboard/data/forecast-history/your-file.json",
+  "_format": {
+    "actual": "Hourly actual $ for trading window — index 0 = openHour (e.g. 10am). Length = closeHour - openHour.",
+    "actualRaw": "Optional Macromatix Labour Scheduler array (index 0 = 5AM). Use actualFormat: raw-mmx if sending raw only.",
+    "openHour": "Store open hour (24h). Default 10 if omitted.",
+    "closeHour": "Store close hour (24h). Default 22 if omitted.",
+    "actualTotal": "Optional day total; computed from actual[] if omitted."
+  },
+  "_area22Stores": ["3806", "3808", "3811", "3901", "3902", "3903", "3904"],
+  "days": {
+    "2026-05-12": {
+      "3811": {
+        "openHour": 10,
+        "closeHour": 22,
+        "actual": [120.5, 340.2, 580.0, 620.1, 410.5, 380.0, 720.4, 890.2, 950.0, 880.1, 620.0, 410.3]
+      },
+      "3806": {
+        "openHour": 10,
+        "closeHour": 22,
+        "actual": [95.0, 310.0, 520.0, 600.0, 400.0, 360.0, 680.0, 850.0, 920.0, 840.0, 590.0, 380.0]
+      }
+    }
+  }
+}

@@ -20,9 +20,10 @@ function parseMoneyText(text) {
 /**
  * Navigate to the Angular SPA; fall back to SPA login if ASP.NET session cookies are not shared.
  */
-async function ensureSpaAuthenticated(page, credentials) {
+async function ensureSpaAuthenticated(page, credentials, options = {}) {
+    const quick = options.quick === true;
     await page.goto(CHANGE_STORE_URL, SPA_GOTO_OPTS);
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(quick ? 700 : 1500);
 
     const onLogin = await page.evaluate(() => {
         const hasPin = document.querySelector('input[type="password"], #Login_Password, [ng-click*="Login"]');
@@ -34,7 +35,7 @@ async function ensureSpaAuthenticated(page, credentials) {
         console.log('[SSSG] SPA login required — signing in...');
         await getMacromatixScraper().loginPage(page, credentials.username, credentials.password);
         await page.goto(CHANGE_STORE_URL, SPA_GOTO_OPTS);
-        await page.waitForTimeout(1500);
+        await page.waitForTimeout(quick ? 700 : 1500);
     }
 
     await page.waitForFunction(
@@ -96,7 +97,8 @@ async function listStoresOnChangeStorePage(page) {
 /**
  * Click Select for the given store on the Change Store page.
  */
-async function selectStoreOnSpa(page, storeNumber) {
+async function selectStoreOnSpa(page, storeNumber, options = {}) {
+    const quick = options.quick === true;
     const target = String(storeNumber || '').trim().replace(/\D/g, '');
     if (!target) throw new Error('Store number required for SPA store selection');
 
@@ -115,7 +117,7 @@ async function selectStoreOnSpa(page, storeNumber) {
             }
         }
     }, target);
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(quick ? 250 : 800);
 
     const clicked = await page.evaluate((num) => {
         const rows = [...document.querySelectorAll('tr, [role="row"]')];
@@ -153,9 +155,9 @@ async function selectStoreOnSpa(page, storeNumber) {
         throw new Error(`Select button not found for store ${target} (visible on Change Store page: ${visible})`);
     }
 
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(quick ? 500 : 2000);
     await page
-        .waitForFunction((num) => (document.body?.innerText || '').includes(num), { timeout: 15000 }, target)
+        .waitForFunction((num) => (document.body?.innerText || '').includes(num), { timeout: quick ? 8000 : 15000 }, target)
         .catch(() => {});
 }
 

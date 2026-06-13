@@ -86,7 +86,7 @@
                 <div class="account-menu-panel" hidden>
                     <button type="button" data-action="change-password">Change password</button>
                     <button type="button" data-action="create-account" hidden>Create account</button>
-                    <button type="button" data-action="view-accounts" hidden>View accounts</button>
+                    <button type="button" data-action="admin-menu" hidden>Admin menu</button>
                     <button type="button" data-action="logout">Sign out</button>
                 </div>
             </div>
@@ -110,17 +110,17 @@
             panel.hidden = true;
             openCreateAccountModal();
         });
-        panel.querySelector('[data-action="view-accounts"]')?.addEventListener('click', () => {
+        panel.querySelector('[data-action="admin-menu"]')?.addEventListener('click', () => {
             panel.hidden = true;
-            openViewAccountsModal(options.viewAccounts || {});
+            window.AdminMenu?.open?.();
         });
         fetchProfile()
             .then((data) => {
                 if (data.canCreateAccount) {
                     panel.querySelector('[data-action="create-account"]').hidden = false;
                 }
-                if (data.canViewManagedAccounts) {
-                    panel.querySelector('[data-action="view-accounts"]').hidden = false;
+                if (data.canAccessAdminMenu) {
+                    panel.querySelector('[data-action="admin-menu"]').hidden = false;
                 }
                 if (options.onProfile) options.onProfile(data);
             })

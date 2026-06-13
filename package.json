@@ -1,6 +1,6 @@
 {
   "name": "live-dashboard-app",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Live store dashboard that scrapes Macromatix sales/report data and serves store, area, and audit views.",
   "main": "src/app.js",
   "scripts": {
@@ -37,6 +37,12 @@
     "upsell-score-sample": "node scripts/upsell-score-sample.js",
     "probe-sssg-grid": "node scripts/probe-sssg-grid.js",
     "import-sssg-weekly": "node scripts/import-sssg-weekly.js",
+    "import-forecast-history": "node scripts/import-forecast-history.js",
+    "import-forecast-history-csv": "node scripts/import-forecast-history-csv.js",
+    "import-forecast-history-xlsx": "node scripts/import-forecast-history-xlsx.js",
+    "probe-forecast-submit": "node scripts/probe-forecast-submit.js",
+    "probe-forecast-date": "node scripts/probe-forecast-date.js",
+    "benchmark-forecast-submit": "node scripts/benchmark-forecast-submit.js",
     "migrate-domain-layout": "node scripts/migrate-domain-layout.js",
     "split-users-file": "node users/scripts/split-users-file.js",
     "import-audit-pdf": "node tacaudit/scripts/import-audit-pdf.js"

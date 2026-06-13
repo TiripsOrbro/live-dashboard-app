@@ -24,6 +24,7 @@ const {
     allLookupKeys,
 } = require('./itemCodes');
 const { buildToOverridesForStore, mergeBuildToRules } = require('./buildToStoreOverrides');
+const { adminOverridesForStore } = require('./buildToAdminOverrides');
 const {
     findIseRowForCatalogItem,
     resolveCatalogItemForIseRow,
@@ -390,6 +391,9 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
     const countedCodes = allCountedItemCodes();
     const catalogRules = buildCatalogBuildToIndex();
     const storeOverrideMap = buildToOverridesForStore(storeNumber);
+    for (const [key, rule] of adminOverridesForStore(storeNumber)) {
+        storeOverrideMap.set(key, mergeBuildToRules(storeOverrideMap.get(key), rule));
+    }
     const manualCounts = await loadManualCountsForStore(storeNumber, dateKey);
     let manualCountItems = 0;
     const catalogItems = allBuildToCatalogItems();

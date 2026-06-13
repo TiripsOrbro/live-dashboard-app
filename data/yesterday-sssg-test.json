@@ -1,0 +1,16 @@
+{
+  "capturedAt": "2026-06-05T23:51:30.583Z",
+  "tradeDate": "yesterday",
+  "stores": [
+    {
+      "storeNumber": "3806",
+      "storeName": "Dandenong South",
+      "actualTotal": 8883.87,
+      "salesLyHourlyTotal": 0,
+      "salesLyDayTotal": 0,
+      "sssgPercent": null,
+      "wtdSssgPercent": null,
+      "error": null
+    }
+  ]
+}

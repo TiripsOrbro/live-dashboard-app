@@ -1,0 +1,550 @@
+.admin-menu-panel .admin-menu-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.admin-menu-panel .admin-menu-footer {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.admin-menu-panel h2 {
+    margin: 0 0 0.75rem;
+}
+
+.admin-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 12000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.admin-modal-backdrop[hidden] {
+    display: none !important;
+}
+
+.admin-modal {
+    width: min(960px, 100%);
+    max-height: min(90vh, 820px);
+    overflow: auto;
+    background: #fff;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+
+.admin-modal--wide {
+    width: min(1080px, 100%);
+}
+
+.admin-modal h2 {
+    margin: 0 0 1rem;
+    font-size: 1.25rem;
+}
+
+.admin-modal-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.admin-modal-toolbar select {
+    min-width: 12rem;
+}
+
+.admin-modal-error {
+    color: #b00020;
+    margin: 0.5rem 0 0;
+}
+
+.admin-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.admin-modal-actions--split {
+    justify-content: space-between;
+}
+
+.admin-btn-primary {
+    background: #7a3eb1;
+    border-color: #7a3eb1;
+    color: #fff;
+}
+
+.admin-btn-primary:hover:not(:disabled) {
+    filter: brightness(1.05);
+}
+
+.admin-btn-primary:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+html.mic-dark-mode .admin-btn-primary {
+    background: #9b59d0;
+    border-color: #9b59d0;
+    color: #fff;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.admin-table th,
+.admin-table td {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    padding: 0.45rem 0.5rem;
+    text-align: left;
+    vertical-align: top;
+}
+
+.admin-table th {
+    font-weight: 600;
+}
+
+.admin-status-dot {
+    display: inline-block;
+    width: 0.85rem;
+    height: 0.85rem;
+    border-radius: 50%;
+    vertical-align: middle;
+}
+
+.admin-status-dot--ok {
+    background: #2e7d32;
+}
+
+.admin-status-dot--bad {
+    background: #c62828;
+}
+
+.admin-status-dot--pending {
+    background: #f9a825;
+}
+
+.admin-accounts-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.admin-accounts-list li {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    align-items: center;
+    padding: 0.65rem 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.admin-accounts-meta {
+    display: block;
+    font-size: 0.85rem;
+    color: rgba(0, 0, 0, 0.55);
+}
+
+.admin-tabs {
+    display: flex;
+    gap: 0.35rem;
+    margin-bottom: 0.75rem;
+}
+
+.admin-tab {
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    background: #f5f5f5;
+    border-radius: 999px;
+    padding: 0.35rem 0.85rem;
+    cursor: pointer;
+}
+
+.admin-tab.is-active {
+    background: #7a3eb1;
+    border-color: #7a3eb1;
+    color: #fff;
+}
+
+html.mic-dark-mode .admin-modal {
+    background: #1e1e24;
+    color: #f2f2f2;
+}
+
+html.mic-dark-mode .admin-table th,
+html.mic-dark-mode .admin-table td,
+html.mic-dark-mode .admin-accounts-list li {
+    border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+html.mic-dark-mode .admin-tab {
+    background: #2a2a32;
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #f2f2f2;
+}
+
+.admin-modal-backdrop--stacked {
+    z-index: 12001;
+}
+
+.admin-modal--history {
+    width: min(1200px, 100%);
+}
+
+.admin-forecast-history-section {
+    margin-top: 1.25rem;
+}
+
+.admin-forecast-history-section:first-child {
+    margin-top: 0;
+}
+
+.admin-forecast-history-heading {
+    margin: 0 0 0.5rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.admin-modal--history .admin-forecast-preview-summary {
+    margin: 0 0 0.5rem;
+}
+
+.admin-forecast-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.admin-history-grid-wrap {
+    overflow: auto;
+    max-height: min(55vh, 520px);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+}
+
+.admin-history-grid th,
+.admin-history-grid td {
+    white-space: nowrap;
+}
+
+.admin-history-grid thead th {
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 1;
+}
+
+.admin-history-hour {
+    position: sticky;
+    left: 0;
+    background: #fff;
+    z-index: 1;
+    font-weight: 600;
+}
+
+.admin-history-grid thead th:first-child {
+    left: 0;
+    z-index: 2;
+}
+
+.admin-history-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.admin-history-total {
+    font-weight: 600;
+}
+
+.admin-history-col-label {
+    display: block;
+}
+
+.admin-forecast-area-tabs {
+    margin: 0 0 1rem;
+}
+
+.admin-modal--forecast-preview {
+    width: min(1200px, 100%);
+    padding: 0;
+    overflow: hidden;
+    background: var(--grey, #ececec);
+}
+
+.admin-modal--forecast-preview .admin-forecast-preview-header {
+    padding: 1.25rem 1.5rem 0.75rem;
+    background: #fff;
+}
+
+.admin-modal--forecast-preview .admin-forecast-preview-header h2 {
+    margin: 0 0 0.35rem;
+    font-size: var(--font-size-2, 1.25rem);
+    font-weight: var(--font-weight-page-title, 700);
+    letter-spacing: 0.03em;
+}
+
+.admin-modal--forecast-preview .admin-forecast-preview-body-wrap {
+    padding: 0 1.5rem 1.25rem;
+}
+
+.admin-forecast-store-tabs {
+    padding: 0 1.5rem 0.75rem;
+    background: #fff;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.admin-forecast-store-tabs .admin-store-tabs {
+    margin: 0;
+}
+
+.admin-forecast-preview-summary {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+    padding: 0.85rem 1rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--tb-purple, #7a3eb1) 12%, white);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tb-purple, #7a3eb1) 22%, transparent);
+}
+
+.admin-forecast-week-total-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--charcoal, #1a1a1a) 62%, white);
+}
+
+.admin-forecast-week-total-value {
+    font-size: 1.65rem;
+    font-weight: var(--font-weight-semibold, 700);
+    font-variant-numeric: tabular-nums;
+    color: var(--charcoal, #1a1a1a);
+    line-height: 1.1;
+}
+
+.admin-forecast-preview-grid-wrap {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.admin-forecast-preview-grid-wrap .admin-history-grid thead th {
+    background: color-mix(in srgb, var(--tb-purple-light, #9b63d6) 14%, white);
+    font-weight: var(--font-weight-semibold, 600);
+}
+
+.admin-forecast-preview-grid-wrap .admin-history-total {
+    background: color-mix(in srgb, var(--grey, #ececec) 55%, white);
+}
+
+.admin-modal--forecast-preview .admin-modal-actions {
+    padding: 1rem 1.5rem;
+    background: #fff;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    margin-top: 0;
+}
+
+.admin-modal--forecast-preview #admin-forecast-preview-error {
+    margin: 0.5rem 1.5rem 0;
+}
+
+html.mic-dark-mode .admin-modal--forecast-preview {
+    background: #141418;
+}
+
+html.mic-dark-mode .admin-modal--forecast-preview .admin-forecast-preview-header,
+html.mic-dark-mode .admin-modal--forecast-preview .admin-forecast-store-tabs,
+html.mic-dark-mode .admin-modal--forecast-preview .admin-modal-actions {
+    background: #1e1e24;
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.mic-dark-mode .admin-forecast-preview-grid-wrap {
+    background: #1e1e24;
+}
+
+html.mic-dark-mode .admin-forecast-preview-summary {
+    background: color-mix(in srgb, var(--tb-purple-light, #9b63d6) 18%, #1e1e24);
+}
+
+html.mic-dark-mode .admin-forecast-preview-grid-wrap .admin-history-grid thead th {
+    background: color-mix(in srgb, var(--tb-purple-light, #9b63d6) 22%, #1e1e24);
+}
+
+html.mic-dark-mode .admin-history-grid-wrap {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.mic-dark-mode .admin-history-grid thead th,
+html.mic-dark-mode .admin-history-hour {
+    background: #1e1e24;
+}
+
+.admin-modal--forecast-progress {
+    max-height: min(92vh, 820px);
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-forecast-progress-layout {
+    display: grid;
+    grid-template-columns: minmax(160px, 220px) 1fr;
+    gap: 1rem;
+    min-height: 280px;
+    max-height: 52vh;
+}
+
+.admin-forecast-progress-days {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.admin-forecast-progress-day {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.15rem 0.5rem;
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    font-size: 0.88rem;
+}
+
+.admin-forecast-progress-day:last-child {
+    border-bottom: none;
+}
+
+.admin-forecast-progress-day--filling,
+.admin-forecast-progress-day--saving {
+    background: color-mix(in srgb, var(--tb-purple-light, #9b63d6) 12%, white);
+}
+
+.admin-forecast-progress-day--done {
+    background: color-mix(in srgb, #2e7d32 10%, white);
+}
+
+.admin-forecast-progress-day--error {
+    background: color-mix(in srgb, #c62828 10%, white);
+}
+
+.admin-forecast-progress-day-label {
+    font-weight: 600;
+}
+
+.admin-forecast-progress-day-total {
+    font-variant-numeric: tabular-nums;
+    color: rgba(0, 0, 0, 0.72);
+}
+
+.admin-forecast-progress-day-state {
+    grid-column: 1 / -1;
+    font-size: 0.78rem;
+    color: rgba(0, 0, 0, 0.55);
+}
+
+.admin-forecast-progress-detail {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    background: #fff;
+    padding: 0.75rem 1rem;
+}
+
+.admin-forecast-progress-detail-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.35rem;
+}
+
+.admin-forecast-progress-detail-date {
+    font-weight: 700;
+    font-size: 1.05rem;
+}
+
+.admin-forecast-progress-detail-total {
+    margin-left: auto;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.admin-forecast-progress-hour-wrap {
+    overflow: auto;
+    flex: 1;
+    margin-top: 0.5rem;
+}
+
+.admin-forecast-progress-hour-table {
+    font-size: 0.85rem;
+}
+
+.admin-forecast-progress-done {
+    text-align: center;
+    padding: 1.5rem 1rem 0.5rem;
+}
+
+.admin-forecast-progress-done-icon {
+    width: 3rem;
+    height: 3rem;
+    margin: 0 auto 0.75rem;
+    border-radius: 50%;
+    background: color-mix(in srgb, #2e7d32 18%, white);
+    color: #2e7d32;
+    font-size: 1.75rem;
+    line-height: 3rem;
+    font-weight: 700;
+}
+
+.admin-forecast-progress-summary {
+    list-style: none;
+    margin: 1rem 0 0;
+    padding: 0;
+    text-align: left;
+    max-width: 420px;
+    margin-inline: auto;
+}
+
+.admin-forecast-progress-summary li {
+    padding: 0.45rem 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.admin-forecast-progress-summary-bad {
+    color: #c62828;
+}
+
+html.mic-dark-mode .admin-forecast-progress-days,
+html.mic-dark-mode .admin-forecast-progress-detail {
+    background: #1e1e24;
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.mic-dark-mode .admin-forecast-progress-day--filling,
+html.mic-dark-mode .admin-forecast-progress-day--saving {
+    background: color-mix(in srgb, var(--tb-purple-light, #9b63d6) 20%, #1e1e24);
+}
+
+html.mic-dark-mode .admin-forecast-progress-day--done {
+    background: color-mix(in srgb, #66bb6a 16%, #1e1e24);
+}

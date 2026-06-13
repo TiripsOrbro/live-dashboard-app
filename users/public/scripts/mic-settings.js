@@ -25,7 +25,7 @@
 
     function renderPanel(options = {}) {
         const darkHint = options.darkModeHint || 'Dark background and tiles on this page.';
-        const viewAccountsHidden = options.viewAccountsHidden !== false;
+        const adminMenuHidden = options.adminMenuHidden !== false;
         const hasStoreTab = Boolean(options.storeNumber);
         const email = String(options.reportEmail || '').trim();
 
@@ -43,7 +43,7 @@
                     <div class="mic-settings-tabpanel is-active" data-settings-panel="account" role="tabpanel">
                         <div class="mic-settings-actions">
                             <button type="button" class="mic-settings-btn" data-action="change-password">Change password</button>
-                            <button type="button" class="mic-settings-btn" data-action="view-accounts" id="mic-view-accounts-btn"${viewAccountsHidden ? ' hidden' : ''}>View accounts</button>
+                            <button type="button" class="mic-settings-btn" data-action="admin-menu" id="mic-admin-menu-btn"${adminMenuHidden ? ' hidden' : ''}>Admin menu</button>
                             <button type="button" class="mic-settings-btn mic-settings-btn--danger" data-action="logout">Sign out</button>
                         </div>
                     </div>
@@ -393,13 +393,9 @@
             closeSettingsPanel();
             global.DashboardAccount?.openChangePasswordModal?.();
         });
-        picker.querySelector('[data-action="view-accounts"]')?.addEventListener('click', () => {
+        picker.querySelector('[data-action="admin-menu"]')?.addEventListener('click', () => {
             closeSettingsPanel();
-            const viewOpts =
-                typeof bindOptions.getViewAccountsOptions === 'function'
-                    ? bindOptions.getViewAccountsOptions()
-                    : bindOptions.viewAccountsOptions || {};
-            global.DashboardAccount?.openViewAccountsModal?.(viewOpts);
+            global.AdminMenu?.open?.();
         });
         picker.querySelector('[data-action="changelog"]')?.addEventListener('click', () => {
             closeSettingsPanel();
@@ -420,11 +416,18 @@
             void saveReportEmail();
         });
 
-        if (bindOptions.resolveViewAccountsVisibility !== false) {
-            global.DashboardAccount?.fetchProfile?.()
+        if (bindOptions.resolveAdminMenuVisibility !== false) {
+            global.AdminMenu?.fetchProfile?.()
                 .then((data) => {
-                    const viewBtn = document.getElementById('mic-view-accounts-btn');
-                    if (viewBtn && data.canViewManagedAccounts) viewBtn.hidden = false;
+                    const adminBtn = document.getElementById('mic-admin-menu-btn');
+                    if (adminBtn && data.canAccessAdminMenu) adminBtn.hidden = false;
+                    global.AdminMenu?.bind?.({
+                        getViewAccountsOptions:
+                            typeof bindOptions.getViewAccountsOptions === 'function'
+                                ? bindOptions.getViewAccountsOptions
+                                : () => bindOptions.viewAccountsOptions || {},
+                        resolveVisibility: false,
+                    });
                 })
                 .catch(() => {});
         }

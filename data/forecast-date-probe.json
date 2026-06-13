@@ -1,0 +1,499 @@
+{
+  "storeNumber": "3806",
+  "probedAt": "2026-06-13T04:14:00.520Z",
+  "displayedDate": "06/13/2026",
+  "nextDayClick": {
+    "clicked": false,
+    "dateAfter": "06/13/2026"
+  },
+  "before": {
+    "url": "https://m-tacobellau.macromatix.net/#/Forecasting/Edit?metric=sales",
+    "hash": "#/Forecasting/Edit?metric=sales",
+    "title": "Forecasting - Sales",
+    "bodyTextTop": "Forecasting - Sales \n3806 Dandenong South\n \n\t\n06/13/2026\nMetric\nSALES\n \nRESET\nHISTORY\n \nTIME\nLAST YEAR\nSYSTEM FORECAST\nMANAGER FORECAST\n$\n%\n \tDay Totals\t$5,377.89\t$7,009.00\t\n$7,824.00\n\n\t3:00 AM\t$0.00\t$0.00\t\n$0.00\n\n\t4:00 AM\t$0.00\t$0.00\t\n$0.00\n\n\t5:00 AM\t$0.00\t$0.00\t\n$0.00\n\n\tBreakfast\t$0.00\t$0.00\t\n$0.00\n\n\t6:00 AM\t$0.00\t$0.00\t\n$0.00\n\n\t7:00 AM\t$0.00\t$0.00\t\n$0.00\n\n\t8:00 AM\t$0.00\t$0.00\t\n$0.00\n\n\t9:00 AM\t$0.00\t$0.00\t\n$0.00\n\n\tLunch\t$2,030.82\t$2,713.00\t\n$2,883.00\n\n\t10:00 AM\t$113.98\t$235.00\t\n$221.00\n\n\t11:00 AM\t$388.93\t$280.00\t\n$537.00\n\n\t12:00 PM\t$575.39\t$598.00\t\n$545.00\n\n\t1:00 PM\t$557.80\t$787.00\t\n$847.00\n\n\t2:00 PM\t$394.72\t$813.00\t\n$733.00\n\n\tDinner\t$3,347.07\t$4,296.00\t\n$4,941.00\n\n\t3:00 PM\t$442.86\t$447.00\t\n$563.00\n\n\t4:00 PM\t$422.28\t$495.00\t\n$571.00\n\n\t5:00 PM\t$471.61\t$712.00\t\n$942.00\n\n\t6:00 PM\t$699.35\t$810.00\t\n$781.00\n\n\t7:00 PM\t$603.63\t$740.00\t\n$781.00\n\n\t8:00 PM\t$343.68\t$516.00\t\n$486.00\n\n\t9:00 PM\t$247.89\t$436.00\t\n$490.00\n\n\t10:00 PM\t$115.77\t$140.00\t\n$327.00\n\n\t11:00 PM\t$0.00\t$0.00\t\n$0.00\n\n\t12:00 AM\t$0.00\t$0.00\t\n$0.00\n\n\t1:00 AM\t$0.00\t$0.00\t\n$0.00\n\n\t2:00 AM\t$0.00\t$0.00\t\n$0.00",
+    "dateElements": [
+      {
+        "tag": "SPAN",
+        "text": "01/01/1900",
+        "value": "",
+        "attrs": {
+          "class": "visible-sm-and-smaller ng-binding"
+        },
+        "rect": {
+          "top": 0,
+          "left": 0,
+          "width": 0,
+          "height": 0
+        },
+        "path": "div.panel.panel-mx > div.sidenav-tabs.ng-isolate-scope > div.tab-content > div.tab-pane.ng-scope > div#mx-workflownav-panel > div.workflow-nav-body.text-center > div.workflow-picker.fill > div.input-group > span.form-control.text-nowrap > span.visible-sm-and-smaller.ng-binding",
+        "outerHtml": "<span class=\"visible-sm-and-smaller ng-binding\">01/01/1900</span>"
+      },
+      {
+        "tag": "SPAN",
+        "text": "01/01/1900",
+        "value": "",
+        "attrs": {
+          "class": "visible-md-and-larger ng-binding"
+        },
+        "rect": {
+          "top": 0,
+          "left": 0,
+          "width": 0,
+          "height": 0
+        },
+        "path": "div.panel.panel-mx > div.sidenav-tabs.ng-isolate-scope > div.tab-content > div.tab-pane.ng-scope > div#mx-workflownav-panel > div.workflow-nav-body.text-center > div.workflow-picker.fill > div.input-group > span.form-control.text-nowrap > span.visible-md-and-larger.ng-binding",
+        "outerHtml": "<span class=\"visible-md-and-larger ng-binding\">01/01/1900</span>"
+      },
+      {
+        "tag": "SPAN",
+        "text": "06/13/2026",
+        "value": "",
+        "attrs": {
+          "class": "visible-sm-and-smaller ng-binding"
+        },
+        "rect": {
+          "top": 0,
+          "left": 0,
+          "width": 0,
+          "height": 0
+        },
+        "path": "div.row.fill-height > div.fill-height.ng-scope > div.fill-height.ng-scope > div.mx-page.mx-page-1-toolbar-extended > div.mx-page-header > div.mx-page-header-column.mx-nav-control > div#mx-forecast-dateselection-dropdown-edit > div.input-group > span.form-control.text-nowrap > span.visible-sm-and-smaller.ng-binding",
+        "outerHtml": "<span class=\"visible-sm-and-smaller ng-binding\">06/13/2026</span>"
+      },
+      {
+        "tag": "SPAN",
+        "text": "06/13/2026",
+        "value": "",
+        "attrs": {
+          "class": "visible-md-and-larger ng-binding"
+        },
+        "rect": {
+          "top": 102,
+          "left": 63,
+          "width": 60,
+          "height": 16
+        },
+        "path": "div.row.fill-height > div.fill-height.ng-scope > div.fill-height.ng-scope > div.mx-page.mx-page-1-toolbar-extended > div.mx-page-header > div.mx-page-header-column.mx-nav-control > div#mx-forecast-dateselection-dropdown-edit > div.input-group > span.form-control.text-nowrap > span.visible-md-and-larger.ng-binding",
+        "outerHtml": "<span class=\"visible-md-and-larger ng-binding\">06/13/2026</span>"
+      }
+    ],
+    "inputs": [
+      {
+        "tag": "INPUT",
+        "attrs": {
+          "type": "tel",
+          "class": "form-control no-ms-clear ng-pristine ng-untouched ng-valid ng-empty ng-valid-maxlength",
+          "id": "overrideInput"
+        },
+        "value": "",
+        "rect": {
+          "top": 0,
+          "left": 0,
+          "width": 0,
+          "height": 0
+        },
+        "path": "div > div > div > div > div > div > form > input#overrideInput"
+      },
+      {
+        "tag": "INPUT",
+        "attrs": {
+          "type": "tel",
+          "class": "form-control no-ms-clear ng-pristine ng-untouched ng-valid ng-empty ng-valid-maxlength ng-hide",
+          "id": "percentInput"
+        },
+        "value": "",
+        "rect": {
+          "top": 0,
+          "left": 0,
+          "width": 0,
+          "height": 0
+        },
+        "path": "div > div > div > div > div > div > form > input#percentInput"
+      }
+    ],
+    "topClickables": [
+      {
+        "tag": "DIV",
+        "text": "",
+        "attrs": {
+          "id": "mx-navbar-header",
+          "class": "navbar-header",
+          "ng-click": "vm.ToggleNav()"
+        },
+        "rect": {
+          "top": 0,
+          "left": 0,
+          "width": 234,
+          "height": 65
+        },
+        "path": "html > body > div > div > nav > div#mx-navbar-header"
+      },
+      {
+        "tag": "A",
+        "text": "",
+        "attrs": {
+          "class": "navbar-brand"
+        },
+        "rect": {
+          "top": 0,
+          "left": 54,
+          "width": 180,
+          "height": 65
+        },
+        "path": "html > body > div > div > nav > div#mx-navbar-header > a"
+      },
+      {
+        "tag": "A",
+        "text": "Forecasting - Sales 3806 Dandenong South",
+        "attrs": {
+          "class": "header-title"
+        },
+        "rect": {
+          "top": 0,
+          "left": 555,
+          "width": 199,
+          "height": 56
+        },
+        "path": "html > body > div > div > nav > ul > li > a"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "",
+        "attrs": {
+          "id": "mx-header-device-connected-button",
+          "class": "navbar-btn btn btn-default btn-sm dropdown-toggle mx-header-btn mx-signal-btn",
+          "aria-haspopup": "true",
+          "aria-expanded": "false"
+        },
+        "rect": {
+          "top": 14,
+          "left": 1090,
+          "width": 41,
+          "height": 34
+        },
+        "path": "html > body > div > div > nav > div > button#mx-header-device-connected-button"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "0",
+        "attrs": {
+          "id": "mx-header-notification-button",
+          "class": "navbar-btn btn btn-default btn-sm dropdown-toggle mx-header-btn mx-notification-btn",
+          "aria-haspopup": "true",
+          "aria-expanded": "false"
+        },
+        "rect": {
+          "top": 14,
+          "left": 1145,
+          "width": 41,
+          "height": 34
+        },
+        "path": "html > body > div > div > nav > div > button#mx-header-notification-button"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "",
+        "attrs": {
+          "class": "navbar-btn btn btn-default btn-sm dropdown-toggle mx-header-btn mx-user-btn",
+          "id": "arn-settings-drop",
+          "aria-haspopup": "true",
+          "aria-expanded": "false"
+        },
+        "rect": {
+          "top": 14,
+          "left": 1201,
+          "width": 64,
+          "height": 36
+        },
+        "path": "html > body > div > div > nav > div > button#arn-settings-drop"
+      },
+      {
+        "tag": "SPAN",
+        "text": "",
+        "attrs": {
+          "class": "glyphicon glyphicon-fw glyphicon-signal"
+        },
+        "rect": {
+          "top": 26,
+          "left": 1098,
+          "width": 21,
+          "height": 16
+        },
+        "path": "html > body > div > div > nav > div > button#mx-header-device-connected-button > span"
+      },
+      {
+        "tag": "SPAN",
+        "text": "",
+        "attrs": {
+          "class": "glyphicon glyphicon-fw glyphicon-bell"
+        },
+        "rect": {
+          "top": 26,
+          "left": 1154,
+          "width": 21,
+          "height": 16
+        },
+        "path": "html > body > div > div > nav > div > button#mx-header-notification-button > span"
+      },
+      {
+        "tag": "I",
+        "text": "",
+        "attrs": {
+          "class": "glyphicon glyphicon-fw glyphicon-user pull-left"
+        },
+        "rect": {
+          "top": 26,
+          "left": 1211,
+          "width": 21,
+          "height": 16
+        },
+        "path": "html > body > div > div > nav > div > button#arn-settings-drop > i"
+      },
+      {
+        "tag": "I",
+        "text": "",
+        "attrs": {
+          "class": "caret pull-right"
+        },
+        "rect": {
+          "top": 26,
+          "left": 1244,
+          "width": 11,
+          "height": 14
+        },
+        "path": "html > body > div > div > nav > div > button#arn-settings-drop > i"
+      },
+      {
+        "tag": "I",
+        "text": "",
+        "attrs": {
+          "class": "fa fa-2x fa-bars"
+        },
+        "rect": {
+          "top": 27,
+          "left": 25,
+          "width": 14,
+          "height": 18
+        },
+        "path": "html > body > div > div > nav > div#mx-navbar-header > div > i"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "",
+        "attrs": {
+          "type": "button",
+          "class": "btn btn-default mx-date-picker-nav-prev",
+          "ng-click": "PrevDay()"
+        },
+        "rect": {
+          "top": 94,
+          "left": 16,
+          "width": 35,
+          "height": 32
+        },
+        "path": "div > div > div > div > div#mx-forecast-dateselection-dropdown-edit > div > span > button"
+      },
+      {
+        "tag": "SPAN",
+        "text": "06/13/2026 06/13/2026",
+        "attrs": {
+          "class": "form-control text-nowrap mx-date-picker-selected-date no-user-select ng-pristine ng-untouched ng-valid ng-isolate-scope ng-not-empty ng-valid-date",
+          "ng-click": "OnClick()"
+        },
+        "rect": {
+          "top": 94,
+          "left": 50,
+          "width": 86,
+          "height": 32
+        },
+        "path": "div > div > div > div > div > div#mx-forecast-dateselection-dropdown-edit > div > span"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "",
+        "attrs": {
+          "type": "button",
+          "class": "btn btn-default mx-date-picker-nav-next",
+          "ng-click": "NextDay()"
+        },
+        "rect": {
+          "top": 94,
+          "left": 135,
+          "width": 35,
+          "height": 32
+        },
+        "path": "div > div > div > div > div#mx-forecast-dateselection-dropdown-edit > div > span > button"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "Sales",
+        "attrs": {
+          "class": "btn-default btn dropdown-toggle ng-isolate-scope",
+          "id": "mx-forecast-metric-dropdown",
+          "aria-haspopup": "true",
+          "aria-expanded": "false"
+        },
+        "rect": {
+          "top": 94,
+          "left": 179,
+          "width": 208,
+          "height": 32
+        },
+        "path": "div > div > div > div > div > div > div > button#mx-forecast-metric-dropdown"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "Reset",
+        "attrs": {
+          "type": "button",
+          "class": "btn btn-secondary ng-binding",
+          "ng-click": "ResetForecasts()"
+        },
+        "rect": {
+          "top": 94,
+          "left": 1047,
+          "width": 72,
+          "height": 32
+        },
+        "path": "div > div > div > div > div > div > span > button"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "",
+        "attrs": {
+          "type": "button",
+          "class": "btn mx-sub-nav btn-secondary mx-sub-nav-square",
+          "ng-click": "NavigateTo('View')"
+        },
+        "rect": {
+          "top": 94,
+          "left": 1127,
+          "width": 44,
+          "height": 32
+        },
+        "path": "div > div > div > div > div > div > span > button"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "History",
+        "attrs": {
+          "id": "mx-forecast-history-button",
+          "type": "button",
+          "class": "btn mx-sub-nav btn-secondary ng-binding",
+          "ng-click": "NavigateTo('History', 'gridview=true')"
+        },
+        "rect": {
+          "top": 94,
+          "left": 1179,
+          "width": 85,
+          "height": 32
+        },
+        "path": "div > div > div > div > div > div > span > button#mx-forecast-history-button"
+      },
+      {
+        "tag": "I",
+        "text": "",
+        "attrs": {
+          "class": "fa fa-fw fa-bar-chart-o"
+        },
+        "rect": {
+          "top": 102,
+          "left": 1140,
+          "width": 18,
+          "height": 16
+        },
+        "path": "div > div > div > div > div > span > button > i"
+      },
+      {
+        "tag": "I",
+        "text": "",
+        "attrs": {
+          "class": "glyphicon glyphicon-chevron-left"
+        },
+        "rect": {
+          "top": 105,
+          "left": 29,
+          "width": 9,
+          "height": 12
+        },
+        "path": "div > div > div > div#mx-forecast-dateselection-dropdown-edit > div > span > button > i"
+      },
+      {
+        "tag": "I",
+        "text": "",
+        "attrs": {
+          "class": "glyphicon glyphicon-chevron-right"
+        },
+        "rect": {
+          "top": 105,
+          "left": 148,
+          "width": 9,
+          "height": 12
+        },
+        "path": "div > div > div > div#mx-forecast-dateselection-dropdown-edit > div > span > button > i"
+      },
+      {
+        "tag": "DIV",
+        "text": "Time Last Year System Forecast Manager F",
+        "attrs": {
+          "class": "fill-height ng-isolate-scope",
+          "ng-click": "OnClick($event)"
+        },
+        "rect": {
+          "top": 159,
+          "left": 16,
+          "width": 1248,
+          "height": 556
+        },
+        "path": "div > div > div > div > div > div > div > div"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "$",
+        "attrs": {
+          "class": "btn mx-panel-button ng-binding ng-scope btn-success",
+          "ng-click": "OnClickSetByPercentage(false, $event)"
+        },
+        "rect": {
+          "top": 172,
+          "left": 1176,
+          "width": 33,
+          "height": 30
+        },
+        "path": "div > div > div > div > div#ForecastGridHeader > div > span > button"
+      },
+      {
+        "tag": "BUTTON",
+        "text": "%",
+        "attrs": {
+          "type": "button",
+          "class": "btn mx-panel-button btn-secondary",
+          "ng-click": "OnClickSetByPercentage(true, $event)"
+        },
+        "rect": {
+          "top": 172,
+          "left": 1207,
+          "width": 37,
+          "height": 30
+        },
+        "path": "div > div > div > div > div#ForecastGridHeader > div > span > button"
+      },
+      {
+        "tag": "I",
+        "text": "",
+        "attrs": {
+          "class": "fa fa-chevron-down"
+        },
+        "rect": {
+          "top": 278,
+          "left": 29,
+          "width": 11,
+          "height": 14
+        },
+        "path": "div > div > div > table > tbody > tr > td > i"
+      }
+    ],
+    "headerHtmlSnippet": "\n        <!-- ngIf: IsSalesItems && !Vm.SalesItem && GetSalesItems().SalesItems.length -->\n\n        <!-- ngIf: !IsSalesItems || Vm.SalesItem || Vm.NotHasForecastForSalesItem --><div ng-if=\"!IsSalesItems || Vm.SalesItem || Vm.NotHasForecastForSalesItem\" class=\"ng-scope\">\n            <!-- ngIf: !Vm.HasForecast && !Vm.Loading -->\n            <!-- ngIf: Vm.HasForecast && !Vm.HasData && !Vm.Loading -->\n        </div><!-- end ngIf: !IsSalesItems || Vm.SalesItem || Vm.NotHasForecastForSalesItem -->\n\n        <div ng-show=\"Vm.HasData  &amp;&amp; !Vm.Loading\" class=\"fill-height\">\n            <!-- ngIf: ShowSelectEditableFilterWarning() -->\n\n            <div class=\"fill-height ng-isolate-scope\" ng-click=\"OnClick($event)\" options=\"GetForecastingOptions()\" forecastobject=\"GetForecastObject()\">\n    <div class=\"mx-grid fill-height\">\n        <!-- ngIf: (Options || ForecastingOptions).Part !== null -->\n        <div class=\"mx-grid-header-container\" style=\"height: 54px;\">\n            <div id=\"ForecastGridHeader\" class=\"mx-grid-header mx-grid-header-no-sort\" style=\"visibility: visible; height: 54px;\">\n                <div class=\"mx-grid-column-header no-border-right\" style=\"width: 36.1094px; left: 0px; height: 54px;\">&nbsp;</div>\n                <div class=\"mx-grid-column-header\" style=\"width: 328.047px; left: 36.1094px; height: 54px;\">\n                    <span class=\"mx-grid-column-header-title ng-binding\">\n                        Time\n                    </span>\n                </div>\n                <!-- ngIf: Options.MetricKey !== 'events' --><div class=\"mx-grid-column-header ng-scope\" ng-if=\"Options.MetricKey !== 'events'\" style=\"width: 218.703px; left: 364.156px; height: 54px;\">\n                    <span class=\"mx-grid-column-header-title ng-binding\">Last Year</span>\n                </div><!-- end ngIf: Options.MetricKey !== 'events' -->\n                <!-- ngIf: Options.MetricKey !== 'events' && CanViewCateringValues -->\n                <!-- ngIf: Options.MetricKey !== 'events' --><div class=\"mx-grid-column-header ng-scope\" ng-if=\"Options.MetricKey !== 'events'\" style=\"width: 218.703px; left: 582.859px; height: 54px;\">\n                    <span class=\"mx-grid-column-header-title ng-binding\">System Forecast</span>\n                </div><!-- end ngIf: Options.MetricKey !== 'events' -->\n                <div class=\"mx-grid-column-header\" style=\"width: 437.438px; left: 801.562px; height: 54px;\">\n                    <!-- ngIf: Options.MetricKey === 'events' -->\n                    <!-- ngIf: Options.MetricKey !== 'events' --><span class=\"mx-grid-column-header-title ng-binding ng-scope\" ng-if=\"Options.MetricKey !== 'events'\">Manager Forecast</span><!-- end ngIf: Options.MetricKey !== 'events' -->\n                    <!-- ngIf: Options.MetricKey !== 'events' --><span ng-if=\"Options.MetricKey !== 'events'\" class=\"btn-group mx-btn-toggle text-nowrap ng-scope\">\n                        <!-- ngIf: Options.MetricKey === 'sales' --><button ng-if=\"Options.MetricKey === 'sales'\" class=\"btn mx-panel-button ng-binding ng-scope btn-success\" ng-class=\"{ 'btn-success': !InlineOptions.IsByPercentage, 'btn-secondary': InlineOptions.IsByPercentage }\" ng-click=\"OnClickSetByPercentage(false, $event)\">$</button><!-- end ngIf: Options.MetricKey === 'sales' -->\n                        <!-- ngIf: Options.MetricKey === 'transactions' -->\n                        <button type=\"button\" class=\"btn mx-panel-button btn-secondary\" ng-class=\"{ 'btn-success': InlineOptions.IsByPercentage, 'btn-secondary': !InlineOptions.IsByPercentage }\" ng-click=\"OnClickSetByPercentage(true, $event)\">%</button>\n                    </span><!-- end ngIf: Options.MetricKey !== 'events' -->\n                </div>\n            </div>\n        </div>\n        <div class=\"mx-grid-body-container touch-scrollable\" style=\"top: 54px;\">\n            <table class=\"mx-grid-body forecastGrid ng-isolate-scope\" mx-scrollable-table=\"\" watch=\"GridView.IntervalStarts\" header-id=\"ForecastGridHeader\">\n                <tbody>\n                    <!-- ngIf: GridView --><tr class=\"mx-grid-row mx-grid-summary-row ng-scope\" ng-if=\"GridView\" row-index=\"0\" ng-class=\"{ 'mx-fg-editing': 0 === EditingIndex}\">\n                        <td class=\"mx-grid-column mx-grid-column-min-width no-border-right\">&nbsp;</td>\n                        <td class=\"mx-grid-column col-sm-3 no-padding-left-important ng-binding\">Day Totals</td>\n\n                        <!-- ngIf: Options.MetricKey === 'sales' --><td class=\"mx-grid-column col-sm-2 text-right ng-binding ng-scope\" ng-if=\"Options.MetricKey === 'sales'\" id=\"mx-forecast-grid-Sales-directive-list-daytotal-lastyear\">$5,377.89</td><!-- end ngIf: Options.MetricKey === 'sales' -->\n                        <!-- ngIf: Options.MetricKey === 'transactions' -->\n                        \n                        <!-- ngIf: Options.MetricKey === 'sales' && CanViewCateringValues -->\n                        <!-- ngIf: Options.MetricKey === 'transactions' && CanViewCateringValues -->\n\n                        <!-- ngIf: Options.MetricKey === 'sales' --><td class=\"mx-grid-column col-sm-2 text-right ng-binding ng-scope\" ng-if=\"Options.MetricKey === 'sales'\" id=\"mx-forecast-grid-Sales-directive-list-daytotal-systemsales\">$7,009.00</td><!-- end ngIf: Options.MetricKey === 'sales' -->\n                        <!-- ngIf: Options.MetricKey === 'transactions' -->\n\n                        <td class=\"mx-grid-column mx-grid-column-input col-sm-4\" ng-class=\"{ 'col-sm-4': !CanViewCateringValues, 'col-sm-3': CanViewCateringValues }\">\n                            <span class=\"form-control\" ng-disabled=\"ForecastObject.IsLocked || CellNotEditable(0)\" ng-class=\"{'mx-fg-isdisabled': ForecastObject.IsLocked || CellNotEditable(0), 'mx-fg-novalue': CellValue(0) === undefined}\">\n                                <!-- ngIf: Options.MetricKey === 'sales' --><span ng-if=\"Options.MetricKey === 'sales'\" id=\"mx-forecast-grid-Sales-directive-list-daytotal-managerforecast\" class=\"ng-binding ng-scope\">\n                                    $7,824.00\n                                </span><!-- end ngIf: Options.MetricKey === 'sales' -->\n                                <!-- ngIf: Options.MetricKey === 'transactions' -->\n                                <!-- ngIf: Options.MetricKey === 'events' -->\n                            </span>\n                        </td>\n                    </tr><!-- end ngIf: GridView -->\n                    <!-- ngRepeat: entry in GridView.IntervalStarts track by GridView.IntervalStarts[$index] + GridView.IntervalTypes[$index] --><!-- ngIf: ShouldRowBeRendered($index) --><!-- end ngRepeat: entry in GridView.IntervalStarts track by GridView.IntervalStarts[$index] + GridView.IntervalTypes[$index] --><!-- ngIf: ShouldRowBeRendered($index) --><tr ng-repeat=\"entry in GridView.IntervalStarts track by GridView.IntervalStarts[$index] + GridView.IntervalTypes[$index]\" class=\"mx-grid-row ng-scope mx-fg-hour mx-fg-type-Hour mx-fg-part--1\" ng-if=\"ShouldRowBeRendered($index)\" ng-class=\"{\n                        'mx-fg-hour': GridView.IntervalTypes[$index] === Options.IntervalTypes.Hour,\n                        'mx-fg-quarter-hour': GridView.IntervalTypes[$index] === Options.IntervalTypes.Interval,\n                        'mx-fg-expanded': $index === LastExpandedRowIndex,\n                        'mx-fg-refresh': LastExpandedRowIndex !== null &amp;&amp; ($index === LastExpandedRowIndex || $index === LastExpandedRowIndex + 1 || $index === LastExpandedRowIndex + 2 || $index === LastExpandedRowIndex + 3 || $index === LastExpandedRowIndex + 4),\n                        'mx-fg-type-Hour': true,\n                        'mx-fg-part--1': GridView.IntervalTypes[$index] !== Options.IntervalTypes.Forecast,\n                        'mx-fg-editing': $index === EditingIndex\n                        }\" row-index=\"1\">\n                        <td class=\"mx-grid-column mx-grid-column-min-width no-border-right mx-fg-expand\" ng-class=\"{'mx-fg-expand': GridView.IntervalTypes[$index] === Options.IntervalTypes.Hour}\">\n                            <i class=\"fa fa-chevron-down\" ng-class=\"{ 'fa-chevron-down': $index !== LastExpandedRowIndex &amp;&amp; GridView.IntervalTypes[$index] === Options.IntervalTypes.Hour, 'fa-chevron-up': $index === LastExpandedRowIndex &amp;&amp; GridView.IntervalTypes[$index] === Options.IntervalTypes.Hour }\"></i>\n                        </td>\n                        <td class=\"mx-grid-column col-sm-3 no-padding-left-important mx-fg-expand\" ng-class=\"{'mx-fg-expand': GridView.IntervalTypes[$index] === Options.IntervalTypes.Hour}\">\n                            <!-- ngIf: GridView.IntervalTypes[$index] > Options.IntervalTypes.DaySegment --><span ng-if=\"GridView.IntervalTypes[$index] &gt; Options.IntervalTypes.DaySegment\" id=\"mx-forecast-grid-interval-directive-list-hour-1\" class=\"ng-binding ng-scope\">\n                                3:00 AM\n                            </span><!-- end ngIf: GridView.IntervalTypes[$index] > Options.IntervalTypes.DaySegment -->\n                            <!-- ngIf: GridView.IntervalTypes[$index] < Options.IntervalTypes.Forecast -->\n\n                            <!-- ngIf: NavigateToParam && Options.MetricKey !== 'events' && GridView.IntervalTypes[$index] === Options.IntervalTypes.Forecast -->\n                            <!-- ngIf: NavigateToParam && Options.MetricKey !== 'events' && GridView.IntervalTypes[$index] === Options.IntervalTypes.DaySegment -->\n\n                            <!-- ngIf: Options.MetricKey === 'events' && !Options.ItemId && GridView.IntervalTypes[$index] === Options.IntervalTypes.Forecast -->\n                            <!-- ngIf: Options.MetricKey === 'events' && Options.ItemId && GridView.IntervalTypes[$index] === Options.IntervalTypes.Forecast -->\n                            <!-- ngIf: Options.MetricKey === 'events' && !Options.ItemId && GridView.IntervalTypes[$index] === Options.IntervalTypes.DaySegment -->\n                            <!-- ngIf: Options.MetricKey === 'events' && Options.ItemId && GridView.IntervalTypes[$index] === Options.IntervalTypes.DaySegment -->\n                        </td>\n                        <!-- ngIf: Options.MetricKey !== 'events' --><td class=\"mx-grid-column col-sm-2 text-right ng-scope\" ng-if=\"Options.MetricKey !== 'events'\">\n                            <!-- ngIf: GridView.IntervalTypes[$index] >= Options.IntervalTypes.DaySegment --><span ng-if=\"GridView.IntervalTypes[$index] &gt;= Options.IntervalTypes.DaySegment\" class=\"ng-scope\">\n                                <!-- ngIf: Options.MetricKey === 'sales' --><span ng-if=\"Options.MetricKey === 'sales'\" id=\"mx-forecast-grid-Sales-directive-list-lastyear-1\" class=\"ng-binding ng-scope\">$0.00</span><!-- end ngIf: Options.MetricKey === 'sales' -->\n                                <!-- ngIf: Options.MetricKey === 'transactions' -->\n                            </span><!-- end ngIf: GridView.IntervalTypes[$index] >= Options.IntervalTypes.DaySegment -->\n                        </td><!-- end ngIf: Options.MetricKey !== 'events' -->\n                        <!-- ngIf: Options.MetricKey !== 'events' && CanViewCateringValues -->\n                        <!-- ngIf: Options.MetricKey !== 'events' --><td class=\"mx-grid-column col-sm-2 text-right ng-scope\" ng-if=\"Options.MetricKey !== 'events'\">\n                            <!-- ngIf: GridView.IntervalTypes[$index] >= Options.IntervalTypes.DaySegment --><span ng-if=\"GridView.IntervalTypes[$index] &gt;= Options.IntervalTypes.DaySegment\" class=\"ng-scope\">\n                                <!-- ngIf: Options.MetricKey === 'sales' --><span ng-if=\"Options.MetricKey === 'sales'\" id=\"mx-forecast-grid-transactions-directive-list-SystemSales-1\" class=\"ng-binding ng-scope\">$0.00</span><!-- end ngIf: Options.MetricKey === 'sales' -->\n                                <!-- ngIf: Options.MetricKey === 'transactions' -->\n                            </span><!-- end ngIf: GridView.IntervalTypes[$index] >= Options.IntervalTypes.DaySegment -->"
+  },
+  "afterNext": null
+}

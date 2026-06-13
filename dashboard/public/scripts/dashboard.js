@@ -2231,9 +2231,11 @@ async function applyUserPreferences() {
 function bindDashboardSettings() {
     if (!shouldShowDashboardSettings() || !window.MicSettings) return;
     window.MicSettings.bind({
-        getViewAccountsOptions: () => (IS_ADMIN_STORE_DASHBOARD ? { isAdmin: true } : {}),
-        resolveViewAccountsVisibility: !IS_ADMIN_STORE_DASHBOARD,
+        getViewAccountsOptions: () => (IS_ADMIN_STORE_DASHBOARD ? { isAdmin: true, storeNumber: STORE_NUMBER || '' } : { storeNumber: STORE_NUMBER || '' }),
         storeNumber: STORE_NUMBER || '',
+    });
+    window.AdminMenu?.bind?.({
+        getViewAccountsOptions: () => (IS_ADMIN_STORE_DASHBOARD ? { isAdmin: true, storeNumber: STORE_NUMBER || '' } : { storeNumber: STORE_NUMBER || '' }),
     });
 }
 
@@ -2242,7 +2244,7 @@ function renderDashboardSettingsChrome() {
     return `
         ${window.MicSettings.renderCog()}
         ${window.MicSettings.renderPanel({
-            viewAccountsHidden: !IS_ADMIN_STORE_DASHBOARD,
+            adminMenuHidden: true,
             darkModeHint: 'Dark background on dashboard pages that support it.',
             storeNumber: STORE_NUMBER || '',
         })}

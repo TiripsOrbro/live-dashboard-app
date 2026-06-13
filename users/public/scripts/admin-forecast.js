@@ -464,8 +464,8 @@
     }
 
     function hourStatusLabel(status) {
-        if (status === 'entering') return 'Entering sales…';
-        if (status === 'verifying') return 'Confirming sales…';
+        if (status === 'entering') return 'Entering…';
+        if (status === 'verifying') return 'Confirming…';
         if (status === 'confirmed') return 'Confirmed';
         if (status === 'failed') return 'Failed';
         return 'Pending';
@@ -497,15 +497,15 @@
             .map((slot) => {
                 const status = slot.status || 'pending';
                 const cls = `admin-forecast-progress-hour-row admin-forecast-progress-hour-row--${status}`;
-                const readNote =
-                    slot.readValue != null && Number.isFinite(Number(slot.readValue))
-                        ? `<span class="admin-accounts-meta">Read $${Math.round(Number(slot.readValue))}</span>`
-                        : '';
-                const errNote = slot.error ? `<span class="admin-forecast-progress-hour-error">${escapeHtml(slot.error)}</span>` : '';
+                const title = slot.error
+                    ? escapeHtml(slot.error)
+                    : slot.readValue != null && Number.isFinite(Number(slot.readValue))
+                      ? `Read $${Math.round(Number(slot.readValue))}`
+                      : '';
                 return `<tr class="${cls}">
                     <th scope="row">${escapeHtml(formatHourLabel(slot.hour))}</th>
                     <td class="admin-history-num">${formatMoney(slot.forecast)}</td>
-                    <td class="admin-forecast-progress-hour-status">${escapeHtml(hourStatusLabel(status))}${readNote}${errNote}</td>
+                    <td class="admin-forecast-progress-hour-status"${title ? ` title="${title}"` : ''}>${escapeHtml(hourStatusLabel(status))}</td>
                 </tr>`;
             })
             .join('');

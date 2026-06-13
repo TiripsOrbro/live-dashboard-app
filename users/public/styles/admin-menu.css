@@ -441,7 +441,11 @@ html.mic-dark-mode .admin-history-hour {
 .admin-forecast-progress-live {
     font-weight: 600;
     color: var(--tb-purple, #6b3fa0);
-    margin: 0 0 0.65rem;
+    margin: 0 0 0.5rem;
+    min-height: 1.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .admin-forecast-progress-hour-row--entering,
@@ -458,14 +462,7 @@ html.mic-dark-mode .admin-history-hour {
 }
 
 .admin-forecast-progress-hour-status {
-    font-size: 0.85rem;
-}
-
-.admin-forecast-progress-hour-error {
-    display: block;
-    color: #b91c1c;
-    font-size: 0.78rem;
-    white-space: normal;
+    font-size: 0.82rem;
 }
 
 .admin-forecast-progress-day--done {
@@ -495,6 +492,7 @@ html.mic-dark-mode .admin-history-hour {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    min-height: 0;
     border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: 8px;
     background: #fff;
@@ -524,10 +522,29 @@ html.mic-dark-mode .admin-history-hour {
     overflow: auto;
     flex: 1;
     margin-top: 0.5rem;
+    min-height: 0;
 }
 
 .admin-forecast-progress-hour-table {
     font-size: 0.85rem;
+    table-layout: fixed;
+    width: 100%;
+}
+
+.admin-forecast-progress-hour-table tbody th,
+.admin-forecast-progress-hour-table tbody td {
+    padding: 0.3rem 0.45rem;
+    vertical-align: middle;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+    height: 1.65rem;
+    box-sizing: border-box;
+}
+
+.admin-forecast-progress-hour-table thead th {
+    padding-bottom: 0.4rem;
 }
 
 .admin-forecast-progress-done {

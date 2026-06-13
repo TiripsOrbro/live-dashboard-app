@@ -40,6 +40,20 @@ function isStoreInaccessibleError(err) {
     return Boolean(err && (err instanceof StoreInaccessibleError || err.skippable === true));
 }
 
+function summarizeInaccessibleStores(stores, results) {
+    const skipped = [];
+    for (let i = 0; i < stores.length; i++) {
+        if (results[i] === null) {
+            skipped.push(String(stores[i].storeNumber || '').trim() || '(default)');
+        }
+    }
+    if (!skipped.length) return;
+    skipped.sort();
+    console.log(
+        `[Macromatix] Skipped ${skipped.length} store(s) not on this Macromatix login: ${skipped.join(', ')}`
+    );
+}
+
 function decryptCredentialPayload(encryptedPayload, keyText) {
     if (!encryptedPayload || !keyText) return null;
 
@@ -2422,11 +2436,13 @@ async function scrapeStoreWithCredentialCandidates(browser, store, ctx, candidat
         } catch (err) {
             lastErr = err;
             const hasMore = attempt < tries.length - 1;
-            console.warn(
-                `[Macromatix] Store ${label}: ${resolved.source} failed — ${err.message}${
-                    hasMore ? ' — trying next login' : ''
-                }`
-            );
+            if (!isStoreInaccessibleError(err) || hasMore) {
+                console.warn(
+                    `[Macromatix] Store ${label}: ${resolved.source} failed — ${err.message}${
+                        hasMore ? ' — trying next login' : ''
+                    }`
+                );
+            }
         } finally {
             if (context) {
                 try {
@@ -2642,10 +2658,6 @@ async function scrapeMacromatix(options = {}) {
                     } catch (storeErr) {
                         if (storeErr?.aborted) throw storeErr;
                         if (isStoreInaccessibleError(storeErr)) {
-                            console.warn(
-                                `[Macromatix] Worker ${workerId} store ${label} skipped (no access):`,
-                                storeErr.message
-                            );
                             results[i] = null;
                             continue;
                         }
@@ -2704,7 +2716,6 @@ async function scrapeMacromatix(options = {}) {
                     } catch (storeErr) {
                         if (storeErr?.aborted) throw storeErr;
                         if (isStoreInaccessibleError(storeErr)) {
-                            console.warn(`[Macromatix] Store ${label} skipped (no access):`, storeErr.message);
                             results[i] = null;
                             continue;
                         }
@@ -2758,6 +2769,8 @@ async function scrapeMacromatix(options = {}) {
                 console.warn('[Macromatix] SSSG scrape/compute failed:', sssgErr.message);
             }
         }
+
+        summarizeInaccessibleStores(stores, results);
 
         await closeBrowserQuietly(browser, 'normal completion');
         browser = null;

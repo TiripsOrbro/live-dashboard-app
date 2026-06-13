@@ -306,6 +306,7 @@ const {
     recordForecastHistoryFromStore,
     importForecastHistory,
 } = require('../dashboard/src/forecast/forecastHistoryLedger');
+const { buildAdminDfscStatus } = require('../tacaudit/audits/Daily Food Safety Check/dfscAdmin');
 const { buildAdminBuildToCatalog, filterOverridesForActor, readOverridesDoc } = require('../vendors/src/buildToAdminCatalog');
 const { patchOverrides } = require('../vendors/src/buildToAdminOverrides');
 const {

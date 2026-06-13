@@ -178,6 +178,9 @@ function sumStoreWtdTotals(storeNumber, weekStart, todayPartial, todayKey) {
         if (dayKey < weekStart || dayKey > todayKey) continue;
         if (dayKey === todayKey) continue;
         if (!entry) continue;
+        // Past days must be end-of-day finalized. Intraday partials can pair stale
+        // actual $ with a later LY $ and badly distort week-to-date running totals.
+        if (!entry.finalized) continue;
         actualTotal += Number(entry.actualTotal) || 0;
         lyTotal += Number(entry.lyTotal) || 0;
     }
@@ -212,6 +215,53 @@ function computeStoreTodayPartial(store, slots, now = new Date()) {
     return { actualTotal, lyTotal };
 }
 
+/** Lock any still-open prior days in this week using their last ledger snapshot. */
+function finalizePriorUnfinalizedDays(storeNumber, todayKey, weekStart = getMelbourneWeekStart()) {
+    const store = String(storeNumber || '').trim();
+    const today = String(todayKey || '').trim();
+    if (!store || !today) return 0;
+
+    const days = getStoreWeekDays(store, weekStart);
+    let finalized = 0;
+    for (const [dayKey, entry] of Object.entries(days)) {
+        if (dayKey >= today || !entry || entry.finalized) continue;
+        recordDayTotals(
+            store,
+            dayKey,
+            {
+                actualTotal: entry.actualTotal,
+                lyTotal: entry.lyTotal,
+            },
+            { finalized: true, force: true }
+        );
+        finalized++;
+    }
+    return finalized;
+}
+
+function sumAreaWtdTotals(stores, getSlotsForStore, now = new Date()) {
+    const weekStart = getMelbourneWeekStart(now);
+    let actualTotal = 0;
+    let lyTotal = 0;
+
+    for (const store of stores || []) {
+        const todayKey = getStoreDateKey(store, now);
+        const slots = typeof getSlotsForStore === 'function' ? getSlotsForStore(store) : null;
+        const todayEntry = getStoreDayEntry(store.storeNumber, todayKey, weekStart);
+
+        let todayPartial = null;
+        if (!todayEntry?.finalized && slots?.length) {
+            todayPartial = computeStoreTodayPartial(store, slots, now);
+        }
+
+        const sums = sumStoreWtdTotals(store.storeNumber, weekStart, todayPartial, todayKey);
+        actualTotal += sums.actualTotal;
+        lyTotal += sums.lyTotal;
+    }
+
+    return { actualTotal, lyTotal };
+}
+
 function computeStoreWtdSssgPercent(store, slots, now = new Date()) {
     const weekStart = getMelbourneWeekStart(now);
     const todayKey = getStoreDateKey(store, now);
@@ -232,32 +282,14 @@ function computeStoreWtdSssgPercent(store, slots, now = new Date()) {
 }
 
 function computeAreaWtdSssgPercent(stores, getSlotsForStore, now = new Date()) {
-    const weekStart = getMelbourneWeekStart(now);
-    let actualTotal = 0;
-    let lyTotal = 0;
-
-    for (const store of stores || []) {
-        const todayKey = getStoreDateKey(store, now);
-        const slots = typeof getSlotsForStore === 'function' ? getSlotsForStore(store) : null;
-        const todayEntry = getStoreDayEntry(store.storeNumber, todayKey, weekStart);
-
-        let todayPartial = null;
-        if (!todayEntry?.finalized && slots?.length) {
-            todayPartial = computeStoreTodayPartial(store, slots, now);
-        }
-
-        const sums = sumStoreWtdTotals(store.storeNumber, weekStart, todayPartial, todayKey);
-        actualTotal += sums.actualTotal;
-        lyTotal += sums.lyTotal;
-    }
-
+    const { actualTotal, lyTotal } = sumAreaWtdTotals(stores, getSlotsForStore, now);
     return computeSssgPercentFromTotals(actualTotal, lyTotal);
 }
 
-function captureEndOfDaySssg(store, slots) {
+function captureEndOfDaySssg(store, slots, options = {}) {
     if (!store?.storeNumber) return null;
     const { openHour, closeHour } = resolveStoreHours(store);
-    const dateKey = getStoreDateKey(store);
+    const dateKey = String(options.dateKey || getStoreDateKey(store, options.now)).trim();
     const actualTotal = computeFullDayActualTotal(store.actual, store.forecast, openHour, closeHour);
     const lyTotal = Array.isArray(slots) && slots.length
         ? computeFullDayLyTotal(slots, openHour, closeHour)
@@ -269,8 +301,21 @@ function captureEndOfDaySssg(store, slots) {
         store.storeNumber,
         dateKey,
         { actualTotal, lyTotal },
-        { finalized: true, force: false }
+        { finalized: true, force: Boolean(options.force) }
     );
+}
+
+function finalizeYesterdaySssg(store, slots, now = new Date()) {
+    if (!store?.storeNumber || !Array.isArray(slots) || !slots.length) return null;
+    const todayKey = getStoreDateKey(store, now);
+    const weekStart = getMelbourneWeekStart(now);
+    const days = getStoreWeekDays(store.storeNumber, weekStart);
+    const priorKeys = Object.keys(days)
+        .filter((dayKey) => dayKey < todayKey && days[dayKey] && !days[dayKey].finalized)
+        .sort();
+    const dateKey = priorKeys[priorKeys.length - 1];
+    if (!dateKey) return null;
+    return captureEndOfDaySssg(store, slots, { dateKey, now, force: true });
 }
 
 function updateTodayPartialInLedger(store, slots, now = new Date()) {
@@ -332,6 +377,10 @@ module.exports = {
     getStoreWeekDays,
     captureEndOfDaySssg,
     updateTodayPartialInLedger,
+    finalizePriorUnfinalizedDays,
+    finalizeYesterdaySssg,
+    sumStoreWtdTotals,
+    sumAreaWtdTotals,
     computeStoreWtdSssgPercent,
     computeAreaWtdSssgPercent,
     importWeeklyDays,

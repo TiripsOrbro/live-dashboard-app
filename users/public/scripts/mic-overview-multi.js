@@ -128,19 +128,27 @@
         else if (ratio < 0.95) paceClass = 'cell-yellow';
         const progress = { paceClass, timeFillPercent: Math.min(100, Math.round(ratio * 100)) };
         const wtdValues = list
-            .map((a) => a.sssgWtdPercent)
-            .filter((v) => v != null && !Number.isNaN(Number(v)))
-            .map((v) => Number(v));
-        const wtdAvg = wtdValues.length
-            ? Math.round((wtdValues.reduce((s, v) => s + v, 0) / wtdValues.length) * 10) / 10
-            : null;
+            .map((a) => a.sssgWtdTotals)
+            .filter((t) => t && (Number(t.lyTotal) > 0 || Number(t.actualTotal) > 0));
+        let wtdPercent = null;
+        if (wtdValues.length) {
+            let actualTotal = 0;
+            let lyTotal = 0;
+            for (const totals of wtdValues) {
+                actualTotal += Number(totals.actualTotal) || 0;
+                lyTotal += Number(totals.lyTotal) || 0;
+            }
+            if (lyTotal > 0) {
+                wtdPercent = Math.round(((actualTotal - lyTotal) / lyTotal) * 1000) / 10;
+            }
+        }
         return {
             name: MARKET_LABEL,
             areaKey: 'market-1',
             salesToday: { actual, forecast, progress },
             storeSales,
             sssgTodayPercent: formatAreaSssgFromStores({ storeSales }),
-            sssgWtdPercent: wtdAvg,
+            sssgWtdPercent: wtdPercent,
         };
     }
 

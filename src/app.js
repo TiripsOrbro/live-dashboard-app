@@ -93,6 +93,10 @@ const {
     resetWeeklyLedgerIfNeeded,
     captureEndOfDaySssg,
     updateTodayPartialInLedger,
+    finalizeYesterdaySssg,
+    getStoreDateKey,
+    getMelbourneWeekStart,
+    getStoreWeekDays,
 } = require('./services/sssg/sssgWeeklyLedger');
 const {
     prepareStockCountForMmx,
@@ -1197,6 +1201,34 @@ function computeSssgForStore(store) {
     });
 }
 
+function finalizeEndOfYesterdaySssg(store, now = new Date()) {
+    if (!store?.storeNumber) return;
+    const snap = store.postCloseSnapshot || loadPostCloseSnapshotFromDisk(store.storeNumber);
+    if (!snap || !Array.isArray(snap.actual) || sumHourly(snap.actual) <= 0) return;
+
+    const todayKey = getStoreDateKey(store, now);
+    const weekStart = getMelbourneWeekStart(now);
+    const days = getStoreWeekDays(store.storeNumber, weekStart);
+    const dateKey = Object.keys(days)
+        .filter((dayKey) => dayKey < todayKey && days[dayKey] && !days[dayKey].finalized)
+        .sort()
+        .pop();
+    if (!dateKey) return;
+
+    const slots = getCachedSssgLy(store.storeNumber, dateKey);
+    if (!Array.isArray(slots) || !slots.length) return;
+
+    finalizeYesterdaySssg(
+        {
+            ...store,
+            actual: snap.actual,
+            forecast: snap.forecast,
+        },
+        slots,
+        now
+    );
+}
+
 function syncSssgWeeklyForStore(store, { finalize = false } = {}) {
     if (!store?.storeNumber || !storeHasMeaningfulData(store)) return;
     const slots = getCachedSssgLy(store.storeNumber, melbourneDateKey());
@@ -1363,6 +1395,7 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
             store.scrapePhase = 'retain';
         } else {
             if (prev === 'idle') {
+                finalizeEndOfYesterdaySssg(store, now);
                 resetScheduledOrdersForNewDay(key);
                 resetSssgForNewDay(key);
                 resetWeeklyLedgerIfNeeded(now);

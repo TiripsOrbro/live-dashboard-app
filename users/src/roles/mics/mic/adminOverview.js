@@ -19,7 +19,7 @@ const { buildAdminAuditTileSummaries } = require('../../../../../dashboard/src/a
 const { DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR, getStoreConfig } = require('../../../../../stores/src/storeList');
 const { TIME_ZONE } = require('../../../../../dashboard/src/upselling/upsellingConfig');
 const { getCachedSssgLy } = require('../../../../../mmx/src/macromatixScraper');
-const { computeAreaWtdSssgPercent } = require('../../../../../dashboard/src/sssg/sssgWeeklyLedger');
+const { computeAreaWtdSssgPercent, sumAreaWtdTotals } = require('../../../../../dashboard/src/sssg/sssgWeeklyLedger');
 const {
     computeActualSalesSoFar,
     computeLastYearSalesSoFar,
@@ -273,6 +273,9 @@ async function buildAdminOverviewPayload(salesPayload, areaGroups, options = {})
         const sssgTodayPercent = hasStores
             ? computeAreaSssgToday(areaStores, (s) => getCachedSssgLy(s.storeNumber, day))
             : null;
+        const sssgWtdTotals = hasStores
+            ? sumAreaWtdTotals(areaStores, (s) => getCachedSssgLy(s.storeNumber, day))
+            : { actualTotal: 0, lyTotal: 0 };
         const sssgWtdPercent = hasStores
             ? computeAreaWtdSssgPercent(areaStores, (s) => getCachedSssgLy(s.storeNumber, day))
             : null;
@@ -285,6 +288,7 @@ async function buildAdminOverviewPayload(salesPayload, areaGroups, options = {})
             stockCount: buildAreaStockCountTileState(areaStores, liveByNum),
             sssgTodayPercent,
             sssgWtdPercent,
+            sssgWtdTotals,
             auditTileSummaries:
                 auditStateByStore instanceof Map && Array.isArray(requiredAudits)
                     ? buildAdminAuditTileSummaries(configs, auditStateByStore, { requiredAudits })

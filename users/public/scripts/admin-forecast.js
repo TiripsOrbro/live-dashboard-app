@@ -434,12 +434,13 @@
                     <ul class="admin-forecast-progress-summary" id="admin-forecast-progress-summary"></ul>
                 </div>
                 <p id="admin-forecast-progress-error" class="admin-modal-error" role="alert"></p>
-                <div class="admin-modal-actions">
-                    <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-progress-close" hidden>Done</button>
+                <div class="admin-modal-actions admin-modal-actions--progress">
+                    <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-progress-close" disabled aria-disabled="true">Submitting…</button>
                 </div>
             </div>`;
         document.body.appendChild(progressBackdrop);
         progressBackdrop.querySelector('#admin-forecast-progress-close')?.addEventListener('click', () => {
+            if (!progressState?.complete && !progressState?.error) return;
             void closeProgress(true);
         });
         return progressBackdrop;
@@ -471,6 +472,22 @@
         return 'Pending';
     }
 
+    function hourStatusTitle(slot) {
+        if (slot?.error) return String(slot.error);
+        if (slot?.readValue != null && Number.isFinite(Number(slot.readValue))) {
+            return `Read $${Math.round(Number(slot.readValue))}`;
+        }
+        return '';
+    }
+
+    function setProgressCloseEnabled(root, enabled, { label = 'Done' } = {}) {
+        const btn = root.querySelector('#admin-forecast-progress-close');
+        if (!btn) return;
+        btn.disabled = !enabled;
+        btn.textContent = label;
+        btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+    }
+
     function activeHourLiveMessage(day) {
         if (!day?.hourly?.length) return progressDayStatusLabel(day?.status);
         const active =
@@ -489,7 +506,7 @@
         return progressDayStatusLabel(day.status);
     }
 
-    function renderProgressDayDetail(day) {
+    function buildProgressDayDetailHtml(day) {
         if (!day) {
             return '<p class="admin-accounts-meta">Waiting for the next day…</p>';
         }
@@ -497,15 +514,11 @@
             .map((slot) => {
                 const status = slot.status || 'pending';
                 const cls = `admin-forecast-progress-hour-row admin-forecast-progress-hour-row--${status}`;
-                const title = slot.error
-                    ? escapeHtml(slot.error)
-                    : slot.readValue != null && Number.isFinite(Number(slot.readValue))
-                      ? `Read $${Math.round(Number(slot.readValue))}`
-                      : '';
-                return `<tr class="${cls}">
+                const title = hourStatusTitle(slot);
+                return `<tr class="${cls}" data-hour="${escapeHtml(String(slot.hour))}">
                     <th scope="row">${escapeHtml(formatHourLabel(slot.hour))}</th>
                     <td class="admin-history-num">${formatMoney(slot.forecast)}</td>
-                    <td class="admin-forecast-progress-hour-status"${title ? ` title="${title}"` : ''}>${escapeHtml(hourStatusLabel(status))}</td>
+                    <td class="admin-forecast-progress-hour-status"${title ? ` title="${escapeHtml(title)}"` : ''}>${escapeHtml(hourStatusLabel(status))}</td>
                 </tr>`;
             })
             .join('');
@@ -522,6 +535,59 @@
                     <tbody>${rows || '<tr><td colspan="3">No hourly values</td></tr>'}</tbody>
                 </table>
             </div>`;
+    }
+
+    function patchProgressDayDetail(detailEl, day) {
+        if (!day) {
+            detailEl.dataset.activeDate = '';
+            detailEl.innerHTML = '<p class="admin-accounts-meta">Waiting for the next day…</p>';
+            return;
+        }
+        if (detailEl.dataset.activeDate !== day.date) {
+            detailEl.dataset.activeDate = day.date;
+            detailEl.innerHTML = buildProgressDayDetailHtml(day);
+            return;
+        }
+        const liveEl = detailEl.querySelector('.admin-forecast-progress-live');
+        if (liveEl) liveEl.textContent = activeHourLiveMessage(day);
+        for (const slot of day.hourly || []) {
+            const row = detailEl.querySelector(`tr[data-hour="${String(slot.hour)}"]`);
+            if (!row) continue;
+            const status = slot.status || 'pending';
+            row.className = `admin-forecast-progress-hour-row admin-forecast-progress-hour-row--${status}`;
+            const statusEl = row.querySelector('.admin-forecast-progress-hour-status');
+            if (!statusEl) continue;
+            statusEl.textContent = hourStatusLabel(status);
+            const title = hourStatusTitle(slot);
+            if (title) statusEl.setAttribute('title', title);
+            else statusEl.removeAttribute('title');
+        }
+    }
+
+    function patchProgressDaysList(daysEl, days) {
+        days.forEach((day, index) => {
+            const status = day.status || 'pending';
+            const cls = `admin-forecast-progress-day admin-forecast-progress-day--${status}`;
+            let item = daysEl.children[index];
+            if (!item || item.dataset.date !== day.date) {
+                item = document.createElement('li');
+                item.dataset.date = day.date;
+                item.innerHTML =
+                    '<span class="admin-forecast-progress-day-label"></span>' +
+                    '<span class="admin-forecast-progress-day-total"></span>' +
+                    '<span class="admin-forecast-progress-day-state"></span>';
+                if (daysEl.children[index]) daysEl.replaceChild(item, daysEl.children[index]);
+                else daysEl.appendChild(item);
+            }
+            item.className = cls;
+            item.querySelector('.admin-forecast-progress-day-label').textContent =
+                weekdayLabel(day.weekday) || formatShortDate(day.date);
+            item.querySelector('.admin-forecast-progress-day-total').textContent = formatMoney(day.forecastTotal);
+            item.querySelector('.admin-forecast-progress-day-state').textContent = progressDayStatusLabel(day.status);
+        });
+        while (daysEl.children.length > days.length) {
+            daysEl.removeChild(daysEl.lastChild);
+        }
     }
 
     function formatHourLabel(hour) {
@@ -541,7 +607,7 @@
 
         root.querySelector('#admin-forecast-progress-working').hidden = false;
         root.querySelector('#admin-forecast-progress-done').hidden = true;
-        root.querySelector('#admin-forecast-progress-close').hidden = true;
+        setProgressCloseEnabled(root, false, { label: 'Submitting…' });
         root.querySelector('#admin-forecast-progress-error').textContent = '';
 
         const activeStore = findProgressStore(state, state.activeStore) || state.stores[0];
@@ -557,19 +623,8 @@
             ? `Store ${activeStore.storeNumber}${activeStore.storeName !== activeStore.storeNumber ? ' · ' + activeStore.storeName : ''} · ${storePos} of ${state.stores.length}${doneStores ? ` · ${doneStores} complete` : ''}`
             : 'Starting…';
 
-        const daysEl = root.querySelector('#admin-forecast-progress-days');
-        daysEl.innerHTML = (activeStore?.days || [])
-            .map((day) => {
-                const cls = day.status || 'pending';
-                return `<li class="admin-forecast-progress-day admin-forecast-progress-day--${cls}">
-                    <span class="admin-forecast-progress-day-label">${escapeHtml(weekdayLabel(day.weekday) || formatShortDate(day.date))}</span>
-                    <span class="admin-forecast-progress-day-total">${formatMoney(day.forecastTotal)}</span>
-                    <span class="admin-forecast-progress-day-state">${escapeHtml(progressDayStatusLabel(day.status))}</span>
-                </li>`;
-            })
-            .join('');
-
-        root.querySelector('#admin-forecast-progress-detail').innerHTML = renderProgressDayDetail(activeDay);
+        patchProgressDaysList(root.querySelector('#admin-forecast-progress-days'), activeStore?.days || []);
+        patchProgressDayDetail(root.querySelector('#admin-forecast-progress-detail'), activeDay);
     }
 
     function renderProgressComplete(payload) {
@@ -577,7 +632,7 @@
         const state = progressState;
         root.querySelector('#admin-forecast-progress-working').hidden = true;
         root.querySelector('#admin-forecast-progress-done').hidden = false;
-        root.querySelector('#admin-forecast-progress-close').hidden = false;
+        setProgressCloseEnabled(root, true, { label: 'Done' });
 
         const results = payload?.results || [];
         const ok = results.filter((row) => row.ok);
@@ -830,7 +885,7 @@
         } catch (error) {
             const root = ensureProgressBackdrop();
             root.querySelector('#admin-forecast-progress-error').textContent = error.message;
-            root.querySelector('#admin-forecast-progress-close').hidden = false;
+            setProgressCloseEnabled(root, true, { label: 'Done' });
             if (progressState) progressState.error = error.message;
         } finally {
             previewRoot.querySelector('#admin-forecast-preview-submit').disabled = false;

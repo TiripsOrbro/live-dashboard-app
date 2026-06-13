@@ -401,10 +401,29 @@ html.mic-dark-mode .admin-history-hour {
     flex-direction: column;
 }
 
+.admin-modal--forecast-progress #admin-forecast-progress-working {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-modal-actions--progress {
+    flex-shrink: 0;
+    margin-top: auto;
+    padding-top: 0.75rem;
+}
+
+.admin-modal-actions--progress #admin-forecast-progress-close:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 .admin-forecast-progress-layout {
     display: grid;
     grid-template-columns: minmax(160px, 220px) 1fr;
     gap: 1rem;
+    flex: 1;
     min-height: 280px;
     max-height: 52vh;
 }
@@ -426,6 +445,8 @@ html.mic-dark-mode .admin-history-hour {
     padding: 0.55rem 0.75rem;
     border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     font-size: 0.88rem;
+    min-height: 3.35rem;
+    box-sizing: border-box;
 }
 
 .admin-forecast-progress-day:last-child {
@@ -486,6 +507,11 @@ html.mic-dark-mode .admin-history-hour {
     grid-column: 1 / -1;
     font-size: 0.78rem;
     color: rgba(0, 0, 0, 0.55);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+    min-height: 0.95rem;
 }
 
 .admin-forecast-progress-detail {
@@ -531,15 +557,34 @@ html.mic-dark-mode .admin-history-hour {
     width: 100%;
 }
 
-.admin-forecast-progress-hour-table tbody th,
-.admin-forecast-progress-hour-table tbody td {
-    padding: 0.3rem 0.45rem;
+.admin-forecast-progress-hour-table.admin-table tbody tr {
+    height: 1.65rem;
+    max-height: 1.65rem;
+}
+
+.admin-forecast-progress-hour-table.admin-table th,
+.admin-forecast-progress-hour-table.admin-table td {
+    padding: 0.25rem 0.45rem;
     vertical-align: middle;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    line-height: 1.2;
+    line-height: 1;
     height: 1.65rem;
+    max-height: 1.65rem;
+    box-sizing: border-box;
+}
+
+.admin-forecast-progress-hour-table tbody th,
+.admin-forecast-progress-hour-table tbody td {
+    padding: 0.25rem 0.45rem;
+    vertical-align: middle;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1;
+    height: 1.65rem;
+    max-height: 1.65rem;
     box-sizing: border-box;
 }
 

@@ -138,6 +138,131 @@ function warnIfSuspiciousForecast(storeNumber, forecast) {
     }
 }
 
+/** Per scrape batch: store numbers each Macromatix login can reach (login picker ∪ labour ∪ SPA). */
+const accessibleStoresByCredential = new Map();
+const accessibleStoresDiscoveryInFlight = new Map();
+
+function credentialCacheKey(credentials) {
+    return `${String(credentials?.username || '').trim()}\0${String(credentials?.password || '')}`;
+}
+
+function normalizeStoreNumberKey(storeNumber) {
+    return String(storeNumber || '').trim().replace(/\D/g, '');
+}
+
+function clearAccessibleStoresDiscoveryCache() {
+    accessibleStoresByCredential.clear();
+    accessibleStoresDiscoveryInFlight.clear();
+}
+
+function addAccessibleStoreNumber(set, storeNumber) {
+    const key = normalizeStoreNumberKey(storeNumber);
+    if (key) set.add(key);
+}
+
+async function collectAccessibleStoreNumbersFromSession(page, credentials) {
+    const nums = new Set();
+
+    if (await isLoginStorePickerPresent(page)) {
+        await waitForLoginStoreDropdownStable(page);
+        for (const row of await listStoresOnLoginDropdown(page)) {
+            addAccessibleStoreNumber(nums, row.storeNumber);
+        }
+    }
+
+    try {
+        if (!/LabourScheduler/i.test(page.url() || '')) {
+            await page.goto(LABOUR_URL, GOTO_OPTS);
+            await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+            await page.waitForTimeout(800);
+        }
+        await assertMacromatixAuthenticated(page, 'Store discovery');
+        for (const row of await enumerateStores(page)) {
+            addAccessibleStoreNumber(nums, row.storeNumber);
+        }
+    } catch {
+        /* ignore */
+    }
+
+    try {
+        const {
+            CHANGE_STORE_URL,
+            ensureSpaAuthenticated,
+            listStoresOnChangeStorePage,
+        } = require('./sssg/sssgScraper');
+        await page.goto(CHANGE_STORE_URL, { waitUntil: 'load', timeout: 60000 });
+        await page.waitForTimeout(800);
+        await ensureSpaAuthenticated(page, credentials);
+        for (const row of await listStoresOnChangeStorePage(page)) {
+            addAccessibleStoreNumber(nums, row.storeNumber);
+        }
+    } catch {
+        /* ignore */
+    }
+
+    return nums.size ? nums : null;
+}
+
+async function discoverAccessibleStoreNumbersForCredentials(browser, credentials) {
+    let context;
+    let page;
+    try {
+        context = await createIsolatedContext(browser);
+        page = await context.newPage();
+        await page.setViewport({ width: 1280, height: 720 });
+        await applyResourceBlocking(page);
+        await loginPage(page, credentials.username, credentials.password);
+        return await collectAccessibleStoreNumbersFromSession(page, credentials);
+    } finally {
+        if (page) {
+            try {
+                await logoutPage(page);
+            } catch {
+                /* ignore */
+            }
+        }
+        if (context) {
+            try {
+                await context.close();
+            } catch {
+                /* ignore */
+            }
+        }
+    }
+}
+
+async function getAccessibleStoreNumbersForCredentials(browser, credentials) {
+    const key = credentialCacheKey(credentials);
+    if (accessibleStoresByCredential.has(key)) {
+        return accessibleStoresByCredential.get(key);
+    }
+    if (accessibleStoresDiscoveryInFlight.has(key)) {
+        return accessibleStoresDiscoveryInFlight.get(key);
+    }
+    const promise = discoverAccessibleStoreNumbersForCredentials(browser, credentials)
+        .then((nums) => {
+            accessibleStoresByCredential.set(key, nums);
+            return nums;
+        })
+        .catch((err) => {
+            console.warn('[Macromatix] Could not enumerate accessible stores:', err.message);
+            accessibleStoresByCredential.set(key, null);
+            return null;
+        })
+        .finally(() => {
+            accessibleStoresDiscoveryInFlight.delete(key);
+        });
+    accessibleStoresDiscoveryInFlight.set(key, promise);
+    return promise;
+}
+
+function buildStoreInaccessibleMessage(storeNumber, accessibleNums) {
+    const nums = accessibleNums ? [...accessibleNums].sort() : [];
+    return nums.length
+        ? `Store ${storeNumber} not accessible with this Macromatix login (accessible: ${nums.join(', ')})`
+        : `Store ${storeNumber} not accessible with this Macromatix login`;
+}
+
 function getConfirmedEmptyOrderChecks() {
     return Number.isFinite(CONFIRMED_EMPTY_ORDER_CHECKS) && CONFIRMED_EMPTY_ORDER_CHECKS > 0
         ? Math.floor(CONFIRMED_EMPTY_ORDER_CHECKS)
@@ -1912,6 +2037,11 @@ async function selectStoreAfterLogin(page, storeNumber, credentials) {
     const want = target.replace(/\D/g, '');
     if (!want) throw new Error('Store number required after login');
 
+    const cachedAccessible = accessibleStoresByCredential.get(credentialCacheKey(credentials));
+    if (cachedAccessible && cachedAccessible.size > 0 && !cachedAccessible.has(want)) {
+        throw new StoreInaccessibleError(target, buildStoreInaccessibleMessage(target, cachedAccessible));
+    }
+
     let pickedLogin = null;
     for (let attempt = 0; attempt < 3 && !pickedLogin; attempt++) {
         if (attempt > 0) {
@@ -2418,6 +2548,7 @@ function groupStoresByMacromatixCredentials(stores, resolvedCredMap = null) {
 
 async function scrapeStoreWithCredentialCandidates(browser, store, ctx, candidates) {
     const label = store.storeNumber || '(default)';
+    const want = normalizeStoreNumberKey(store.storeNumber);
     const tries = Array.isArray(candidates) && candidates.length
         ? candidates
         : listMacromatixCredentialCandidatesForStore(store.storeNumber);
@@ -2425,6 +2556,15 @@ async function scrapeStoreWithCredentialCandidates(browser, store, ctx, candidat
 
     for (let attempt = 0; attempt < tries.length; attempt++) {
         const resolved = tries[attempt];
+        const storeCreds = { username: resolved.username, password: resolved.password };
+        const accessible = await getAccessibleStoreNumbersForCredentials(browser, storeCreds);
+        if (accessible && want && !accessible.has(want)) {
+            lastErr = new StoreInaccessibleError(
+                label,
+                buildStoreInaccessibleMessage(label, accessible)
+            );
+            continue;
+        }
         let context;
         try {
             if (tries.length > 1 || resolved.source !== 'global SCRAPER_*') {
@@ -2436,7 +2576,6 @@ async function scrapeStoreWithCredentialCandidates(browser, store, ctx, candidat
             const workerPage = await context.newPage();
             await workerPage.setViewport({ width: 1280, height: 720 });
             await applyResourceBlocking(workerPage);
-            const storeCreds = { username: resolved.username, password: resolved.password };
             await loginPage(workerPage, storeCreds.username, storeCreds.password);
             const result = await scrapeSingleStoreSession(workerPage, store, ctx, storeCreds);
             if (attempt > 0 || tries.length > 1) {
@@ -2505,6 +2644,7 @@ function filterStoresByNumbers(stores, filterNums) {
  * scheduled orders (pending vendor labels). Returns `{ success, timestamp, stores: [...] }`.
  */
 async function scrapeMacromatix(options = {}) {
+    clearAccessibleStoresDiscoveryCache();
     const { username, password } = getMacromatixCredentials();
     const todayKey = dashboardDateKey();
     const pickYmd = options.scheduledOrdersPickYmd;
@@ -2643,6 +2783,16 @@ async function scrapeMacromatix(options = {}) {
         const concurrency = getScraperConcurrency(stores.length);
 
         if (singleStoreLogin) {
+            const masterCreds = getMasterMacromatixCredentials();
+            if (String(masterCreds.username || '').trim() && String(masterCreds.password || '').trim()) {
+                const accessible = await getAccessibleStoreNumbersForCredentials(browser, masterCreds);
+                if (accessible?.size) {
+                    console.log(
+                        `[Macromatix] ${masterCreds.source}: ${accessible.size} accessible store(s): ${[...accessible].sort().join(', ')}`
+                    );
+                }
+            }
+
             console.log(
                 `[Macromatix] Single-store login mode — ${stores.length} store(s), concurrency ${concurrency} (login → select → scrape → logout per store)`
             );

@@ -433,8 +433,39 @@ html.mic-dark-mode .admin-history-hour {
 }
 
 .admin-forecast-progress-day--filling,
-.admin-forecast-progress-day--saving {
+.admin-forecast-progress-day--saving,
+.admin-forecast-progress-day--verifying {
     background: color-mix(in srgb, var(--tb-purple-light, #9b63d6) 12%, white);
+}
+
+.admin-forecast-progress-live {
+    font-weight: 600;
+    color: var(--tb-purple, #6b3fa0);
+    margin: 0 0 0.65rem;
+}
+
+.admin-forecast-progress-hour-row--entering,
+.admin-forecast-progress-hour-row--verifying {
+    background: color-mix(in srgb, var(--tb-purple-light, #9b63d6) 14%, white);
+}
+
+.admin-forecast-progress-hour-row--confirmed {
+    background: color-mix(in srgb, #2e7d32 10%, white);
+}
+
+.admin-forecast-progress-hour-row--failed {
+    background: color-mix(in srgb, #c62828 10%, white);
+}
+
+.admin-forecast-progress-hour-status {
+    font-size: 0.85rem;
+}
+
+.admin-forecast-progress-hour-error {
+    display: block;
+    color: #b91c1c;
+    font-size: 0.78rem;
+    white-space: normal;
 }
 
 .admin-forecast-progress-day--done {
@@ -541,8 +572,26 @@ html.mic-dark-mode .admin-forecast-progress-detail {
 }
 
 html.mic-dark-mode .admin-forecast-progress-day--filling,
-html.mic-dark-mode .admin-forecast-progress-day--saving {
+html.mic-dark-mode .admin-forecast-progress-day--saving,
+html.mic-dark-mode .admin-forecast-progress-day--verifying {
     background: color-mix(in srgb, var(--tb-purple-light, #9b63d6) 20%, #1e1e24);
+}
+
+html.mic-dark-mode .admin-forecast-progress-live {
+    color: #c4b5fd;
+}
+
+html.mic-dark-mode .admin-forecast-progress-hour-row--entering,
+html.mic-dark-mode .admin-forecast-progress-hour-row--verifying {
+    background: color-mix(in srgb, var(--tb-purple-light, #9b63d6) 22%, #1e1e24);
+}
+
+html.mic-dark-mode .admin-forecast-progress-hour-row--confirmed {
+    background: color-mix(in srgb, #66bb6a 16%, #1e1e24);
+}
+
+html.mic-dark-mode .admin-forecast-progress-hour-row--failed {
+    background: color-mix(in srgb, #ef5350 16%, #1e1e24);
 }
 
 html.mic-dark-mode .admin-forecast-progress-day--done {

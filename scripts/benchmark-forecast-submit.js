@@ -75,7 +75,7 @@ async function main() {
         );
     }
 
-    console.log(`[benchmark] hourTouched=${result.mmx?.hourTouched} dayTouched=${result.mmx?.dayTouched}`);
+    console.log(`[benchmark] hourVerified=${result.mmx?.hourVerified} slotCount=${result.mmx?.slotCount} dayTouched=${result.mmx?.dayTouched}`);
     console.log(`[benchmark] target under 30s: ${total < 30000 ? 'PASS' : 'FAIL'} (${fmt(total)})`);
 }
 

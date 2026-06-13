@@ -264,7 +264,13 @@
                         date: day.date,
                         weekday: day.weekday,
                         forecastTotal: day.forecastTotal,
-                        hourly: day.hourly || [],
+                        hourly: (day.hourly || []).map((slot) => ({
+                            hour: slot.hour,
+                            forecast: slot.forecast,
+                            status: 'pending',
+                            readValue: null,
+                            error: null,
+                        })),
                         status: 'pending',
                         error: null,
                     })),
@@ -284,6 +290,36 @@
 
     function findProgressDay(store, date) {
         return (store?.days || []).find((day) => day.date === date);
+    }
+
+    function findProgressHour(day, hour, label) {
+        if (!day?.hourly?.length) return null;
+        const byHour = day.hourly.find((slot) => Number(slot.hour) === Number(hour));
+        if (byHour) return byHour;
+        if (label) {
+            return day.hourly.find((slot) => formatHourLabel(slot.hour) === label);
+        }
+        return null;
+    }
+
+    function applyHourProgress(day, payload) {
+        if (!day) return;
+        const slot = findProgressHour(day, payload.hour, payload.label);
+        if (!slot) return;
+        if (payload.type === 'hour-entering') {
+            slot.status = 'entering';
+            slot.error = null;
+        } else if (payload.type === 'hour-verifying') {
+            slot.status = 'verifying';
+        } else if (payload.type === 'hour-confirmed') {
+            slot.status = 'confirmed';
+            slot.readValue = payload.read ?? slot.readValue;
+            slot.error = null;
+        } else if (payload.type === 'hour-failed') {
+            slot.status = 'failed';
+            slot.readValue = payload.read ?? slot.readValue;
+            slot.error = payload.reason || 'Failed';
+        }
     }
 
     function applyProgressEvent(state, payload) {
@@ -313,7 +349,13 @@
                     date: payload.date,
                     weekday: payload.weekday,
                     forecastTotal: payload.forecastTotal,
-                    hourly: payload.hourly || [],
+                    hourly: (payload.hourly || []).map((slot) => ({
+                        hour: slot.hour,
+                        forecast: slot.forecast,
+                        status: 'pending',
+                        readValue: null,
+                        error: null,
+                    })),
                     status: 'pending',
                     error: null,
                 };
@@ -321,13 +363,28 @@
             } else {
                 day.weekday = payload.weekday ?? day.weekday;
                 day.forecastTotal = payload.forecastTotal ?? day.forecastTotal;
-                if (payload.hourly?.length) day.hourly = payload.hourly;
+                if (payload.hourly?.length) {
+                    day.hourly = payload.hourly.map((slot) => ({
+                        hour: slot.hour,
+                        forecast: slot.forecast,
+                        status: 'pending',
+                        readValue: null,
+                        error: null,
+                    }));
+                }
             }
             day.status = 'filling';
         } else if (payload.type === 'day-filling') {
             state.activeDate = payload.date;
             const day = findProgressDay(store, payload.date);
             if (day) day.status = 'filling';
+        } else if (payload.type === 'day-verifying') {
+            state.activeDate = payload.date;
+            const day = findProgressDay(store, payload.date);
+            if (day) day.status = 'verifying';
+        } else if (payload.type === 'hour-entering' || payload.type === 'hour-verifying' || payload.type === 'hour-confirmed' || payload.type === 'hour-failed') {
+            state.activeDate = payload.date;
+            applyHourProgress(findProgressDay(store, payload.date), payload);
         } else if (payload.type === 'day-saving') {
             state.activeDate = payload.date;
             const day = findProgressDay(store, payload.date);
@@ -398,11 +455,38 @@
     }
 
     function progressDayStatusLabel(status) {
-        if (status === 'filling') return 'Entering values…';
+        if (status === 'filling') return 'Entering sales…';
+        if (status === 'verifying') return 'Confirming sales…';
         if (status === 'saving') return 'Saving…';
         if (status === 'done') return 'Saved';
         if (status === 'error') return 'Failed';
         return 'Pending';
+    }
+
+    function hourStatusLabel(status) {
+        if (status === 'entering') return 'Entering sales…';
+        if (status === 'verifying') return 'Confirming sales…';
+        if (status === 'confirmed') return 'Confirmed';
+        if (status === 'failed') return 'Failed';
+        return 'Pending';
+    }
+
+    function activeHourLiveMessage(day) {
+        if (!day?.hourly?.length) return progressDayStatusLabel(day?.status);
+        const active =
+            [...day.hourly].reverse().find((slot) => slot.status === 'entering' || slot.status === 'verifying') ||
+            day.hourly.find((slot) => slot.status === 'entering' || slot.status === 'verifying');
+        if (active) {
+            const label = formatHourLabel(active.hour);
+            return active.status === 'verifying'
+                ? `Confirming sales for ${label}…`
+                : `Entering sales for ${label}…`;
+        }
+        if (day.status === 'verifying') return 'Double-checking all hours…';
+        if (day.status === 'saving') return 'Saving day to Macromatix…';
+        const confirmed = day.hourly.filter((slot) => slot.status === 'confirmed').length;
+        if (confirmed) return `${confirmed} of ${day.hourly.length} hours confirmed`;
+        return progressDayStatusLabel(day.status);
     }
 
     function renderProgressDayDetail(day) {
@@ -410,10 +494,20 @@
             return '<p class="admin-accounts-meta">Waiting for the next day…</p>';
         }
         const rows = (day.hourly || [])
-            .map(
-                (slot) =>
-                    `<tr><th scope="row">${escapeHtml(formatHourLabel(slot.hour))}</th><td class="admin-history-num">${formatMoney(slot.forecast)}</td></tr>`
-            )
+            .map((slot) => {
+                const status = slot.status || 'pending';
+                const cls = `admin-forecast-progress-hour-row admin-forecast-progress-hour-row--${status}`;
+                const readNote =
+                    slot.readValue != null && Number.isFinite(Number(slot.readValue))
+                        ? `<span class="admin-accounts-meta">Read $${Math.round(Number(slot.readValue))}</span>`
+                        : '';
+                const errNote = slot.error ? `<span class="admin-forecast-progress-hour-error">${escapeHtml(slot.error)}</span>` : '';
+                return `<tr class="${cls}">
+                    <th scope="row">${escapeHtml(formatHourLabel(slot.hour))}</th>
+                    <td class="admin-history-num">${formatMoney(slot.forecast)}</td>
+                    <td class="admin-forecast-progress-hour-status">${escapeHtml(hourStatusLabel(status))}${readNote}${errNote}</td>
+                </tr>`;
+            })
             .join('');
         return `
             <div class="admin-forecast-progress-detail-head">
@@ -421,11 +515,11 @@
                 <span class="admin-forecast-progress-detail-weekday">${escapeHtml(weekdayLabel(day.weekday))}</span>
                 <span class="admin-forecast-progress-detail-total">${formatMoney(day.forecastTotal)}</span>
             </div>
-            <p class="admin-accounts-meta admin-forecast-progress-detail-status">${escapeHtml(progressDayStatusLabel(day.status))}</p>
+            <p class="admin-forecast-progress-detail-status admin-forecast-progress-live">${escapeHtml(activeHourLiveMessage(day))}</p>
             <div class="admin-forecast-progress-hour-wrap">
                 <table class="admin-table admin-forecast-progress-hour-table">
-                    <thead><tr><th scope="col">Hour</th><th scope="col">Forecast</th></tr></thead>
-                    <tbody>${rows || '<tr><td colspan="2">No hourly values</td></tr>'}</tbody>
+                    <thead><tr><th scope="col">Hour</th><th scope="col">Forecast</th><th scope="col">Status</th></tr></thead>
+                    <tbody>${rows || '<tr><td colspan="3">No hourly values</td></tr>'}</tbody>
                 </table>
             </div>`;
     }
@@ -455,7 +549,7 @@
         const storePos = Math.max(1, state.stores.findIndex((s) => s === activeStore) + 1);
         const activeDay =
             findProgressDay(activeStore, state.activeDate) ||
-            activeStore?.days.find((d) => d.status === 'filling' || d.status === 'saving') ||
+            activeStore?.days.find((d) => d.status === 'filling' || d.status === 'verifying' || d.status === 'saving') ||
             activeStore?.days.find((d) => d.status === 'pending');
 
         root.querySelector('#admin-forecast-progress-title').textContent = 'Submitting forecast';
@@ -498,7 +592,7 @@
             .map((row) => {
                 const cls = row.ok ? 'admin-forecast-progress-summary-ok' : 'admin-forecast-progress-summary-bad';
                 const detail = row.ok
-                    ? `${row.forecastDays || row.mmx?.dayTouched || 0} days · ${row.mmx?.hourTouched || '—'} hours`
+                    ? `${row.forecastDays || row.mmx?.dayTouched || 0} days · ${row.mmx?.hourVerified ?? row.mmx?.hourTouched ?? '—'} of ${row.mmx?.slotCount ?? '—'} hours confirmed`
                     : escapeHtml(row.error || 'Failed');
                 return `<li class="${cls}"><strong>${escapeHtml(row.storeNumber)}</strong> ${detail}</li>`;
             })

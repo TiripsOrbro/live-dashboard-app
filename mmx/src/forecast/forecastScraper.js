@@ -28,6 +28,7 @@ function mmxDateToIso(mmx) {
 const DATE_PICKER_SEL = '#mx-forecast-dateselection-dropdown-edit';
 const MANAGER_OVERRIDE_INPUT = '#overrideInput';
 const FILL_CELL_SETTLE_MS = 25;
+const VERIFY_READ_MS = 120;
 const GRID_SETTLE_MS = 100;
 const DATE_CHANGE_MS = 6000;
 const SAVE_SETTLE_MS = 2500;
@@ -336,6 +337,55 @@ async function ensureManagerForecastDollarMode(page, { skipWait = false } = {}) 
     if (!skipWait) await page.waitForTimeout(80);
 }
 
+function parseForecastDollar(text) {
+    if (text == null || text === '') return null;
+    const cleaned = String(text).replace(/[^0-9.\-]/g, '');
+    if (!cleaned) return null;
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+function forecastValuesMatch(readText, want) {
+    const wanted = Math.round(Number(want) || 0);
+    const read = parseForecastDollar(readText);
+    if (read == null) return wanted === 0;
+    return read === wanted;
+}
+
+function normalizeHourlySlots(hourly) {
+    return (hourly || []).map((slot) => ({
+        hour: slot.hour,
+        label: formatHourLabel(slot.hour),
+        forecast: Math.round(Number(slot.forecast) || 0),
+    }));
+}
+
+function emitSlotProgress(onProgress, payload) {
+    if (typeof onProgress !== 'function') return;
+    try {
+        onProgress(payload);
+    } catch (_) {
+        /* ignore UI progress errors */
+    }
+}
+
+async function readManagerForecastCell(page, wantLabel) {
+    return page.evaluate((label) => {
+        for (const tr of document.querySelectorAll('tr.mx-fg-hour')) {
+            const labelSpan = tr.querySelector('[id^="mx-forecast-grid-interval-directive-list-hour-"]');
+            const rowLabel = (labelSpan?.textContent || '').replace(/\s+/g, ' ').trim();
+            if (rowLabel !== label) continue;
+            const cell =
+                tr.querySelector('[id*="managerforecast"]') ||
+                tr.querySelector('td.mx-grid-column-input') ||
+                tr.querySelector('td:last-child');
+            if (!cell) return null;
+            return (cell.textContent || '').replace(/\s+/g, ' ').trim();
+        }
+        return null;
+    }, wantLabel);
+}
+
 /** Click hour row Manager Forecast cell, fill #overrideInput (MMX inline editor). */
 async function fillForecastHourCell(page, wantLabel, forecast) {
     const clicked = await page.evaluate((label) => {
@@ -382,31 +432,132 @@ async function fillForecastHourCell(page, wantLabel, forecast) {
     return true;
 }
 
-/** Click hour row Manager Forecast cell, fill #overrideInput (MMX inline editor). */
+async function enterAndVerifyForecastSlot(page, slot, onProgress, { retry = false } = {}) {
+    emitSlotProgress(onProgress, {
+        type: 'hour-entering',
+        hour: slot.hour,
+        label: slot.label,
+        forecast: slot.forecast,
+        retry,
+    });
+
+    const filled = await fillForecastHourCell(page, slot.label, slot.forecast);
+    if (!filled) {
+        emitSlotProgress(onProgress, {
+            type: 'hour-failed',
+            hour: slot.hour,
+            label: slot.label,
+            forecast: slot.forecast,
+            reason: 'Could not open forecast cell',
+        });
+        return { ok: false, reason: 'no-fill' };
+    }
+
+    emitSlotProgress(onProgress, {
+        type: 'hour-verifying',
+        hour: slot.hour,
+        label: slot.label,
+        forecast: slot.forecast,
+    });
+    await page.waitForTimeout(VERIFY_READ_MS);
+
+    const readText = await readManagerForecastCell(page, slot.label);
+    if (!forecastValuesMatch(readText, slot.forecast)) {
+        if (!retry) {
+            return enterAndVerifyForecastSlot(page, slot, onProgress, { retry: true });
+        }
+        const read = parseForecastDollar(readText);
+        emitSlotProgress(onProgress, {
+            type: 'hour-failed',
+            hour: slot.hour,
+            label: slot.label,
+            forecast: slot.forecast,
+            read,
+            reason: read == null ? 'Could not read cell after entry' : `Read $${read}, expected $${slot.forecast}`,
+        });
+        return { ok: false, reason: 'mismatch', read };
+    }
+
+    const read = parseForecastDollar(readText);
+    emitSlotProgress(onProgress, {
+        type: 'hour-confirmed',
+        hour: slot.hour,
+        label: slot.label,
+        forecast: slot.forecast,
+        read,
+    });
+    return { ok: true, read };
+}
+
+/** Fill each hour, verify read-back, retry once on mismatch. */
 async function fillForecastHourlyInputs(page, hourly, options = {}) {
     if (!options.skipDollarMode) await ensureManagerForecastDollarMode(page, { skipWait: true });
 
-    const slots = (hourly || []).map((slot) => ({
-        label: formatHourLabel(slot.hour),
-        forecast: Math.round(Number(slot.forecast) || 0),
-    }));
-
-    let touched = 0;
+    const slots = normalizeHourlySlots(hourly);
+    const onProgress = options.onProgress;
+    let confirmed = 0;
     const missed = [];
+    const failed = [];
 
     for (const slot of slots) {
-        const filled = await fillForecastHourCell(page, slot.label, slot.forecast);
-        if (filled) touched += 1;
-        else missed.push(slot.label);
+        const result = await enterAndVerifyForecastSlot(page, slot, onProgress);
+        if (result.ok) {
+            confirmed += 1;
+        } else {
+            missed.push(slot.label);
+            failed.push({ ...slot, read: result.read, reason: result.reason });
+        }
     }
 
-    const result = { touched, missed, slotCount: slots.length };
-    if (!result.touched) {
+    const out = { touched: confirmed, confirmed, missed, failed, slotCount: slots.length };
+    if (!out.confirmed) {
         throw new Error(
-            `No Manager Forecast cells matched (${result.missed?.join(', ') || 'no slots'}). Check Macromatix grid layout.`
+            `No Manager Forecast cells matched (${out.missed?.join(', ') || 'no slots'}). Check Macromatix grid layout.`
         );
     }
-    return result;
+    return out;
+}
+
+/** Second pass: read every hour on the page; re-enter any that do not match. */
+async function verifyForecastDay(page, hourly, options = {}) {
+    const slots = normalizeHourlySlots(hourly);
+    const onProgress = options.onProgress;
+    let confirmed = 0;
+    const failed = [];
+
+    for (const slot of slots) {
+        emitSlotProgress(onProgress, {
+            type: 'hour-verifying',
+            hour: slot.hour,
+            label: slot.label,
+            forecast: slot.forecast,
+            phase: 'day-check',
+        });
+        await page.waitForTimeout(VERIFY_READ_MS);
+
+        const readText = await readManagerForecastCell(page, slot.label);
+        if (forecastValuesMatch(readText, slot.forecast)) {
+            confirmed += 1;
+            emitSlotProgress(onProgress, {
+                type: 'hour-confirmed',
+                hour: slot.hour,
+                label: slot.label,
+                forecast: slot.forecast,
+                read: parseForecastDollar(readText),
+                phase: 'day-check',
+            });
+            continue;
+        }
+
+        const fix = await enterAndVerifyForecastSlot(page, slot, onProgress);
+        if (fix.ok) {
+            confirmed += 1;
+        } else {
+            failed.push({ ...slot, read: fix.read, reason: fix.reason || 'day-check-failed' });
+        }
+    }
+
+    return { ok: failed.length === 0, confirmed, slotCount: slots.length, failed };
 }
 
 async function waitForForecastSaveButton(page, timeoutMs = 15000) {
@@ -581,8 +732,22 @@ async function writeForecastPlanToSpa(page, storeNumber, plan, options = {}) {
         emit({ type: 'day-filling', date: day.date });
 
         await ensureManagerForecastDollarMode(page, { skipWait: true });
-        const fillResult = await fillForecastHourlyInputs(page, hourly, { skipDollarMode: true });
-        emit({ type: 'day-saving', date: day.date, fill: fillResult });
+        const slotProgress = (evt) => emit({ date: day.date, ...evt });
+        const fillResult = await fillForecastHourlyInputs(page, hourly, {
+            skipDollarMode: true,
+            onProgress: slotProgress,
+        });
+
+        emit({ type: 'day-verifying', date: day.date });
+        const verifyResult = await verifyForecastDay(page, hourly, { onProgress: slotProgress });
+        if (!verifyResult.ok) {
+            const labels = verifyResult.failed.map((row) => row.label).join(', ');
+            throw new Error(
+                `Forecast verify failed for ${day.date} (${verifyResult.confirmed}/${verifyResult.slotCount} hours confirmed). Failed: ${labels || 'unknown'}`
+            );
+        }
+
+        emit({ type: 'day-saving', date: day.date, fill: fillResult, verify: verifyResult });
 
         await page.waitForTimeout(120);
         const savedAs = await commitForecastDaySave(page);
@@ -592,13 +757,15 @@ async function writeForecastPlanToSpa(page, storeNumber, plan, options = {}) {
             forecastTotal: day.forecastTotal,
             dateSet: dateResult,
             fill: fillResult,
+            verify: verifyResult,
             savedAs,
         };
         dayResults.push(dayResult);
         emit({ type: 'day-done', date: day.date, ...dayResult });
     }
 
-    const hourTouched = dayResults.reduce((sum, d) => sum + (d.fill?.touched || 0), 0);
+    const hourTouched = dayResults.reduce((sum, d) => sum + (d.verify?.confirmed || d.fill?.confirmed || 0), 0);
+    const slotCount = dayResults.reduce((sum, d) => sum + (d.verify?.slotCount || d.fill?.slotCount || 0), 0);
     if (!hourTouched) {
         throw new Error('Could not write any forecast values in Macromatix.');
     }
@@ -606,6 +773,8 @@ async function writeForecastPlanToSpa(page, storeNumber, plan, options = {}) {
     const applied = {
         ok: true,
         hourTouched,
+        hourVerified: hourTouched,
+        slotCount,
         dayTouched: dayResults.length,
         days: dayResults,
     };

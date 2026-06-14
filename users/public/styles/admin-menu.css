@@ -275,6 +275,57 @@ html.mic-dark-mode .admin-accounts-existing {
     border-radius: 6px;
 }
 
+.admin-accounts-level-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.admin-accounts-level-btn {
+    position: relative;
+    flex: 1 1 4.5rem;
+    min-width: 4.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.88rem;
+    font-weight: 600;
+    text-align: center;
+}
+
+.admin-accounts-level-btn input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.admin-accounts-level-btn:has(input:checked) {
+    border-color: #7a3eb1;
+    background: rgba(122, 62, 177, 0.08);
+    box-shadow: 0 0 0 1px rgba(122, 62, 177, 0.25);
+}
+
+.admin-accounts-scope-stack {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.admin-accounts-scope-section {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.admin-accounts-scope-section > span {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: rgba(0, 0, 0, 0.65);
+}
+
 .admin-accounts-choice-group {
     display: grid;
     gap: 0.45rem;
@@ -336,10 +387,20 @@ html.mic-dark-mode .admin-accounts-field > label {
 }
 
 html.mic-dark-mode .admin-accounts-field input[type='text'],
-html.mic-dark-mode .admin-accounts-choice {
+html.mic-dark-mode .admin-accounts-choice,
+html.mic-dark-mode .admin-accounts-level-btn {
     background: #2a2a32;
     border-color: rgba(255, 255, 255, 0.12);
     color: #f2f2f2;
+}
+
+html.mic-dark-mode .admin-accounts-level-btn:has(input:checked) {
+    background: rgba(122, 62, 177, 0.22);
+    border-color: rgba(186, 132, 255, 0.55);
+}
+
+html.mic-dark-mode .admin-accounts-scope-section > span {
+    color: rgba(255, 255, 255, 0.72);
 }
 
 html.mic-dark-mode .admin-accounts-meta {

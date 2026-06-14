@@ -10,6 +10,7 @@ const {
     normalizeAreaLabel,
     getAreasForMarket,
     getAllMarketLabels,
+    getMarketForArea,
 } = require('../../../stores/src/marketsConfig');
 
 const USERS_PATH = path.join(paths.root, '.Users');
@@ -993,6 +994,104 @@ function buildCreateAccountParentFromUser(user, via = 'session') {
     };
 }
 
+const CREATE_ACCOUNT_LEVEL_ORDER = ['market', 'area', 'manager', 'mic', 'tm'];
+
+function buildCreateAccountScopeTree(actor) {
+    const accessibleAreas = new Set(getAccessibleAreasForUser(actor).map(normalizeAreaLabel));
+    const effectiveStoreNums = new Set(getEffectiveStoresForUser(actor).map(String));
+    const scope = getUserAccessScope(actor);
+    const actorLevel = getAccountLevel(actor);
+
+    const storesByArea = {};
+    for (const store of getStoreList()) {
+        if (isTestStore(store.storeNumber)) continue;
+        const storeNumber = String(store.storeNumber);
+        if (!effectiveStoreNums.has(storeNumber)) continue;
+        const area = normalizeAreaLabel(areaNameFromStoreEntry(store));
+        if (!accessibleAreas.has(area)) continue;
+        if (!storesByArea[area]) storesByArea[area] = [];
+        storesByArea[area].push({
+            storeNumber,
+            storeName: String(store.storeName || storeNumber).trim(),
+        });
+    }
+    for (const area of Object.keys(storesByArea)) {
+        storesByArea[area].sort((a, b) =>
+            a.storeNumber.localeCompare(b.storeNumber, undefined, { numeric: true })
+        );
+    }
+
+    const areasByMarket = {};
+    const marketsSet = new Set();
+
+    if (actorLevel === 'it') {
+        for (const market of getAllMarketLabels()) {
+            const areas = getAreasForMarket(market)
+                .map(normalizeAreaLabel)
+                .filter((area) => accessibleAreas.has(area));
+            if (areas.length) {
+                areasByMarket[market] = areas;
+                marketsSet.add(market);
+            }
+        }
+    } else if (actorLevel === 'market') {
+        for (const market of scope.markets) {
+            const areas = getAreasForMarket(market)
+                .map(normalizeAreaLabel)
+                .filter((area) => accessibleAreas.has(area));
+            if (areas.length) {
+                areasByMarket[market] = areas;
+                marketsSet.add(market);
+            }
+        }
+    } else {
+        for (const area of accessibleAreas) {
+            const market = getMarketForArea(area);
+            if (!market) continue;
+            if (!areasByMarket[market]) areasByMarket[market] = [];
+            if (!areasByMarket[market].includes(area)) areasByMarket[market].push(area);
+            marketsSet.add(market);
+        }
+    }
+
+    for (const market of Object.keys(areasByMarket)) {
+        areasByMarket[market].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    }
+
+    const markets = [...marketsSet].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    const defaultStore = singleStoreForUser(actor) || Object.values(storesByArea).flat()[0]?.storeNumber || '';
+    let defaultArea = '';
+    let defaultMarket = '';
+    if (defaultStore) {
+        for (const [area, rows] of Object.entries(storesByArea)) {
+            if (rows.some((row) => row.storeNumber === String(defaultStore))) {
+                defaultArea = area;
+                break;
+            }
+        }
+    }
+    if (!defaultArea && accessibleAreas.size === 1) {
+        defaultArea = [...accessibleAreas][0];
+    }
+    if (defaultArea) {
+        defaultMarket = getMarketForArea(defaultArea);
+    }
+    if (!defaultMarket && markets.length === 1) {
+        defaultMarket = markets[0];
+    }
+
+    return {
+        markets,
+        areasByMarket,
+        storesByArea,
+        defaults: {
+            market: defaultMarket,
+            area: defaultArea,
+            storeNumber: String(defaultStore || ''),
+        },
+    };
+}
+
 function getCreateAccountOptions(actor) {
     const actorLevel = getAccountLevel(actor);
     const assignableLevels = getAssignableAccountLevels(actor);
@@ -1013,20 +1112,26 @@ function getCreateAccountOptions(actor) {
         areas = [...new Set(markets.flatMap((market) => getAreasForMarket(market)))];
     }
 
+    const scopeTree = buildCreateAccountScopeTree(actor);
+    const levelChoices = CREATE_ACCOUNT_LEVEL_ORDER.filter((level) => assignableLevels.includes(level));
+
     return {
         actorLevel,
+        levelChoices,
         assignableLevels: assignableLevels.map((level) => ({
             value: level,
             label: ACCOUNT_LEVEL_LABELS[level] || level,
             requiresMmx: requiresMmxForAccountLevel(level),
             requiresStore: requiresStorePickerForAccountLevel(level),
-            requiresArea: level === 'area',
-            requiresMarket: level === 'market',
+            requiresArea: level === 'area' || requiresStorePickerForAccountLevel(level),
+            requiresMarket:
+                level === 'market' || level === 'area' || requiresStorePickerForAccountLevel(level),
         })),
+        scopeTree,
         stores,
         areas,
         markets,
-        defaultStore: singleStoreForUser(actor) || stores[0]?.storeNumber || '',
+        defaultStore: scopeTree.defaults.storeNumber || singleStoreForUser(actor) || stores[0]?.storeNumber || '',
     };
 }
 

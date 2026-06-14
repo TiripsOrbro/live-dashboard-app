@@ -7,14 +7,17 @@
     const tempPasswordEl = document.getElementById('create-temp-password');
     const nextStepsEl = document.getElementById('create-details-next-steps');
     const levelGroup = document.getElementById('new-account-level-group');
-    const storeField = document.getElementById('create-store-field');
-    const storeGroup = document.getElementById('new-store-number-group');
-    const marketField = document.getElementById('create-market-field');
-    const marketGroup = document.getElementById('new-market-group');
-    const areaField = document.getElementById('create-area-field');
-    const areaGroup = document.getElementById('new-area-group');
+    const scopeStack = document.getElementById('create-scope-stack');
 
     let createOptions = null;
+
+    const LEVEL_LABELS = {
+        market: 'Market',
+        area: 'Area',
+        manager: 'Manager',
+        mic: 'MIC',
+        tm: 'TM',
+    };
 
     if (window.DashboardNavBack) {
         window.DashboardNavBack.mountBackButton(document.getElementById('create-details-back'), {
@@ -43,62 +46,141 @@
         return document.querySelector(`input[type="radio"][name="${name}"]:checked`)?.value || '';
     }
 
-    function selectedLevelMeta() {
-        const value = selectedRadioValue('accountLevel');
-        return (createOptions?.assignableLevels || []).find((row) => row.value === value) || null;
+    function levelNeedsMarket(level) {
+        return ['market', 'area', 'manager', 'mic', 'tm'].includes(level);
     }
 
-    function fillChoiceGroup(container, rows, name, getValue, getLabel, selectedValue = '') {
-        if (!container) return;
-        if (!rows.length) {
-            container.innerHTML = '<p class="login-choice-empty">No options available.</p>';
-            return;
+    function levelNeedsArea(level) {
+        return ['area', 'manager', 'mic', 'tm'].includes(level);
+    }
+
+    function levelNeedsStore(level) {
+        return ['manager', 'mic', 'tm'].includes(level);
+    }
+
+    function resolveScopeSelections(level, tree, selections = {}) {
+        let market = selections.market || '';
+        let area = selections.area || '';
+        let storeNumber = selections.storeNumber || '';
+
+        if (levelNeedsMarket(level)) {
+            if (!market && tree.markets.length === 1) market = tree.markets[0];
+            if (!market && tree.defaults?.market) market = tree.defaults.market;
+        } else {
+            market = '';
         }
-        container.innerHTML = rows
+
+        const areas = market ? tree.areasByMarket[market] || [] : [];
+        if (levelNeedsArea(level)) {
+            if (area && !areas.includes(area)) area = '';
+            if (!area && areas.length === 1) area = areas[0];
+            if (!area && tree.defaults?.area && areas.includes(tree.defaults.area)) area = tree.defaults.area;
+        } else {
+            area = '';
+        }
+
+        const stores = area ? tree.storesByArea[area] || [] : [];
+        if (levelNeedsStore(level)) {
+            if (storeNumber && !stores.some((row) => row.storeNumber === storeNumber)) storeNumber = '';
+            if (!storeNumber && stores.length === 1) storeNumber = stores[0].storeNumber;
+            if (
+                !storeNumber &&
+                tree.defaults?.storeNumber &&
+                stores.some((row) => row.storeNumber === tree.defaults.storeNumber)
+            ) {
+                storeNumber = tree.defaults.storeNumber;
+            }
+        } else {
+            storeNumber = '';
+        }
+
+        return { market, area, storeNumber };
+    }
+
+    function renderScopeSection(name, label, rows, selectedValue, getValue, getLabel) {
+        const labelFn = getLabel || getValue;
+        const items = rows
             .map((row, index) => {
                 const value = getValue(row);
-                const label = getLabel(row);
                 const id = `${name}-${index}`;
-                const checked =
-                    String(value) === String(selectedValue) || (!selectedValue && index === 0)
-                        ? ' checked'
-                        : '';
+                const checked = String(value) === String(selectedValue) ? ' checked' : '';
                 return `
                     <label class="login-choice" for="${escapeAttr(id)}">
                         <input type="radio" id="${escapeAttr(id)}" name="${escapeAttr(name)}" value="${escapeAttr(value)}"${checked}>
-                        <span>${escapeHtml(label)}</span>
+                        <span>${escapeHtml(labelFn(row))}</span>
+                    </label>
+                `;
+            })
+            .join('');
+        return `
+            <div class="login-field create-scope-section">
+                <span class="login-choice-legend">${escapeHtml(label)}</span>
+                <div class="login-choice-group" role="radiogroup" aria-label="${escapeAttr(label)}">${items}</div>
+            </div>
+        `;
+    }
+
+    function renderLevelBar(container, levels, selected = '') {
+        if (!container) return;
+        if (!levels.length) {
+            container.innerHTML = '<p class="login-choice-empty">No account levels available.</p>';
+            return;
+        }
+        const pick = selected && levels.includes(selected) ? selected : levels[0];
+        container.innerHTML = levels
+            .map((value) => {
+                const id = `accountLevel-${value}`;
+                const checked = value === pick ? ' checked' : '';
+                return `
+                    <label class="login-choice login-choice--level" for="${escapeAttr(id)}">
+                        <input type="radio" id="${escapeAttr(id)}" name="accountLevel" value="${escapeAttr(value)}"${checked}>
+                        <span>${escapeHtml(LEVEL_LABELS[value] || value)}</span>
                     </label>
                 `;
             })
             .join('');
     }
 
-    function setChoiceGroupDisabled(group, name, disabled, forcedValue = '') {
-        if (!group) return;
-        group.querySelectorAll(`input[type="radio"][name="${name}"]`).forEach((input) => {
-            if (forcedValue && input.value === forcedValue) {
-                input.checked = true;
-            }
-            input.disabled = disabled;
+    function renderScopeStack(level) {
+        const tree = createOptions?.scopeTree;
+        if (!scopeStack || !tree || !level) {
+            if (scopeStack) scopeStack.innerHTML = '';
+            return;
+        }
+
+        const selections = resolveScopeSelections(level, tree, {
+            market: selectedRadioValue('market'),
+            area: selectedRadioValue('area'),
+            storeNumber: selectedRadioValue('storeNumber'),
         });
+
+        const sections = [];
+        if (levelNeedsMarket(level) && tree.markets.length > 1) {
+            sections.push(renderScopeSection('market', 'Market', tree.markets, selections.market, (row) => row));
+        }
+        const areas = selections.market ? tree.areasByMarket[selections.market] || [] : [];
+        if (levelNeedsArea(level) && areas.length > 1) {
+            sections.push(renderScopeSection('area', 'Area', areas, selections.area, (row) => row));
+        }
+        const stores = selections.area ? tree.storesByArea[selections.area] || [] : [];
+        if (levelNeedsStore(level) && stores.length > 1) {
+            sections.push(
+                renderScopeSection(
+                    'storeNumber',
+                    'Store',
+                    stores,
+                    selections.storeNumber,
+                    (row) => row.storeNumber,
+                    (row) => `${row.storeNumber} — ${row.storeName}`
+                )
+            );
+        }
+        scopeStack.innerHTML = sections.join('');
     }
 
-    function syncScopeFields() {
-        const meta = selectedLevelMeta();
-        const requiresStore = Boolean(meta?.requiresStore);
-        const requiresMarket = Boolean(meta?.requiresMarket);
-        const requiresArea = Boolean(meta?.requiresArea);
-
-        if (storeField) storeField.hidden = !requiresStore;
-        if (marketField) marketField.hidden = !requiresMarket;
-        if (areaField) areaField.hidden = !requiresArea;
-
-        if (requiresStore && createOptions?.stores?.length === 1) {
-            const only = String(createOptions.stores[0].storeNumber);
-            setChoiceGroupDisabled(storeGroup, 'storeNumber', true, only);
-        } else {
-            setChoiceGroupDisabled(storeGroup, 'storeNumber', false);
-        }
+    function syncCreateScopeUI() {
+        if (!createOptions) return;
+        renderScopeStack(selectedRadioValue('accountLevel'));
     }
 
     function showCreatedAccount(data) {
@@ -115,9 +197,6 @@
         form.querySelectorAll('input, button[type="submit"]').forEach((el) => {
             if (el !== submitBtn) el.disabled = true;
         });
-        levelGroup?.querySelectorAll('input').forEach((el) => {
-            el.disabled = true;
-        });
     }
 
     async function loadCreateOptions() {
@@ -128,39 +207,15 @@
             throw new Error(data.error || 'Could not load account options.');
         }
         createOptions = data;
-        fillChoiceGroup(
-            levelGroup,
-            data.assignableLevels || [],
-            'accountLevel',
-            (row) => row.value,
-            (row) => row.label
-        );
-        fillChoiceGroup(
-            storeGroup,
-            data.stores || [],
-            'storeNumber',
-            (row) => row.storeNumber,
-            (row) => `${row.storeNumber} — ${row.storeName}`,
-            data.defaultStore || ''
-        );
-        fillChoiceGroup(
-            areaGroup,
-            (data.areas || []).map((area) => ({ area })),
-            'area',
-            (row) => row.area,
-            (row) => row.area
-        );
-        fillChoiceGroup(
-            marketGroup,
-            (data.markets || []).map((market) => ({ market })),
-            'market',
-            (row) => row.market,
-            (row) => row.market
-        );
-        syncScopeFields();
+        const levels = data.levelChoices?.length
+            ? data.levelChoices
+            : (data.assignableLevels || []).map((row) => row.value);
+        renderLevelBar(levelGroup, levels);
+        syncCreateScopeUI();
     }
 
-    levelGroup?.addEventListener('change', syncScopeFields);
+    levelGroup?.addEventListener('change', syncCreateScopeUI);
+    scopeStack?.addEventListener('change', syncCreateScopeUI);
 
     form?.addEventListener('submit', async (event) => {
         event.preventDefault();
@@ -168,27 +223,35 @@
         errorEl.textContent = '';
         statusEl.hidden = true;
 
-        const meta = selectedLevelMeta();
+        const level = selectedRadioValue('accountLevel');
         const username = document.getElementById('new-username').value.trim();
+        const tree = createOptions?.scopeTree;
+        const resolved = tree
+            ? resolveScopeSelections(level, tree, {
+                  market: selectedRadioValue('market'),
+                  area: selectedRadioValue('area'),
+                  storeNumber: selectedRadioValue('storeNumber'),
+              })
+            : { market: '', area: '', storeNumber: '' };
 
         if (!username) {
             errorEl.textContent = 'Enter a username.';
             return;
         }
-        if (!meta) {
-            errorEl.textContent = 'Choose an account level.';
+        if (!level) {
+            errorEl.textContent = 'Choose an access level.';
             return;
         }
-        if (meta.requiresStore && !selectedRadioValue('storeNumber')) {
-            errorEl.textContent = 'Choose a store.';
-            return;
-        }
-        if (meta.requiresMarket && !selectedRadioValue('market')) {
+        if (levelNeedsMarket(level) && !resolved.market) {
             errorEl.textContent = 'Choose a market.';
             return;
         }
-        if (meta.requiresArea && !selectedRadioValue('area')) {
+        if (levelNeedsArea(level) && !resolved.area) {
             errorEl.textContent = 'Choose an area.';
+            return;
+        }
+        if (levelNeedsStore(level) && !resolved.storeNumber) {
+            errorEl.textContent = 'Choose a store.';
             return;
         }
 
@@ -202,10 +265,10 @@
                 credentials: 'include',
                 body: JSON.stringify({
                     username,
-                    accountLevel: meta.value,
-                    storeNumber: selectedRadioValue('storeNumber'),
-                    market: selectedRadioValue('market'),
-                    area: selectedRadioValue('area'),
+                    accountLevel: level,
+                    storeNumber: resolved.storeNumber,
+                    market: resolved.market,
+                    area: resolved.area,
                     useTemporaryPassword: true,
                 }),
             });

@@ -26,21 +26,9 @@
                 <form id="create-account-form" class="login-form" novalidate>
                     <p class="login-section-label">Access level</p>
                     <div class="login-field">
-                        <span class="login-choice-legend">Account level</span>
-                        <div id="new-account-level-group" class="login-choice-group" role="radiogroup" aria-label="Account level"></div>
+                        <div id="new-account-level-group" class="login-choice-group login-choice-group--levels" role="radiogroup" aria-label="Access level"></div>
                     </div>
-                    <div class="login-field" id="create-store-field" hidden>
-                        <span class="login-choice-legend">Store</span>
-                        <div id="new-store-number-group" class="login-choice-group" role="radiogroup" aria-label="Store"></div>
-                    </div>
-                    <div class="login-field" id="create-market-field" hidden>
-                        <span class="login-choice-legend">Market</span>
-                        <div id="new-market-group" class="login-choice-group" role="radiogroup" aria-label="Market"></div>
-                    </div>
-                    <div class="login-field" id="create-area-field" hidden>
-                        <span class="login-choice-legend">Area</span>
-                        <div id="new-area-group" class="login-choice-group" role="radiogroup" aria-label="Area"></div>
-                    </div>
+                    <div id="create-scope-stack" class="create-scope-stack"></div>
 
                     <hr class="login-divider">
 

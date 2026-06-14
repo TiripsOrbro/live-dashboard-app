@@ -52,6 +52,17 @@ function getAllMarketLabels() {
     return Object.keys(loadMarketsConfig()).map(normalizeMarketLabel).filter(Boolean);
 }
 
+function getMarketForArea(areaLabel) {
+    const area = normalizeAreaLabel(areaLabel);
+    if (!area) return '';
+    for (const market of getAllMarketLabels()) {
+        if (getAreasForMarket(market).some((row) => normalizeAreaLabel(row) === area)) {
+            return normalizeMarketLabel(market);
+        }
+    }
+    return '';
+}
+
 function invalidateMarketsCache() {
     marketsCache = null;
     marketsCacheMtime = 0;
@@ -63,5 +74,6 @@ module.exports = {
     loadMarketsConfig,
     getAreasForMarket,
     getAllMarketLabels,
+    getMarketForArea,
     invalidateMarketsCache,
 };

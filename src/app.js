@@ -3551,7 +3551,9 @@ app.post('/api/account/create', async (req, res) => {
         }
     }
 
-    clearAccountGateCookie(res);
+    if (!req.dashboardUser) {
+        clearAccountGateCookie(res);
+    }
     res.json({
         success: true,
         username: result.username,

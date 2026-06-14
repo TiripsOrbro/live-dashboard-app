@@ -12,7 +12,7 @@ const {
 } = require('./dashboardUsers');
 
 const CREATE_ACCOUNT_GATE_COOKIE = 'account_create_gate';
-const GATE_MAX_AGE_MS = 20 * 60 * 1000;
+const GATE_MAX_AGE_MS = 8 * 60 * 60 * 1000;
 
 function signGatePayload(payload) {
     const body = Buffer.from(JSON.stringify(payload)).toString('base64url');

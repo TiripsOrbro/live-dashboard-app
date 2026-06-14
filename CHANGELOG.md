@@ -27,6 +27,17 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.5 – June 2026
+
+**Changed**
+
+- **Accounts create form** — access level is a single row: Market | Area | Manager | MIC | TM. Market, area, and store pickers only appear when there is more than one choice, cascading downward.
+- **Multi-account creation** — signed-in admins stay logged in after creating accounts; gate sign-in lasts 8 hours for the login-page create flow.
+
+**What you need to do**
+
+- Hard refresh (Ctrl+F5) after the Pi update.
+
 ### Version 0.4.4 – June 2026
 
 **Changed**

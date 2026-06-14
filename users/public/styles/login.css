@@ -276,6 +276,28 @@ body.login-body--dashboard-reveal .login-root {
     padding: 2px;
 }
 
+.login-choice-group--levels {
+    display: flex;
+    flex-wrap: wrap;
+    max-height: none;
+    overflow: visible;
+}
+
+.login-choice--level {
+    flex: 1 1 4.5rem;
+    justify-content: center;
+    text-align: center;
+}
+
+.create-scope-stack {
+    display: grid;
+    gap: 10px;
+}
+
+.create-scope-section {
+    margin: 0;
+}
+
 .login-choice {
     display: flex;
     align-items: flex-start;

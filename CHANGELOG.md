@@ -27,6 +27,16 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.8.1 – June 2026
+
+**Changed**
+
+- **Accounts modal** — **Create account** is a full-width button that expands the create form; existing accounts show by default. Choosing **Create account** from the account menu still opens the form expanded.
+
+**What you need to do**
+
+- Hard refresh (Ctrl+F5) after the Pi update.
+
 ### Version 0.4.8 – June 2026
 
 **Fixed**

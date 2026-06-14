@@ -45,8 +45,9 @@
         backdrop.innerHTML = `
             <div class="admin-modal admin-modal--wide" role="dialog" aria-modal="true">
                 <h2>Accounts</h2>
-                <section id="admin-accounts-create" class="admin-accounts-create">
-                    <h3>Create account</h3>
+                <button type="button" id="admin-accounts-create-toggle" class="mic-settings-btn admin-accounts-create-toggle" aria-expanded="false" aria-controls="admin-accounts-create">Create account</button>
+                <section id="admin-accounts-create" class="admin-accounts-create" hidden>
+                    <h3>New account</h3>
                     <form id="admin-accounts-create-form" class="admin-accounts-form-grid">
                         <label class="admin-accounts-field">
                             Username
@@ -82,6 +83,11 @@
             if (event.target === backdrop) close();
         });
         backdrop.querySelector('#admin-accounts-close')?.addEventListener('click', close);
+        backdrop.querySelector('#admin-accounts-create-toggle')?.addEventListener('click', () => {
+            const panel = backdrop.querySelector('#admin-accounts-create');
+            const expanded = panel ? panel.hidden : true;
+            void setCreatePanelExpanded(expanded, { focus: expanded });
+        });
         backdrop.querySelector('#admin-create-level-group')?.addEventListener('change', syncCreateScopeUI);
         backdrop.querySelector('#admin-create-scope-stack')?.addEventListener('change', syncCreateScopeUI);
         backdrop.querySelector('#admin-accounts-browse-scope')?.addEventListener('change', () => {
@@ -107,6 +113,29 @@
     function close() {
         if (backdrop) backdrop.hidden = true;
         resetCreateForm();
+        setCreatePanelExpanded(false);
+    }
+
+    async function setCreatePanelExpanded(expanded, { focus = false } = {}) {
+        if (!backdrop) return;
+        const panel = backdrop.querySelector('#admin-accounts-create');
+        const toggle = backdrop.querySelector('#admin-accounts-create-toggle');
+        if (!panel || !toggle) return;
+        panel.hidden = !expanded;
+        toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        toggle.textContent = expanded ? 'Hide create form' : 'Create account';
+        if (!expanded) return;
+        const needsLoad = !backdrop.querySelector('#admin-create-level-group input[name="accountLevel"]');
+        if (needsLoad) {
+            try {
+                await populateCreateForm(currentStoreNumber);
+            } catch (error) {
+                backdrop.querySelector('#admin-accounts-error').textContent = error.message;
+            }
+        } else {
+            syncCreateScopeUI();
+        }
+        if (focus) backdrop.querySelector('#admin-create-username')?.focus();
     }
 
     function resetCreateForm() {
@@ -640,13 +669,13 @@
         root.hidden = false;
         root.querySelector('#admin-accounts-error').textContent = '';
         resetCreateForm();
+        setCreatePanelExpanded(false);
         let storeNumber = String(options.storeNumber || '').trim();
 
         try {
-            await populateCreateForm(storeNumber);
+            await ensureCreateOptions();
         } catch (error) {
             root.querySelector('#admin-accounts-error').textContent = error.message;
-            return;
         }
 
         const tree = createOptions?.scopeTree;
@@ -664,7 +693,7 @@
         }
 
         if (options.focusCreate) {
-            root.querySelector('#admin-create-username')?.focus();
+            await setCreatePanelExpanded(true, { focus: true });
         }
     }
 

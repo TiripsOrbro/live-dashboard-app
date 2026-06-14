@@ -233,6 +233,16 @@ html.mic-dark-mode .admin-accounts-existing {
     border-top-color: rgba(255, 255, 255, 0.12);
 }
 
+.admin-accounts-create-toggle {
+    width: 100%;
+    margin: 0 0 1rem;
+    font-weight: 600;
+}
+
+.admin-accounts-create-toggle[aria-expanded='true'] {
+    margin-bottom: 0.65rem;
+}
+
 .admin-accounts-panel[hidden],
 .admin-accounts-create[hidden] {
     display: none !important;

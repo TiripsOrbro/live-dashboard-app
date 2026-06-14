@@ -27,6 +27,20 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.6 – June 2026
+
+**Changed**
+
+- **Accounts store picker** — existing accounts use Market / Area / Store button rows instead of a dropdown.
+
+**Fixed**
+
+- **Loading access levels** — the create-options API now recognises your signed-in session, so the access level bar loads instead of staying on “Loading access levels…”.
+
+**What you need to do**
+
+- Hard refresh (Ctrl+F5) after the Pi update.
+
 ### Version 0.4.5 – June 2026
 
 **Changed**

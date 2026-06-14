@@ -266,7 +266,15 @@
         return data;
     }
 
-    async function openViewAccountsModal(options = {}) {
+    function openViewAccountsModal(options = {}) {
+        if (window.AdminAccounts?.open) {
+            void window.AdminAccounts.open(options);
+            return;
+        }
+        void openViewAccountsModalLegacy(options);
+    }
+
+    async function openViewAccountsModalLegacy(options = {}) {
         const root = ensureAccountsBackdrop();
         root.hidden = false;
         root.querySelector('#account-accounts-error').textContent = '';

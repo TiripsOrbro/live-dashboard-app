@@ -701,19 +701,18 @@ function assertOverviewAccess(req, res) {
 }
 
 function dashboardAuthMiddleware(req, res, next) {
+    if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
+        req.dashboardUser = getRequestUser(req);
+    } else if (!authRequired()) {
+        req.dashboardUser = getRequestUser(req);
+    }
+
     if (isLoginPublicPath(req.path)) {
         next();
         return;
     }
 
-    if (isAuthenticated(req, DASHBOARD_ACCESS_KEY)) {
-        req.dashboardUser = getRequestUser(req);
-        next();
-        return;
-    }
-
-    if (!authRequired()) {
-        req.dashboardUser = getRequestUser(req);
+    if (req.dashboardUser) {
         next();
         return;
     }
@@ -724,6 +723,7 @@ function dashboardAuthMiddleware(req, res, next) {
 function isAccountSetupAllowedPath(reqPath, needsMmx, needsPassword) {
     if (reqPath === '/api/me') return true;
     if (reqPath === '/logout') return true;
+    if (reqPath === '/api/account/create-options' || reqPath === '/api/account/create') return true;
     if (
         reqPath === '/styles/login.css' ||
         reqPath === '/styles/brand-mark.css' ||

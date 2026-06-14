@@ -3,6 +3,7 @@
     let profile = null;
     let createOptions = null;
     let currentStoreNumber = '';
+    let browseScope = { market: '', area: '', storeNumber: '' };
 
     const LEVEL_LABELS = {
         market: 'Market',
@@ -68,12 +69,7 @@
                 </section>
                 <section class="admin-accounts-existing">
                     <h3>Existing accounts</h3>
-                    <div class="admin-modal-toolbar">
-                        <label>
-                            Store
-                            <select id="admin-accounts-store"></select>
-                        </label>
-                    </div>
+                    <div id="admin-accounts-browse-scope" class="admin-accounts-browse-scope"></div>
                     <div id="admin-accounts-body"></div>
                 </section>
                 <p id="admin-accounts-error" class="admin-modal-error" role="alert"></p>
@@ -88,6 +84,9 @@
         backdrop.querySelector('#admin-accounts-close')?.addEventListener('click', close);
         backdrop.querySelector('#admin-create-level-group')?.addEventListener('change', syncCreateScopeUI);
         backdrop.querySelector('#admin-create-scope-stack')?.addEventListener('change', syncCreateScopeUI);
+        backdrop.querySelector('#admin-accounts-browse-scope')?.addEventListener('change', () => {
+            void onBrowseScopeChange();
+        });
         backdrop.querySelector('#admin-accounts-create-form')?.addEventListener('submit', (event) => {
             event.preventDefault();
             void submitCreateAccount();
@@ -170,7 +169,48 @@
         return { market, area, storeNumber };
     }
 
-    function renderScopeSection(name, label, rows, selectedValue, getValue, getLabel) {
+    function resolveBrowseScope(tree, selections = {}, preferredStore = '') {
+        let market = selections.market || '';
+        let area = selections.area || '';
+        let storeNumber = String(preferredStore || selections.storeNumber || '').trim();
+
+        if (storeNumber) {
+            for (const [areaName, stores] of Object.entries(tree.storesByArea || {})) {
+                if (!stores.some((row) => row.storeNumber === storeNumber)) continue;
+                area = areaName;
+                for (const [marketName, areas] of Object.entries(tree.areasByMarket || {})) {
+                    if ((areas || []).includes(areaName)) {
+                        market = marketName;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+
+        if (!market && tree.markets.length === 1) market = tree.markets[0];
+        if (!market && tree.defaults?.market) market = tree.defaults.market;
+
+        const areas = market ? tree.areasByMarket[market] || [] : [];
+        if (area && !areas.includes(area)) area = '';
+        if (!area && areas.length === 1) area = areas[0];
+        if (!area && tree.defaults?.area && areas.includes(tree.defaults.area)) area = tree.defaults.area;
+
+        const stores = area ? tree.storesByArea[area] || [] : [];
+        if (storeNumber && !stores.some((row) => row.storeNumber === storeNumber)) storeNumber = '';
+        if (!storeNumber && stores.length === 1) storeNumber = stores[0].storeNumber;
+        if (
+            !storeNumber &&
+            tree.defaults?.storeNumber &&
+            stores.some((row) => row.storeNumber === tree.defaults.storeNumber)
+        ) {
+            storeNumber = tree.defaults.storeNumber;
+        }
+
+        return { market, area, storeNumber };
+    }
+
+    function renderScopeRow(name, label, rows, selectedValue, getValue, getLabel) {
         const labelFn = getLabel || getValue;
         const items = rows
             .map((row, index) => {
@@ -178,7 +218,7 @@
                 const id = `${name}-${index}`;
                 const checked = String(value) === String(selectedValue) ? ' checked' : '';
                 return `
-                    <label class="admin-accounts-choice" for="${escapeAttr(id)}">
+                    <label class="admin-accounts-scope-chip" for="${escapeAttr(id)}">
                         <input type="radio" id="${escapeAttr(id)}" name="${escapeAttr(name)}" value="${escapeAttr(value)}"${checked}>
                         <span>${escapeHtml(labelFn(row))}</span>
                     </label>
@@ -186,11 +226,79 @@
             })
             .join('');
         return `
-            <div class="admin-accounts-scope-section">
-                <span>${escapeHtml(label)}</span>
-                <div class="admin-accounts-choice-group" role="radiogroup" aria-label="${escapeAttr(label)}">${items}</div>
+            <div class="admin-accounts-scope-row-wrap">
+                <span class="admin-accounts-scope-row-label">${escapeHtml(label)}</span>
+                <div class="admin-accounts-scope-row" role="radiogroup" aria-label="${escapeAttr(label)}">${items}</div>
             </div>
         `;
+    }
+
+    function renderScopeSection(name, label, rows, selectedValue, getValue, getLabel) {
+        return renderScopeRow(name, label, rows, selectedValue, getValue, getLabel);
+    }
+
+    function renderBrowseScopeNavigator(root, tree, preferredStore = '') {
+        const host = root.querySelector('#admin-accounts-browse-scope');
+        if (!host || !tree) {
+            if (host) host.innerHTML = '';
+            return null;
+        }
+
+        browseScope = resolveBrowseScope(tree, {
+            market: selectedRadioValue(root, 'browse-market') || browseScope.market,
+            area: selectedRadioValue(root, 'browse-area') || browseScope.area,
+            storeNumber: selectedRadioValue(root, 'browse-store') || browseScope.storeNumber,
+        }, preferredStore);
+
+        const rows = [];
+        if (tree.markets.length > 1) {
+            rows.push(renderScopeRow('browse-market', 'Market', tree.markets, browseScope.market, (row) => row));
+        }
+
+        const areas = browseScope.market ? tree.areasByMarket[browseScope.market] || [] : [];
+        if (areas.length > 1) {
+            rows.push(renderScopeRow('browse-area', 'Area', areas, browseScope.area, (row) => row));
+        }
+
+        const stores = browseScope.area ? tree.storesByArea[browseScope.area] || [] : [];
+        if (stores.length > 1) {
+            rows.push(
+                renderScopeRow(
+                    'browse-store',
+                    'Store',
+                    stores,
+                    browseScope.storeNumber,
+                    (row) => row.storeNumber,
+                    (row) => row.storeNumber
+                )
+            );
+        }
+
+        host.innerHTML = rows.join('');
+        browseScope = resolveBrowseScope(tree, {
+            market: selectedRadioValue(root, 'browse-market') || browseScope.market,
+            area: selectedRadioValue(root, 'browse-area') || browseScope.area,
+            storeNumber: selectedRadioValue(root, 'browse-store') || browseScope.storeNumber,
+        }, preferredStore);
+        return browseScope.storeNumber;
+    }
+
+    async function onBrowseScopeChange() {
+        if (!backdrop || !createOptions?.scopeTree) return;
+        const root = backdrop;
+        const storeNumber = renderBrowseScopeNavigator(root, createOptions.scopeTree, currentStoreNumber);
+        if (!storeNumber) {
+            currentStoreNumber = '';
+            root.querySelector('#admin-accounts-body').innerHTML = '<p>Select a store to view accounts.</p>';
+            return;
+        }
+        if (storeNumber === currentStoreNumber) return;
+        currentStoreNumber = storeNumber;
+        try {
+            await loadIntoModal(root, storeNumber);
+        } catch (error) {
+            root.querySelector('#admin-accounts-error').textContent = error.message;
+        }
     }
 
     function renderLevelBar(container, levels, selected = '') {
@@ -265,25 +373,40 @@
     async function populateCreateForm(storeNumber) {
         const root = ensureBackdrop();
         const levelGroup = root.querySelector('#admin-create-level-group');
+        const errorEl = root.querySelector('#admin-accounts-error');
         if (levelGroup) levelGroup.innerHTML = '<p class="admin-accounts-meta">Loading access levels…</p>';
         createOptions = null;
-        const opts = await ensureCreateOptions();
-        const levels = opts.levelChoices?.length
-            ? opts.levelChoices
-            : (opts.assignableLevels || []).map((row) => row.value);
-        const defaultLevel =
-            levels.find((level) => level === 'manager') ||
-            levels.find((level) => level === 'mic') ||
-            levels[0] ||
-            '';
-        renderLevelBar(levelGroup, levels, defaultLevel);
-        if (opts.scopeTree?.defaults?.storeNumber) {
-            opts.scopeTree.defaults.storeNumber =
-                String(storeNumber || opts.scopeTree.defaults.storeNumber || opts.defaultStore || '').trim() ||
-                opts.scopeTree.defaults.storeNumber;
+        try {
+            const opts = await ensureCreateOptions();
+            const levels = opts.levelChoices?.length
+                ? opts.levelChoices
+                : (opts.assignableLevels || []).map((row) => row.value);
+            if (!levels.length) {
+                if (levelGroup) {
+                    levelGroup.innerHTML = '<p class="admin-accounts-meta">No account levels available for your login.</p>';
+                }
+                return;
+            }
+            const defaultLevel =
+                levels.find((level) => level === 'manager') ||
+                levels.find((level) => level === 'mic') ||
+                levels[0] ||
+                '';
+            renderLevelBar(levelGroup, levels, defaultLevel);
+            if (opts.scopeTree?.defaults) {
+                opts.scopeTree.defaults.storeNumber =
+                    String(storeNumber || opts.scopeTree.defaults.storeNumber || opts.defaultStore || '').trim() ||
+                    opts.scopeTree.defaults.storeNumber;
+            }
+            syncCreateScopeUI();
+            currentStoreNumber = String(storeNumber || opts.defaultStore || '').trim();
+        } catch (error) {
+            if (levelGroup) {
+                levelGroup.innerHTML = `<p class="admin-accounts-meta">${escapeHtml(error.message || 'Could not load access levels.')}</p>`;
+            }
+            if (errorEl) errorEl.textContent = error.message || 'Could not load access levels.';
+            throw error;
         }
-        syncCreateScopeUI();
-        currentStoreNumber = String(storeNumber || opts.defaultStore || '').trim();
     }
 
     async function submitCreateAccount() {
@@ -301,7 +424,7 @@
                   storeNumber: selectedRadioValue(root, 'storeNumber'),
               })
             : { market: '', area: '', storeNumber: '' };
-        const listStore = String(root.querySelector('#admin-accounts-store')?.value || currentStoreNumber).trim();
+        const listStore = currentStoreNumber;
         const storeNumber = resolved.storeNumber || listStore;
 
         errorEl.textContent = '';
@@ -356,8 +479,11 @@
                 `;
             }
             submitBtn.textContent = 'Created';
-            const reloadStore = listStore || storeNumber;
-            if (reloadStore) await loadIntoModal(root, reloadStore);
+            if (storeNumber) {
+                currentStoreNumber = storeNumber;
+                renderBrowseScopeNavigator(root, createOptions.scopeTree, storeNumber);
+                await loadIntoModal(root, storeNumber);
+            }
         } catch (error) {
             errorEl.textContent = error.message;
             submitBtn.disabled = false;
@@ -372,17 +498,6 @@
         if (!res.ok || !data.success) throw new Error('Could not load profile.');
         profile = data;
         return data;
-    }
-
-    async function loadStores(isAdmin) {
-        if (isAdmin) {
-            const res = await fetch('/api/stores', { credentials: 'same-origin' });
-            const data = await res.json().catch(() => ({}));
-            return (data.stores || []).filter((s) => !s.testStore);
-        }
-        const me = await fetchProfile();
-        const nums = me.stores === '*' ? [] : (me.effectiveStores || me.stores || []).map(String);
-        return nums.map((storeNumber) => ({ storeNumber, storeName: storeNumber }));
     }
 
     async function fetchAccounts(storeNumber) {
@@ -524,35 +639,22 @@
         root.hidden = false;
         root.querySelector('#admin-accounts-error').textContent = '';
         resetCreateForm();
-        const me = await fetchProfile();
-        const isAdmin = Boolean(
-            options.isAdmin || me.canViewCrossStoreAccounts || me.role === 'admin' || me.stores === '*'
-        );
-        const stores = await loadStores(isAdmin);
-        const select = root.querySelector('#admin-accounts-store');
-        select.innerHTML = stores
-            .map(
-                (s) =>
-                    `<option value="${escapeHtml(s.storeNumber)}">${escapeHtml(s.storeNumber)} — ${escapeHtml(s.storeName || s.storeNumber)}</option>`
-            )
-            .join('');
-        let storeNumber = String(options.storeNumber || select.value || '').trim();
-        if (storeNumber) select.value = storeNumber;
-        else if (stores.length) storeNumber = String(stores[0].storeNumber);
+        let storeNumber = String(options.storeNumber || '').trim();
 
-        select.onchange = () => {
-            currentStoreNumber = select.value;
-            loadIntoModal(root, select.value).catch((error) => {
-                root.querySelector('#admin-accounts-error').textContent = error.message;
-            });
-        };
-
-        currentStoreNumber = storeNumber;
         try {
             await populateCreateForm(storeNumber);
         } catch (error) {
             root.querySelector('#admin-accounts-error').textContent = error.message;
+            return;
         }
+
+        const tree = createOptions?.scopeTree;
+        if (tree) {
+            storeNumber =
+                renderBrowseScopeNavigator(root, tree, storeNumber || currentStoreNumber) ||
+                resolveBrowseScope(tree, {}, storeNumber || currentStoreNumber).storeNumber;
+        }
+        currentStoreNumber = storeNumber;
 
         if (storeNumber) {
             await loadIntoModal(root, storeNumber);

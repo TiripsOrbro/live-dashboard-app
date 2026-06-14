@@ -310,9 +310,53 @@ html.mic-dark-mode .admin-accounts-existing {
     box-shadow: 0 0 0 1px rgba(122, 62, 177, 0.25);
 }
 
-.admin-accounts-scope-stack {
+.admin-accounts-scope-stack,
+.admin-accounts-browse-scope {
     display: grid;
     gap: 0.65rem;
+}
+
+.admin-accounts-scope-row-wrap {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.admin-accounts-scope-row-label {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: rgba(0, 0, 0, 0.65);
+}
+
+.admin-accounts-scope-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.admin-accounts-scope-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 3.5rem;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.admin-accounts-scope-chip input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.admin-accounts-scope-chip:has(input:checked) {
+    border-color: #7a3eb1;
+    background: rgba(122, 62, 177, 0.08);
+    box-shadow: 0 0 0 1px rgba(122, 62, 177, 0.25);
 }
 
 .admin-accounts-scope-section {
@@ -388,18 +432,21 @@ html.mic-dark-mode .admin-accounts-field > label {
 
 html.mic-dark-mode .admin-accounts-field input[type='text'],
 html.mic-dark-mode .admin-accounts-choice,
-html.mic-dark-mode .admin-accounts-level-btn {
+html.mic-dark-mode .admin-accounts-level-btn,
+html.mic-dark-mode .admin-accounts-scope-chip {
     background: #2a2a32;
     border-color: rgba(255, 255, 255, 0.12);
     color: #f2f2f2;
 }
 
-html.mic-dark-mode .admin-accounts-level-btn:has(input:checked) {
+html.mic-dark-mode .admin-accounts-level-btn:has(input:checked),
+html.mic-dark-mode .admin-accounts-scope-chip:has(input:checked) {
     background: rgba(122, 62, 177, 0.22);
     border-color: rgba(186, 132, 255, 0.55);
 }
 
-html.mic-dark-mode .admin-accounts-scope-section > span {
+html.mic-dark-mode .admin-accounts-scope-section > span,
+html.mic-dark-mode .admin-accounts-scope-row-label {
     color: rgba(255, 255, 255, 0.72);
 }
 

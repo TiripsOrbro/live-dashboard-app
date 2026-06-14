@@ -212,8 +212,7 @@
 
     function renderScopeRow(name, label, rows, selectedValue, getValue, getLabel) {
         const labelFn = getLabel || getValue;
-        const isStoreRow = String(name).includes('store');
-        const rowClass = isStoreRow && rows.length > 5 ? ' admin-accounts-scope-row--grid' : '';
+        const colCount = Math.max(rows.length, 1);
         const items = rows
             .map((row, index) => {
                 const value = getValue(row);
@@ -230,7 +229,7 @@
         return `
             <div class="admin-accounts-scope-row-wrap">
                 <span class="admin-accounts-scope-row-label">${escapeHtml(label)}</span>
-                <div class="admin-accounts-scope-row${rowClass}" role="radiogroup" aria-label="${escapeAttr(label)}">${items}</div>
+                <div class="admin-accounts-scope-row admin-accounts-scope-row--equal" role="radiogroup" aria-label="${escapeAttr(label)}" style="--scope-cols: ${colCount};">${items}</div>
             </div>
         `;
     }

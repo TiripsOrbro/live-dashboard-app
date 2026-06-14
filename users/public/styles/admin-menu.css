@@ -333,6 +333,7 @@ html.mic-dark-mode .admin-accounts-existing {
 .admin-accounts-scope-row-wrap {
     display: grid;
     gap: 0.35rem;
+    width: 100%;
 }
 
 .admin-accounts-scope-row-label {
@@ -342,26 +343,28 @@ html.mic-dark-mode .admin-accounts-existing {
 }
 
 .admin-accounts-scope-row {
-    display: flex;
     width: 100%;
-    flex-wrap: wrap;
     gap: 0;
     border: 1px solid rgba(0, 0, 0, 0.12);
     border-radius: 6px;
     overflow: hidden;
 }
 
+.admin-accounts-scope-row--equal {
+    display: grid;
+    grid-template-columns: repeat(var(--scope-cols, 1), minmax(0, 1fr));
+}
+
 .admin-accounts-scope-chip {
     position: relative;
-    flex: 1 1 0;
-    min-width: 3rem;
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0.5rem 0.45rem;
+    width: 100%;
+    min-width: 0;
+    padding: 0.5rem 0.35rem;
     border: none;
     border-right: 1px solid rgba(0, 0, 0, 0.12);
-    border-bottom: 1px solid rgba(0, 0, 0, 0.12);
     border-radius: 0;
     background: #fff;
     cursor: pointer;
@@ -372,19 +375,6 @@ html.mic-dark-mode .admin-accounts-existing {
 
 .admin-accounts-scope-row .admin-accounts-scope-chip:last-child {
     border-right: none;
-}
-
-.admin-accounts-scope-row--grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(3.25rem, 1fr));
-}
-
-.admin-accounts-scope-row--grid .admin-accounts-scope-chip {
-    border-right: 1px solid rgba(0, 0, 0, 0.12);
-}
-
-.admin-accounts-scope-row--grid .admin-accounts-scope-chip:last-child {
-    border-right: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .admin-accounts-scope-chip input {

@@ -27,6 +27,12 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.8 – June 2026
+
+**Fixed**
+
+- **Accounts store tabs** — store numbers now span the full modal width in equal columns, matching the Area tab row.
+
 ### Version 0.4.7 – June 2026
 
 **Changed**

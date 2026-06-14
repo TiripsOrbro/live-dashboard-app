@@ -1046,6 +1046,10 @@ async function initStoreOverview() {
             if (micData) micData.reportEmail = email;
         },
     });
+    window.AdminMenu?.bind?.({
+        getViewAccountsOptions: () => ({ storeNumber: STORE_NUMBER }),
+    });
+    window.AdminAccounts?.maybeOpenFromQuery?.();
     window.MicSettings?.initPreferences?.();
     loadMicData();
     window.setInterval(() => {

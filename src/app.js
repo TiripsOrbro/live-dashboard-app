@@ -416,6 +416,7 @@ const { getAuditTypeConfig } = require('./services/tacaudit/auditRegistry');
 const {
     setAccountGateCookie,
     clearAccountGateCookie,
+    resolveCreateAccountActor,
     resolveCreateAccountParent,
 } = require('./services/createAccountGate');
 const { saveUserAccountSecrets, deleteMmxCredentialsForUser } = require('./services/mmxUserCredentials');
@@ -861,6 +862,11 @@ app.get('/kiosk', (req, res) => {
 });
 
 app.get(['/Create-Account', '/create-account'], (req, res) => {
+    if (req.dashboardUser && canUserCreateAccounts(req.dashboardUser)) {
+        const dest = getLoginRedirectPath(req.dashboardUser);
+        res.redirect(`${dest}${dest.includes('?') ? '&' : '?'}accounts=1`);
+        return;
+    }
     res.sendFile(path.join(paths.users.public, 'create-account.html'));
 });
 
@@ -3441,19 +3447,18 @@ app.put('/api/admin/build-to/overrides', (req, res) => {
 });
 
 app.get('/api/account/create-options', (req, res) => {
-    const user = req.dashboardUser || getRequestUser(req);
-    const parent = resolveCreateAccountParent(req);
-    if (!user || !parent) {
+    const actor = resolveCreateAccountActor(req);
+    if (!actor) {
         res.status(403).json({ success: false, error: 'Sign in to create accounts first.' });
         return;
     }
-    res.json({ success: true, ...getCreateAccountOptions(user) });
+    res.json({ success: true, ...getCreateAccountOptions(actor) });
 });
 
 app.post('/api/account/create', async (req, res) => {
-    const user = req.dashboardUser || getRequestUser(req);
+    const actor = resolveCreateAccountActor(req);
     const parent = resolveCreateAccountParent(req);
-    if (!user || !parent) {
+    if (!actor || !parent) {
         res.status(403).json({
             success: false,
             error: 'Sign in on the Create Account page first.',
@@ -3487,7 +3492,7 @@ app.post('/api/account/create', async (req, res) => {
         return;
     }
 
-    const scopeCheck = validateCreateAccountPayload(user, {
+    const scopeCheck = validateCreateAccountPayload(actor, {
         accountLevel,
         storeNumber,
         market,

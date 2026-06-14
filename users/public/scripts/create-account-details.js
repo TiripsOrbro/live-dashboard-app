@@ -121,6 +121,7 @@
     }
 
     async function loadCreateOptions() {
+        if (levelGroup) levelGroup.innerHTML = '<p class="login-choice-empty">Loading access levels…</p>';
         const res = await fetch('/api/account/create-options', { credentials: 'include' });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) {

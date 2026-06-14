@@ -23,15 +23,8 @@
         backdrop.hidden = true;
         backdrop.innerHTML = `
             <div class="admin-modal admin-modal--wide" role="dialog" aria-modal="true">
-                <h2>View accounts</h2>
-                <div class="admin-modal-toolbar">
-                    <label>
-                        Store
-                        <select id="admin-accounts-store"></select>
-                    </label>
-                    <button type="button" class="mic-settings-btn" id="admin-accounts-create-toggle">Create account</button>
-                </div>
-                <section id="admin-accounts-create" class="admin-accounts-create" hidden>
+                <h2>Accounts</h2>
+                <section id="admin-accounts-create" class="admin-accounts-create">
                     <h3>Create account</h3>
                     <form id="admin-accounts-create-form" class="admin-accounts-form-grid">
                         <label class="admin-accounts-field">
@@ -41,6 +34,10 @@
                         <div class="admin-accounts-field">
                             <span>Account level</span>
                             <div id="admin-create-level-group" class="admin-accounts-choice-group" role="radiogroup"></div>
+                        </div>
+                        <div class="admin-accounts-field" id="admin-create-store-field" hidden>
+                            <span>Store</span>
+                            <div id="admin-create-store-group" class="admin-accounts-choice-group" role="radiogroup"></div>
                         </div>
                         <div class="admin-accounts-field" id="admin-create-market-field" hidden>
                             <span>Market</span>
@@ -55,12 +52,21 @@
                         </p>
                         <div class="admin-accounts-create-actions">
                             <button type="submit" class="mic-settings-btn admin-btn-primary" id="admin-create-submit">Create account</button>
-                            <button type="button" class="mic-settings-btn" id="admin-create-cancel">Cancel</button>
+                            <button type="reset" class="mic-settings-btn" id="admin-create-reset">Clear form</button>
                         </div>
                         <div id="admin-create-result" class="admin-accounts-temp-password" hidden></div>
                     </form>
                 </section>
-                <div id="admin-accounts-body"></div>
+                <section class="admin-accounts-existing">
+                    <h3>Existing accounts</h3>
+                    <div class="admin-modal-toolbar">
+                        <label>
+                            Store
+                            <select id="admin-accounts-store"></select>
+                        </label>
+                    </div>
+                    <div id="admin-accounts-body"></div>
+                </section>
                 <p id="admin-accounts-error" class="admin-modal-error" role="alert"></p>
                 <div class="admin-modal-actions">
                     <button type="button" id="admin-accounts-close">Close</button>
@@ -71,23 +77,44 @@
             if (event.target === backdrop) close();
         });
         backdrop.querySelector('#admin-accounts-close')?.addEventListener('click', close);
-        backdrop.querySelector('#admin-accounts-create-toggle')?.addEventListener('click', () => {
-            toggleCreatePanel(true);
-        });
-        backdrop.querySelector('#admin-create-cancel')?.addEventListener('click', () => {
-            toggleCreatePanel(false);
-        });
         backdrop.querySelector('#admin-create-level-group')?.addEventListener('change', syncCreateScopeFields);
         backdrop.querySelector('#admin-accounts-create-form')?.addEventListener('submit', (event) => {
             event.preventDefault();
             void submitCreateAccount();
+        });
+        backdrop.querySelector('#admin-accounts-create-form')?.addEventListener('reset', () => {
+            window.setTimeout(() => {
+                syncCreateScopeFields();
+                backdrop.querySelector('#admin-create-result').hidden = true;
+                backdrop.querySelector('#admin-create-result').innerHTML = '';
+                const submitBtn = backdrop.querySelector('#admin-create-submit');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Create account';
+            }, 0);
         });
         return backdrop;
     }
 
     function close() {
         if (backdrop) backdrop.hidden = true;
-        toggleCreatePanel(false);
+        resetCreateForm();
+    }
+
+    function resetCreateForm() {
+        if (!backdrop) return;
+        const form = backdrop.querySelector('#admin-accounts-create-form');
+        const resultEl = backdrop.querySelector('#admin-create-result');
+        const submitBtn = backdrop.querySelector('#admin-create-submit');
+        form?.reset();
+        if (resultEl) {
+            resultEl.hidden = true;
+            resultEl.innerHTML = '';
+        }
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Create account';
+        }
+        syncCreateScopeFields();
     }
 
     function selectedRadioValue(root, name) {
@@ -127,21 +154,32 @@
     function syncCreateScopeFields() {
         if (!backdrop) return;
         const meta = selectedCreateLevelMeta(backdrop);
-        const requiresMarket = Boolean(meta?.requiresMarket);
-        const requiresArea = Boolean(meta?.requiresArea);
-        backdrop.querySelector('#admin-create-market-field').hidden = !requiresMarket;
-        backdrop.querySelector('#admin-create-area-field').hidden = !requiresArea;
+        backdrop.querySelector('#admin-create-store-field').hidden = !Boolean(meta?.requiresStore);
+        backdrop.querySelector('#admin-create-market-field').hidden = !Boolean(meta?.requiresMarket);
+        backdrop.querySelector('#admin-create-area-field').hidden = !Boolean(meta?.requiresArea);
     }
 
     async function populateCreateForm(storeNumber) {
         const root = ensureBackdrop();
+        const levelGroup = root.querySelector('#admin-create-level-group');
+        if (levelGroup) levelGroup.innerHTML = '<p class="admin-accounts-meta">Loading access levels…</p>';
+        createOptions = null;
         const opts = await ensureCreateOptions();
+        const defaultStore = String(storeNumber || opts.defaultStore || '').trim();
         fillChoiceGroup(
-            root.querySelector('#admin-create-level-group'),
+            levelGroup,
             opts.assignableLevels || [],
             'accountLevel',
             (row) => row.value,
             (row) => row.label
+        );
+        fillChoiceGroup(
+            root.querySelector('#admin-create-store-group'),
+            opts.stores || [],
+            'storeNumber',
+            (row) => row.storeNumber,
+            (row) => `${row.storeNumber} — ${row.storeName}`,
+            defaultStore
         );
         fillChoiceGroup(
             root.querySelector('#admin-create-market-group'),
@@ -158,38 +196,7 @@
             (row) => row.area
         );
         syncCreateScopeFields();
-        currentStoreNumber = String(storeNumber || opts.defaultStore || '').trim();
-    }
-
-    function toggleCreatePanel(open) {
-        if (!backdrop) return;
-        const panel = backdrop.querySelector('#admin-accounts-create');
-        const resultEl = backdrop.querySelector('#admin-create-result');
-        const form = backdrop.querySelector('#admin-accounts-create-form');
-        const submitBtn = backdrop.querySelector('#admin-create-submit');
-        if (!panel) return;
-        if (!open) {
-            panel.hidden = true;
-            if (resultEl) {
-                resultEl.hidden = true;
-                resultEl.innerHTML = '';
-            }
-            if (form) form.reset();
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Create account';
-            }
-            return;
-        }
-        panel.hidden = false;
-        if (resultEl) {
-            resultEl.hidden = true;
-            resultEl.innerHTML = '';
-        }
-        populateCreateForm(backdrop.querySelector('#admin-accounts-store')?.value || currentStoreNumber).catch((error) => {
-            backdrop.querySelector('#admin-accounts-error').textContent = error.message;
-        });
-        backdrop.querySelector('#admin-create-username')?.focus();
+        currentStoreNumber = defaultStore;
     }
 
     async function submitCreateAccount() {
@@ -199,7 +206,10 @@
         const resultEl = root.querySelector('#admin-create-result');
         const username = root.querySelector('#admin-create-username')?.value.trim() || '';
         const meta = selectedCreateLevelMeta(root);
-        const storeNumber = String(root.querySelector('#admin-accounts-store')?.value || currentStoreNumber).trim();
+        const listStore = String(root.querySelector('#admin-accounts-store')?.value || currentStoreNumber).trim();
+        const storeNumber = meta?.requiresStore
+            ? selectedRadioValue(root, 'storeNumber') || listStore
+            : listStore;
 
         errorEl.textContent = '';
         if (!username) {
@@ -253,7 +263,8 @@
                 `;
             }
             submitBtn.textContent = 'Created';
-            await loadIntoModal(root, storeNumber);
+            const reloadStore = listStore || storeNumber;
+            if (reloadStore) await loadIntoModal(root, reloadStore);
         } catch (error) {
             errorEl.textContent = error.message;
             submitBtn.disabled = false;
@@ -417,7 +428,7 @@
         const root = ensureBackdrop();
         root.hidden = false;
         root.querySelector('#admin-accounts-error').textContent = '';
-        toggleCreatePanel(false);
+        resetCreateForm();
         const me = await fetchProfile();
         const isAdmin = Boolean(
             options.isAdmin || me.canViewCrossStoreAccounts || me.role === 'admin' || me.stores === '*'
@@ -441,13 +452,33 @@
             });
         };
 
-        if (!storeNumber) {
-            root.querySelector('#admin-accounts-body').innerHTML = '<p>No store selected.</p>';
-            return;
-        }
         currentStoreNumber = storeNumber;
-        await loadIntoModal(root, storeNumber);
+        try {
+            await populateCreateForm(storeNumber);
+        } catch (error) {
+            root.querySelector('#admin-accounts-error').textContent = error.message;
+        }
+
+        if (storeNumber) {
+            await loadIntoModal(root, storeNumber);
+        } else {
+            root.querySelector('#admin-accounts-body').innerHTML = '<p>No store selected.</p>';
+        }
+
+        if (options.focusCreate) {
+            root.querySelector('#admin-create-username')?.focus();
+        }
     }
 
-    global.AdminAccounts = { open, close };
+    function maybeOpenFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('accounts') !== '1') return;
+        params.delete('accounts');
+        const query = params.toString();
+        const next = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash || ''}`;
+        window.history.replaceState(null, '', next);
+        void open({ focusCreate: true });
+    }
+
+    global.AdminAccounts = { open, close, maybeOpenFromQuery };
 })(window);

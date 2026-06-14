@@ -96,16 +96,21 @@ function resolveGateParentUser(gate) {
     return null;
 }
 
-function resolveCreateAccountParent(req) {
+function resolveCreateAccountActor(req) {
     const sessionUser = req.dashboardUser;
     if (sessionUser && canUserCreateAccounts(sessionUser)) {
-        return buildCreateAccountParentFromUser(sessionUser, 'session');
+        return sessionUser;
     }
     const gate = readGateFromRequest(req);
     if (!gate) return null;
-    const gateUser = resolveGateParentUser(gate);
-    if (!gateUser) return null;
-    return buildCreateAccountParentFromUser(gateUser, 'gate');
+    return resolveGateParentUser(gate);
+}
+
+function resolveCreateAccountParent(req) {
+    const actor = resolveCreateAccountActor(req);
+    if (!actor) return null;
+    const via = req.dashboardUser && canUserCreateAccounts(req.dashboardUser) ? 'session' : 'gate';
+    return buildCreateAccountParentFromUser(actor, via);
 }
 
 module.exports = {
@@ -116,5 +121,6 @@ module.exports = {
     readGateFromRequest,
     setAccountGateCookie,
     clearAccountGateCookie,
+    resolveCreateAccountActor,
     resolveCreateAccountParent,
 };

@@ -27,6 +27,21 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.4 – June 2026
+
+**Changed**
+
+- **Accounts admin menu** — create and manage crew accounts on one screen from **Admin menu → Accounts** (no separate create-account wizard).
+- **Create account entry points** — the account menu and signed-in visits to `/Create-Account` open the admin Accounts modal instead of redirecting away.
+
+**Fixed**
+
+- **Access level selection** — account level, store, market, and area pickers load correctly after gate sign-in (radio buttons now appear instead of empty labels).
+
+**What you need to do**
+
+- Hard refresh the dashboard (Ctrl+F5) after the Pi update so the new Accounts modal loads.
+
 ### Version 0.4.3 – June 2026
 
 **Added**

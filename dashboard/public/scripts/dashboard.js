@@ -2331,6 +2331,7 @@ function bindDashboardSettings() {
     window.AdminMenu?.bind?.({
         getViewAccountsOptions: () => (IS_ADMIN_STORE_DASHBOARD ? { isAdmin: true, storeNumber: STORE_NUMBER || '' } : { storeNumber: STORE_NUMBER || '' }),
     });
+    window.AdminAccounts?.maybeOpenFromQuery?.();
 }
 
 function renderDashboardSettingsChrome() {

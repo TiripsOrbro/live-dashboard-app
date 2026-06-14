@@ -32,11 +32,9 @@
             const res = await fetch('/api/me', { credentials: 'include' });
             const data = await res.json().catch(() => ({}));
             if (res.ok && data.success && data.canCreateAccount) {
-                const optionsRes = await fetch('/api/account/create-options', { credentials: 'include' });
-                const options = await optionsRes.json().catch(() => ({}));
-                if (optionsRes.ok && options.success) {
-                    window.location.replace('/Create-Account/details');
-                }
+                const dest = String(data.defaultPath || '/').trim() || '/';
+                const join = dest.includes('?') ? '&' : '?';
+                window.location.replace(`${dest}${join}accounts=1`);
             }
         } catch (_) {
             /* stay on step 1 */

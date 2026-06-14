@@ -24,7 +24,7 @@
             <div class="mic-item-picker-panel admin-menu-panel">
                 <h2>Admin menu</h2>
                 <div class="admin-menu-actions">
-                    <button type="button" class="mic-settings-btn" data-admin-action="view-accounts">View accounts</button>
+                    <button type="button" class="mic-settings-btn" data-admin-action="view-accounts">Accounts</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="forecast">Forecast tool</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="build-to">Build to adjustments</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="feature-requests" hidden>Feature requests</button>

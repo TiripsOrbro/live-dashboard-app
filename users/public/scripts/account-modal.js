@@ -361,7 +361,23 @@
     }
 
     function openCreateAccountModal() {
-        window.location.href = '/Create-Account';
+        if (!window.AdminAccounts?.open) {
+            window.location.href = '/Create-Account';
+            return;
+        }
+        void fetchProfile()
+            .then((data) => {
+                const storeNumber =
+                    data.effectiveStores?.[0] ||
+                    (Array.isArray(data.stores) ? data.stores[0] : '') ||
+                    '';
+                const isAdmin =
+                    data.canViewCrossStoreAccounts || data.role === 'admin' || data.stores === '*';
+                window.AdminAccounts.open({ storeNumber, isAdmin, focusCreate: true });
+            })
+            .catch(() => {
+                window.AdminAccounts.open({ focusCreate: true });
+            });
     }
 
     function openFeatureRequestModal() {

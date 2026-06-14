@@ -1103,6 +1103,12 @@
             }),
             resolveAdminMenuVisibility: !meProfile?.canAccessAdminMenu,
         });
+        global.AdminMenu?.bind?.({
+            getViewAccountsOptions: () => ({
+                isAdmin: Boolean(meProfile?.canViewCrossStoreAccounts),
+            }),
+        });
+        global.AdminAccounts?.maybeOpenFromQuery?.();
         global.MicSettings?.initPreferences?.();
     }
 

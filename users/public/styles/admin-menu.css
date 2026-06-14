@@ -296,6 +296,7 @@ html.mic-dark-mode .admin-accounts-existing {
 
 .admin-accounts-level-btn {
     position: relative;
+    box-sizing: border-box;
     flex: 1 1 0;
     min-width: 0;
     display: inline-flex;
@@ -322,16 +323,21 @@ html.mic-dark-mode .admin-accounts-existing {
     pointer-events: none;
 }
 
-.admin-accounts-level-btn:has(input:checked) {
-    border-color: transparent;
+.admin-accounts-level-btn:has(input:checked),
+.admin-accounts-scope-chip:has(input:checked) {
     background: rgba(122, 62, 177, 0.12);
-    box-shadow: inset 0 -2px 0 #7a3eb1;
+    box-shadow: none;
 }
 
-.admin-accounts-scope-chip:has(input:checked) {
-    border-color: transparent;
-    background: rgba(122, 62, 177, 0.12);
-    box-shadow: inset 0 -2px 0 #7a3eb1;
+.admin-accounts-level-btn:has(input:checked)::after,
+.admin-accounts-scope-chip:has(input:checked)::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 2px;
+    background: #7a3eb1;
 }
 
 .admin-accounts-scope-stack,
@@ -367,6 +373,7 @@ html.mic-dark-mode .admin-accounts-existing {
 
 .admin-accounts-scope-chip {
     position: relative;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -476,8 +483,11 @@ html.mic-dark-mode .admin-accounts-scope-chip {
 html.mic-dark-mode .admin-accounts-level-btn:has(input:checked),
 html.mic-dark-mode .admin-accounts-scope-chip:has(input:checked) {
     background: rgba(122, 62, 177, 0.28);
-    border-color: transparent;
-    box-shadow: inset 0 -2px 0 rgba(186, 132, 255, 0.85);
+}
+
+html.mic-dark-mode .admin-accounts-level-btn:has(input:checked)::after,
+html.mic-dark-mode .admin-accounts-scope-chip:has(input:checked)::after {
+    background: rgba(186, 132, 255, 0.95);
 }
 
 html.mic-dark-mode .admin-accounts-scope-section > span,

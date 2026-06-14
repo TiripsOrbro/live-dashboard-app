@@ -27,6 +27,12 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.8.2 – June 2026
+
+**Fixed**
+
+- **Accounts tab highlight** — selected Market, Area, and Store tabs now align the purple underline with the tab background.
+
 ### Version 0.4.8.1 – June 2026
 
 **Changed**

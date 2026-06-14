@@ -27,6 +27,16 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.8.4 – June 2026
+
+**Fixed**
+
+- **Accounts store picker** — you can now switch Area and Store tabs in **Existing accounts** without the selection snapping back to your current store.
+
+**What you need to do**
+
+- Hard refresh (Ctrl+F5) after the Pi update.
+
 ### Version 0.4.8.3 – June 2026
 
 **Changed**

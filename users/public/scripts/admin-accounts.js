@@ -211,9 +211,11 @@
     function resolveBrowseScope(tree, selections = {}, preferredStore = '') {
         let market = selections.market || '';
         let area = selections.area || '';
-        let storeNumber = String(preferredStore || selections.storeNumber || '').trim();
+        let storeNumber = selections.storeNumber || '';
 
-        if (storeNumber) {
+        const pref = String(preferredStore || '').trim();
+        if (pref && !market && !area && !storeNumber) {
+            storeNumber = pref;
             for (const [areaName, stores] of Object.entries(tree.storesByArea || {})) {
                 if (!stores.some((row) => row.storeNumber === storeNumber)) continue;
                 area = areaName;
@@ -326,10 +328,12 @@
     async function onBrowseScopeChange() {
         if (!backdrop || !createOptions?.scopeTree) return;
         const root = backdrop;
-        const storeNumber = renderBrowseScopeNavigator(root, createOptions.scopeTree, currentStoreNumber);
+        const storeNumber = renderBrowseScopeNavigator(root, createOptions.scopeTree);
         if (!storeNumber) {
-            currentStoreNumber = '';
-            root.querySelector('#admin-accounts-body').innerHTML = '<p>Select a store to view accounts.</p>';
+            if (currentStoreNumber) {
+                currentStoreNumber = '';
+                root.querySelector('#admin-accounts-body').innerHTML = '<p>Select a store to view accounts.</p>';
+            }
             return;
         }
         if (storeNumber === currentStoreNumber) return;

@@ -38,6 +38,10 @@
     }
 
     function ensureBackdrop() {
+        if (backdrop && !backdrop.querySelector('.admin-accounts-create-toggle-label')) {
+            backdrop.remove();
+            backdrop = null;
+        }
         if (backdrop) return backdrop;
         backdrop = document.createElement('div');
         backdrop.className = 'admin-modal-backdrop';
@@ -45,9 +49,16 @@
         backdrop.innerHTML = `
             <div class="admin-modal admin-modal--wide" role="dialog" aria-modal="true">
                 <h2>Accounts</h2>
-                <button type="button" id="admin-accounts-create-toggle" class="mic-settings-btn admin-accounts-create-toggle" aria-expanded="false" aria-controls="admin-accounts-create">Create account</button>
+                <section class="admin-accounts-existing">
+                    <h3>Existing accounts</h3>
+                    <div id="admin-accounts-browse-scope" class="admin-accounts-browse-scope"></div>
+                    <div id="admin-accounts-body"></div>
+                </section>
+                <button type="button" id="admin-accounts-create-toggle" class="mic-settings-btn admin-accounts-create-toggle" aria-expanded="false" aria-controls="admin-accounts-create">
+                    <span class="admin-accounts-create-toggle-label">Create account</span>
+                    <span class="admin-accounts-create-toggle-icon" aria-hidden="true">▼</span>
+                </button>
                 <section id="admin-accounts-create" class="admin-accounts-create" hidden>
-                    <h3>New account</h3>
                     <form id="admin-accounts-create-form" class="admin-accounts-form-grid">
                         <label class="admin-accounts-field">
                             Username
@@ -62,16 +73,11 @@
                             A temporary password is generated automatically. The new user must sign in, link Macromatix if required, and set a personal password.
                         </p>
                         <div class="admin-accounts-create-actions">
-                            <button type="submit" class="mic-settings-btn admin-btn-primary" id="admin-create-submit">Create account</button>
+                            <button type="submit" class="mic-settings-btn admin-btn-primary" id="admin-create-submit">Save account</button>
                             <button type="reset" class="mic-settings-btn" id="admin-create-reset">Clear form</button>
                         </div>
                         <div id="admin-create-result" class="admin-accounts-temp-password" hidden></div>
                     </form>
-                </section>
-                <section class="admin-accounts-existing">
-                    <h3>Existing accounts</h3>
-                    <div id="admin-accounts-browse-scope" class="admin-accounts-browse-scope"></div>
-                    <div id="admin-accounts-body"></div>
                 </section>
                 <p id="admin-accounts-error" class="admin-modal-error" role="alert"></p>
                 <div class="admin-modal-actions">
@@ -85,8 +91,8 @@
         backdrop.querySelector('#admin-accounts-close')?.addEventListener('click', close);
         backdrop.querySelector('#admin-accounts-create-toggle')?.addEventListener('click', () => {
             const panel = backdrop.querySelector('#admin-accounts-create');
-            const expanded = panel ? panel.hidden : true;
-            void setCreatePanelExpanded(expanded, { focus: expanded });
+            const willExpand = Boolean(panel?.hidden);
+            void setCreatePanelExpanded(willExpand, { focus: willExpand });
         });
         backdrop.querySelector('#admin-create-level-group')?.addEventListener('change', syncCreateScopeUI);
         backdrop.querySelector('#admin-create-scope-stack')?.addEventListener('change', syncCreateScopeUI);
@@ -104,7 +110,7 @@
                 backdrop.querySelector('#admin-create-result').innerHTML = '';
                 const submitBtn = backdrop.querySelector('#admin-create-submit');
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Create account';
+                submitBtn.textContent = 'Save account';
             }, 0);
         });
         return backdrop;
@@ -123,7 +129,11 @@
         if (!panel || !toggle) return;
         panel.hidden = !expanded;
         toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-        toggle.textContent = expanded ? 'Hide create form' : 'Create account';
+        toggle.classList.toggle('is-expanded', expanded);
+        const label = toggle.querySelector('.admin-accounts-create-toggle-label');
+        const icon = toggle.querySelector('.admin-accounts-create-toggle-icon');
+        if (label) label.textContent = 'Create account';
+        if (icon) icon.textContent = expanded ? '▲' : '▼';
         if (!expanded) return;
         const needsLoad = !backdrop.querySelector('#admin-create-level-group input[name="accountLevel"]');
         if (needsLoad) {
@@ -150,7 +160,7 @@
         }
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Create account';
+            submitBtn.textContent = 'Save account';
         }
         syncCreateScopeUI();
     }
@@ -517,7 +527,7 @@
         } catch (error) {
             errorEl.textContent = error.message;
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Create account';
+            submitBtn.textContent = 'Save account';
         }
     }
 

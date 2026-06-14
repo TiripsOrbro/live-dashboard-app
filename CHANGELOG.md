@@ -27,6 +27,16 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.8.3 – June 2026
+
+**Changed**
+
+- **Accounts modal** — existing accounts show first; the create form stays hidden until you tap **Create account ▼**. The form submit button is now **Save account** so it is not confused with the expand button.
+
+**What you need to do**
+
+- Hard refresh (Ctrl+F5) after the Pi update.
+
 ### Version 0.4.8.2 – June 2026
 
 **Fixed**

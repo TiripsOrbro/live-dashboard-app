@@ -244,6 +244,9 @@ const {
     completePasswordSetup,
     passwordPolicyForUser,
     userNeedsPasswordChange,
+    userNeedsMmxSetup,
+    getAccountSetupRedirectPath,
+    generateTemporaryPassword,
     setAccountColourBlindPreference,
     setAccountMicDarkModePreference,
     setAccountAuditAutoCollapsePreference,
@@ -423,6 +426,16 @@ const {
     readLifeLenzCredentialsForUser,
 } = require('./services/lifelenzUserCredentials');
 const { getDashboardMeta, readChangelogMarkdown } = require('./services/dashboardMeta');
+const {
+    listFeatureRequests,
+    listFeatureRequestCategories,
+    listFeatureRequestPriorities,
+    addFeatureRequest,
+    addFeatureRequestCategory,
+    hideFeatureRequestCategory,
+    deleteFeatureRequestCategory,
+    updateFeatureRequest,
+} = require('./services/featureRequests');
 const { verifyMacromatixLogin } = require('./services/macromatixScraper');
 const { verifyLifeLenzLogin } = require('../lifelenz/src/lifelenzAuth');
 const {
@@ -536,17 +549,16 @@ function setSessionCookie(res, user, remember = true, entry = '') {
 function sendLoginSuccess(req, res, user, destOverride = '') {
     const mode = String(req.body?.mode || 'dashboard').trim().toLowerCase();
     const profile = userProfileForClient(user);
-    const mustChange = Boolean(profile.mustChangePassword);
-    const dest = mustChange
-        ? '/change-password'
-        : destOverride || getLoginRedirectPath(user, mode) || profile.defaultPath || '/login';
+    const setupPath = getAccountSetupRedirectPath(user);
+    const dest = setupPath || destOverride || getLoginRedirectPath(user, mode) || profile.defaultPath || '/login';
     if (wantsJsonResponse(req)) {
         res.json({
             success: true,
             welcomeName: profile.welcomeName || '',
             defaultPath: dest,
             mode,
-            mustChangePassword: mustChange,
+            mustCompleteMmxSetup: Boolean(profile.mustCompleteMmxSetup),
+            mustChangePassword: Boolean(profile.mustChangePassword),
             passwordPolicy: profile.passwordPolicy,
         });
         return;
@@ -708,37 +720,64 @@ function dashboardAuthMiddleware(req, res, next) {
     sendUnauthorized(req, res);
 }
 
-function isPasswordChangeAllowedPath(reqPath) {
-    if (reqPath === '/change-password') return true;
-    if (reqPath === '/api/account/complete-password-setup') return true;
+function isAccountSetupAllowedPath(reqPath, needsMmx, needsPassword) {
     if (reqPath === '/api/me') return true;
     if (reqPath === '/logout') return true;
-    if (reqPath === '/scripts/change-password.js') return true;
-    if (reqPath === '/styles/login.css' || reqPath === '/styles/brand-mark.css') return true;
+    if (
+        reqPath === '/styles/login.css' ||
+        reqPath === '/styles/brand-mark.css' ||
+        reqPath === '/styles/page-scroll.css'
+    ) {
+        return true;
+    }
     if (reqPath === '/scripts/brand-mark.js') return true;
     if (reqPath === '/icon.svg' || reqPath === '/icon-mark.svg') return true;
+
+    if (needsMmx) {
+        return (
+            reqPath === '/mmx-setup' ||
+            reqPath === '/api/account/complete-mmx-setup' ||
+            reqPath === '/scripts/mmx-setup.js'
+        );
+    }
+    if (needsPassword) {
+        return (
+            reqPath === '/change-password' ||
+            reqPath === '/api/account/complete-password-setup' ||
+            reqPath === '/scripts/change-password.js'
+        );
+    }
     return false;
 }
 
-function passwordChangeMiddleware(req, res, next) {
+function accountSetupMiddleware(req, res, next) {
     const user = req.dashboardUser;
-    if (!isRealDashboardUser(user) || !userNeedsPasswordChange(user.username)) {
+    if (!isRealDashboardUser(user)) {
         next();
         return;
     }
-    if (isPasswordChangeAllowedPath(req.path)) {
+    const needsMmx = userNeedsMmxSetup(user.username);
+    const needsPassword = userNeedsPasswordChange(user.username);
+    if (!needsMmx && !needsPassword) {
+        next();
+        return;
+    }
+    if (isAccountSetupAllowedPath(req.path, needsMmx, needsPassword)) {
         next();
         return;
     }
     if (isApiRequest(req)) {
         res.status(403).json({
             success: false,
-            error: 'You must set a new password before continuing.',
-            mustChangePassword: true,
+            error: needsMmx
+                ? 'Complete Macromatix setup before continuing.'
+                : 'You must set a new password before continuing.',
+            mustCompleteMmxSetup: needsMmx,
+            mustChangePassword: needsPassword,
         });
         return;
     }
-    res.redirect('/change-password');
+    res.redirect(needsMmx ? '/mmx-setup' : '/change-password');
 }
 
 function scrapePresenceMiddleware(req, res, next) {
@@ -762,6 +801,10 @@ app.get('/', (req, res) => {
         res.redirect('/login');
         return;
     }
+    if (userNeedsMmxSetup(user.username)) {
+        res.redirect('/mmx-setup');
+        return;
+    }
     if (userNeedsPasswordChange(user.username)) {
         res.redirect('/change-password');
         return;
@@ -774,6 +817,10 @@ app.get('/login', (req, res) => {
         const user = getRequestUser(req);
         if (!isRealDashboardUser(user)) {
             res.sendFile(path.join(paths.users.public, 'login.html'));
+            return;
+        }
+        if (userNeedsMmxSetup(user.username)) {
+            res.redirect('/mmx-setup');
             return;
         }
         if (userNeedsPasswordChange(user.username)) {
@@ -1018,7 +1065,7 @@ for (const loginAsset of ['scripts/brand-mark.js', 'styles/brand-mark.css', 'sty
 }
 
 app.use(dashboardAuthMiddleware);
-app.use(passwordChangeMiddleware);
+app.use(accountSetupMiddleware);
 app.use(scrapePresenceMiddleware);
 
 // Middleware to serve static files. `index: false` so `/` is handled by our store-picker route below
@@ -2637,6 +2684,10 @@ app.get('/change-password', (req, res) => {
         res.redirect('/login');
         return;
     }
+    if (userNeedsMmxSetup(user.username)) {
+        res.redirect('/mmx-setup');
+        return;
+    }
     if (!userNeedsPasswordChange(user.username)) {
         res.redirect(
             isAdminUser(user) ? getAdminRedirectPath() : getLoginRedirectPath(user, 'mic')
@@ -2644,6 +2695,20 @@ app.get('/change-password', (req, res) => {
         return;
     }
     res.sendFile(path.join(paths.users.public, 'change-password.html'));
+});
+
+app.get('/mmx-setup', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.redirect('/login');
+        return;
+    }
+    if (!userNeedsMmxSetup(user.username)) {
+        const setupPath = getAccountSetupRedirectPath(user);
+        res.redirect(setupPath || (isAdminUser(user) ? getAdminRedirectPath() : getLoginRedirectPath(user, 'mic')));
+        return;
+    }
+    res.sendFile(path.join(paths.users.public, 'mmx-setup.html'));
 });
 
 app.get('/changelog', (req, res) => {
@@ -2669,10 +2734,164 @@ app.get('/api/dashboard/changelog', (req, res) => {
     });
 });
 
+app.get('/requests', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isSuperAdminUser(user)) {
+        sendUnauthorized(req, res);
+        return;
+    }
+    res.sendFile(path.join(paths.dashboard.public, 'requests.html'));
+});
+
+app.get('/api/feature-requests', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isSuperAdminUser(user)) {
+        res.status(403).json({ success: false, error: 'Only the dashboard owner can view feature requests.' });
+        return;
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json({
+        success: true,
+        requests: listFeatureRequests(),
+        categories: listFeatureRequestCategories(),
+        priorities: listFeatureRequestPriorities(),
+    });
+});
+
+app.post('/api/feature-requests/categories', (req, res) => {
+    try {
+        const user = req.dashboardUser || getRequestUser(req);
+        if (!isSuperAdminUser(user)) {
+            res.status(403).json({ success: false, error: 'Only the dashboard owner can create tabs.' });
+            return;
+        }
+        const result = addFeatureRequestCategory(req.body?.label);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, category: result.category, categories: result.categories });
+    } catch (error) {
+        console.error('[FeatureRequests] Failed to create tab:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not create tab.' });
+    }
+});
+
+app.patch('/api/feature-requests/categories/:id', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isSuperAdminUser(user)) {
+        res.status(403).json({ success: false, error: 'Only the dashboard owner can hide tabs.' });
+        return;
+    }
+    if (req.body?.hidden !== true) {
+        res.status(400).json({ success: false, error: 'Expected { hidden: true }.' });
+        return;
+    }
+    const result = hideFeatureRequestCategory(req.params.id);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({
+        success: true,
+        category: result.category,
+        categories: result.categories,
+        requests: result.requests,
+        unassignedCount: result.unassignedCount,
+    });
+});
+
+app.delete('/api/feature-requests/categories/:id', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isSuperAdminUser(user)) {
+        res.status(403).json({ success: false, error: 'Only the dashboard owner can delete tabs.' });
+        return;
+    }
+    const result = deleteFeatureRequestCategory(req.params.id);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({
+        success: true,
+        category: result.category,
+        categories: result.categories,
+        requests: result.requests,
+        unassignedCount: result.unassignedCount,
+    });
+});
+
+app.post('/api/feature-requests', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.status(401).json({ success: false, error: 'Sign in to submit a feature request.' });
+        return;
+    }
+    const result = addFeatureRequest({
+        text: req.body?.text,
+        details: req.body?.details,
+        category: req.body?.category,
+        username: user.username,
+        displayName: user.displayName || user.username,
+    });
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({ success: true, request: result.request });
+});
+
+app.patch('/api/feature-requests/:id', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isSuperAdminUser(user)) {
+        res.status(403).json({ success: false, error: 'Only the dashboard owner can update feature requests.' });
+        return;
+    }
+    const id = String(req.params.id || '').trim();
+    if (!id) {
+        res.status(400).json({ success: false, error: 'Missing feature request id.' });
+        return;
+    }
+    const hasCompleted = typeof req.body?.completed === 'boolean';
+    const hasCategory = req.body?.category !== undefined;
+    const hasDetails = req.body?.details !== undefined;
+    const hasMilestones = req.body?.milestones !== undefined;
+    const hasPriority = req.body?.priority !== undefined;
+    if (!hasCompleted && !hasCategory && !hasDetails && !hasMilestones && !hasPriority) {
+        res.status(400).json({ success: false, error: 'Expected at least one field to update.' });
+        return;
+    }
+    const result = updateFeatureRequest(id, {
+        completed: hasCompleted ? req.body.completed : undefined,
+        category: hasCategory ? req.body.category : undefined,
+        details: hasDetails ? req.body.details : undefined,
+        milestones: hasMilestones ? req.body.milestones : undefined,
+        priority: hasPriority ? req.body.priority : undefined,
+    });
+    if (!result.ok) {
+        res.status(404).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({
+        success: true,
+        request: result.request,
+        requests: result.requests,
+        categories: result.categories,
+    });
+});
+
 app.post('/api/account/complete-password-setup', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     if (!isRealDashboardUser(user)) {
         res.status(403).json({ success: false, error: 'Sign in first to set your password.' });
+        return;
+    }
+    if (userNeedsMmxSetup(user.username)) {
+        res.status(403).json({
+            success: false,
+            error: 'Complete Macromatix setup before setting your password.',
+            mustCompleteMmxSetup: true,
+        });
         return;
     }
     if (!userNeedsPasswordChange(user.username)) {
@@ -2699,6 +2918,60 @@ app.post('/api/account/complete-password-setup', (req, res) => {
         success: true,
         defaultPath: profile.defaultPath,
         welcomeName: profile.welcomeName,
+    });
+});
+
+app.post('/api/account/complete-mmx-setup', async (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.status(403).json({ success: false, error: 'Sign in first to complete Macromatix setup.' });
+        return;
+    }
+    if (!userNeedsMmxSetup(user.username)) {
+        res.status(400).json({ success: false, error: 'Macromatix setup is not required for this account.' });
+        return;
+    }
+
+    const firstName = String(req.body?.firstName || '').trim();
+    const lastName = String(req.body?.lastName || '').trim();
+    const mmxUsername = String(req.body?.mmxUsername || '').trim();
+    const mmxPassword = String(req.body?.mmxPassword || '');
+
+    if (!firstName || !lastName) {
+        res.status(400).json({ success: false, error: 'First name and last name are required.' });
+        return;
+    }
+    if (!mmxUsername || !mmxPassword) {
+        res.status(400).json({ success: false, error: 'Macromatix username and password are required.' });
+        return;
+    }
+
+    const mmxCheck = await verifyMacromatixLogin(mmxUsername, mmxPassword);
+    if (!mmxCheck.ok) {
+        res.status(400).json({
+            success: false,
+            error: mmxCheck.error || 'Macromatix login failed.',
+        });
+        return;
+    }
+
+    const mmxSave = saveUserAccountSecrets(user.username, {
+        firstName,
+        lastName,
+        mmxUsername,
+        mmxPassword,
+    });
+    if (!mmxSave.ok) {
+        res.status(500).json({ success: false, error: mmxSave.error || 'Could not save Macromatix credentials.' });
+        return;
+    }
+
+    const profile = userProfileForClient(user);
+    res.json({
+        success: true,
+        defaultPath: profile.defaultPath,
+        welcomeName: profile.welcomeName,
+        mustChangePassword: Boolean(profile.mustChangePassword),
     });
 });
 
@@ -3189,8 +3462,9 @@ app.post('/api/account/create', async (req, res) => {
     }
 
     const username = String(req.body?.username || '').trim();
-    const password = String(req.body?.password || '');
-    const confirmPassword = String(req.body?.confirmPassword || '');
+    const useTemporaryPassword = Boolean(req.body?.useTemporaryPassword);
+    let password = String(req.body?.password || '');
+    let confirmPassword = String(req.body?.confirmPassword || '');
     const firstName = String(req.body?.firstName || '').trim();
     const lastName = String(req.body?.lastName || '').trim();
     const accountLevel = String(req.body?.accountLevel || '').trim();
@@ -3205,7 +3479,10 @@ app.post('/api/account/create', async (req, res) => {
     const mmxUsername = String(req.body?.mmxUsername || '').trim();
     const mmxPassword = String(req.body?.mmxPassword || '');
 
-    if (password !== confirmPassword) {
+    if (useTemporaryPassword) {
+        password = generateTemporaryPassword(accountLevel);
+        confirmPassword = password;
+    } else if (password !== confirmPassword) {
         res.status(400).json({ success: false, error: 'Passwords do not match.' });
         return;
     }
@@ -3222,7 +3499,7 @@ app.post('/api/account/create', async (req, res) => {
     }
 
     const needsMmx = requiresMmxForAccountLevel(scopeCheck.accountLevel);
-    if (needsMmx) {
+    if (needsMmx && !useTemporaryPassword) {
         if (!firstName || !lastName) {
             res.status(400).json({ success: false, error: 'First name and last name are required.' });
             return;
@@ -3249,13 +3526,14 @@ app.post('/api/account/create', async (req, res) => {
         accessScope: scopeCheck.accessScope,
         createdBy: parent.parentUsername,
         addCbAlias: parent.addCbAlias && scopeCheck.accessScope?.type === 'store',
+        passwordIsTemporary: useTemporaryPassword,
     });
     if (!result.ok) {
         res.status(400).json({ success: false, error: result.error });
         return;
     }
 
-    if (needsMmx) {
+    if (needsMmx && !useTemporaryPassword) {
         const mmxSave = saveUserAccountSecrets(result.username, {
             firstName,
             lastName,
@@ -3274,10 +3552,15 @@ app.post('/api/account/create', async (req, res) => {
         username: result.username,
         cbUsername: result.cbUsername,
         accountLevel: result.accountLevel,
-        mmxVerified: needsMmx,
-        message: needsMmx
-            ? 'Account created. Macromatix login verified for Key Item Counts.'
-            : 'Account created.',
+        temporaryPassword: useTemporaryPassword ? password : undefined,
+        mmxVerified: needsMmx && !useTemporaryPassword,
+        message: useTemporaryPassword
+            ? needsMmx
+                ? 'Account created. Share the temporary password; the user must link Macromatix and set a new password on first sign-in.'
+                : 'Account created. Share the temporary password; the user must set a new password on first sign-in.'
+            : needsMmx
+              ? 'Account created. Macromatix login verified for Key Item Counts.'
+              : 'Account created.',
     });
 });
 

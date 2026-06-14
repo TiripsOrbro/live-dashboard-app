@@ -25,22 +25,22 @@
                 </header>
                 <form id="create-account-form" class="login-form" novalidate>
                     <p class="login-section-label">Access level</p>
-                    <label class="login-field">
-                        Account level
-                        <select id="new-account-level" name="accountLevel" required></select>
-                    </label>
-                    <label class="login-field" id="create-store-field" hidden>
-                        Store
-                        <select id="new-store-number" name="storeNumber"></select>
-                    </label>
-                    <label class="login-field" id="create-market-field" hidden>
-                        Market
-                        <select id="new-market" name="market"></select>
-                    </label>
-                    <label class="login-field" id="create-area-field" hidden>
-                        Area
-                        <select id="new-area" name="area"></select>
-                    </label>
+                    <div class="login-field">
+                        <span class="login-choice-legend">Account level</span>
+                        <div id="new-account-level-group" class="login-choice-group" role="radiogroup" aria-label="Account level"></div>
+                    </div>
+                    <div class="login-field" id="create-store-field" hidden>
+                        <span class="login-choice-legend">Store</span>
+                        <div id="new-store-number-group" class="login-choice-group" role="radiogroup" aria-label="Store"></div>
+                    </div>
+                    <div class="login-field" id="create-market-field" hidden>
+                        <span class="login-choice-legend">Market</span>
+                        <div id="new-market-group" class="login-choice-group" role="radiogroup" aria-label="Market"></div>
+                    </div>
+                    <div class="login-field" id="create-area-field" hidden>
+                        <span class="login-choice-legend">Area</span>
+                        <div id="new-area-group" class="login-choice-group" role="radiogroup" aria-label="Area"></div>
+                    </div>
 
                     <hr class="login-divider">
 
@@ -49,37 +49,18 @@
                         New username
                         <input id="new-username" name="username" type="text" autocomplete="username" required>
                     </label>
-                    <label class="login-field" id="create-name-fields">
-                        First name
-                        <input id="new-first-name" name="firstName" type="text" autocomplete="given-name">
-                    </label>
-                    <label class="login-field" id="create-last-name-field">
-                        Last name
-                        <input id="new-last-name" name="lastName" type="text" autocomplete="family-name">
-                    </label>
-                    <label class="login-field">
-                        Password
-                        <input id="new-password" name="password" type="password" autocomplete="new-password" required>
-                    </label>
-                    <label class="login-field">
-                        Confirm password
-                        <input id="new-password-confirm" name="confirmPassword" type="password" autocomplete="new-password" required>
-                    </label>
+                    <p class="login-path-card-desc" style="margin: 0;">
+                        A temporary password will be generated automatically. Share it with the new user — they must complete setup on first sign-in.
+                    </p>
 
-                    <div id="create-mmx-section" hidden>
+                    <div id="create-details-success" hidden>
                         <hr class="login-divider">
-                        <p class="login-section-label">Macromatix (for Key Item Count)</p>
-                        <p class="login-path-card-desc" style="margin: 0 0 0.75rem;">
-                            Required for Manager and MIC accounts. Legal name and MMX login are stored encrypted.
+                        <p class="login-section-label">Temporary password</p>
+                        <p class="login-path-card-desc" style="margin: 0 0 0.5rem;">
+                            Copy this now. It will not be shown again.
                         </p>
-                        <label class="login-field">
-                            MMX username
-                            <input id="mmx-username" name="mmxUsername" type="text" autocomplete="username">
-                        </label>
-                        <label class="login-field">
-                            MMX password
-                            <input id="mmx-password" name="mmxPassword" type="password" autocomplete="current-password">
-                        </label>
+                        <p id="create-temp-password" class="login-temp-password"></p>
+                        <p id="create-details-next-steps" class="login-path-card-desc" style="margin: 0.75rem 0 0;"></p>
                     </div>
 
                     <button type="submit" class="login-submit" id="create-account-submit">Create account</button>

@@ -27,6 +27,31 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.3 – June 2026
+
+**Added**
+
+- **Feature requests** — super-admin `/requests` page with tabs, priorities, milestones, and expandable panels.
+- **Admin user creation** — create crew accounts from **View accounts** with auto-generated temporary passwords.
+- **First sign-in setup** — new users link Macromatix (Manager/MIC) and set a personal password before using the dashboard.
+- **Create account UI** — access level, store, market, and area pickers use clear tick-box lists instead of broken dropdowns.
+
+**Changed**
+
+- **Feature request tabs** — empty tabs hide from the bar; urgent tabs sort leftmost; Unassigned replaces All.
+- **Create account flow** — no manual password or MMX at create time when using temporary passwords; MMX is verified on first login.
+
+**Fixed**
+
+- **Tab creation** — clearer errors and reliable category updates when creating tabs from the requests page.
+
+**What you need to do**
+
+- On the Pi: `git pull origin Version-0.4 && npm install && pm2 restart dashboard`
+- Hard refresh once (Ctrl+F5) on tablets and admin pages after deploy.
+
+---
+
 ### Version 0.4.2 – June 2026
 
 **Added**

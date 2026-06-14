@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const paths = require('../../../src/paths');
-const { readUserAccountSecrets } = require('./mmxUserCredentials');
+const { readUserAccountSecrets, hasMmxCredentialsForUser } = require('./mmxUserCredentials');
 const { isTestStore, normalizeStoreKey, TEST_STORE_SLUG } = require('../../../stores/src/testStore');
 const { getStoreList } = require('../../../stores/src/storeList');
 const {
@@ -337,6 +337,49 @@ function lookupStoredPassword(username) {
 
 function userNeedsPasswordChange(username) {
     return storedPasswordMustChange(lookupStoredPassword(username));
+}
+
+function userNeedsMmxSetup(username) {
+    const name = String(username || '').trim();
+    if (!name) return false;
+    const blocks = parseUsersFileBlocks(readUsersFileText());
+    const block = blocks.find((row) => blockMatchesUsername(row, name));
+    if (!block) return false;
+    if (!requiresMmxForAccountLevel(getAccountLevel(block))) return false;
+    return !hasMmxCredentialsForUser(name);
+}
+
+function getAccountSetupRedirectPath(user) {
+    if (!isRealDashboardUser(user)) return '';
+    if (userNeedsMmxSetup(user.username)) return '/mmx-setup';
+    if (userNeedsPasswordChange(user.username)) return '/change-password';
+    return '';
+}
+
+function generateTemporaryPassword(accountLevel = 'store') {
+    const admin = normalizeAccountLevel(accountLevel) === 'it';
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const lower = 'abcdefghijkmnpqrstuvwxyz';
+    const digits = '23456789';
+    const special = '!@#$%&*';
+    const all = upper + lower + digits + (admin ? special : '');
+    const required = [
+        upper[Math.floor(Math.random() * upper.length)],
+        digits[Math.floor(Math.random() * digits.length)],
+    ];
+    if (admin) {
+        required.push(special[Math.floor(Math.random() * special.length)]);
+    } else {
+        required.push(lower[Math.floor(Math.random() * lower.length)]);
+    }
+    while (required.length < 12) {
+        required.push(all[Math.floor(Math.random() * all.length)]);
+    }
+    for (let i = required.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [required[i], required[j]] = [required[j], required[i]];
+    }
+    return required.join('');
 }
 
 function stripTrailingPipe(value) {
@@ -1435,6 +1478,7 @@ function appendDashboardUser({
     accountLevel,
     accessScope,
     addCbAlias = false,
+    passwordIsTemporary = false,
 }) {
     const name = String(username || '').trim();
     const pass = String(password || '');
@@ -1488,7 +1532,7 @@ function appendDashboardUser({
         displayName: String(displayName || name).trim(),
         username: name,
         cbUsername,
-        password: hashPassword(pass),
+        password: passwordIsTemporary ? pass : hashPassword(pass),
         role: access.role,
         accessType: access.type,
         stores: storeList === '*' ? '*' : storeList,
@@ -1517,6 +1561,7 @@ function appendDashboardUser({
         stores: storeList === '*' ? '*' : storeList,
         markets: access.markets || [],
         areas: access.areas || [],
+        temporaryPassword: Boolean(passwordIsTemporary),
     });
     return {
         ok: true,
@@ -1524,6 +1569,7 @@ function appendDashboardUser({
         cbUsername: cbUsername || null,
         accountLevel: level,
         stores: storeList === '*' ? '*' : storeList,
+        temporaryPassword: Boolean(passwordIsTemporary),
     };
 }
 
@@ -2101,9 +2147,11 @@ function userProfileForClient(user) {
     const displayName = String(user.displayName || lookupDisplayName(user.username) || '').trim();
     const welcomeName = lookupWelcomeName(user.username) || displayName || user.username;
     const store = singleStoreForUser(user);
+    const mustCompleteMmxSetup = isRealDashboardUser(user) && userNeedsMmxSetup(user.username);
     const mustChangePassword = isRealDashboardUser(user) && userNeedsPasswordChange(user.username);
     const accessibleAreas = getAccessibleAreasForUser(user);
     const scope = getUserAccessScope(user);
+    const setupPath = getAccountSetupRedirectPath(user);
     return {
         username: user.username,
         displayName,
@@ -2115,7 +2163,7 @@ function userProfileForClient(user) {
         effectiveStores,
         stores,
         skipStorePicker,
-        defaultPath: mustChangePassword ? '/change-password' : getMicOverviewPath(),
+        defaultPath: setupPath || getMicOverviewPath(),
         micPath: getMicOverviewPath(),
         isSuperAdmin: isSuperAdminUser(user),
         canCreateAccount: canUserCreateAccounts(user),
@@ -2131,6 +2179,7 @@ function userProfileForClient(user) {
         colorBlind: Boolean(user.colorBlind),
         micDarkMode: Boolean(user.micDarkMode),
         auditAutoCollapse: user.auditAutoCollapse !== false,
+        mustCompleteMmxSetup,
         mustChangePassword,
         passwordPolicy: mustChangePassword ? passwordPolicyForUser(user) : null,
     };
@@ -2195,6 +2244,9 @@ module.exports = {
     validatePasswordComplexity,
     passwordPolicyForUser,
     userNeedsPasswordChange,
+    userNeedsMmxSetup,
+    getAccountSetupRedirectPath,
+    generateTemporaryPassword,
     isPasswordHashed,
     setAccountColourBlindPreference,
     setAccountMicDarkModePreference,

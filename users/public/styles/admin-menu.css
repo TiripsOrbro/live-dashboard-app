@@ -218,6 +218,119 @@ html.mic-dark-mode .admin-btn-primary {
     color: rgba(0, 0, 0, 0.55);
 }
 
+.admin-accounts-panel[hidden],
+.admin-accounts-create[hidden] {
+    display: none !important;
+}
+
+.admin-accounts-create {
+    margin-bottom: 1rem;
+    padding: 1rem;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+    background: rgba(122, 62, 177, 0.04);
+}
+
+.admin-accounts-create h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+}
+
+.admin-accounts-form-grid {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.admin-accounts-field {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.admin-accounts-field > span,
+.admin-accounts-field > label {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: rgba(0, 0, 0, 0.65);
+}
+
+.admin-accounts-field input[type='text'] {
+    font: inherit;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 6px;
+}
+
+.admin-accounts-choice-group {
+    display: grid;
+    gap: 0.45rem;
+    max-height: 180px;
+    overflow: auto;
+}
+
+.admin-accounts-choice {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+}
+
+.admin-accounts-choice:has(input:checked) {
+    border-color: #7a3eb1;
+    box-shadow: 0 0 0 1px rgba(122, 62, 177, 0.25);
+}
+
+.admin-accounts-choice input {
+    margin-top: 0.15rem;
+    accent-color: #7a3eb1;
+}
+
+.admin-accounts-create-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.85rem;
+}
+
+.admin-accounts-temp-password {
+    margin: 0.75rem 0 0;
+    padding: 0.75rem;
+    border-radius: 8px;
+    background: rgba(122, 62, 177, 0.08);
+    border: 1px solid rgba(122, 62, 177, 0.25);
+}
+
+.admin-accounts-temp-password code {
+    display: block;
+    margin-top: 0.35rem;
+    font-size: 1rem;
+    user-select: all;
+}
+
+html.mic-dark-mode .admin-accounts-create {
+    background: rgba(122, 62, 177, 0.12);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.mic-dark-mode .admin-accounts-field > span,
+html.mic-dark-mode .admin-accounts-field > label {
+    color: rgba(255, 255, 255, 0.72);
+}
+
+html.mic-dark-mode .admin-accounts-field input[type='text'],
+html.mic-dark-mode .admin-accounts-choice {
+    background: #2a2a32;
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #f2f2f2;
+}
+
+html.mic-dark-mode .admin-accounts-meta {
+    color: rgba(255, 255, 255, 0.55);
+}
+
 .admin-tabs {
     display: flex;
     gap: 0.35rem;

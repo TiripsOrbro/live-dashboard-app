@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en" class="page-scroll">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
+    <meta name="color-scheme" content="dark">
+    <title>Link Macromatix — TBA Dashboard</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles/brand-mark.css">
+    <link rel="stylesheet" href="/styles/login.css">
+    <link rel="stylesheet" href="/styles/page-scroll.css">
+</head>
+<body class="login-body">
+    <div class="login-root">
+        <section id="login-stage" class="login-stage" aria-label="Macromatix setup">
+            <div id="login-card" class="login-card">
+                <header class="login-brand">
+                    <div class="login-brand-hero">
+                        <div class="login-logo" id="login-brand-mark" role="img" aria-label="TBA Dashboard"></div>
+                        <h1 class="login-title">Link Macromatix</h1>
+                    </div>
+                    <p class="login-subtitle" id="mmx-setup-intro">Enter your Macromatix login so Key Item Count and related tools work on this account.</p>
+                </header>
+
+                <form id="mmx-setup-form" class="login-form" novalidate>
+                    <label class="login-field">
+                        First name
+                        <input id="mmx-first-name" name="firstName" type="text" autocomplete="given-name" required>
+                    </label>
+                    <label class="login-field">
+                        Last name
+                        <input id="mmx-last-name" name="lastName" type="text" autocomplete="family-name" required>
+                    </label>
+                    <label class="login-field">
+                        MMX username
+                        <input id="mmx-username" name="mmxUsername" type="text" autocomplete="username" required>
+                    </label>
+                    <label class="login-field">
+                        MMX password
+                        <input id="mmx-password" name="mmxPassword" type="password" autocomplete="current-password" required>
+                    </label>
+                    <div class="login-actions">
+                        <button type="submit" class="login-submit login-submit--single" id="mmx-setup-submit">
+                            <span class="login-submit-label">Verify and continue</span>
+                        </button>
+                    </div>
+                    <p id="mmx-setup-status" class="login-error" style="color: var(--login-text-muted);" hidden></p>
+                    <p id="mmx-setup-error" class="login-error" role="alert" aria-live="polite"></p>
+                </form>
+            </div>
+        </section>
+    </div>
+    <script src="/scripts/brand-mark.js"></script>
+    <script src="/scripts/mmx-setup.js"></script>
+</body>
+</html>

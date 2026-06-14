@@ -27,6 +27,7 @@
                     <button type="button" class="mic-settings-btn" data-admin-action="view-accounts">View accounts</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="forecast">Forecast tool</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="build-to">Build to adjustments</button>
+                    <button type="button" class="mic-settings-btn" data-admin-action="feature-requests" hidden>Feature requests</button>
                 </div>
                 <div class="admin-menu-footer">
                     <button type="button" class="mic-settings-btn" id="admin-menu-close">Close</button>
@@ -89,6 +90,10 @@
             closeMenu();
             global.AdminBuildTo?.open?.(viewAccountsOptions());
         });
+        picker.querySelector('[data-admin-action="feature-requests"]')?.addEventListener('click', () => {
+            closeMenu();
+            window.location.href = '/requests';
+        });
     }
 
     async function fetchProfile() {
@@ -115,6 +120,8 @@
                     });
                     const settingsBtn = document.getElementById('mic-admin-menu-btn');
                     if (settingsBtn && data.canAccessAdminMenu) settingsBtn.hidden = false;
+                    const featureRequestsBtn = document.querySelector('[data-admin-action="feature-requests"]');
+                    if (featureRequestsBtn && data.isSuperAdmin) featureRequestsBtn.hidden = false;
                 })
                 .catch(() => {});
         }

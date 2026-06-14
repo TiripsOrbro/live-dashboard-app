@@ -1,0 +1,904 @@
+(function () {
+    const formEl = document.getElementById('requests-form');
+    const formWrapEl = document.getElementById('requests-form-wrap');
+    const addToggleEl = document.getElementById('requests-add-toggle');
+    const titleEl = document.getElementById('requests-title');
+    const addDescriptionBtn = document.getElementById('requests-add-description');
+    const descriptionPanelEl = document.getElementById('requests-description-panel');
+    const descriptionEl = document.getElementById('requests-description');
+    const categoryEl = document.getElementById('requests-category');
+    const submitEl = formEl?.querySelector('.requests-submit');
+    const tabsEl = document.getElementById('requests-tabs');
+    const tabAddEl = document.getElementById('requests-tab-add');
+    const doneToggleEl = document.getElementById('requests-done-toggle');
+    const tabDialogEl = document.getElementById('requests-tab-dialog');
+    const tabDialogFormEl = document.getElementById('requests-tab-dialog-form');
+    const tabDialogInputEl = document.getElementById('requests-tab-dialog-input');
+    const tabDialogCancelEl = document.getElementById('requests-tab-dialog-cancel');
+    const listEl = document.getElementById('requests-list');
+    const emptyEl = document.getElementById('requests-empty');
+    const errorEl = document.getElementById('requests-error');
+    const successEl = document.getElementById('requests-success');
+
+    let categories = [];
+    let priorities = [];
+    let allRequests = [];
+    let activeTab = null;
+    let expandedId = null;
+    let formOpen = false;
+    let descriptionOpen = false;
+    let panelAnimating = false;
+
+    const PANEL_MS = 700;
+    const CREATE_TAB_VALUE = '__create_tab__';
+    const UNASSIGNED_TAB = 'unassigned';
+
+    function wait(ms) {
+        return new Promise((resolve) => window.setTimeout(resolve, ms));
+    }
+
+    async function closePanelElement(panel) {
+        if (!panel || !panel.classList.contains('is-open')) return;
+        panel.classList.remove('is-open');
+        await wait(PANEL_MS);
+    }
+
+    if (window.DashboardNavBack) {
+        window.DashboardNavBack.mountBackButton(document.getElementById('requests-back'), {
+            fallback: '/admin',
+        });
+    }
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function escapeAttr(value) {
+        return escapeHtml(value);
+    }
+
+    function categoryLabel(categoryId) {
+        if (!categoryId) return 'Unassigned';
+        const match = categories.find((row) => row.id === categoryId);
+        return match?.label || categoryId;
+    }
+
+    function visibleCategories() {
+        return categories.filter((row) => !row.hidden);
+    }
+
+    function findCategoryByInput(raw) {
+        const trimmed = String(raw || '').trim();
+        if (!trimmed || trimmed.toLowerCase() === 'unassigned') return null;
+        return (
+            visibleCategories().find(
+                (row) => row.id === trimmed.toLowerCase() || row.label.toLowerCase() === trimmed.toLowerCase()
+            ) || null
+        );
+    }
+
+    function promptTabName() {
+        return new Promise((resolve) => {
+            if (!tabDialogEl || !tabDialogInputEl || !tabDialogFormEl) {
+                resolve(null);
+                return;
+            }
+
+            tabDialogInputEl.value = '';
+            tabDialogInputEl.setCustomValidity('');
+
+            const finish = (value) => {
+                tabDialogFormEl.removeEventListener('submit', onSubmit);
+                tabDialogCancelEl?.removeEventListener('click', onCancel);
+                tabDialogEl.removeEventListener('cancel', onCancel);
+                tabDialogEl.close();
+                resolve(value);
+            };
+
+            const onCancel = (event) => {
+                event.preventDefault();
+                finish(null);
+            };
+
+            const onSubmit = (event) => {
+                event.preventDefault();
+                const trimmed = String(tabDialogInputEl.value || '').trim();
+                if (trimmed.length < 2) {
+                    tabDialogInputEl.setCustomValidity('Tab name must be at least 2 characters.');
+                    tabDialogInputEl.reportValidity();
+                    return;
+                }
+                tabDialogInputEl.setCustomValidity('');
+                finish(trimmed);
+            };
+
+            tabDialogFormEl.addEventListener('submit', onSubmit);
+            tabDialogCancelEl?.addEventListener('click', onCancel);
+            tabDialogEl.addEventListener('cancel', onCancel);
+            tabDialogEl.showModal();
+            tabDialogInputEl.focus();
+        });
+    }
+
+    function showError(message) {
+        if (!errorEl) return;
+        errorEl.hidden = !message;
+        errorEl.textContent = message || '';
+    }
+
+    function showSuccess(message) {
+        if (!successEl) return;
+        successEl.hidden = !message;
+        successEl.textContent = message || '';
+    }
+
+    async function readApiJson(res) {
+        const text = await res.text();
+        if (!text) return {};
+        try {
+            return JSON.parse(text);
+        } catch {
+            if (res.status === 404) {
+                throw new Error('Tab API not found. Restart the dashboard server and try again.');
+            }
+            if (res.status >= 500) {
+                throw new Error(`Server error (${res.status}). Check the server console and try again.`);
+            }
+            throw new Error(`Unexpected response (${res.status}). Restart the dashboard server and try again.`);
+        }
+    }
+
+    function setDescriptionOpen(open) {
+        descriptionOpen = Boolean(open);
+        formWrapEl?.classList.toggle('has-description', descriptionOpen);
+        addDescriptionBtn?.classList.toggle('is-hidden', descriptionOpen);
+        if (!descriptionPanelEl) return;
+        if (descriptionOpen) {
+            requestAnimationFrame(() => {
+                descriptionPanelEl.classList.add('is-open');
+                descriptionEl?.focus();
+            });
+        } else {
+            descriptionPanelEl.classList.remove('is-open');
+            if (descriptionEl) descriptionEl.value = '';
+        }
+    }
+
+    function resetNewRequestForm() {
+        if (titleEl) titleEl.value = '';
+        setDescriptionOpen(false);
+    }
+
+    function setFormOpen(open) {
+        formOpen = Boolean(open);
+        addToggleEl?.setAttribute('aria-expanded', formOpen ? 'true' : 'false');
+        addToggleEl?.classList.toggle('is-active', formOpen);
+        if (!formWrapEl) return;
+        if (formOpen) {
+            requestAnimationFrame(() => {
+                formWrapEl.classList.add('is-open');
+                titleEl?.focus();
+            });
+        } else {
+            formWrapEl.classList.remove('is-open');
+            formWrapEl.classList.remove('has-description');
+            resetNewRequestForm();
+        }
+    }
+
+    async function createTabWithLabel(label, options = {}) {
+        const switchActiveTab = options.switchActiveTab !== false;
+        const deferRender = Boolean(options.deferRender);
+        const selectEl = options.selectEl || null;
+        const trimmed = String(label || '').trim();
+        if (trimmed.length < 2) {
+            showError('Tab name must be at least 2 characters.');
+            return null;
+        }
+
+        const existing = findCategoryByInput(trimmed);
+        if (existing) {
+            if (switchActiveTab) activeTab = existing.id;
+            if (selectEl) setCategorySelect(selectEl, existing.id);
+            if (!deferRender) {
+                setFormCategorySelect(existing.id);
+                renderRequests();
+                scrollTabIntoView(existing.id);
+            }
+            return existing.id;
+        }
+
+        showError('');
+        if (tabAddEl) tabAddEl.disabled = true;
+        try {
+            const res = await fetch('/api/feature-requests/categories', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ label: trimmed }),
+            });
+            const data = await readApiJson(res);
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || `Could not create tab (${res.status}).`);
+            }
+            applyCategoriesUpdate(data);
+            const newId = data.category?.id || null;
+            if (!newId) {
+                throw new Error('Tab was created but no id was returned.');
+            }
+            if (switchActiveTab) activeTab = newId;
+            if (selectEl) setCategorySelect(selectEl, newId);
+            if (!deferRender) {
+                setFormCategorySelect(newId);
+                renderRequests();
+                scrollTabIntoView(newId);
+                showSuccess(`Tab “${trimmed}” created.`);
+            }
+            return newId;
+        } catch (error) {
+            showError(error.message || 'Could not create tab.');
+            return null;
+        } finally {
+            if (tabAddEl) tabAddEl.disabled = false;
+        }
+    }
+
+    async function createTab(options = {}) {
+        const label = options.label != null ? options.label : await promptTabName();
+        if (label == null) return null;
+        return createTabWithLabel(label, options);
+    }
+
+    async function handleCategorySelectChange(selectEl) {
+        if (!selectEl) return;
+        if (selectEl.value !== CREATE_TAB_VALUE) {
+            selectEl.dataset.lastValue = selectEl.value;
+            return;
+        }
+        const previous = selectEl.dataset.lastValue ?? '';
+        selectEl.value = previous;
+        const itemEl = selectEl.closest('[data-request-id]');
+        const requestId = itemEl?.getAttribute('data-request-id') || null;
+        const deferRender = Boolean(requestId);
+        const tabId = await createTab({
+            switchActiveTab: Boolean(requestId),
+            selectEl,
+            deferRender,
+        });
+        if (!tabId || !requestId || !itemEl) return;
+
+        showError('');
+        showSuccess('');
+        try {
+            const body = readPanelState(itemEl);
+            body.category = tabId;
+            await patchRequest(requestId, body);
+            activeTab = tabId;
+            expandedId = requestId;
+            renderRequests();
+            scrollTabIntoView(tabId);
+            showSuccess(`Assigned to “${categoryLabel(tabId)}”.`);
+        } catch (error) {
+            showError(error.message || 'Tab created but could not assign request.');
+            renderRequests();
+        }
+    }
+
+    function priorityOptionsHtml(selectedId) {
+        const selected = selectedId || 'normal';
+        return priorities
+            .map(
+                (row) =>
+                    `<option value="${escapeAttr(row.id)}"${row.id === selected ? ' selected' : ''}>${escapeHtml(row.label)}</option>`
+            )
+            .join('');
+    }
+
+    function priorityBadgeHtml(priorityId) {
+        const id = priorityId || 'normal';
+        if (id === 'normal') return '';
+        const match = priorities.find((row) => row.id === id);
+        if (!match) return '';
+        return `<span class="requests-priority requests-priority--${escapeAttr(id)}">${escapeHtml(match.label)}</span>`;
+    }
+
+    function countForTab(tabId) {
+        if (tabId === 'done') {
+            return allRequests.filter((row) => row.completed).length;
+        }
+        if (tabId === UNASSIGNED_TAB) {
+            return allRequests.filter((row) => !row.completed && !row.category).length;
+        }
+        return allRequests.filter((row) => !row.completed && row.category === tabId).length;
+    }
+
+    function filterRequestsForTab(requests, tabId) {
+        if (tabId === 'done') {
+            return requests.filter((row) => row.completed);
+        }
+        if (tabId === UNASSIGNED_TAB) {
+            return requests.filter((row) => !row.completed && !row.category);
+        }
+        return requests.filter((row) => row.category === tabId);
+    }
+
+    function isValidActiveTab(tabId) {
+        if (tabId === UNASSIGNED_TAB || tabId === 'done') return true;
+        return visibleCategories().some((row) => row.id === tabId);
+    }
+
+    function resolveDefaultActiveTab() {
+        const sorted = sortedMainTabs();
+        const firstUrgent = sorted.find((tab) => tab.hasUrgent && tab.openCount > 0);
+        if (firstUrgent) return firstUrgent.id;
+        if (countForTab(UNASSIGNED_TAB) > 0) return UNASSIGNED_TAB;
+        const firstWithOpen = sorted.find((tab) => tab.openCount > 0);
+        if (firstWithOpen) return firstWithOpen.id;
+        return sorted[0]?.id || UNASSIGNED_TAB;
+    }
+
+    function ensureActiveTab() {
+        if (!isValidActiveTab(activeTab)) {
+            activeTab = resolveDefaultActiveTab();
+        } else if (activeTab == null) {
+            activeTab = resolveDefaultActiveTab();
+        }
+    }
+
+    function priorityRank(priorityId) {
+        const match = priorities.find((row) => row.id === (priorityId || 'normal'));
+        return match?.rank ?? 2;
+    }
+
+    function openRequestsForTab(tabId) {
+        if (tabId === UNASSIGNED_TAB) {
+            return allRequests.filter((row) => !row.completed && !row.category);
+        }
+        if (tabId === 'done') return [];
+        return allRequests.filter((row) => !row.completed && row.category === tabId);
+    }
+
+    function tabSortMeta(tabId) {
+        const open = openRequestsForTab(tabId);
+        const openCount = open.length;
+        const hasUrgent = open.some((row) => (row.priority || 'normal') === 'urgent');
+        const maxPriority = openCount ? Math.max(...open.map((row) => priorityRank(row.priority))) : 0;
+        return { openCount, hasUrgent, maxPriority };
+    }
+
+    function compareTabSort(a, b) {
+        const aEmpty = a.openCount === 0;
+        const bEmpty = b.openCount === 0;
+        if (aEmpty !== bEmpty) return aEmpty ? 1 : -1;
+        if (a.hasUrgent !== b.hasUrgent) return a.hasUrgent ? -1 : 1;
+        if (b.maxPriority !== a.maxPriority) return b.maxPriority - a.maxPriority;
+        if (a.id === UNASSIGNED_TAB) return -1;
+        if (b.id === UNASSIGNED_TAB) return 1;
+        return a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+    }
+
+    function sortedMainTabs() {
+        return [{ id: UNASSIGNED_TAB, label: 'Unassigned' }, ...visibleCategories()]
+            .map((tab) => ({ ...tab, ...tabSortMeta(tab.id) }))
+            .sort(compareTabSort);
+    }
+
+    function tabsForBar() {
+        return sortedMainTabs().filter((tab) => tab.openCount > 0 || tab.id === activeTab);
+    }
+
+    function sortedVisibleCategories() {
+        return sortedMainTabs().filter((tab) => tab.id !== UNASSIGNED_TAB);
+    }
+
+    function categorySelectOptionsHtml(selectedId) {
+        const selected = selectedId || '';
+        const tabOptions = sortedVisibleCategories()
+            .map(
+                (cat) =>
+                    `<option value="${escapeAttr(cat.id)}"${cat.id === selected ? ' selected' : ''}>${escapeHtml(cat.label)}</option>`
+            )
+            .join('');
+        return `<option value=""${!selected ? ' selected' : ''}>Unassigned</option>${tabOptions}<option disabled aria-hidden="true">──────────</option><option value="${CREATE_TAB_VALUE}">+ New tab…</option>`;
+    }
+
+    function setCategorySelect(selectEl, categoryId) {
+        if (!selectEl) return;
+        selectEl.innerHTML = categorySelectOptionsHtml(categoryId || '');
+        selectEl.value = categoryId || '';
+        selectEl.dataset.lastValue = categoryId || '';
+    }
+
+    function setFormCategorySelect(categoryId) {
+        setCategorySelect(categoryEl, categoryId);
+    }
+
+    function applyCategoriesUpdate(data) {
+        if (Array.isArray(data?.categories)) {
+            categories = data.categories;
+            return;
+        }
+        if (data?.category?.id && !categories.some((row) => row.id === data.category.id)) {
+            categories = [...categories, data.category];
+        }
+    }
+
+    function scrollTabIntoView(tabId) {
+        if (!tabId || tabId === UNASSIGNED_TAB || tabId === 'done' || !tabsEl) return;
+        requestAnimationFrame(() => {
+            tabsEl.querySelector(`[data-tab-id="${CSS.escape(tabId)}"]`)?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'nearest',
+                inline: 'nearest',
+            });
+        });
+    }
+
+    function renderDoneToggle() {
+        if (!doneToggleEl) return;
+        const count = countForTab('done');
+        const isActive = activeTab === 'done';
+        doneToggleEl.classList.toggle('is-active', isActive);
+        doneToggleEl.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        doneToggleEl.innerHTML = `<span class="requests-tab-label">Done</span>${count ? `<span class="requests-tab-count">${count}</span>` : ''}`;
+    }
+
+    function renderTabs() {
+        if (!tabsEl) return;
+        const tabs = tabsForBar();
+        tabsEl.innerHTML = tabs
+            .map((tab) => {
+                const count = countForTab(tab.id);
+                const selected = tab.id === activeTab;
+                return `
+                    <button
+                        type="button"
+                        class="requests-tab${selected ? ' is-active' : ''}"
+                        role="tab"
+                        aria-selected="${selected ? 'true' : 'false'}"
+                        data-tab-id="${escapeAttr(tab.id)}"
+                    >
+                        <span class="requests-tab-label">${escapeHtml(tab.label)}</span>${count ? `<span class="requests-tab-count">${count}</span>` : ''}
+                    </button>
+                `;
+            })
+            .join('');
+        renderDoneToggle();
+    }
+
+    async function applyTabRemoval(tabId, mode, selectEl) {
+        const cat = categories.find((row) => row.id === tabId);
+        if (!cat) return false;
+        const actionLabel = mode === 'hide' ? 'Hide' : 'Delete';
+        const confirmed = window.confirm(
+            `${actionLabel} “${cat.label}” tab?\n\nRequests in this tab will be unassigned and only show under Unassigned.`
+        );
+        if (!confirmed) return false;
+
+        showError('');
+        showSuccess('');
+        try {
+            const res = await fetch(`/api/feature-requests/categories/${encodeURIComponent(tabId)}`, {
+                method: mode === 'hide' ? 'PATCH' : 'DELETE',
+                headers: mode === 'hide' ? { 'Content-Type': 'application/json' } : undefined,
+                credentials: 'same-origin',
+                body: mode === 'hide' ? JSON.stringify({ hidden: true }) : undefined,
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+                throw new Error(data.error || `Could not ${mode} tab.`);
+            }
+            categories = Array.isArray(data.categories) ? data.categories : categories;
+            allRequests = Array.isArray(data.requests) ? data.requests : allRequests;
+            if (activeTab === tabId) activeTab = resolveDefaultActiveTab();
+            expandedId = null;
+            if (selectEl) setCategorySelect(selectEl, null);
+            setFormCategorySelect('');
+            renderRequests();
+            const count = Number(data.unassignedCount) || 0;
+            showSuccess(
+                `${mode === 'hide' ? 'Tab hidden' : 'Tab deleted'}.${count ? ` ${count} request(s) unassigned.` : ''}`
+            );
+            return true;
+        } catch (error) {
+            showError(error.message || `Could not ${mode} tab.`);
+            return false;
+        }
+    }
+
+    async function hideTab(tabId, selectEl) {
+        return applyTabRemoval(tabId, 'hide', selectEl);
+    }
+
+    async function deleteTab(tabId, selectEl) {
+        return applyTabRemoval(tabId, 'delete', selectEl);
+    }
+
+    function buildMilestoneHtml(milestone, index) {
+        const id = milestone?.id || `draft-${index}`;
+        const text = milestone?.text || '';
+        const completed = Boolean(milestone?.completed);
+        return `
+            <li class="requests-milestone" data-milestone-id="${escapeAttr(id)}">
+                <label class="requests-milestone-check">
+                    <input type="checkbox" data-field="milestone-completed"${completed ? ' checked' : ''}>
+                    <span class="requests-milestone-text">${escapeHtml(text)}</span>
+                </label>
+                <input type="text" class="requests-milestone-input" value="${escapeAttr(text)}" placeholder="Milestone">
+                <button type="button" class="requests-milestone-remove" data-action="remove-milestone" aria-label="Remove milestone">×</button>
+            </li>
+        `;
+    }
+
+    function buildItemHtml(row) {
+        const completed = Boolean(row.completed);
+        const expanded = row.id === expandedId;
+        const milestones = Array.isArray(row.milestones) ? row.milestones : [];
+        const milestoneCount = milestones.length;
+        const doneCount = milestones.filter((m) => m.completed).length;
+        const progress =
+            milestoneCount > 0 ? `<span class="requests-item-progress">${doneCount}/${milestoneCount}</span>` : '';
+        const priorityBadge = priorityBadgeHtml(row.priority);
+
+        return `
+            <article class="requests-item${completed ? ' is-completed' : ''}${expanded ? ' is-expanded' : ''}" data-request-id="${escapeHtml(row.id)}">
+                <button
+                    type="button"
+                    class="requests-item-header"
+                    data-action="expand"
+                    aria-expanded="${expanded ? 'true' : 'false'}"
+                >
+                    ${priorityBadge}
+                    <span class="requests-item-text">${escapeHtml(row.text)}</span>
+                    ${progress}
+                </button>
+                <div class="requests-item-panel">
+                    <label class="requests-panel-label" for="details-${escapeAttr(row.id)}">Details</label>
+                    <textarea id="details-${escapeAttr(row.id)}" class="requests-panel-details" data-field="details" rows="2" placeholder="Notes, context, links…">${escapeHtml(row.details || '')}</textarea>
+
+                    <div class="requests-panel-fields">
+                        <div class="requests-panel-field">
+                            <label class="requests-panel-label" for="category-${escapeAttr(row.id)}">Tab</label>
+                            <select id="category-${escapeAttr(row.id)}" class="requests-panel-select" data-field="category">
+                                ${categorySelectOptionsHtml(row.category || '')}
+                            </select>
+                        </div>
+                        <div class="requests-panel-field">
+                            <label class="requests-panel-label" for="priority-${escapeAttr(row.id)}">Priority</label>
+                            <select id="priority-${escapeAttr(row.id)}" class="requests-panel-select" data-field="priority">
+                                ${priorityOptionsHtml(row.priority || 'normal')}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="requests-panel-milestones-head">
+                        <span class="requests-panel-label">Milestones</span>
+                        <button type="button" class="requests-panel-link" data-action="add-milestone">Add milestone</button>
+                    </div>
+                    <ul class="requests-milestones">
+                        ${milestones.map((milestone, index) => buildMilestoneHtml(milestone, index)).join('')}
+                    </ul>
+
+                    <div class="requests-panel-footer">
+                        <label class="requests-panel-done">
+                            <input type="checkbox" data-field="completed"${completed ? ' checked' : ''}>
+                            Mark complete
+                        </label>
+                        <div class="requests-panel-actions">
+                            <button type="button" class="requests-panel-save" data-action="save">Save</button>
+                            <span class="requests-panel-status" data-role="save-status"></span>
+                        </div>
+                    </div>
+                </div>
+            </article>
+        `;
+    }
+
+    function renderRequests() {
+        if (!listEl) return;
+        const rows = filterRequestsForTab(allRequests, activeTab);
+        renderTabs();
+        if (!rows.length) {
+            listEl.innerHTML = '';
+            expandedId = null;
+            if (emptyEl) {
+                emptyEl.hidden = false;
+                emptyEl.textContent =
+                    activeTab === 'done'
+                        ? 'No completed requests yet.'
+                        : activeTab === UNASSIGNED_TAB
+                          ? 'No unassigned requests.'
+                          : `No requests in ${categoryLabel(activeTab)} yet.`;
+            }
+            return;
+        }
+        if (emptyEl) emptyEl.hidden = true;
+        if (expandedId && !rows.some((row) => row.id === expandedId)) {
+            expandedId = null;
+        }
+        listEl.innerHTML = rows.map((row) => buildItemHtml(row)).join('');
+        if (expandedId) {
+            const panel = listEl.querySelector(
+                `[data-request-id="${CSS.escape(expandedId)}"] .requests-item-panel`
+            );
+            if (panel) {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => panel.classList.add('is-open'));
+                });
+            }
+        }
+    }
+
+    async function loadRequests() {
+        showError('');
+        if (listEl) listEl.textContent = 'Loading…';
+        const res = await fetch('/api/feature-requests', { credentials: 'same-origin', cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Could not load feature requests.');
+        }
+        categories = Array.isArray(data.categories) ? data.categories : [];
+        priorities = Array.isArray(data.priorities)
+            ? data.priorities
+            : [
+                  { id: 'low', label: 'Low' },
+                  { id: 'normal', label: 'Normal' },
+                  { id: 'high', label: 'High' },
+                  { id: 'urgent', label: 'Urgent' },
+              ];
+        allRequests = Array.isArray(data.requests) ? data.requests : [];
+        ensureActiveTab();
+        setFormCategorySelect(activeTab === 'done' ? '' : activeTab === UNASSIGNED_TAB ? '' : activeTab);
+        renderRequests();
+    }
+
+    function readPanelState(itemEl) {
+        const details = itemEl.querySelector('[data-field="details"]')?.value ?? '';
+        const categoryValue = itemEl.querySelector('[data-field="category"]')?.value ?? '';
+        const category = categoryValue && categoryValue !== CREATE_TAB_VALUE ? categoryValue : null;
+        const priority = itemEl.querySelector('[data-field="priority"]')?.value ?? 'normal';
+        const completed = Boolean(itemEl.querySelector('[data-field="completed"]')?.checked);
+        const milestones = [];
+        itemEl.querySelectorAll('.requests-milestone').forEach((row, index) => {
+            const text = String(row.querySelector('.requests-milestone-input')?.value || '').trim();
+            if (!text) return;
+            milestones.push({
+                id: row.getAttribute('data-milestone-id') || `draft-${index}`,
+                text,
+                completed: Boolean(row.querySelector('[data-field="milestone-completed"]')?.checked),
+            });
+        });
+        return { details, category, priority, completed, milestones };
+    }
+
+    async function patchRequest(id, body) {
+        const res = await fetch(`/api/feature-requests/${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Could not update feature request.');
+        }
+        allRequests = Array.isArray(data.requests) ? data.requests : allRequests;
+        if (Array.isArray(data.categories)) {
+            categories = data.categories;
+        }
+        renderTabs();
+        return data;
+    }
+
+    async function submitRequest(text, category, details) {
+        const res = await fetch('/api/feature-requests', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ text, category, details: details || '' }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Could not add feature request.');
+        }
+        return data;
+    }
+
+    function addMilestoneRow(itemEl) {
+        const list = itemEl.querySelector('.requests-milestones');
+        if (!list) return;
+        const li = document.createElement('li');
+        li.className = 'requests-milestone';
+        li.setAttribute('data-milestone-id', `draft-${Date.now()}`);
+        li.innerHTML = `
+            <label class="requests-milestone-check">
+                <input type="checkbox" data-field="milestone-completed">
+                <span class="requests-milestone-text"></span>
+            </label>
+            <input type="text" class="requests-milestone-input" value="" placeholder="Milestone">
+            <button type="button" class="requests-milestone-remove" data-action="remove-milestone" aria-label="Remove milestone">×</button>
+        `;
+        list.appendChild(li);
+        li.querySelector('.requests-milestone-input')?.focus();
+    }
+
+    tabsEl?.addEventListener('contextmenu', (event) => {
+        const tab = event.target.closest('[data-tab-id]');
+        if (!tab) return;
+        const tabId = tab.getAttribute('data-tab-id');
+        if (!tabId || tabId === UNASSIGNED_TAB || tabId === 'done') return;
+        event.preventDefault();
+        const cat = categories.find((row) => row.id === tabId);
+        if (!cat) return;
+        if (window.confirm(`Hide “${cat.label}” tab?\n\nRequests will be unassigned and only show under Unassigned.`)) {
+            void hideTab(tabId);
+            return;
+        }
+        if (window.confirm(`Permanently delete “${cat.label}” tab?\n\nRequests will be unassigned and only show under Unassigned.`)) {
+            void deleteTab(tabId);
+        }
+    });
+
+    tabsEl?.addEventListener('click', (event) => {
+        const tab = event.target.closest('[data-tab-id]');
+        if (!tab) return;
+        activeTab = tab.getAttribute('data-tab-id') || UNASSIGNED_TAB;
+        if (activeTab !== 'done' && activeTab !== UNASSIGNED_TAB) {
+            setFormCategorySelect(activeTab);
+        }
+        renderRequests();
+    });
+
+    tabAddEl?.addEventListener('click', () => {
+        void createTab();
+    });
+
+    doneToggleEl?.addEventListener('click', () => {
+        activeTab = activeTab === 'done' ? resolveDefaultActiveTab() : 'done';
+        renderRequests();
+    });
+
+    categoryEl?.addEventListener('focus', () => {
+        if (categoryEl.value !== CREATE_TAB_VALUE) {
+            categoryEl.dataset.lastValue = categoryEl.value;
+        }
+    });
+
+    categoryEl?.addEventListener('change', () => {
+        void handleCategorySelectChange(categoryEl);
+    });
+
+    addToggleEl?.addEventListener('click', () => {
+        if (!formOpen) {
+            const cat = activeTab !== UNASSIGNED_TAB && activeTab !== 'done' ? activeTab : '';
+            setFormCategorySelect(cat);
+        }
+        setFormOpen(!formOpen);
+    });
+
+    addDescriptionBtn?.addEventListener('click', () => {
+        setDescriptionOpen(true);
+    });
+
+    formEl?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const text = String(titleEl?.value || '').trim();
+        const details = descriptionOpen ? String(descriptionEl?.value || '').trim() : '';
+        if (!text) return;
+        showError('');
+        showSuccess('');
+        if (submitEl) submitEl.disabled = true;
+        try {
+            const categoryValue = categoryEl?.value ?? '';
+            const category = categoryValue && categoryValue !== CREATE_TAB_VALUE ? categoryValue : null;
+            const data = await submitRequest(text, category, details);
+            if (category) activeTab = category;
+            expandedId = data.request?.id || null;
+            setFormCategorySelect(category || '');
+            setFormOpen(false);
+            showSuccess('Request added.');
+            await loadRequests();
+        } catch (error) {
+            showError(error.message || 'Could not add request.');
+        } finally {
+            if (submitEl) submitEl.disabled = false;
+        }
+    });
+
+    listEl?.addEventListener('change', (event) => {
+        const select = event.target.closest('[data-field="category"]');
+        if (!select) return;
+        void handleCategorySelectChange(select);
+    });
+
+    listEl?.addEventListener('click', async (event) => {
+        const expandBtn = event.target.closest('[data-action="expand"]');
+        if (expandBtn) {
+            if (panelAnimating) return;
+            const item = expandBtn.closest('[data-request-id]');
+            const id = item?.getAttribute('data-request-id');
+            if (!id) return;
+            panelAnimating = true;
+            try {
+                if (expandedId === id) {
+                    await closePanelElement(item?.querySelector('.requests-item-panel'));
+                    expandedId = null;
+                    renderRequests();
+                    return;
+                }
+                if (expandedId) {
+                    const oldItem = listEl.querySelector(`[data-request-id="${CSS.escape(expandedId)}"]`);
+                    await closePanelElement(oldItem?.querySelector('.requests-item-panel'));
+                }
+                expandedId = id;
+                renderRequests();
+                const panel = listEl.querySelector(
+                    `[data-request-id="${CSS.escape(id)}"] .requests-item-panel`
+                );
+                if (panel) {
+                    await wait(20);
+                    panel.classList.add('is-open');
+                    listEl.querySelector(`[data-request-id="${CSS.escape(id)}"] .requests-panel-details`)?.focus();
+                }
+            } finally {
+                panelAnimating = false;
+            }
+            return;
+        }
+
+        const addBtn = event.target.closest('[data-action="add-milestone"]');
+        if (addBtn) {
+            const item = addBtn.closest('[data-request-id]');
+            if (item) addMilestoneRow(item);
+            return;
+        }
+
+        const removeBtn = event.target.closest('[data-action="remove-milestone"]');
+        if (removeBtn) {
+            removeBtn.closest('.requests-milestone')?.remove();
+            return;
+        }
+
+        const saveBtn = event.target.closest('[data-action="save"]');
+        if (!saveBtn || saveBtn.disabled) return;
+        const item = saveBtn.closest('[data-request-id]');
+        const id = item?.getAttribute('data-request-id');
+        if (!item || !id) return;
+        const statusEl = item.querySelector('[data-role="save-status"]');
+        saveBtn.disabled = true;
+        if (statusEl) statusEl.textContent = 'Saving…';
+        showError('');
+        try {
+            const body = readPanelState(item);
+            await patchRequest(id, body);
+            expandedId = id;
+            if (statusEl) statusEl.textContent = 'Saved';
+            renderRequests();
+            window.setTimeout(() => {
+                if (statusEl) statusEl.textContent = '';
+            }, 1800);
+        } catch (error) {
+            if (statusEl) statusEl.textContent = '';
+            showError(error.message || 'Save failed.');
+        } finally {
+            saveBtn.disabled = false;
+        }
+    });
+
+    listEl?.addEventListener('input', (event) => {
+        const input = event.target.closest('.requests-milestone-input');
+        if (!input) return;
+        const row = input.closest('.requests-milestone');
+        const preview = row?.querySelector('.requests-milestone-text');
+        if (preview) preview.textContent = input.value;
+    });
+
+    loadRequests().catch((error) => {
+        if (listEl) listEl.innerHTML = '';
+        showError(error.message || 'Load failed.');
+    });
+})();

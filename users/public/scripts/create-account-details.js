@@ -3,16 +3,16 @@
     const errorEl = document.getElementById('create-details-error');
     const statusEl = document.getElementById('create-details-status');
     const submitBtn = document.getElementById('create-account-submit');
-    const levelSelect = document.getElementById('new-account-level');
+    const successWrapEl = document.getElementById('create-details-success');
+    const tempPasswordEl = document.getElementById('create-temp-password');
+    const nextStepsEl = document.getElementById('create-details-next-steps');
+    const levelGroup = document.getElementById('new-account-level-group');
     const storeField = document.getElementById('create-store-field');
-    const storeSelect = document.getElementById('new-store-number');
+    const storeGroup = document.getElementById('new-store-number-group');
     const marketField = document.getElementById('create-market-field');
-    const marketSelect = document.getElementById('new-market');
+    const marketGroup = document.getElementById('new-market-group');
     const areaField = document.getElementById('create-area-field');
-    const areaSelect = document.getElementById('new-area');
-    const mmxSection = document.getElementById('create-mmx-section');
-    const firstNameInput = document.getElementById('new-first-name');
-    const lastNameInput = document.getElementById('new-last-name');
+    const areaGroup = document.getElementById('new-area-group');
 
     let createOptions = null;
 
@@ -27,21 +27,60 @@
         if (host) host.innerHTML = window.TbaBrandMark.svg('create-account-details-mark');
     }
 
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function escapeAttr(value) {
+        return escapeHtml(value);
+    }
+
+    function selectedRadioValue(name) {
+        return document.querySelector(`input[type="radio"][name="${name}"]:checked`)?.value || '';
+    }
+
     function selectedLevelMeta() {
-        const value = String(levelSelect?.value || '').trim();
+        const value = selectedRadioValue('accountLevel');
         return (createOptions?.assignableLevels || []).find((row) => row.value === value) || null;
     }
 
-    function fillSelect(select, rows, getValue, getLabel, selectedValue = '') {
-        if (!select) return;
-        select.innerHTML = rows
-            .map((row) => {
+    function fillChoiceGroup(container, rows, name, getValue, getLabel, selectedValue = '') {
+        if (!container) return;
+        if (!rows.length) {
+            container.innerHTML = '<p class="login-choice-empty">No options available.</p>';
+            return;
+        }
+        container.innerHTML = rows
+            .map((row, index) => {
                 const value = getValue(row);
                 const label = getLabel(row);
-                const selected = value === selectedValue ? ' selected' : '';
-                return `<option value="${String(value).replace(/"/g, '&quot;')}"${selected}>${label}</option>`;
+                const id = `${name}-${index}`;
+                const checked =
+                    String(value) === String(selectedValue) || (!selectedValue && index === 0)
+                        ? ' checked'
+                        : '';
+                return `
+                    <label class="login-choice" for="${escapeAttr(id)}">
+                        <input type="radio" id="${escapeAttr(id)}" name="${escapeAttr(name)}" value="${escapeAttr(value)}"${checked}>
+                        <span>${escapeHtml(label)}</span>
+                    </label>
+                `;
             })
             .join('');
+    }
+
+    function setChoiceGroupDisabled(group, name, disabled, forcedValue = '') {
+        if (!group) return;
+        group.querySelectorAll(`input[type="radio"][name="${name}"]`).forEach((input) => {
+            if (forcedValue && input.value === forcedValue) {
+                input.checked = true;
+            }
+            input.disabled = disabled;
+        });
     }
 
     function syncScopeFields() {
@@ -49,24 +88,36 @@
         const requiresStore = Boolean(meta?.requiresStore);
         const requiresMarket = Boolean(meta?.requiresMarket);
         const requiresArea = Boolean(meta?.requiresArea);
-        const requiresMmx = Boolean(meta?.requiresMmx);
 
         if (storeField) storeField.hidden = !requiresStore;
         if (marketField) marketField.hidden = !requiresMarket;
         if (areaField) areaField.hidden = !requiresArea;
-        if (mmxSection) mmxSection.hidden = !requiresMmx;
 
-        if (firstNameInput) firstNameInput.required = requiresMmx;
-        if (lastNameInput) lastNameInput.required = requiresMmx;
-        document.getElementById('mmx-username')?.toggleAttribute('required', requiresMmx);
-        document.getElementById('mmx-password')?.toggleAttribute('required', requiresMmx);
-
-        if (requiresStore && createOptions?.stores?.length === 1 && storeSelect) {
-            storeSelect.value = String(createOptions.stores[0].storeNumber);
-            storeSelect.disabled = true;
-        } else if (storeSelect) {
-            storeSelect.disabled = false;
+        if (requiresStore && createOptions?.stores?.length === 1) {
+            const only = String(createOptions.stores[0].storeNumber);
+            setChoiceGroupDisabled(storeGroup, 'storeNumber', true, only);
+        } else {
+            setChoiceGroupDisabled(storeGroup, 'storeNumber', false);
         }
+    }
+
+    function showCreatedAccount(data) {
+        if (successWrapEl) successWrapEl.hidden = false;
+        if (tempPasswordEl) tempPasswordEl.textContent = data.temporaryPassword || '';
+        if (nextStepsEl) {
+            nextStepsEl.textContent = data.message || 'The user can sign in with this temporary password.';
+        }
+        if (submitBtn) {
+            submitBtn.textContent = 'Create another account';
+            submitBtn.type = 'button';
+            submitBtn.onclick = () => window.location.reload();
+        }
+        form.querySelectorAll('input, button[type="submit"]').forEach((el) => {
+            if (el !== submitBtn) el.disabled = true;
+        });
+        levelGroup?.querySelectorAll('input').forEach((el) => {
+            el.disabled = true;
+        });
     }
 
     async function loadCreateOptions() {
@@ -76,64 +127,72 @@
             throw new Error(data.error || 'Could not load account options.');
         }
         createOptions = data;
-        fillSelect(
-            levelSelect,
+        fillChoiceGroup(
+            levelGroup,
             data.assignableLevels || [],
+            'accountLevel',
             (row) => row.value,
             (row) => row.label
         );
-        fillSelect(
-            storeSelect,
+        fillChoiceGroup(
+            storeGroup,
             data.stores || [],
+            'storeNumber',
             (row) => row.storeNumber,
             (row) => `${row.storeNumber} — ${row.storeName}`,
             data.defaultStore || ''
         );
-        fillSelect(areaSelect, (data.areas || []).map((area) => ({ area })), (row) => row.area, (row) => row.area);
-        fillSelect(
-            marketSelect,
+        fillChoiceGroup(
+            areaGroup,
+            (data.areas || []).map((area) => ({ area })),
+            'area',
+            (row) => row.area,
+            (row) => row.area
+        );
+        fillChoiceGroup(
+            marketGroup,
             (data.markets || []).map((market) => ({ market })),
+            'market',
             (row) => row.market,
             (row) => row.market
         );
         syncScopeFields();
     }
 
-    levelSelect?.addEventListener('change', syncScopeFields);
+    levelGroup?.addEventListener('change', syncScopeFields);
 
     form?.addEventListener('submit', async (event) => {
         event.preventDefault();
+        if (submitBtn?.type === 'button') return;
         errorEl.textContent = '';
         statusEl.hidden = true;
 
         const meta = selectedLevelMeta();
         const username = document.getElementById('new-username').value.trim();
-        const firstName = firstNameInput?.value.trim() || '';
-        const lastName = lastNameInput?.value.trim() || '';
-        const password = document.getElementById('new-password').value;
-        const confirmPassword = document.getElementById('new-password-confirm').value;
-        const mmxUsername = document.getElementById('mmx-username')?.value.trim() || '';
-        const mmxPassword = document.getElementById('mmx-password')?.value || '';
 
-        if (password !== confirmPassword) {
-            errorEl.textContent = 'Passwords do not match.';
+        if (!username) {
+            errorEl.textContent = 'Enter a username.';
             return;
         }
         if (!meta) {
             errorEl.textContent = 'Choose an account level.';
             return;
         }
-        if (meta.requiresMmx && (!firstName || !lastName)) {
-            errorEl.textContent = 'First name and last name are required for store crew accounts.';
+        if (meta.requiresStore && !selectedRadioValue('storeNumber')) {
+            errorEl.textContent = 'Choose a store.';
+            return;
+        }
+        if (meta.requiresMarket && !selectedRadioValue('market')) {
+            errorEl.textContent = 'Choose a market.';
+            return;
+        }
+        if (meta.requiresArea && !selectedRadioValue('area')) {
+            errorEl.textContent = 'Choose an area.';
             return;
         }
 
         submitBtn.disabled = true;
-        submitBtn.textContent = meta.requiresMmx ? 'Verifying MMX…' : 'Creating…';
-        if (meta.requiresMmx) {
-            statusEl.hidden = false;
-            statusEl.textContent = 'Testing Macromatix login — this may take up to a minute.';
-        }
+        submitBtn.textContent = 'Creating…';
 
         try {
             const res = await fetch('/api/account/create', {
@@ -143,33 +202,26 @@
                 body: JSON.stringify({
                     username,
                     accountLevel: meta.value,
-                    storeNumber: storeSelect?.value || '',
-                    market: marketSelect?.value || '',
-                    area: areaSelect?.value || '',
-                    firstName,
-                    lastName,
-                    password,
-                    confirmPassword,
-                    mmxUsername,
-                    mmxPassword,
+                    storeNumber: selectedRadioValue('storeNumber'),
+                    market: selectedRadioValue('market'),
+                    area: selectedRadioValue('area'),
+                    useTemporaryPassword: true,
                 }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.success) {
                 errorEl.textContent = data.error || 'Could not create account.';
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Create account';
                 return;
             }
             statusEl.hidden = false;
             statusEl.textContent = data.message || 'Account created.';
-            window.setTimeout(() => {
-                window.location.href = '/login?created=1';
-            }, 1200);
+            showCreatedAccount(data);
         } catch (_) {
             errorEl.textContent = 'Request failed. Check your connection and try again.';
-        } finally {
             submitBtn.disabled = false;
             submitBtn.textContent = 'Create account';
-            if (errorEl.textContent) statusEl.hidden = true;
         }
     });
 

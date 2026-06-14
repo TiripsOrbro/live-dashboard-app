@@ -44,14 +44,23 @@
         root.querySelector('#account-modal-submit').textContent = submitLabel || 'Save';
         const form = root.querySelector('#account-modal-form');
         form.innerHTML = fields
-            .map(
-                (field) => `
+            .map((field) => {
+                if (field.type === 'textarea') {
+                    const rows = field.rows || 4;
+                    return `
+            <label>
+                ${field.label}
+                <textarea name="${field.name}" rows="${rows}" ${field.required === false ? '' : 'required'}></textarea>
+            </label>
+        `;
+                }
+                return `
             <label>
                 ${field.label}
                 <input name="${field.name}" type="${field.type || 'text'}" ${field.autocomplete ? `autocomplete="${field.autocomplete}"` : ''} ${field.required === false ? '' : 'required'}>
             </label>
-        `
-            )
+        `;
+            })
             .join('');
         form.onsubmit = async (event) => {
             event.preventDefault();
@@ -85,6 +94,7 @@
                 <button type="button" class="mic-account-btn account-menu-trigger" aria-haspopup="true">Account</button>
                 <div class="account-menu-panel" hidden>
                     <button type="button" data-action="change-password">Change password</button>
+                    <button type="button" data-action="request-feature" hidden>Request a feature</button>
                     <button type="button" data-action="create-account" hidden>Create account</button>
                     <button type="button" data-action="admin-menu" hidden>Admin menu</button>
                     <button type="button" data-action="logout">Sign out</button>
@@ -106,6 +116,10 @@
             panel.hidden = true;
             openChangePasswordModal();
         });
+        panel.querySelector('[data-action="request-feature"]')?.addEventListener('click', () => {
+            panel.hidden = true;
+            openFeatureRequestModal();
+        });
         panel.querySelector('[data-action="create-account"]')?.addEventListener('click', () => {
             panel.hidden = true;
             openCreateAccountModal();
@@ -116,6 +130,9 @@
         });
         fetchProfile()
             .then((data) => {
+                if (data.username && !data.nologin) {
+                    panel.querySelector('[data-action="request-feature"]').hidden = false;
+                }
                 if (data.canCreateAccount) {
                     panel.querySelector('[data-action="create-account"]').hidden = false;
                 }
@@ -347,10 +364,38 @@
         window.location.href = '/Create-Account';
     }
 
+    function openFeatureRequestModal() {
+        openModal({
+            title: 'Request a feature',
+            submitLabel: 'Send request',
+            fields: [
+                {
+                    label: 'What would you like added or improved?',
+                    name: 'text',
+                    type: 'textarea',
+                    rows: 5,
+                },
+            ],
+            onSubmit: async (data) => {
+                const res = await fetch('/api/feature-requests', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ text: data.text }),
+                });
+                const body = await res.json().catch(() => ({}));
+                if (!res.ok || !body.success) {
+                    throw new Error(body.error || 'Could not send feature request.');
+                }
+            },
+        });
+    }
+
     window.DashboardAccount = {
         mountAccountMenu,
         fetchProfile,
         openChangePasswordModal,
+        openFeatureRequestModal,
         openCreateAccountModal,
         openViewAccountsModal,
         closeAccountsModal,

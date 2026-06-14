@@ -1,0 +1,97 @@
+{
+  "categories": [
+    {
+      "id": "general",
+      "label": "General",
+      "hidden": false
+    },
+    {
+      "id": "dashboard",
+      "label": "Dashboard",
+      "hidden": false
+    },
+    {
+      "id": "audits",
+      "label": "Audits",
+      "hidden": false
+    },
+    {
+      "id": "admin",
+      "label": "Admin",
+      "hidden": false
+    },
+    {
+      "id": "operations",
+      "label": "Operations",
+      "hidden": false
+    },
+    {
+      "id": "back-end",
+      "label": "Back End",
+      "hidden": false
+    },
+    {
+      "id": "security",
+      "label": "Security",
+      "hidden": false
+    }
+  ],
+  "requests": [
+    {
+      "id": "14dcf18f-72b6-4f08-b771-a5bc7517f73f",
+      "text": "Create a queue system so nothing overlaps with something else",
+      "completed": false,
+      "createdAt": "2026-06-14T03:45:10.792Z",
+      "completedAt": null,
+      "submittedBy": "AshOwens",
+      "submittedByName": "Admin - Ash Owens",
+      "category": "back-end",
+      "details": "",
+      "milestones": [],
+      "priority": "normal"
+    },
+    {
+      "id": "128a4af7-959c-4774-aa48-89616b697be8",
+      "text": "Add CORE Book reference for self CORE (on each question there is a button to pop up the question exactly as it is in the CORE book)",
+      "completed": false,
+      "createdAt": "2026-06-14T03:45:23.134Z",
+      "completedAt": null,
+      "submittedBy": "AshOwens",
+      "submittedByName": "Admin - Ash Owens",
+      "category": "audits"
+    },
+    {
+      "id": "56144d4c-26fb-45a0-8c62-c44cd381cfbe",
+      "text": "Allow an admin to create accounts for people with Temp Passwords, that will require them to change password on first login",
+      "completed": false,
+      "createdAt": "2026-06-14T03:45:33.241Z",
+      "completedAt": null,
+      "submittedBy": "AshOwens",
+      "submittedByName": "Admin - Ash Owens",
+      "category": "security",
+      "details": "",
+      "milestones": [],
+      "priority": "normal"
+    },
+    {
+      "id": "c44ce2b3-0000-45b6-9ad3-92c678e6a429",
+      "text": "Build a To-Do/Feature request list for the admin menu",
+      "completed": true,
+      "createdAt": "2026-06-14T03:45:46.026Z",
+      "completedAt": "2026-06-14T03:59:41.559Z",
+      "submittedBy": "AshOwens",
+      "submittedByName": "Admin - Ash Owens",
+      "category": "general"
+    },
+    {
+      "id": "a7f44993-9d56-41c8-8279-28fbf88eaef3",
+      "text": "Build out an Area Scorecard of sorts",
+      "completed": false,
+      "createdAt": "2026-06-14T03:45:55.989Z",
+      "completedAt": null,
+      "submittedBy": "AshOwens",
+      "submittedByName": "Admin - Ash Owens",
+      "category": "operations"
+    }
+  ]
+}

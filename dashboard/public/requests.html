@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en" class="page-scroll">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#000000">
+    <meta name="color-scheme" content="dark">
+    <title>Feature requests — TBA Dashboard</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles/login.css">
+    <link rel="stylesheet" href="/styles/nav-back.css">
+    <link rel="stylesheet" href="/styles/requests.css">
+    <link rel="stylesheet" href="/styles/page-scroll.css">
+</head>
+<body class="login-body requests-page">
+    <div class="login-root requests-root">
+        <section class="login-stage">
+            <div class="login-card requests-card">
+                <div class="nav-back-host requests-back-host" id="requests-back"></div>
+                <button type="button" id="requests-add-toggle" class="requests-add-toggle" aria-label="New request" aria-expanded="false" title="New request">
+                    <svg class="requests-add-toggle-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+                        <path fill="currentColor" d="M12 5c.55 0 1 .45 1 1v5h5c.55 0 1 .45 1 1s-.45 1-1 1h-5v5c0 .55-.45 1-1 1s-1-.45-1-1v-5H6c-.55 0-1-.45-1-1s.45-1 1-1h5V6c0-.55.45-1 1-1z"/>
+                    </svg>
+                </button>
+                <header class="login-brand">
+                    <h1 class="login-title requests-title">Feature requests</h1>
+                    <p class="login-subtitle">Click a request to expand it. Use + to add a new one.</p>
+                </header>
+                <div id="requests-form-wrap" class="requests-form-wrap">
+                    <form id="requests-form" class="requests-form">
+                        <input id="requests-title" name="title" type="text" class="requests-form-title" placeholder="Title" maxlength="2000" required autocomplete="off">
+                        <div class="requests-form-description-wrap">
+                            <button type="button" id="requests-add-description" class="requests-form-add-description">Add description</button>
+                            <div id="requests-description-panel" class="requests-form-description-panel">
+                                <textarea id="requests-description" name="description" rows="3" placeholder="Add more context…"></textarea>
+                            </div>
+                        </div>
+                        <div class="requests-form-footer">
+                            <select id="requests-category" name="category" aria-label="Tab"></select>
+                            <button type="submit" class="requests-submit">Add request</button>
+                        </div>
+                    </form>
+                </div>
+                <p id="requests-success" class="requests-success" role="status" hidden></p>
+                <div class="requests-tabs-bar">
+                    <div id="requests-tabs" class="requests-tabs" role="tablist" aria-label="Feature request tabs"></div>
+                    <button type="button" id="requests-tab-add" class="requests-tab-add" aria-label="Add tab" title="Add tab">+</button>
+                </div>
+                <div id="requests-list" class="requests-list" aria-live="polite">Loading…</div>
+                <p id="requests-empty" class="requests-empty" hidden>No feature requests yet.</p>
+                <p id="requests-error" class="requests-error" role="alert" hidden></p>
+                <div class="requests-done-bar">
+                    <button type="button" id="requests-done-toggle" class="requests-done-toggle" aria-pressed="false">Done</button>
+                </div>
+            </div>
+        </section>
+    </div>
+    <dialog id="requests-tab-dialog" class="requests-tab-dialog">
+        <form id="requests-tab-dialog-form" class="requests-tab-dialog-form">
+            <h2 class="requests-tab-dialog-title">New tab</h2>
+            <label class="requests-tab-dialog-label" for="requests-tab-dialog-input">Tab name</label>
+            <input id="requests-tab-dialog-input" class="requests-tab-dialog-input" type="text" maxlength="40" autocomplete="off" placeholder="e.g. Dashboard">
+            <div class="requests-tab-dialog-actions">
+                <button type="button" id="requests-tab-dialog-cancel" class="requests-tab-dialog-cancel">Cancel</button>
+                <button type="submit" class="requests-tab-dialog-create">Create tab</button>
+            </div>
+        </form>
+    </dialog>
+    <script src="/scripts/nav-back.js"></script>
+    <script src="/scripts/requests.js"></script>
+</body>
+</html>

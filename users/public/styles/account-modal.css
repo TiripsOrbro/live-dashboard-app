@@ -39,6 +39,14 @@
     border: 2px solid var(--charcoal);
 }
 
+.account-modal textarea {
+    font: inherit;
+    padding: 0.55rem 0.65rem;
+    border: 2px solid var(--charcoal);
+    resize: vertical;
+    min-height: 6rem;
+}
+
 .account-modal-actions {
     display: flex;
     justify-content: flex-end;

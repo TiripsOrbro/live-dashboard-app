@@ -32,6 +32,10 @@
                 window.location.replace(data.defaultPath || '/');
                 return;
             }
+            if (data.mustCompleteMmxSetup) {
+                window.location.replace('/mmx-setup');
+                return;
+            }
             const policy = data.passwordPolicy;
             if (policy?.label && policyEl) {
                 policyEl.textContent = policy.label;

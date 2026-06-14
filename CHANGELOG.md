@@ -27,6 +27,16 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.8.4.1 – June 2026
+
+**Fixed**
+
+- **Accounts Area/Store tabs** — Existing accounts picker now uses tap-friendly buttons instead of hidden radio inputs, so Area and Store tabs respond to clicks on tablets and desktop.
+
+**What you need to do**
+
+- Hard refresh (Ctrl+F5) after the Pi update.
+
 ### Version 0.4.8.4 – June 2026
 
 **Fixed**

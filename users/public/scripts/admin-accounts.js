@@ -42,6 +42,10 @@
             backdrop.remove();
             backdrop = null;
         }
+        if (backdrop && backdrop.querySelector('#admin-accounts-browse-scope input[name="browse-area"]')) {
+            backdrop.remove();
+            backdrop = null;
+        }
         if (backdrop) return backdrop;
         backdrop = document.createElement('div');
         backdrop.className = 'admin-modal-backdrop';
@@ -96,7 +100,21 @@
         });
         backdrop.querySelector('#admin-create-level-group')?.addEventListener('change', syncCreateScopeUI);
         backdrop.querySelector('#admin-create-scope-stack')?.addEventListener('change', syncCreateScopeUI);
-        backdrop.querySelector('#admin-accounts-browse-scope')?.addEventListener('change', () => {
+        backdrop.querySelector('#admin-accounts-browse-scope')?.addEventListener('click', (event) => {
+            const chip = event.target.closest('[data-browse-scope]');
+            if (!chip || chip.classList.contains('is-active')) return;
+            const scopeName = chip.getAttribute('data-browse-scope') || '';
+            const scopeValue = chip.getAttribute('data-browse-value') || '';
+            if (scopeName === 'browse-market') {
+                browseScope.market = scopeValue;
+                browseScope.area = '';
+                browseScope.storeNumber = '';
+            } else if (scopeName === 'browse-area') {
+                browseScope.area = scopeValue;
+                browseScope.storeNumber = '';
+            } else if (scopeName === 'browse-store') {
+                browseScope.storeNumber = scopeValue;
+            }
             void onBrowseScopeChange();
         });
         backdrop.querySelector('#admin-accounts-create-form')?.addEventListener('submit', (event) => {
@@ -251,6 +269,32 @@
         return { market, area, storeNumber };
     }
 
+    function renderBrowseScopeRow(name, label, rows, selectedValue, getValue, getLabel) {
+        const labelFn = getLabel || getValue;
+        const colCount = Math.max(rows.length, 1);
+        const items = rows
+            .map((row) => {
+                const value = getValue(row);
+                const active = String(value) === String(selectedValue);
+                return `
+                    <button
+                        type="button"
+                        class="admin-accounts-scope-chip${active ? ' is-active' : ''}"
+                        data-browse-scope="${escapeAttr(name)}"
+                        data-browse-value="${escapeAttr(value)}"
+                        aria-pressed="${active ? 'true' : 'false'}"
+                    >${escapeHtml(labelFn(row))}</button>
+                `;
+            })
+            .join('');
+        return `
+            <div class="admin-accounts-scope-row-wrap">
+                <span class="admin-accounts-scope-row-label">${escapeHtml(label)}</span>
+                <div class="admin-accounts-scope-row admin-accounts-scope-row--equal" role="group" aria-label="${escapeAttr(label)}" style="--scope-cols: ${colCount};">${items}</div>
+            </div>
+        `;
+    }
+
     function renderScopeRow(name, label, rows, selectedValue, getValue, getLabel) {
         const labelFn = getLabel || getValue;
         const colCount = Math.max(rows.length, 1);
@@ -286,26 +330,26 @@
             return null;
         }
 
-        browseScope = resolveBrowseScope(tree, {
-            market: selectedRadioValue(root, 'browse-market') || browseScope.market,
-            area: selectedRadioValue(root, 'browse-area') || browseScope.area,
-            storeNumber: selectedRadioValue(root, 'browse-store') || browseScope.storeNumber,
-        }, preferredStore);
+        browseScope = resolveBrowseScope(
+            tree,
+            preferredStore ? { market: '', area: '', storeNumber: '' } : { ...browseScope },
+            preferredStore
+        );
 
         const rows = [];
         if (tree.markets.length > 1) {
-            rows.push(renderScopeRow('browse-market', 'Market', tree.markets, browseScope.market, (row) => row));
+            rows.push(renderBrowseScopeRow('browse-market', 'Market', tree.markets, browseScope.market, (row) => row));
         }
 
         const areas = browseScope.market ? tree.areasByMarket[browseScope.market] || [] : [];
         if (areas.length > 1) {
-            rows.push(renderScopeRow('browse-area', 'Area', areas, browseScope.area, (row) => row));
+            rows.push(renderBrowseScopeRow('browse-area', 'Area', areas, browseScope.area, (row) => row));
         }
 
         const stores = browseScope.area ? tree.storesByArea[browseScope.area] || [] : [];
         if (stores.length > 1) {
             rows.push(
-                renderScopeRow(
+                renderBrowseScopeRow(
                     'browse-store',
                     'Store',
                     stores,
@@ -317,11 +361,7 @@
         }
 
         host.innerHTML = rows.join('');
-        browseScope = resolveBrowseScope(tree, {
-            market: selectedRadioValue(root, 'browse-market') || browseScope.market,
-            area: selectedRadioValue(root, 'browse-area') || browseScope.area,
-            storeNumber: selectedRadioValue(root, 'browse-store') || browseScope.storeNumber,
-        }, preferredStore);
+        browseScope = resolveBrowseScope(tree, { ...browseScope }, '');
         return browseScope.storeNumber;
     }
 
@@ -684,6 +724,7 @@
         root.querySelector('#admin-accounts-error').textContent = '';
         resetCreateForm();
         setCreatePanelExpanded(false);
+        browseScope = { market: '', area: '', storeNumber: '' };
         let storeNumber = String(options.storeNumber || '').trim();
 
         try {

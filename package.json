@@ -1,6 +1,6 @@
 {
   "name": "live-dashboard-app",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "description": "Live store dashboard that scrapes Macromatix sales/report data and serves store, area, and audit views.",
   "main": "src/app.js",
   "scripts": {

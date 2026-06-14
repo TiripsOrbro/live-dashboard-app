@@ -27,6 +27,16 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.7 – June 2026
+
+**Changed**
+
+- **Accounts picker tabs** — Market, Area, and Store selectors span the full modal width as equal tab buttons; store options show numbers only (no store names).
+
+**What you need to do**
+
+- Hard refresh (Ctrl+F5) after the Pi update.
+
 ### Version 0.4.6 – June 2026
 
 **Changed**

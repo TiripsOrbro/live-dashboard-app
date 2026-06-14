@@ -171,7 +171,7 @@
                     stores,
                     selections.storeNumber,
                     (row) => row.storeNumber,
-                    (row) => `${row.storeNumber} — ${row.storeName}`
+                    (row) => row.storeNumber
                 )
             );
         }

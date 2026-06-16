@@ -7,6 +7,7 @@ const { withPageContextRetry } = require('./mmx-context-retry');
 const { setReportListDate } = require('./mmx-rad-date-picker');
 const { resolveReportDate } = require('./util-dates');
 const { waitForAspPostback } = require('./mmx-postback');
+const { waitForScheduledOrdersTableReady } = require('./mmx-order-waits');
 const log = require('./util-logging');
 
 const DEFAULT_URL = 'https://tacobellau.macromatix.net/mms_stores_scheduledorders.aspx';
@@ -268,10 +269,9 @@ async function returnToScheduledOrders(page, vendorOrdersCfg, navTimeoutMs, stor
     await page.goto(target, { ...GOTO_OPTS, timeout: navTimeoutMs }).catch(async (err) => {
         if (!String(err.message || '').includes('ERR_ABORTED')) throw err;
         log.warn('Navigation aborted — waiting for scheduled orders page to settle');
-        await page.waitForTimeout(1000);
     });
     await page.waitForFunction(() => document.readyState === 'complete', { timeout: 10000 }).catch(() => {});
-    await waitForScheduledOrdersTable(page, 8000);
+    await waitForScheduledOrdersTableReady(page, 8000);
     if (storeContext?.selectStore) {
         await storeContext.selectStore(page, storeContext.storeNumber, storeContext.storeName);
     } else if (storeContext?.storeName) {

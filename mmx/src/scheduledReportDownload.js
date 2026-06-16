@@ -2,7 +2,7 @@
 const { openMacromatixBrowser, closeBrowserQuietly, probePendingOrdersForStores } = require('./macromatixScraper');
 const { downloadReportsForStores } = require('./mmxReportDownloader');
 const { hasScheduledRunToday, markScheduledRun } = require('./reportDownloadScheduleState');
-const { waitUntilMmxResourceIdle, isMmxResourceBusy } = require('./mmxResourceGate');
+const { runWithPriority, PRIORITY } = require('./mmxTaskQueue');
 
 const TIME_ZONE = process.env.REPORT_DOWNLOAD_TIME_ZONE || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
 
@@ -115,83 +115,78 @@ async function runOrderDayReportDownload(options = {}) {
         throw new Error('No stores in .storelist');
     }
 
-    await waitUntilMmxResourceIdle();
-    if (isMmxResourceBusy()) {
-        console.log('[ReportDownload] Skipped — MMX stock count / order entry in progress');
-        return {
-            skipped: true,
-            reason: 'mmx-busy',
-            runDateKey,
-            orderDateKey,
-        };
-    }
+    return runWithPriority(PRIORITY.MIC, {
+        type: 'order-day-reports',
+        label: `order-day report download (${orderDateKey})`,
+        run: async () => {
+            let browser;
+            let page;
+            try {
+                ({ browser, page } = await openMacromatixBrowser(options));
 
-    let browser;
-    let page;
-    try {
-        ({ browser, page } = await openMacromatixBrowser(options));
+                const probe = await probePendingOrdersForStores(page, stores, { pickYmd });
+                const withOrders = probe.filter((p) => p.hasOrders);
 
-        const probe = await probePendingOrdersForStores(page, stores, { pickYmd });
-        const withOrders = probe.filter((p) => p.hasOrders);
-
-        const summary = {
-            runDateKey,
-            orderDateKey,
-            dryRun,
-            probed: probe,
-            storesWithOrders: withOrders.map((p) => ({
-                storeNumber: p.storeNumber,
-                storeName: p.storeName,
-                pendingVendors: p.pendingVendors,
-            })),
-            downloads: null,
-        };
-
-        if (!withOrders.length) {
-            console.log(
-                `[ReportDownload] No stores with pending orders on ${orderDateKey} — skipping report download.`
-            );
-            if (options.scheduled) {
-                markScheduledRun({
+                const summary = {
                     runDateKey,
                     orderDateKey,
-                    stores: [],
-                    result: summary,
+                    dryRun,
+                    probed: probe,
+                    storesWithOrders: withOrders.map((p) => ({
+                        storeNumber: p.storeNumber,
+                        storeName: p.storeName,
+                        pendingVendors: p.pendingVendors,
+                    })),
+                    downloads: null,
+                };
+
+                if (!withOrders.length) {
+                    console.log(
+                        `[ReportDownload] No stores with pending orders on ${orderDateKey} — skipping report download.`
+                    );
+                    if (options.scheduled) {
+                        markScheduledRun({
+                            runDateKey,
+                            orderDateKey,
+                            stores: [],
+                            result: summary,
+                        });
+                    }
+                    return summary;
+                }
+
+                const storeNumbers = withOrders.map((p) => p.storeNumber);
+                console.log(
+                    `[ReportDownload] ${storeNumbers.length} store(s) have orders on ${orderDateKey}:`,
+                    storeNumbers.join(', ')
+                );
+
+                if (dryRun) {
+                    summary.downloads = { dryRun: true, storeNumbers };
+                    return summary;
+                }
+
+                summary.downloads = await downloadReportsForStores({
+                    storeNumbers,
+                    page,
+                    browser,
                 });
+
+                if (options.scheduled) {
+                    markScheduledRun({
+                        runDateKey,
+                        orderDateKey,
+                        stores: storeNumbers,
+                        result: summary,
+                    });
+                }
+
+                return summary;
+            } finally {
+                await closeBrowserQuietly(browser, 'order-day report download');
             }
-            return summary;
-        }
-
-        const storeNumbers = withOrders.map((p) => p.storeNumber);
-        console.log(
-            `[ReportDownload] ${storeNumbers.length} store(s) have orders on ${orderDateKey}:`,
-            storeNumbers.join(', ')
-        );
-
-        if (dryRun) {
-            summary.downloads = { dryRun: true, storeNumbers };
-            return summary;
-        }
-
-        summary.downloads = await downloadReportsForStores({
-            storeNumbers,
-            page,
-            browser,
-        });
-
-        if (options.scheduled) {
-            markScheduledRun({
-                runDateKey,
-                orderDateKey,
-                stores: storeNumbers,
-                result: summary,
-            });
-        }
-
-        return summary;
-    } finally {
-        await closeBrowserQuietly(browser, 'order-day report download');
-    }
+        },
+    });
 }
 
 module.exports = {

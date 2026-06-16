@@ -3180,6 +3180,126 @@ html.mic-dark-mode .mic-audit-stat--complete {
     gap: 0.75rem;
 }
 
+.admin-scope-picker-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    width: min(36rem, calc(100vw - 2rem));
+    max-width: 36rem;
+}
+
+.admin-scope-picker-hint {
+    margin: 0;
+    font-size: var(--font-size-4);
+    color: color-mix(in srgb, var(--charcoal) 70%, white);
+}
+
+.admin-scope-picker-nav {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.admin-scope-picker-empty {
+    margin: 0;
+    font-size: var(--font-size-4);
+    color: color-mix(in srgb, var(--charcoal) 55%, white);
+}
+
+.admin-scope-picker-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+.admin-scope-picker-select:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.admin-scope-picker-cancel {
+    border: var(--cell-border) var(--charcoal);
+    background: var(--white);
+    color: var(--charcoal);
+    font: inherit;
+    font-weight: var(--font-weight-semibold);
+    padding: 0.55rem 1rem;
+    cursor: pointer;
+}
+
+.admin-scope-picker-cancel:hover,
+.admin-scope-picker-cancel:focus-visible {
+    background: color-mix(in srgb, var(--tb-purple-light) 12%, white);
+}
+
+.mic-admin-store-view-current {
+    margin: 0.35rem 0 0.5rem;
+    font-size: var(--font-size-4);
+    font-weight: var(--font-weight-semibold, 600);
+    color: var(--charcoal);
+}
+
+.mic-admin-store-view-current--empty {
+    color: color-mix(in srgb, var(--charcoal) 55%, white);
+    font-weight: 500;
+}
+
+.mic-admin-store-view .mic-settings-btn {
+    width: 100%;
+}
+
+.mic-admin-store-view-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    margin-bottom: calc(10px * var(--dashboard-scale));
+    padding: calc(8px * var(--dashboard-scale)) calc(12px * var(--dashboard-scale));
+    border: var(--cell-border) color-mix(in srgb, var(--tb-purple-light) 55%, var(--charcoal));
+    border-radius: calc(6px * var(--dashboard-scale));
+    background: color-mix(in srgb, var(--tb-purple-light) 12%, var(--white));
+    font-size: var(--font-size-4);
+    font-weight: var(--font-weight-semibold, 600);
+}
+
+.mic-admin-store-view-banner-exit {
+    border: var(--cell-border) var(--charcoal);
+    background: var(--white);
+    color: var(--charcoal);
+    font: inherit;
+    font-size: var(--font-size-5);
+    font-weight: var(--font-weight-semibold, 600);
+    padding: 0.35rem 0.65rem;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.mic-admin-store-view-banner-exit:hover,
+.mic-admin-store-view-banner-exit:focus-visible {
+    background: color-mix(in srgb, var(--tb-purple-light) 10%, white);
+}
+
+html.mic-dark-mode .mic-admin-store-view-banner {
+    background: color-mix(in srgb, var(--tb-purple-light) 18%, #262626);
+    border-color: color-mix(in srgb, var(--tb-purple-light) 45%, #5a5a5a);
+    color: #f0f0f0;
+}
+
+html.mic-dark-mode .mic-admin-store-view-banner-exit {
+    background: #2a2a2a;
+    border-color: #5a5a5a;
+    color: #f0f0f0;
+}
+
+html.mic-dark-mode .mic-admin-store-view-current {
+    color: #e8e8e8;
+}
+
+html.mic-dark-mode .mic-admin-store-view-current--empty {
+    color: color-mix(in srgb, #e8e8e8 55%, #161616);
+}
+
 .admin-store-picker-hint {
     margin: 0;
     font-size: var(--font-size-4);

@@ -4,22 +4,17 @@ const path = require('path');
 const paths = require('./paths');
 const { loadEnv } = require('./loadEnv');
 loadEnv();
-/* Force background scraping to stay headless for sales + upselling. */
+/* Force background scraping to stay headless for sales data. */
 process.env.SCRAPER_HEADLESS = 'true';
 
 (function logMacromatixEnvStatus() {
-    const enc = String(process.env.SCRAPER_CREDENTIALS_ENCRYPTED || '').trim();
-    if (enc) {
-        const keyOk = Boolean(String(process.env.SCRAPER_CREDENTIALS_KEY || '').trim());
-        console.log(`[Env] Macromatix: SCRAPER_CREDENTIALS_ENCRYPTED set; SCRAPER_CREDENTIALS_KEY ${keyOk ? 'set' : 'MISSING'}`);
-        return;
-    }
-    const u = Boolean(String(process.env.SCRAPER_USERNAME || '').trim());
-    const p = Boolean(String(process.env.SCRAPER_PASSWORD || '').trim());
-    console.log(`[Env] Macromatix: SCRAPER_USERNAME ${u ? 'set' : 'MISSING'}, SCRAPER_PASSWORD ${p ? 'set' : 'MISSING'}`);
-    console.log(
-        '[Env] Macromatix scraper: global SCRAPER_* for each store until a crew account saves MMX creds; then tries store logins in order with global fallback'
+    const keyOk = Boolean(
+        String(process.env.STORE_CREDENTIALS_KEY || process.env.MMX_USER_CREDENTIALS_KEY || '').trim()
     );
+    console.log(
+        `[Env] Store portal credentials: encryption key ${keyOk ? 'set' : 'MISSING (dev fallback in non-production)'}`
+    );
+    console.log('[Env] Macromatix/LifeLenz/SMG/NSF logins are per-store — configure in Admin menu → Setup Store Logins');
     const nologinOn = /^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_NOLOGIN_ENABLED ?? '').trim());
     if (nologinOn && !String(process.env.DASHBOARD_NOLOGIN_SECRET || '').trim()) {
         console.warn(
@@ -30,13 +25,21 @@ process.env.SCRAPER_HEADLESS = 'true';
 
 const scrapeData = require('./services/scraper');
 const { notifyScrapeFailure } = require('./services/alertNotifier');
-const { isMmxResourceBusy, acquireMmxResource, releaseMmxResource, abortCompetingMmxWork } = require('./services/mmxResourceGate');
+const { isMmxResourceBusy } = require('./services/mmxResourceGate');
+const {
+    runWithPriority,
+    PRIORITY,
+    hasPendingHigherPriority,
+    hasBlockingWorkForPriority,
+    getQueueSnapshot,
+} = require('./services/mmxTaskQueue');
 const {
     MmxWorkAbortedError,
     resetSalesScrapeAbort,
     registerSalesScrapeBrowser,
     clearSalesScrapeBrowser,
 } = require('./services/salesScrapeAbort');
+require('../dashboard/src/forecastMmxAbort');
 const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./services/storeList');
 const {
     TEST_STORE_SLUG,
@@ -44,7 +47,6 @@ const {
     isTestStore,
     normalizeStoreKey,
     buildTestStoreSalesSlice,
-    buildTestStoreLeaderboardPayload,
     stickyKeyForTestMirror,
     testStoreListEntry,
 } = require('./services/testStore');
@@ -72,12 +74,6 @@ const {
     POST_CLOSE_RETAIN_HOURS,
 } = require('./services/scrapeSchedule');
 const fsSync = require('fs');
-const { isUpsellingStore } = require('./services/upselling/upsellingConfig');
-const { buildLeaderboardPayload } = require('./services/upselling/upsellingScores');
-const {
-    startUpsellingScheduler,
-    cancelSchedulerHandle,
-} = require('./services/upselling/upsellingScheduler');
 const { touchPresence } = require('./services/scrapePresence');
 const { startSalesScrapeScheduler } = require('./services/salesScrapeScheduler');
 const {
@@ -254,10 +250,13 @@ const {
     appendDashboardUser,
     buildCreateAccountParentFromUser,
     getCreateAccountOptions,
+    getStoreScopeTreeForUser,
     validateCreateAccountPayload,
     requiresMmxForAccountLevel,
     canUserCreateAccounts,
     canUserAccessAdminMenu,
+    canUserManageStoreLogins,
+    canUserManageSmgNsfSettings,
     canUserEditGlobalBuildTo,
     canUserManageStoreAccounts,
     listManagedStoreAccounts,
@@ -439,6 +438,18 @@ const {
 } = require('./services/featureRequests');
 const { verifyMacromatixLogin } = require('./services/macromatixScraper');
 const { verifyLifeLenzLogin } = require('../lifelenz/src/lifelenzAuth');
+const {
+    VALID_SERVICES,
+    isValidService,
+    getStoreCredentialsSummary,
+    savePrimary,
+    addFallback,
+    removeFallback,
+    clearServiceCredentials,
+    listCredentialCandidates,
+} = require('./services/storeCredentials');
+const { getSmgPeriodConfig, saveSmgPeriodConfig } = require('../smg/src/smgPeriodConfig');
+const { getNsfRoundConfig, saveNsfRoundConfig, defaultRoundsForYear } = require('../nsf/src/nsfRoundConfig');
 const {
     createRegistrationOptions,
     verifyRegistration,
@@ -1560,8 +1571,8 @@ function runScrapeIntoCache(options = {}) {
                 return salesCache;
             }
 
-            if (isMmxResourceBusy()) {
-                console.log('[Dashboard] Sales scrape paused — MMX stock count / orders in progress');
+            if (isMmxResourceBusy() || hasPendingHigherPriority(PRIORITY.SCRAPE)) {
+                console.log('[Dashboard] Sales scrape paused — higher-priority MMX work queued or in progress');
                 if (!salesCache) {
                     salesCache = buildCacheShellFromStoreList();
                     salesCacheAt = Date.now();
@@ -1572,7 +1583,11 @@ function runScrapeIntoCache(options = {}) {
 
             logScrapeStart(options);
             const scrapeOpts = { ...options };
-            const result = await scrapeWithRetry(scrapeOpts);
+            const result = await runWithPriority(PRIORITY.SCRAPE, {
+                type: 'sales-scrape',
+                label: `sales scrape (${options.scrapeReason || 'manual'})`,
+                run: () => scrapeWithRetry(scrapeOpts),
+            });
             const fresh = {
                 success: true,
                 timestamp: result.timestamp,
@@ -1616,7 +1631,7 @@ function runScrapeIntoCache(options = {}) {
 async function getSalesDataCached() {
     applyScrapeScheduleToCache(salesCache);
 
-    if (isMmxResourceBusy()) {
+    if (isMmxResourceBusy() || hasPendingHigherPriority(PRIORITY.SCRAPE)) {
         if (!salesCache) {
             salesCache = buildCacheShellFromStoreList();
             salesCacheAt = Date.now();
@@ -2337,7 +2352,10 @@ function sendOverviewPage(req, res) {
         const store = singleStoreForUser(user);
         if (!store || !assertStoreAccess(req, res, store)) return;
     }
-    res.sendFile(path.join(paths.users.public, 'mic.html'));
+    const bootId = getDashboardMeta().bootId;
+    let html = fsSync.readFileSync(path.join(paths.users.public, 'mic.html'), 'utf8');
+    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    res.type('html').send(html);
 }
 
 app.get(/^\/overview\/?$/i, sendOverviewPage);
@@ -2684,6 +2702,20 @@ app.get('/api/me', (req, res) => {
     res.json({ success: true, ...userProfileForClient(user) });
 });
 
+app.get('/api/admin/store-scope', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user) || !hasMultiStoreScope(user)) {
+        res.status(403).json({ success: false, error: 'You do not have permission to browse stores.' });
+        return;
+    }
+    const scopeTree = getStoreScopeTreeForUser(user);
+    if (!scopeTree) {
+        res.status(403).json({ success: false, error: 'No store scope available.' });
+        return;
+    }
+    res.json({ success: true, scopeTree });
+});
+
 app.get('/change-password', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     if (!isRealDashboardUser(user)) {
@@ -2709,12 +2741,7 @@ app.get('/mmx-setup', (req, res) => {
         res.redirect('/login');
         return;
     }
-    if (!userNeedsMmxSetup(user.username)) {
-        const setupPath = getAccountSetupRedirectPath(user);
-        res.redirect(setupPath || (isAdminUser(user) ? getAdminRedirectPath() : getLoginRedirectPath(user, 'mic')));
-        return;
-    }
-    res.sendFile(path.join(paths.users.public, 'mmx-setup.html'));
+    res.redirect(getLoginRedirectPath(user, 'mic'));
 });
 
 app.get('/changelog', (req, res) => {
@@ -2927,57 +2954,10 @@ app.post('/api/account/complete-password-setup', (req, res) => {
     });
 });
 
-app.post('/api/account/complete-mmx-setup', async (req, res) => {
-    const user = req.dashboardUser || getRequestUser(req);
-    if (!isRealDashboardUser(user)) {
-        res.status(403).json({ success: false, error: 'Sign in first to complete Macromatix setup.' });
-        return;
-    }
-    if (!userNeedsMmxSetup(user.username)) {
-        res.status(400).json({ success: false, error: 'Macromatix setup is not required for this account.' });
-        return;
-    }
-
-    const firstName = String(req.body?.firstName || '').trim();
-    const lastName = String(req.body?.lastName || '').trim();
-    const mmxUsername = String(req.body?.mmxUsername || '').trim();
-    const mmxPassword = String(req.body?.mmxPassword || '');
-
-    if (!firstName || !lastName) {
-        res.status(400).json({ success: false, error: 'First name and last name are required.' });
-        return;
-    }
-    if (!mmxUsername || !mmxPassword) {
-        res.status(400).json({ success: false, error: 'Macromatix username and password are required.' });
-        return;
-    }
-
-    const mmxCheck = await verifyMacromatixLogin(mmxUsername, mmxPassword);
-    if (!mmxCheck.ok) {
-        res.status(400).json({
-            success: false,
-            error: mmxCheck.error || 'Macromatix login failed.',
-        });
-        return;
-    }
-
-    const mmxSave = saveUserAccountSecrets(user.username, {
-        firstName,
-        lastName,
-        mmxUsername,
-        mmxPassword,
-    });
-    if (!mmxSave.ok) {
-        res.status(500).json({ success: false, error: mmxSave.error || 'Could not save Macromatix credentials.' });
-        return;
-    }
-
-    const profile = userProfileForClient(user);
-    res.json({
-        success: true,
-        defaultPath: profile.defaultPath,
-        welcomeName: profile.welcomeName,
-        mustChangePassword: Boolean(profile.mustChangePassword),
+app.post('/api/account/complete-mmx-setup', (req, res) => {
+    res.status(410).json({
+        success: false,
+        error: 'Per-user Macromatix setup is no longer used. Configure store logins in Admin menu → Setup Store Logins.',
     });
 });
 
@@ -3267,12 +3247,6 @@ app.post('/api/admin/forecast/run', async (req, res) => {
         res.status(400).json({ success: false, error: 'No valid stores selected.' });
         return;
     }
-    if (isMmxResourceBusy()) {
-        res.status(409).json({ success: false, error: 'Macromatix is busy with another task. Try again shortly.' });
-        return;
-    }
-    abortCompetingMmxWork('forecast tool');
-    acquireMmxResource('forecast tool');
 
     const streamProgress = req.body?.streamProgress === true;
     const writeSse = (event, data) => {
@@ -3290,61 +3264,78 @@ app.post('/api/admin/forecast/run', async (req, res) => {
     }
 
     try {
-        const headed =
-            req.body?.headed === true ||
-            /^(0|false|no|off)$/i.test(String(process.env.FORECAST_SCRAPER_HEADLESS ?? '').trim());
-        const lifelenzHeaded =
-            req.body?.lifelenzHeaded === true ||
-            /^(0|false|no|off)$/i.test(String(process.env.LIFELENZ_SCRAPER_HEADLESS ?? '').trim());
-        const headless = headed ? false : true;
-        const lifelenzHeadless = lifelenzHeaded ? false : true;
+        await runWithPriority(PRIORITY.ADMIN, {
+            type: 'admin-forecast',
+            label: 'forecast tool',
+            run: async () => {
+                const headed =
+                    req.body?.headed === true ||
+                    /^(0|false|no|off)$/i.test(String(process.env.FORECAST_SCRAPER_HEADLESS ?? '').trim());
+                const lifelenzHeaded =
+                    req.body?.lifelenzHeaded === true ||
+                    /^(0|false|no|off)$/i.test(String(process.env.LIFELENZ_SCRAPER_HEADLESS ?? '').trim());
+                const headless = headed ? false : true;
 
-        const oneTimeEmail = String(req.body?.lifelenzCredentials?.email || '').trim();
-        const oneTimePassword = String(req.body?.lifelenzCredentials?.password || '');
-        const savedCreds = readLifeLenzCredentialsForUser(user.username);
-        const lifelenzCredentials =
-            savedCreds ||
-            (oneTimeEmail && oneTimePassword ? { email: oneTimeEmail, password: oneTimePassword } : null);
+                const oneTimeEmail = String(req.body?.lifelenzCredentials?.email || '').trim();
+                const oneTimePassword = String(req.body?.lifelenzCredentials?.password || '');
+                const lifelenzByStore = {};
+                for (const sn of storeNumbers) {
+                    const cands = listCredentialCandidates(sn, 'lifelenz');
+                    if (cands[0]?.email && cands[0]?.password) {
+                        lifelenzByStore[sn] = { email: cands[0].email, password: cands[0].password };
+                    }
+                }
+                const lifelenzCredentials =
+                    Object.keys(lifelenzByStore).length > 0
+                        ? { byStore: lifelenzByStore }
+                        : oneTimeEmail && oneTimePassword
+                          ? { email: oneTimeEmail, password: oneTimePassword }
+                          : null;
 
-        writeSse('platform-started', { platform: 'mmx', storeNumbers });
-        if (lifelenzCredentials) {
-            writeSse('platform-started', { platform: 'lifelenz', storeNumbers });
-        }
+                writeSse('platform-started', { platform: 'mmx', storeNumbers });
+                if (lifelenzCredentials) {
+                    writeSse('platform-started', { platform: 'lifelenz', storeNumbers });
+                }
 
-        const combined = await runCombinedForecastForStores(storeNumbers, {
-            completedBy: user.username,
-            headless,
-            lifelenzCredentials,
-            keepBrowserOpen: headed && req.body?.keepBrowserOpen === true,
-            onProgress: (payload) => writeSse('progress', payload),
+                const combined = await runCombinedForecastForStores(storeNumbers, {
+                    completedBy: user.username,
+                    headless,
+                    lifelenzCredentials,
+                    keepBrowserOpen: headed && req.body?.keepBrowserOpen === true,
+                    onProgress: (payload) => writeSse('progress', payload),
+                });
+
+                const mmxResults = combined.mmxResults || [];
+                const lifelenzResults = combined.lifelenzResults || [];
+                const allMmxFailed = mmxResults.length && mmxResults.every((row) => !row.ok);
+                const allFailed =
+                    allMmxFailed &&
+                    (!lifelenzCredentials || (lifelenzResults.length && lifelenzResults.every((row) => !row.ok)));
+
+                const payload = {
+                    success: !allFailed,
+                    mmx: mmxResults,
+                    lifelenz: lifelenzResults,
+                    lifelenzSkipped: combined.lifelenzSkipped === true,
+                    manualSaved: combined.manualSaved || [],
+                    results: mmxResults,
+                    targetWeeks: combined.targetWeeks || getTargetForecastWeekStarts(),
+                    error: allFailed
+                        ? mmxResults.find((row) => !row.ok)?.error || 'Forecast run failed for all stores.'
+                        : undefined,
+                };
+                if (streamProgress) {
+                    writeSse('complete', payload);
+                    res.end();
+                    return;
+                }
+                if (allFailed) {
+                    res.status(502).json(payload);
+                    return;
+                }
+                res.json(payload);
+            },
         });
-
-        const mmxResults = combined.mmxResults || [];
-        const lifelenzResults = combined.lifelenzResults || [];
-        const allMmxFailed = mmxResults.length && mmxResults.every((row) => !row.ok);
-        const allFailed =
-            allMmxFailed && (!lifelenzCredentials || (lifelenzResults.length && lifelenzResults.every((row) => !row.ok)));
-
-        const payload = {
-            success: !allFailed,
-            mmx: mmxResults,
-            lifelenz: lifelenzResults,
-            lifelenzSkipped: combined.lifelenzSkipped === true,
-            manualSaved: combined.manualSaved || [],
-            results: mmxResults,
-            targetWeeks: combined.targetWeeks || getTargetForecastWeekStarts(),
-            error: allFailed ? mmxResults.find((row) => !row.ok)?.error || 'Forecast run failed for all stores.' : undefined,
-        };
-        if (streamProgress) {
-            writeSse('complete', payload);
-            res.end();
-            return;
-        }
-        if (allFailed) {
-            res.status(502).json(payload);
-            return;
-        }
-        res.json(payload);
     } catch (err) {
         const payload = { success: false, error: err.message || 'Forecast run failed.' };
         if (streamProgress) {
@@ -3353,9 +3344,21 @@ app.post('/api/admin/forecast/run', async (req, res) => {
             return;
         }
         res.status(500).json(payload);
-    } finally {
-        releaseMmxResource('forecast tool');
     }
+});
+
+app.get('/api/admin/mmx-queue', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const snapshot = getQueueSnapshot();
+    res.json({
+        success: true,
+        priorities: { MIC: PRIORITY.MIC, ADMIN: PRIORITY.ADMIN, SCRAPE: PRIORITY.SCRAPE },
+        ...snapshot,
+    });
 });
 
 app.get('/api/admin/forecast/manual/:storeNumber', (req, res) => {
@@ -3446,6 +3449,249 @@ app.put('/api/admin/build-to/overrides', (req, res) => {
     ) });
 });
 
+function assertStoreLoginAccess(req, res, storeNumber) {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserManageStoreLogins(user)) {
+        res.status(403).json({ success: false, error: 'You do not have permission to manage store logins.' });
+        return false;
+    }
+    return assertStoreAccess(req, res, storeNumber);
+}
+
+function verifyPortalLogin(service, creds) {
+    const svc = String(service || '').trim().toLowerCase();
+    if (svc === 'mmx') {
+        const username = String(creds?.username || '').trim();
+        const password = String(creds?.password || '');
+        if (!username || !password) {
+            return Promise.resolve({ ok: false, error: 'Username and password are required.' });
+        }
+        return verifyMacromatixLogin(username, password);
+    }
+    if (svc === 'lifelenz') {
+        const email = String(creds?.email || creds?.username || '').trim();
+        const password = String(creds?.password || '');
+        if (!email || !password) {
+            return Promise.resolve({ ok: false, error: 'Email and password are required.' });
+        }
+        return verifyLifeLenzLogin(email, password, { headless: true, skipSlowMo: true });
+    }
+    const username = String(creds?.username || creds?.email || '').trim();
+    const password = String(creds?.password || '');
+    if (!username || !password) {
+        return Promise.resolve({ ok: false, error: 'Login and password are required.' });
+    }
+    return Promise.resolve({ ok: true, stub: true });
+}
+
+app.get('/api/admin/store-logins', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserManageStoreLogins(user)) {
+        res.status(403).json({ success: false, error: 'You do not have permission to manage store logins.' });
+        return;
+    }
+    const stores = filterStoresForUser(user, getStoreList()).map((row) => {
+        const summary = getStoreCredentialsSummary(row.storeNumber);
+        const services = {};
+        for (const svc of VALID_SERVICES) {
+            const status = summary.services[svc];
+            services[svc] = {
+                configured: status.configured,
+                primary: status.primary,
+                fallbackCount: status.fallbacks.length,
+            };
+        }
+        return {
+            storeNumber: row.storeNumber,
+            storeName: row.storeName || '',
+            services,
+        };
+    });
+    res.json({ success: true, stores, services: VALID_SERVICES });
+});
+
+app.get('/api/admin/store-logins/:storeNumber', (req, res) => {
+    const store = String(req.params.storeNumber || '').trim();
+    if (!store || !assertStoreLoginAccess(req, res, store)) return;
+    res.json({ success: true, ...getStoreCredentialsSummary(store) });
+});
+
+app.post('/api/admin/store-logins/:storeNumber/:service/verify', async (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    const store = String(req.params.storeNumber || '').trim();
+    const service = String(req.params.service || '').trim().toLowerCase();
+    if (!store || !assertStoreLoginAccess(req, res, store)) return;
+    if (!isValidService(service)) {
+        res.status(400).json({ success: false, error: 'Invalid service.' });
+        return;
+    }
+    const save = req.body?.save === true;
+    const asFallback = req.body?.asFallback === true;
+    const label = String(req.body?.label || (asFallback ? 'Fallback' : 'Primary')).trim();
+    const verifyResult = await verifyPortalLogin(service, req.body || {});
+    if (!verifyResult.ok) {
+        res.status(401).json({ success: false, error: verifyResult.error || 'Login verification failed.' });
+        return;
+    }
+    let saved = null;
+    if (save) {
+        saved = asFallback
+            ? addFallback(store, service, req.body, user.username, label)
+            : savePrimary(store, service, req.body, user.username, label);
+        if (!saved.ok) {
+            res.status(500).json({ success: false, error: saved.error || 'Could not save credentials.' });
+            return;
+        }
+    }
+    res.json({
+        success: true,
+        verified: true,
+        stub: Boolean(verifyResult.stub),
+        saved: Boolean(save && saved?.ok),
+        summary: getStoreCredentialsSummary(store).services[service],
+        updatedAt: saved?.updatedAt || null,
+        updatedBy: saved?.updatedBy || user.username,
+    });
+});
+
+app.put('/api/admin/store-logins/:storeNumber/:service/primary', async (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    const store = String(req.params.storeNumber || '').trim();
+    const service = String(req.params.service || '').trim().toLowerCase();
+    if (!store || !assertStoreLoginAccess(req, res, store)) return;
+    if (!isValidService(service)) {
+        res.status(400).json({ success: false, error: 'Invalid service.' });
+        return;
+    }
+    const verifyFirst = req.body?.verify !== false;
+    if (verifyFirst) {
+        const verifyResult = await verifyPortalLogin(service, req.body || {});
+        if (!verifyResult.ok) {
+            res.status(401).json({ success: false, error: verifyResult.error || 'Login verification failed.' });
+            return;
+        }
+    }
+    const label = String(req.body?.label || 'Primary').trim();
+    const saved = savePrimary(store, service, req.body, user.username, label);
+    if (!saved.ok) {
+        res.status(400).json({ success: false, error: saved.error });
+        return;
+    }
+    res.json({
+        success: true,
+        summary: getStoreCredentialsSummary(store).services[service],
+        updatedAt: saved.updatedAt,
+        updatedBy: saved.updatedBy,
+    });
+});
+
+app.post('/api/admin/store-logins/:storeNumber/:service/fallbacks', async (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    const store = String(req.params.storeNumber || '').trim();
+    const service = String(req.params.service || '').trim().toLowerCase();
+    if (!store || !assertStoreLoginAccess(req, res, store)) return;
+    if (!isValidService(service)) {
+        res.status(400).json({ success: false, error: 'Invalid service.' });
+        return;
+    }
+    const verifyFirst = req.body?.verify !== false;
+    if (verifyFirst) {
+        const verifyResult = await verifyPortalLogin(service, req.body || {});
+        if (!verifyResult.ok) {
+            res.status(401).json({ success: false, error: verifyResult.error || 'Login verification failed.' });
+            return;
+        }
+    }
+    const label = String(req.body?.label || 'Fallback').trim();
+    const saved = addFallback(store, service, req.body, user.username, label);
+    if (!saved.ok) {
+        res.status(400).json({ success: false, error: saved.error });
+        return;
+    }
+    res.json({
+        success: true,
+        id: saved.id,
+        summary: getStoreCredentialsSummary(store).services[service],
+        updatedAt: saved.updatedAt,
+        updatedBy: saved.updatedBy,
+    });
+});
+
+app.delete('/api/admin/store-logins/:storeNumber/:service/fallbacks/:fallbackId', (req, res) => {
+    const store = String(req.params.storeNumber || '').trim();
+    const service = String(req.params.service || '').trim().toLowerCase();
+    const fallbackId = String(req.params.fallbackId || '').trim();
+    if (!store || !assertStoreLoginAccess(req, res, store)) return;
+    if (!isValidService(service)) {
+        res.status(400).json({ success: false, error: 'Invalid service.' });
+        return;
+    }
+    const result = removeFallback(store, service, fallbackId);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({ success: true, summary: getStoreCredentialsSummary(store).services[service] });
+});
+
+app.delete('/api/admin/store-logins/:storeNumber/:service', (req, res) => {
+    const store = String(req.params.storeNumber || '').trim();
+    const service = String(req.params.service || '').trim().toLowerCase();
+    if (!store || !assertStoreLoginAccess(req, res, store)) return;
+    if (!isValidService(service)) {
+        res.status(400).json({ success: false, error: 'Invalid service.' });
+        return;
+    }
+    const result = clearServiceCredentials(store, service);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({ success: true, summary: getStoreCredentialsSummary(store).services[service] });
+});
+
+app.get('/api/admin/smg-nsf/settings', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserManageSmgNsfSettings(user)) {
+        res.status(403).json({ success: false, error: 'Area access or above is required for SMG/NSF settings.' });
+        return;
+    }
+    res.json({
+        success: true,
+        smg: getSmgPeriodConfig(),
+        nsf: getNsfRoundConfig(),
+        defaultNsfRounds: defaultRoundsForYear(new Date().getFullYear()),
+    });
+});
+
+app.put('/api/admin/smg-nsf/smg', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserManageSmgNsfSettings(user)) {
+        res.status(403).json({ success: false, error: 'Area access or above is required for SMG/NSF settings.' });
+        return;
+    }
+    const result = saveSmgPeriodConfig(req.body || {}, user.username);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({ success: true, smg: result.config });
+});
+
+app.put('/api/admin/smg-nsf/nsf', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserManageSmgNsfSettings(user)) {
+        res.status(403).json({ success: false, error: 'Area access or above is required for SMG/NSF settings.' });
+        return;
+    }
+    const result = saveNsfRoundConfig(req.body || {}, user.username);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({ success: true, nsf: result.config });
+});
+
 app.get('/api/account/create-options', (req, res) => {
     const actor = resolveCreateAccountActor(req);
     if (!actor) {
@@ -3509,18 +3755,6 @@ app.post('/api/account/create', async (req, res) => {
             res.status(400).json({ success: false, error: 'First name and last name are required.' });
             return;
         }
-        if (!mmxUsername || !mmxPassword) {
-            res.status(400).json({ success: false, error: 'Macromatix username and password are required.' });
-            return;
-        }
-        const mmxCheck = await verifyMacromatixLogin(mmxUsername, mmxPassword);
-        if (!mmxCheck.ok) {
-            res.status(400).json({
-                success: false,
-                error: mmxCheck.error || 'Macromatix login failed.',
-            });
-            return;
-        }
     }
 
     const result = appendDashboardUser({
@@ -3538,19 +3772,6 @@ app.post('/api/account/create', async (req, res) => {
         return;
     }
 
-    if (needsMmx && !useTemporaryPassword) {
-        const mmxSave = saveUserAccountSecrets(result.username, {
-            firstName,
-            lastName,
-            mmxUsername,
-            mmxPassword,
-        });
-        if (!mmxSave.ok) {
-            res.status(500).json({ success: false, error: mmxSave.error });
-            return;
-        }
-    }
-
     if (!req.dashboardUser) {
         clearAccountGateCookie(res);
     }
@@ -3560,14 +3781,9 @@ app.post('/api/account/create', async (req, res) => {
         cbUsername: result.cbUsername,
         accountLevel: result.accountLevel,
         temporaryPassword: useTemporaryPassword ? password : undefined,
-        mmxVerified: needsMmx && !useTemporaryPassword,
         message: useTemporaryPassword
-            ? needsMmx
-                ? 'Account created. Share the temporary password; the user must link Macromatix and set a new password on first sign-in.'
-                : 'Account created. Share the temporary password; the user must set a new password on first sign-in.'
-            : needsMmx
-              ? 'Account created. Macromatix login verified for Key Item Counts.'
-              : 'Account created.',
+            ? 'Account created. Share the temporary password; the user must set a new password on first sign-in.'
+            : 'Account created.',
     });
 });
 
@@ -4273,9 +4489,14 @@ async function handleOverviewApi(req, res) {
         const user = req.dashboardUser || getRequestUser(req);
         const scope = getOverviewScope(user);
         const storeQuery = String(req.query.store || '').trim();
+        const viewAsStore =
+            storeQuery &&
+            scope !== 'store' &&
+            hasMultiStoreScope(user) &&
+            userCanAccessStore(user, storeQuery);
 
-        if (scope === 'store') {
-            const store = storeQuery || singleStoreForUser(user);
+        if (scope === 'store' || viewAsStore) {
+            const store = scope === 'store' ? storeQuery || singleStoreForUser(user) : storeQuery;
             if (!store || !assertStoreAccess(req, res, store)) return;
             let storeSlice = {};
             if (isTestStore(store)) {
@@ -6101,27 +6322,6 @@ app.post('/api/webauthn/register/verify', async (req, res) => {
     }
 });
 
-// Upselling leaderboard — landscape podium reads this (enabled stores in config/upselling.json).
-app.get('/api/upselling', (req, res) => {
-    try {
-        const store = String(req.query.store || '').trim();
-        if (!store || !assertStoreAccess(req, res, store)) return;
-        if (!isUpsellingStore(store)) {
-            return res.json({ enabled: false });
-        }
-        if (isTestStore(store)) {
-            const user = req.dashboardUser || getRequestUser(req);
-            return res.json(
-                buildTestStoreLeaderboardPayload(stickyKeyForTestMirror(req, user))
-            );
-        }
-        res.json(buildLeaderboardPayload(store));
-    } catch (error) {
-        console.error('API: Error loading upselling:', error);
-        res.status(500).json({ enabled: false, error: error.message });
-    }
-});
-
 // List of stores (number, name, trading hours) for the store picker and per-store grid.
 // Served straight from `.storelist` so it returns instantly without waiting on a scrape.
 app.get('/api/stores', async (req, res) => {
@@ -6495,7 +6695,9 @@ app.use((err, req, res, next) => {
 });
 
 let salesScrapeSchedulerTimer = null;
-let upsellingSchedulerTimer = null;
+function cancelSchedulerHandle(handle) {
+    handle?.cancel?.();
+}
 function primeSalesCacheFromDisk() {
     salesCache = buildCacheShellFromStoreList();
     salesCacheAt = Date.now();
@@ -6541,7 +6743,6 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     void resetStalePipelineCheckpointsOnStartup();
     primeSalesCacheFromDisk();
     startBackgroundRefresh();
-    upsellingSchedulerTimer = startUpsellingScheduler();
     try {
         ensureCompletedWeekSnapshotsCaptured();
     } catch (err) {
@@ -6556,7 +6757,6 @@ function shutdown(signal) {
     shuttingDown = true;
     console.log(`[Dashboard] ${signal} received — closing server…`);
     cancelSchedulerHandle(salesScrapeSchedulerTimer);
-    cancelSchedulerHandle(upsellingSchedulerTimer);
     const force = setTimeout(() => {
         console.warn('[Dashboard] Forced exit after shutdown timeout');
         process.exit(0);

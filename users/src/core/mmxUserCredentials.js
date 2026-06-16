@@ -7,14 +7,14 @@ const MMX_CREDENTIALS_DIR = path.join(paths.users.data, 'mmx-users');
 
 function credentialsKey() {
     const keyMaterial = String(
-        process.env.MMX_USER_CREDENTIALS_KEY || process.env.SCRAPER_CREDENTIALS_KEY || ''
+        process.env.MMX_USER_CREDENTIALS_KEY || process.env.STORE_CREDENTIALS_KEY || ''
     ).trim();
     if (keyMaterial) {
         return crypto.createHash('sha256').update(keyMaterial).digest();
     }
     if (process.env.NODE_ENV === 'production') {
         throw new Error(
-            'Set MMX_USER_CREDENTIALS_KEY or SCRAPER_CREDENTIALS_KEY in production to encrypt per-user Macromatix credentials.'
+            'Set MMX_USER_CREDENTIALS_KEY or STORE_CREDENTIALS_KEY in production to encrypt per-user Macromatix credentials.'
         );
     }
     console.warn(

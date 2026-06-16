@@ -341,13 +341,19 @@ function userNeedsPasswordChange(username) {
 }
 
 function userNeedsMmxSetup(username) {
-    const name = String(username || '').trim();
-    if (!name) return false;
-    const blocks = parseUsersFileBlocks(readUsersFileText());
-    const block = blocks.find((row) => blockMatchesUsername(row, name));
-    if (!block) return false;
-    if (!requiresMmxForAccountLevel(getAccountLevel(block))) return false;
-    return !hasMmxCredentialsForUser(name);
+    void username;
+    return false;
+}
+
+function canUserManageStoreLogins(user) {
+    if (!isRealDashboardUser(user) || isNologinUser(user)) return false;
+    if (canUserAccessAdminMenu(user)) return true;
+    const level = getAccountLevel(user);
+    return level === 'store' || level === 'manager' || level === 'mic';
+}
+
+function canUserManageSmgNsfSettings(user) {
+    return canUserAccessAdminMenu(user) && hasMultiStoreScope(user);
 }
 
 function getAccountSetupRedirectPath(user) {
@@ -2021,7 +2027,7 @@ function getUserAccessScope(user) {
 function getAccessibleAreasForUser(user) {
     if (!user) return [];
     if (isSuperAdminUser(user)) {
-        return [...new Set(getStoreList().map(areaNameFromStoreEntry))];
+        return [...new Set(getAllMarketLabels().flatMap((market) => getAreasForMarket(market)))];
     }
     const scope = getUserAccessScope(user);
     if (scope.type === 'market') {
@@ -2275,6 +2281,8 @@ function userProfileForClient(user) {
         canViewManagedAccounts: canUserCreateAccounts(user) || canViewCrossStoreAccounts(user),
         canViewCrossStoreAccounts: canViewCrossStoreAccounts(user),
         canAccessAdminMenu: canUserAccessAdminMenu(user),
+        canManageStoreLogins: canUserManageStoreLogins(user),
+        canManageSmgNsfSettings: canUserManageSmgNsfSettings(user),
         canEditGlobalBuildTo: canUserEditGlobalBuildTo(user),
         canAccessDfsc: canUserAccessDfsc(user),
         accountLevel: getAccountLevel(user),
@@ -2288,6 +2296,11 @@ function userProfileForClient(user) {
         mustChangePassword,
         passwordPolicy: mustChangePassword ? passwordPolicyForUser(user) : null,
     };
+}
+
+function getStoreScopeTreeForUser(user) {
+    if (!user || !hasMultiStoreScope(user)) return null;
+    return buildCreateAccountScopeTree(user);
 }
 
 module.exports = {
@@ -2340,6 +2353,7 @@ module.exports = {
     sessionCookieOptions,
     sessionCookieClearOptions,
     userProfileForClient,
+    getStoreScopeTreeForUser,
     timingSafeEqualString,
     invalidateUsersCache,
     isStorePatternUsername,
@@ -2366,6 +2380,8 @@ module.exports = {
     requiresMmxForAccountLevel,
     canUserCreateAccounts,
     canUserAccessAdminMenu,
+    canUserManageStoreLogins,
+    canUserManageSmgNsfSettings,
     canUserEditGlobalBuildTo,
     appendAuthEvent,
     readAuthEventsForUser,

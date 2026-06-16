@@ -8,8 +8,8 @@ const LIFELENZ_CREDENTIALS_DIR = path.join(paths.users.data, 'lifelenz-users');
 function credentialsKey() {
     const keyMaterial = String(
         process.env.LIFELENZ_USER_CREDENTIALS_KEY ||
+            process.env.STORE_CREDENTIALS_KEY ||
             process.env.MMX_USER_CREDENTIALS_KEY ||
-            process.env.SCRAPER_CREDENTIALS_KEY ||
             ''
     ).trim();
     if (keyMaterial) {

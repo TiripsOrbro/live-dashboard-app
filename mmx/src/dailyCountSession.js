@@ -1,6 +1,5 @@
 ﻿const crypto = require('crypto');
 const { closeBrowserQuietly } = require('./macromatixScraper');
-const { releaseMmxResource } = require('./mmxResourceGate');
 
 const SESSION_TTL_MS = Number(process.env.MMX_DAILY_COUNT_SESSION_TTL_MS || 30 * 60 * 1000);
 const sessionsById = new Map();
@@ -29,10 +28,11 @@ async function cleanupExpiredSessions() {
         const storeNumber = session.storeNumber;
         await destroySession(session, 'expired');
         try {
-            const { endDailyCountMmxWork } = require('./dailyStockCountMmxPipeline');
-            endDailyCountMmxWork(storeNumber, `daily session expired (store ${storeNumber})`);
+            const { endDailyCountMmxWork } = require('../../vendors/src/dailyStockCountMmxPipeline');
+            await endDailyCountMmxWork(storeNumber, `daily session expired (store ${storeNumber})`);
         } catch {
-            releaseMmxResource(`daily session expired fallback (store ${storeNumber})`);
+            const { releasePrioritySlot, PRIORITY } = require('./mmxTaskQueue');
+            await releasePrioritySlot(PRIORITY.MIC, `daily session expired fallback (store ${storeNumber})`).catch(() => {});
         }
     }
 }

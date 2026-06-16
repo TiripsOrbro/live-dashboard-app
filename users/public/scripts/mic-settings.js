@@ -347,6 +347,8 @@
             updateMicDarkToggle(prefs.micDarkMode);
             updateAuditAutoCollapseToggle(prefs.auditAutoCollapse);
         });
+        global.AdminStoreView?.mountSettingsBlock?.();
+        global.AdminStoreView?.syncSettingsUi?.();
         if (bindOptions.storeNumber) {
             void loadStoreReportEmail();
         }

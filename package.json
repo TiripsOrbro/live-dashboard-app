@@ -1,6 +1,6 @@
 {
   "name": "live-dashboard-app",
-  "version": "0.4.8.4.1",
+  "version": "0.4.9.0",
   "description": "Live store dashboard that scrapes Macromatix sales/report data and serves store, area, and audit views.",
   "main": "src/app.js",
   "scripts": {
@@ -28,13 +28,6 @@
     "pm2:restart": "pm2 restart dashboard",
     "pm2:logs": "pm2 logs dashboard",
     "pm2:scheduler:logs": "pm2 logs report-download-scheduler",
-    "upsell-sync": "node scripts/upsell-sync.js",
-    "upsell-sync-today": "node scripts/upsell-sync.js --all-stores",
-    "upsell-rescore": "node scripts/upsell-rescore-export.js",
-    "upsell-report": "node scripts/upsell-leaderboard-report.js",
-    "upsell-discover": "node scripts/discover-bi-report.js",
-    "upsell-probe-export": "node scripts/probe-powerbi-export.js",
-    "upsell-score-sample": "node scripts/upsell-score-sample.js",
     "probe-sssg-grid": "node scripts/probe-sssg-grid.js",
     "import-sssg-weekly": "node scripts/import-sssg-weekly.js",
     "import-forecast-history": "node scripts/import-forecast-history.js",
@@ -50,6 +43,7 @@
     "benchmark-lifelenz-quirk": "node scripts/benchmark-lifelenz-quirk-timing.js",
     "forecast-scheduler": "node scripts/run-forecast-scheduler.js",
     "migrate-domain-layout": "node scripts/migrate-domain-layout.js",
+    "migrate-store-credentials": "node scripts/migrate-to-store-credentials.js",
     "split-users-file": "node users/scripts/split-users-file.js",
     "import-audit-pdf": "node tacaudit/scripts/import-audit-pdf.js"
   },

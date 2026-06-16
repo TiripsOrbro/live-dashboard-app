@@ -159,9 +159,6 @@ async function applyAdminStoreSlice(storeNum) {
     applySalesPayload(slice);
     updateStoreHeader();
 
-    if (typeof window.upsellingPodium?.init === 'function') {
-        window.upsellingPodium.init(STORE_NUMBER);
-    }
     if (typeof window.StockCountNotify?.initPipelineWatcher === 'function') {
         window.StockCountNotify.initPipelineWatcher(STORE_NUMBER);
     }
@@ -802,10 +799,6 @@ function applySalesPayload(data) {
     if (data.storeName || data.storeNumber) {
         currentStoreLabel = data.storeName || data.storeNumber;
         updateStoreHeader();
-    }
-    const upsellStore = data.storeNumber || STORE_NUMBER;
-    if (upsellStore && typeof window.upsellingPodium?.init === 'function') {
-        window.upsellingPodium.init(upsellStore);
     }
 }
 
@@ -2153,9 +2146,6 @@ function syncDashboardLayoutMode() {
 }
 
 function onDashboardLayoutChange() {
-    if (typeof window.upsellingPodium?.onLayoutChange === 'function') {
-        window.upsellingPodium.onLayoutChange();
-    }
     applyDashboardScale();
     updateRotateHint();
     const wasPortrait = lastPortraitLayout === true;
@@ -2573,9 +2563,6 @@ function renderDashboard() {
     showGridSkeleton();
     applyPortraitTabVisibility();
     bindDashboardSettings();
-    if (STORE_NUMBER && typeof window.upsellingPodium?.init === 'function') {
-        window.upsellingPodium.init(STORE_NUMBER);
-    }
     const isKioskEntry = isKioskDashboardEntry();
     const isMicStoreEntry =
         !isKioskEntry &&

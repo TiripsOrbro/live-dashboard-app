@@ -27,12 +27,12 @@ const { runVendorOrderEntry } = require('../../mmx/src/mmxReports/pipeline-enter
 const { createSession, getSession, destroySession, destroySessionsForStore } = require('../../mmx/src/mmxCountSession');
 require('../../dashboard/src/salesScrapeAbort');
 const {
-    acquireMmxResource,
-    releaseMmxResource,
-    refreshScrapePauseTimeout,
-    abortCompetingMmxWork,
-    isMmxResourceBusy,
-} = require('../../mmx/src/mmxResourceGate');
+    PRIORITY,
+    acquirePrioritySlot,
+    releasePrioritySlot,
+    getLocalHoldCount,
+} = require('../../mmx/src/mmxTaskQueue');
+const { refreshScrapePauseTimeout } = require('../../mmx/src/mmxResourceGate');
 const { setCheckpoint, getCheckpoint, clearCheckpoint, listAllCheckpoints } = require('../../mmx/src/mmxPipelineCheckpoint');
 
 function touchStockCountWork() {
@@ -70,20 +70,20 @@ async function touchPipelineStep(storeNumber, stepLabel) {
     await updateCheckpoint(storeNumber, { stepLabel: String(stepLabel).trim() });
 }
 
-function beginStockCountMmxWork(reason, storeNumber) {
-    abortCompetingMmxWork(reason);
-    acquireMmxResource(reason);
+async function beginStockCountMmxWork(reason, storeNumber) {
+    await acquirePrioritySlot(PRIORITY.MIC, { type: 'mic-orders', label: reason });
     if (storeNumber) touchStockCountWork();
 }
 
-function endStockCountMmxWork(storeNumber, reason) {
-    releaseMmxResource(reason);
+async function endStockCountMmxWork(storeNumber, reason) {
+    void storeNumber;
+    await releasePrioritySlot(PRIORITY.MIC, reason);
 }
 
 async function discardStockCountMmxWork(storeNumber, reason = 'discarded') {
     await destroySessionsForStore(storeNumber, reason);
     await clearCheckpoint(storeNumber);
-    endStockCountMmxWork(storeNumber, `prior MMX work ${reason} (store ${storeNumber})`);
+    await endStockCountMmxWork(storeNumber, `prior MMX work ${reason} (store ${storeNumber})`);
 }
 
 const { runStoreOrdersCompleteCleanup } = require('./storeOrdersCompleteCleanup');
@@ -222,7 +222,7 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
         await markMmxSent(storeNumber, row.slug, dateKey);
     }
 
-    beginStockCountMmxWork(`manual counts → orders (store ${storeNumber})`, storeNumber);
+    await beginStockCountMmxWork(`manual counts → orders (store ${storeNumber})`, storeNumber);
     let browser;
     let page;
     try {
@@ -271,7 +271,7 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
         };
     } finally {
         await closeBrowserQuietly(browser, 'manual counts orders');
-        endStockCountMmxWork(storeNumber, `manual counts orders finished (store ${storeNumber})`);
+        await endStockCountMmxWork(storeNumber, `manual counts orders finished (store ${storeNumber})`);
     }
 }
 
@@ -609,7 +609,7 @@ async function runOrdersAfterApply(storeNumber, dateKey, mmx = {}) {
 }
 
 async function resumeScheduledOrdersInNewBrowser(storeNumber, dateKey, options = {}) {
-    beginStockCountMmxWork(`resume scheduled orders (store ${storeNumber})`, storeNumber);
+    await beginStockCountMmxWork(`resume scheduled orders (store ${storeNumber})`, storeNumber);
     let browser;
     let page;
     try {
@@ -619,7 +619,7 @@ async function resumeScheduledOrdersInNewBrowser(storeNumber, dateKey, options =
         return { orders, orderFailures };
     } finally {
         await closeBrowserQuietly(browser, 'resume scheduled orders');
-        endStockCountMmxWork(storeNumber, `resume scheduled orders finished (store ${storeNumber})`);
+        await endStockCountMmxWork(storeNumber, `resume scheduled orders finished (store ${storeNumber})`);
     }
 }
 
@@ -634,7 +634,7 @@ function allVendorsMarkedMmxSent(vendorSlugs, sentSlugs) {
  */
 async function runScheduledOrdersOnly(storeNumber, options = {}) {
     return withStoreLock(storeNumber, async () => {
-        beginStockCountMmxWork(`scheduled orders (store ${storeNumber})`, storeNumber);
+        await beginStockCountMmxWork(`scheduled orders (store ${storeNumber})`, storeNumber);
         const dateKey = options.dateKey || melbourneDateKey();
         let browser;
         let page;
@@ -667,7 +667,7 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
             };
         } finally {
             await closeBrowserQuietly(browser, 'scheduled orders only');
-            endStockCountMmxWork(storeNumber, `scheduled orders finished (store ${storeNumber})`);
+            await endStockCountMmxWork(storeNumber, `scheduled orders finished (store ${storeNumber})`);
         }
     });
 }
@@ -696,7 +696,7 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
             sessionId: null,
         });
 
-        beginStockCountMmxWork(`stock count prepare (store ${storeNumber})`, storeNumber);
+        await beginStockCountMmxWork(`stock count prepare (store ${storeNumber})`, storeNumber);
         let sessionStarted = false;
 
         let browser;
@@ -793,7 +793,7 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
             throw error;
         } finally {
             if (!sessionStarted) {
-                endStockCountMmxWork(storeNumber, `stock count prepare ended without session (store ${storeNumber})`);
+                await endStockCountMmxWork(storeNumber, `stock count prepare ended without session (store ${storeNumber})`);
             }
         }
     });
@@ -852,7 +852,7 @@ async function clearStaleCheckpoint(storeNumber, checkpoint, reason) {
     );
     await destroySessionsForStore(storeNumber, 'stale-checkpoint');
     await clearCheckpoint(storeNumber);
-    endStockCountMmxWork(storeNumber, `stale checkpoint (${reason})`);
+    await endStockCountMmxWork(storeNumber, `stale checkpoint (${reason})`);
 }
 
 async function reconcileStaleCheckpoint(storeNumber) {
@@ -967,8 +967,8 @@ async function recordStockCountPrepareFailure(storeNumber, error) {
  * Apply confirmed count in Macromatix, then download reports and enter orders.
  */
 async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) {
-    if (!isMmxResourceBusy()) {
-        beginStockCountMmxWork(`stock count apply (store ${storeNumber})`, storeNumber);
+    if (getLocalHoldCount(PRIORITY.MIC) === 0) {
+        await beginStockCountMmxWork(`stock count apply (store ${storeNumber})`, storeNumber);
     } else {
         touchStockCountWork();
     }
@@ -1117,7 +1117,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
             orderFailures: orderFailures || null,
         };
     } finally {
-        endStockCountMmxWork(storeNumber, `stock count apply finished (store ${storeNumber})`);
+        await endStockCountMmxWork(storeNumber, `stock count apply finished (store ${storeNumber})`);
     }
 }
 
@@ -1139,7 +1139,7 @@ async function cancelStockCountSession(storeNumber, sessionId) {
         cancelled = await destroySessionsForStore(storeNumber, 'cancelled');
     }
     await clearCheckpoint(storeNumber);
-    endStockCountMmxWork(storeNumber, `stock count session cancelled (store ${storeNumber})`);
+    await endStockCountMmxWork(storeNumber, `stock count session cancelled (store ${storeNumber})`);
     return { success: true, cancelled };
 }
 

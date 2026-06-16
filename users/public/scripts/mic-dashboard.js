@@ -108,8 +108,8 @@ function renderPromoBanner() {
 }
 
 function renderShell() {
-    document.documentElement.classList.add('mic-overview-page');
-    document.body.classList.add('mic-overview-page');
+    document.documentElement?.classList?.add('mic-overview-page');
+    document.body?.classList?.add('mic-overview-page');
     app.innerHTML = `
         <div class="mic-page mic-page--admin" id="mic-page">
             <header class="mic-header mic-header--admin">
@@ -232,8 +232,8 @@ let lastMicMobileLayout = null;
 
 function syncMicLayoutMode() {
     const mobile = isMicMobileView();
-    document.body.classList.toggle('mic-overview--mobile', mobile);
-    document.documentElement.classList.toggle('mic-overview--mobile', mobile);
+    document.body?.classList?.toggle('mic-overview--mobile', mobile);
+    document.documentElement?.classList?.toggle('mic-overview--mobile', mobile);
     if (lastMicMobileLayout !== null && lastMicMobileLayout !== mobile && micData) {
         renderTiles(micData);
     }
@@ -1015,16 +1015,32 @@ async function resolveMicStoreNumber() {
 
 async function fetchMeProfile() {
     try {
-        const res = await fetch('/api/me', { credentials: 'same-origin' });
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+        const res = await fetch('/api/me', {
+            credentials: 'same-origin',
+            signal: controller.signal,
+        });
+        window.clearTimeout(timeoutId);
         if (!res.ok) return null;
         const data = await res.json();
         return data.success !== false ? data : null;
-    } catch {
+    } catch (err) {
+        console.error('[MIC overview] Could not load profile:', err);
         return null;
     }
 }
 
-async function initStoreOverview() {
+function clearBrokenStoreViewMode() {
+    try {
+        sessionStorage.removeItem('admin-view-as-store-enabled');
+        sessionStorage.removeItem('admin-view-as-store');
+    } catch {
+        /* ignore */
+    }
+}
+
+async function initStoreOverview(me) {
     if (!STORE_NUMBER && IS_MIC_OVERVIEW) {
         STORE_NUMBER = await resolveMicStoreNumber();
     }
@@ -1032,16 +1048,19 @@ async function initStoreOverview() {
         app.textContent = 'Invalid store.';
         return;
     }
-    if (!micCanViewAdminAuditSummary) {
-        const me = await fetchMeProfile();
-        micCanViewAdminAuditSummary = Boolean(me?.canViewCrossStoreAccounts);
-    }
     window.MicOverviewScale?.bind?.();
     renderShell();
     syncMicLayoutMode();
+    if (!micCanViewAdminAuditSummary) {
+        const profile = me || (await fetchMeProfile());
+        micCanViewAdminAuditSummary = Boolean(profile?.canViewCrossStoreAccounts);
+        me = profile;
+    }
     window.MicSettings?.bind?.({
         getViewAccountsOptions: () => ({ storeNumber: STORE_NUMBER }),
         storeNumber: STORE_NUMBER || '',
+        adminMenuHidden: me?.canAccessAdminMenu === false,
+        resolveAdminMenuVisibility: false,
         onReportEmailSaved: (email) => {
             if (micData) micData.reportEmail = email;
         },
@@ -1051,6 +1070,7 @@ async function initStoreOverview() {
     });
     window.AdminAccounts?.maybeOpenFromQuery?.();
     window.MicSettings?.initPreferences?.();
+    window.AdminStoreView?.afterShellRendered?.(me);
     loadMicData();
     window.setInterval(() => {
         const clock = document.getElementById('mic-clock');
@@ -1065,17 +1085,46 @@ async function initStoreOverview() {
 }
 
 async function init() {
-    if (!IS_MIC_OVERVIEW) {
-        await initStoreOverview();
+    if (!app) {
+        console.error('[MIC overview] #app element missing');
         return;
     }
-    const me = await fetchMeProfile();
-    const scope = me?.overviewScope || 'store';
-    if (scope !== 'store') {
-        window.MicOverviewMulti?.start(me, app, renderPromoBanner());
-        return;
+    try {
+        const me = await fetchMeProfile();
+        if (!me) {
+            app.textContent = 'Could not load your profile. Redirecting to sign in…';
+            window.location.href = '/login';
+            return;
+        }
+        await window.AdminStoreView?.init?.(me);
+
+        if (!IS_MIC_OVERVIEW) {
+            await initStoreOverview(me);
+            return;
+        }
+
+        const scope = me.overviewScope || 'store';
+        let viewAs = window.AdminStoreView?.resolveStoreForOverview?.(me) || '';
+
+        if (window.AdminStoreView?.isEnabled?.() && !viewAs) {
+            clearBrokenStoreViewMode();
+            viewAs = '';
+        }
+
+        if (scope !== 'store' && !viewAs) {
+            if (!window.MicOverviewMulti?.start) {
+                throw new Error('Overview scripts failed to load. Hard refresh the page (Ctrl+Shift+R).');
+            }
+            window.MicOverviewMulti.start(me, app, renderPromoBanner());
+            window.AdminStoreView?.afterShellRendered?.(me);
+            return;
+        }
+        if (viewAs) STORE_NUMBER = String(viewAs).toLowerCase();
+        await initStoreOverview(me);
+    } catch (err) {
+        console.error('[MIC overview] Init failed:', err);
+        app.textContent = err?.message || 'Could not load MIC overview.';
     }
-    await initStoreOverview();
 }
 
 init();

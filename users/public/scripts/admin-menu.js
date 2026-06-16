@@ -25,6 +25,8 @@
                 <h2>Admin menu</h2>
                 <div class="admin-menu-actions">
                     <button type="button" class="mic-settings-btn" data-admin-action="view-accounts">Accounts</button>
+                    <button type="button" class="mic-settings-btn" data-admin-action="store-logins" hidden>Setup Store Logins</button>
+                    <button type="button" class="mic-settings-btn" data-admin-action="smg-nsf" hidden>Setup SMG/NSF</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="forecast">Forecast tool</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="build-to">Build to adjustments</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="feature-requests" hidden>Feature requests</button>
@@ -90,6 +92,14 @@
             closeMenu();
             global.AdminBuildTo?.open?.(viewAccountsOptions());
         });
+        picker.querySelector('[data-admin-action="store-logins"]')?.addEventListener('click', () => {
+            closeMenu();
+            global.AdminStoreLogins?.open?.();
+        });
+        picker.querySelector('[data-admin-action="smg-nsf"]')?.addEventListener('click', () => {
+            closeMenu();
+            global.AdminSmgNsf?.open?.();
+        });
         picker.querySelector('[data-admin-action="feature-requests"]')?.addEventListener('click', () => {
             closeMenu();
             window.location.href = '/requests';
@@ -116,10 +126,21 @@
             void fetchProfile()
                 .then((data) => {
                     document.querySelectorAll('.admin-menu-trigger').forEach((btn) => {
-                        if (data.canAccessAdminMenu) btn.hidden = false;
+                        if (data.canAccessAdminMenu || data.canManageStoreLogins) btn.hidden = false;
                     });
                     const settingsBtn = document.getElementById('mic-admin-menu-btn');
-                    if (settingsBtn && data.canAccessAdminMenu) settingsBtn.hidden = false;
+                    if (settingsBtn && (data.canAccessAdminMenu || data.canManageStoreLogins)) {
+                        settingsBtn.hidden = false;
+                    }
+                    const storeLoginsBtn = document.querySelector('[data-admin-action="store-logins"]');
+                    if (storeLoginsBtn) storeLoginsBtn.hidden = !data.canManageStoreLogins;
+                    const smgNsfBtn = document.querySelector('[data-admin-action="smg-nsf"]');
+                    if (smgNsfBtn) smgNsfBtn.hidden = !data.canManageSmgNsfSettings;
+                    document.querySelectorAll(
+                        '[data-admin-action="view-accounts"], [data-admin-action="forecast"], [data-admin-action="build-to"]'
+                    ).forEach((btn) => {
+                        btn.hidden = !data.canAccessAdminMenu;
+                    });
                     const featureRequestsBtn = document.querySelector('[data-admin-action="feature-requests"]');
                     if (featureRequestsBtn && data.isSuperAdmin) featureRequestsBtn.hidden = false;
                 })

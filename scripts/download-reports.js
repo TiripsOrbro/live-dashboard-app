@@ -11,7 +11,7 @@
  *   npm run download-reports -- --store 3808 --fresh   (delete Reports/3808/* first)
  *
  * Requires:
- *   - SCRAPER_USERNAME / SCRAPER_PASSWORD (or encrypted creds) in .env
+ *   - Per-store MMX login (Admin → Setup Store Logins)
  *   - config/reports-pipeline.json
  *   - .storelist with store numbers
  *

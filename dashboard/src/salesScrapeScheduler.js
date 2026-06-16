@@ -1,4 +1,9 @@
 ﻿const { isMmxResourceBusy } = require('../../mmx/src/mmxResourceGate');
+const {
+    hasPendingHigherPriority,
+    hasBlockingWorkForPriority,
+    PRIORITY,
+} = require('../../mmx/src/mmxTaskQueue');
 const { anyStoreInActiveScrapeWindow } = require('./scrapeSchedule');
 
 const TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
@@ -17,11 +22,18 @@ function startSalesScrapeScheduler(handlers) {
     let intervalId = null;
     let bootTimeoutId = null;
 
+    const shouldSkipScrapeTick = () => {
+        if (isMmxResourceBusy()) return true;
+        if (hasPendingHigherPriority(PRIORITY.SCRAPE)) return true;
+        if (hasBlockingWorkForPriority(PRIORITY.SCRAPE)) return true;
+        return false;
+    };
+
     const intervalTick = async () => {
         try {
             if (!anyStoreInActiveScrapeWindow()) return;
             if (isScrapeInFlight?.()) return;
-            if (isMmxResourceBusy()) return;
+            if (shouldSkipScrapeTick()) return;
             await runFullScrape({ scrapeReason: 'interval' });
         } catch (error) {
             console.warn('[Dashboard] Interval sales scrape failed:', error.message);
@@ -34,6 +46,7 @@ function startSalesScrapeScheduler(handlers) {
     if (shouldPrimeOnBoot?.()) {
         bootTimeoutId = setTimeout(async () => {
             try {
+                if (shouldSkipScrapeTick()) return;
                 await runFullScrape({ scrapeReason: 'boot-prime' });
             } catch (error) {
                 console.warn('[Dashboard] Boot prime scrape failed:', error.message);

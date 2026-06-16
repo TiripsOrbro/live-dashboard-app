@@ -1,6 +1,5 @@
 ﻿const crypto = require('crypto');
 const { closeBrowserQuietly } = require('./macromatixScraper');
-const { releaseMmxResource } = require('./mmxResourceGate');
 
 const SESSION_TTL_MS = Number(process.env.MMX_COUNT_SESSION_TTL_MS || 30 * 60 * 1000);
 const sessionsById = new Map();
@@ -29,10 +28,11 @@ async function cleanupExpiredSessions() {
         const storeNumber = session.storeNumber;
         await destroySession(session, 'expired');
         try {
-            const { endStockCountMmxWork } = require('./stockCountMmxPipeline');
-            endStockCountMmxWork(storeNumber, `session expired (store ${storeNumber})`);
+            const { endStockCountMmxWork } = require('../../vendors/src/stockCountMmxPipeline');
+            await endStockCountMmxWork(storeNumber, `session expired (store ${storeNumber})`);
         } catch (err) {
-            releaseMmxResource(`session expired fallback (store ${storeNumber})`);
+            const { releasePrioritySlot, PRIORITY } = require('./mmxTaskQueue');
+            await releasePrioritySlot(PRIORITY.MIC, `session expired fallback (store ${storeNumber})`).catch(() => {});
             console.warn('[MMX Session] Expired cleanup release fallback:', err.message);
         }
     }

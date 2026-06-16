@@ -309,6 +309,41 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
     const { writeForecastPlanOnPage } = require('../../../lifelenz/src/lifelenzForecastScraper');
     const { closeBrowserQuietly } = require('../../../mmx/src/macromatixScraper');
     const targetWeeks = getTargetForecastWeekStarts();
+    const results = [];
+
+    const byStore = credentials?.byStore && typeof credentials.byStore === 'object' ? credentials.byStore : null;
+    const storeList = (storeNumbers || []).map(String).filter(Boolean);
+
+    if (byStore) {
+        const groups = new Map();
+        for (const store of storeList) {
+            const creds = byStore[store];
+            if (!creds?.email || !creds?.password) {
+                results.push({
+                    storeNumber: store,
+                    ok: false,
+                    error: 'No LifeLenz login configured for this store. Use Admin → Setup Store Logins.',
+                });
+                continue;
+            }
+            const key = `${creds.email}\0${creds.password}`;
+            if (!groups.has(key)) groups.set(key, { creds, stores: [] });
+            groups.get(key).stores.push(store);
+        }
+
+        for (const group of groups.values()) {
+            const groupResults = await runLifeLenzForecastForStores(group.stores, group.creds, {
+                ...options,
+                skipByStore: true,
+            });
+            results.push(...groupResults);
+        }
+        return results;
+    }
+
+    if (credentials?.skipByStore) {
+        /* fall through to single-session batch below */
+    }
 
     const email = String(credentials?.email || '').trim();
     const password = String(credentials?.password || '');
@@ -319,7 +354,6 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
     let browser;
     let page;
     let accessibleStores = [];
-    const results = [];
 
     try {
         if (typeof options.onProgress === 'function') {

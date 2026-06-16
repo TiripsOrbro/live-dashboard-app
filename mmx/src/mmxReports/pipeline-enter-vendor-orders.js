@@ -2,6 +2,12 @@
 const { waitForAspPostback } = require('./mmx-postback');
 const { refreshScrapePauseTimeout } = require('../mmxResourceGate');
 const {
+    setQuantityInputValue,
+    typeQuantityIntoInputFallback,
+    waitForOrderPageReady,
+    waitAfterOrderUpdate,
+} = require('./mmx-order-waits');
+const {
     openScheduledOrders,
     returnToScheduledOrders,
     scrapeScheduledOrders,
@@ -14,19 +20,7 @@ const log = require('./util-logging');
 const { linesFromOrderGridByName } = require('../../../vendors/src/orderItemNameMatch');
 
 async function waitForOrderItemsGrid(page, timeoutMs = 30000) {
-    await page.waitForFunction(
-        () => {
-            for (const table of document.querySelectorAll('table')) {
-                const header = (table.querySelector('tr')?.innerText || '').toLowerCase();
-                if (header.includes('item code') && header.includes('quantity')) {
-                    const inputs = table.querySelectorAll('input[type="text"]');
-                    if (inputs.length) return true;
-                }
-            }
-            return (document.body?.innerText || '').toLowerCase().includes('items in this order');
-        },
-        { timeout: timeoutMs }
-    );
+    await waitForOrderPageReady(page, timeoutMs);
 }
 
 /** Register before the click that triggers a native `window.confirm`. */
@@ -56,7 +50,7 @@ function waitForNativeDialogAccept(page, opts = {}) {
     });
 }
 
-async function clickButtonByLabel(page, label, { required = true, waitAfterMs = 1500 } = {}) {
+async function clickButtonByLabel(page, label, { required = true, waitAfterMs = 0 } = {}) {
     const want = String(label || '').trim();
     const clicked = await page.evaluate((text) => {
         const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
@@ -78,8 +72,9 @@ async function clickButtonByLabel(page, label, { required = true, waitAfterMs = 
         return false;
     }
     log.info(`Clicked "${clicked}"`);
-    if (waitAfterMs > 0) {
+    if (waitAfterMs !== 0) {
         await waitForAspPostback(page, { timeoutMs: Math.max(waitAfterMs, 10000) });
+        await waitForOrderPageReady(page, 15000).catch(() => {});
     }
     return true;
 }
@@ -161,25 +156,9 @@ async function scrapeOrderGridByItemCode(page) {
 }
 
 async function typeQuantityIntoInput(page, inputId, quantity) {
-    const handle = await page.evaluateHandle((id) => document.getElementById(id), inputId);
-    const el = handle.asElement();
-    if (!el) {
-        await handle.dispose();
-        return false;
-    }
-
-    await el.click({ clickCount: 3 });
-    await el.focus();
-    await page.keyboard.down('Control');
-    await page.keyboard.press('KeyA');
-    await page.keyboard.up('Control');
-    await page.keyboard.press('Backspace');
-    const text = String(quantity);
-    await page.keyboard.type(text, { delay: 20 });
-    await page.keyboard.press('Tab');
-    await handle.dispose();
-    await page.waitForTimeout(80);
-    return true;
+    const ok = await setQuantityInputValue(page, inputId, quantity);
+    if (ok) return true;
+    return typeQuantityIntoInputFallback(page, inputId, quantity);
 }
 
 const { normalizeItemCode } = require('../../../vendors/src/reportReader');
@@ -262,10 +241,7 @@ async function clickUpdateOnly(page, orderEntryCfg) {
 
     if (!clicked) throw new Error('Update button not found on order page (Submit was not clicked)');
     log.info(`Clicked "${clicked}" only — order not submitted`);
-    await Promise.race([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {}),
-        page.waitForTimeout(2500),
-    ]);
+    await waitAfterOrderUpdate(page, 20000);
     return clicked;
 }
 

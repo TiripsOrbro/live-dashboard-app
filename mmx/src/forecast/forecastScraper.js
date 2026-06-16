@@ -878,6 +878,14 @@ async function writeForecastPlanToMmx(storeNumber, plan, options = {}) {
         browser = opened.browser;
         const { page } = opened;
 
+        try {
+            const forecastAbort = require('../../../dashboard/src/forecastMmxAbort');
+            forecastAbort.resetForecastMmxAbort();
+            forecastAbort.registerForecastMmxBrowser(browser);
+        } catch {
+            /* forecast abort optional outside dashboard process */
+        }
+
         if (!headless) {
             console.log('[Forecast] Headed browser — watch the Macromatix window (FORECAST_SCRAPER_HEADLESS=false)');
         }
@@ -893,6 +901,12 @@ async function writeForecastPlanToMmx(storeNumber, plan, options = {}) {
             mmx: applied,
         };
     } finally {
+        try {
+            const forecastAbort = require('../../../dashboard/src/forecastMmxAbort');
+            forecastAbort.clearForecastMmxBrowser(browser);
+        } catch {
+            /* ignore */
+        }
         if (!headless && options.keepBrowserOpen) {
             console.log('[Forecast] Headed mode — browser left open (keepBrowserOpen)');
         } else {

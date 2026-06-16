@@ -54,49 +54,6 @@ function summarizeInaccessibleStores(stores, results) {
     );
 }
 
-function decryptCredentialPayload(encryptedPayload, keyText) {
-    if (!encryptedPayload || !keyText) return null;
-
-    const key = crypto.createHash('sha256').update(String(keyText)).digest();
-    const parsed = JSON.parse(Buffer.from(String(encryptedPayload), 'base64').toString('utf8'));
-    const decipher = crypto.createDecipheriv(
-        'aes-256-gcm',
-        key,
-        Buffer.from(parsed.iv, 'base64')
-    );
-    decipher.setAuthTag(Buffer.from(parsed.tag, 'base64'));
-    const decrypted = Buffer.concat([
-        decipher.update(Buffer.from(parsed.data, 'base64')),
-        decipher.final(),
-    ]);
-    return JSON.parse(decrypted.toString('utf8'));
-}
-
-function getMacromatixCredentials() {
-    const encrypted = String(process.env.SCRAPER_CREDENTIALS_ENCRYPTED || '').trim();
-    if (encrypted) {
-        if (!String(process.env.SCRAPER_CREDENTIALS_KEY || '').trim()) {
-            throw new Error('SCRAPER_CREDENTIALS_KEY is required when SCRAPER_CREDENTIALS_ENCRYPTED is set');
-        }
-
-        let decrypted;
-        try {
-            decrypted = decryptCredentialPayload(encrypted, process.env.SCRAPER_CREDENTIALS_KEY);
-        } catch (e) {
-            throw new Error(`Failed to decrypt SCRAPER_CREDENTIALS_ENCRYPTED: ${e.message}`);
-        }
-        return {
-            username: decrypted && decrypted.username != null ? String(decrypted.username).trim() : '',
-            password: decrypted && decrypted.password != null ? String(decrypted.password).trim() : '',
-        };
-    }
-
-    return {
-        username: String(process.env.SCRAPER_USERNAME || '').trim(),
-        password: String(process.env.SCRAPER_PASSWORD || '').trim(),
-    };
-}
-
 function dashboardDateKey(d = new Date()) {
     const parts = new Intl.DateTimeFormat('en-AU', {
         timeZone: DASHBOARD_TIME_ZONE,
@@ -1911,8 +1868,7 @@ async function listStoresOnLoginDropdown(page) {
 async function assertMacromatixAuthenticated(page, context = 'Macromatix') {
     if (!(await isMacromatixLoginPage(page))) return;
     const loginError = await readMacromatixLoginError(page);
-    const hint =
-        'Check SCRAPER_USERNAME / SCRAPER_PASSWORD (or SCRAPER_CREDENTIALS_ENCRYPTED) in .env on the server.';
+    const hint = 'Configure store logins in Admin menu → Setup Store Logins.';
     throw new Error(
         `${context}: not logged in${loginError ? ` — ${loginError}` : ''}. ${hint}`
     );
@@ -1956,7 +1912,7 @@ async function loginPage(page, username, password) {
     if (await isMacromatixLoginPage(page)) {
         const loginError = await readMacromatixLoginError(page);
         throw new Error(
-            loginError || 'Macromatix login failed. Check SCRAPER_USERNAME and SCRAPER_PASSWORD in .env.'
+            loginError || 'Macromatix login failed. Check username and password in Admin → Setup Store Logins.'
         );
     }
     if (await isLoginStorePickerPresent(page)) {
@@ -2319,177 +2275,63 @@ async function verifyMacromatixLogin(username, password) {
     }
 }
 
-/** All configured default scraper logins (primary + optional alternates). */
-function listGlobalMacromatixCredentialPool() {
-    const pool = [];
-    const seen = new Set();
-
-    function push(creds, source) {
-        if (!creds?.username || !creds?.password) return;
-        const key = `${creds.username}\0${creds.password}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        pool.push({ username: creds.username, password: creds.password, source });
-    }
-
-    push(getMacromatixCredentials(), 'global SCRAPER_*');
-
-    for (let i = 1; i <= 9; i++) {
-        const username = String(process.env[`SCRAPER_ALT_${i}_USERNAME`] || '').trim();
-        const password = String(process.env[`SCRAPER_ALT_${i}_PASSWORD`] || '');
-        if (username && password) {
-            push({ username, password }, `SCRAPER_ALT_${i}`);
-        }
-    }
-
-    return pool;
-}
-
 /**
- * Macromatix logins saved via Create account for a store.
- * Only crew accounts in `.Users` (not the primary `3806` / `CB3806` store login) — each has
- * a matching `data/mmx-users/{username}.json` with their Macromatix username/password.
+ * Macromatix logins from per-store encrypted files (Admin → Setup Store Logins).
  */
 function collectStoreMmxCredentials(storeNumber) {
-    const store = String(storeNumber || '').trim().replace(/\D/g, '');
-    if (!store) return [];
-
-    const { usersFileConfigured, listManagedStoreAccounts } = require('../../users/src/core/dashboardUsers');
-    const { readMmxCredentialsForUser } = require('../../users/src/core/mmxUserCredentials');
-    if (!usersFileConfigured()) return [];
-
-    const out = [];
-    const seen = new Set();
-
-    for (const row of listManagedStoreAccounts(store)) {
-        const dashUser = String(row.username || '').trim();
-        if (!dashUser) continue;
-        const stored = readMmxCredentialsForUser(dashUser);
-        if (!stored?.username || !stored?.password) continue;
-        const key = `${stored.username}\0${stored.password}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push({
-            username: stored.username,
-            password: stored.password,
-            source: `mmx-users/${dashUser}`,
-            dashboardUsername: dashUser,
-        });
-    }
-    return out;
+    const { listCredentialCandidates } = require('../../stores/src/storeCredentials');
+    return listCredentialCandidates(storeNumber, 'mmx').map((entry) => ({
+        username: entry.username,
+        password: entry.password,
+        source: entry.source,
+        updatedBy: entry.updatedBy || '',
+    }));
 }
 
 function storeHasMmxCredentials(storeNumber) {
-    return collectStoreMmxCredentials(storeNumber).length > 0;
+    const { storeHasServiceCredentials } = require('../../stores/src/storeCredentials');
+    return storeHasServiceCredentials(storeNumber, 'mmx');
 }
 
-/** Master Macromatix login from `.env` (`SCRAPER_USERNAME` / `SCRAPER_PASSWORD`). */
-function getMasterMacromatixCredentials() {
-    const creds = getMacromatixCredentials();
-    return { ...creds, source: 'master SCRAPER_* (.env)' };
-}
+const STORE_LOGIN_SETUP_HINT =
+    'Configure Macromatix login in Admin menu → Setup Store Logins for this store.';
 
 /**
- * Resolve Macromatix login for a store:
- * - Create-account crew in `.Users` with saved MMX creds → use that Macromatix login
- * - Otherwise → master `SCRAPER_USERNAME` / `SCRAPER_PASSWORD` from `.env`
+ * Resolve Macromatix login candidates for a store (primary, then user-added fallbacks).
  */
 function listMacromatixCredentialCandidatesForStore(storeNumber, options = {}) {
+    void options;
     const store = String(storeNumber || '').trim().replace(/\D/g, '');
-    const candidates = [];
-    const seen = new Set();
-
-    function push(creds, source) {
-        if (!creds?.username || !creds?.password) return;
-        const key = `${creds.username}\0${creds.password}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        candidates.push({
-            username: creds.username,
-            password: creds.password,
-            source,
-        });
+    const candidates = collectStoreMmxCredentials(store).map((entry) => ({
+        username: entry.username,
+        password: entry.password,
+        source: entry.source,
+    }));
+    if (!candidates.length) {
+        throw new Error(`No Macromatix login for store ${store}. ${STORE_LOGIN_SETUP_HINT}`);
     }
-
-    const { listManagedStoreAccounts } = require('../../users/src/core/dashboardUsers');
-    const { readMmxCredentialsForUser, hasMmxCredentialFileForUser } = require('../../users/src/core/mmxUserCredentials');
-    const managedAccounts = listManagedStoreAccounts(store);
-    const managedUsernames = new Set(
-        managedAccounts.map((row) => String(row.username || '').trim().toLowerCase()).filter(Boolean)
-    );
-
-    const preferUser = String(options.dashboardUsername || '').trim();
-    if (preferUser && managedUsernames.has(preferUser.toLowerCase())) {
-        const preferred = readMmxCredentialsForUser(preferUser);
-        if (preferred) {
-            push(preferred, `mmx-users/${preferUser} (signed-in)`);
-        }
-    }
-
-    for (const entry of collectStoreMmxCredentials(store)) {
-        push(entry, entry.source);
-    }
-
-    if (candidates.length) {
-        return candidates;
-    }
-
-    const hasUnreadableSavedCreds = managedAccounts.some((row) =>
-        hasMmxCredentialFileForUser(row.username)
-    );
-    if (hasUnreadableSavedCreds) {
-        throw new Error(
-            `Saved Macromatix login for store ${store} could not be read. Check MMX_USER_CREDENTIALS_KEY in .env matches the key used when Create account was completed.`
-        );
-    }
-
-    push(getMasterMacromatixCredentials(), 'master SCRAPER_* (.env)');
     return candidates;
 }
 
 function resolveMacromatixCredentialsForStore(storeNumber, options = {}) {
+    void options;
     const store = String(storeNumber || '').trim().replace(/\D/g, '');
-    const storeCreds = collectStoreMmxCredentials(store);
-    if (storeCreds.length) {
-        const candidates = listMacromatixCredentialCandidatesForStore(storeNumber, options);
-        const picked = candidates[0];
-        console.log(
-            `[Macromatix] Store ${store}: using Create-account MMX login via ${picked.source} (${maskUsernameForLog(picked.username)})`
-        );
-        return picked;
-    }
-
-    const master = getMasterMacromatixCredentials();
-    if (!String(master.username || '').trim() || !String(master.password || '').trim()) {
-        throw new Error(
-            `No Macromatix login for store ${store}. Set SCRAPER_USERNAME and SCRAPER_PASSWORD in .env, or complete Create account for this store.`
-        );
-    }
+    const candidates = listMacromatixCredentialCandidatesForStore(storeNumber, options);
+    const picked = candidates[0];
     console.log(
-        `[Macromatix] Store ${store}: no Create-account MMX login — using master SCRAPER_* from .env (${maskUsernameForLog(master.username)})`
+        `[Macromatix] Store ${store}: using store login via ${picked.source} (${maskUsernameForLog(picked.username)})`
     );
-    return master;
+    return picked;
 }
 
 function resolveMacromatixCredentials(options = {}) {
     const storeNumber = String(options.storeNumber || '').trim();
-    const dashUser = String(options.dashboardUsername || '').trim();
-    if (storeNumber && options.preferDashboardMmxCredentials && dashUser) {
-        const { readMmxCredentialsForUser } = require('../../users/src/core/mmxUserCredentials');
-        const stored = readMmxCredentialsForUser(dashUser);
-        if (stored?.username && stored?.password) {
-            console.log(
-                `[Macromatix] Store ${storeNumber}: using signed-in user MMX login (${maskUsernameForLog(stored.username)})`
-            );
-            return { ...stored, source: `mmx-users/${dashUser}` };
-        }
-    }
     if (storeNumber) {
         const perStore = resolveMacromatixCredentialsForStore(storeNumber, options);
         return {
             username: perStore.username,
             password: perStore.password,
-            source: perStore.source || 'global SCRAPER_*',
+            source: perStore.source || 'store-logins/mmx',
         };
     }
     if (options.username != null && options.password != null) {
@@ -2499,15 +2341,7 @@ function resolveMacromatixCredentials(options = {}) {
             source: 'explicit options',
         };
     }
-    if (dashUser) {
-        const { readMmxCredentialsForUser } = require('../../users/src/core/mmxUserCredentials');
-        const stored = readMmxCredentialsForUser(dashUser);
-        if (stored?.username && stored?.password) {
-            console.log(`[Macromatix] Using saved MMX credentials for dashboard user "${dashUser}"`);
-            return { ...stored, source: `mmx-users/${dashUser}` };
-        }
-    }
-    return { ...getMacromatixCredentials(), source: 'global SCRAPER_*' };
+    throw new Error(`Macromatix credentials require a store number. ${STORE_LOGIN_SETUP_HINT}`);
 }
 
 /** Placeholder result used when a single store's scrape throws — keeps the store in the payload. */
@@ -2650,7 +2484,6 @@ function filterStoresByNumbers(stores, filterNums) {
  */
 async function scrapeMacromatix(options = {}) {
     clearAccessibleStoresDiscoveryCache();
-    const { username, password } = getMacromatixCredentials();
     const todayKey = dashboardDateKey();
     const pickYmd = options.scheduledOrdersPickYmd;
     const testScheduledOrdersPick =
@@ -2661,14 +2494,6 @@ async function scrapeMacromatix(options = {}) {
     const skipScheduledPersistence = Boolean(options.skipScheduledOrdersPersistence);
     const storeFilter = resolveStoreFilterNumbers(options);
     const onlyStore = storeFilter.length === 1 ? storeFilter[0] : '';
-
-    if (!String(username || '').trim() || !String(password || '').trim()) {
-        const hint =
-            String(process.env.SCRAPER_CREDENTIALS_ENCRYPTED || '').trim()
-                ? 'Check SCRAPER_CREDENTIALS_ENCRYPTED / SCRAPER_CREDENTIALS_KEY (decrypt failed or empty username/password).'
-                : 'Set SCRAPER_USERNAME and SCRAPER_PASSWORD in .env at the project root.';
-        throw new Error(`Macromatix scraper credentials are not configured. ${hint}`);
-    }
 
     const respectScrapeSchedule = !testScheduledOrdersPick && !options.bypassScrapeSchedule;
     let prelistedStores = getStoreList();
@@ -2706,7 +2531,11 @@ async function scrapeMacromatix(options = {}) {
         }
 
         const singleStoreLogin = useSingleStoreLoginMode();
-        const credentials = { username, password };
+        if (!singleStoreLogin) {
+            console.warn(
+                '[Macromatix] Shared-session mode (SCRAPER_SINGLE_STORE_LOGIN=0) is deprecated. Using per-store login mode.'
+            );
+        }
 
         // `.storelist` is the master list of stores to scrape.
         let stores = getStoreList();
@@ -2715,29 +2544,10 @@ async function scrapeMacromatix(options = {}) {
                 `[Macromatix] Store list (.storelist) — ${stores.length}:`,
                 stores.map((s) => s.storeNumber).join(', ')
             );
-        } else if (singleStoreLogin) {
-            throw new Error(
-                'Single-store login mode requires .storelist (or DASHBOARD_STORE_NUMBERS). The scraper account only sees one store per session.'
-            );
         } else {
-            const page = await browser.newPage();
-            await page.setViewport({ width: 1280, height: 720 });
-            await applyResourceBlocking(page);
-            await loginPage(page, username, password);
-            console.log('[Macromatix] No .storelist configured — enumerating accessible stores...');
-            await page.goto(LABOUR_URL, GOTO_OPTS);
-            await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
-            stores = await enumerateStores(page);
-            if (stores.length) {
-                console.log(
-                    `[Macromatix] Stores available (${stores.length}):`,
-                    stores.map((s) => s.storeNumber).join(', ')
-                );
-            } else {
-                console.log('[Macromatix] No store selector found — scraping the account default store only');
-                stores = [{ storeNumber: onlyStore, storeName: '' }];
-            }
-            await page.close().catch(() => {});
+            throw new Error(
+                'Single-store login mode requires .storelist. Configure stores and per-store Macromatix logins in Admin → Setup Store Logins.'
+            );
         }
 
         if (storeFilter.length) {
@@ -2787,156 +2597,72 @@ async function scrapeMacromatix(options = {}) {
         const takeNext = () => (nextIndex < stores.length ? nextIndex++ : -1);
         const concurrency = getScraperConcurrency(stores.length);
 
-        if (singleStoreLogin) {
-            const masterCreds = getMasterMacromatixCredentials();
-            if (String(masterCreds.username || '').trim() && String(masterCreds.password || '').trim()) {
-                const accessible = await getAccessibleStoreNumbersForCredentials(browser, masterCreds);
-                if (accessible?.size) {
-                    console.log(
-                        `[Macromatix] ${masterCreds.source}: ${accessible.size} accessible store(s): ${[...accessible].sort().join(', ')}`
+        console.log(
+            `[Macromatix] Per-store login mode — ${stores.length} store(s), concurrency ${concurrency} (login → select → scrape → logout per store)`
+        );
+
+        const storeSuccessfulCreds = new Map();
+
+        const runSingleStoreWorker = async (workerId) => {
+            for (;;) {
+                throwIfSalesScrapeAborted();
+                const i = takeNext();
+                if (i < 0) break;
+                const store = stores[i];
+                const label = store.storeNumber || '(default)';
+                try {
+                    const candidates = listMacromatixCredentialCandidatesForStore(store.storeNumber);
+                    const scraped = await scrapeStoreWithCredentialCandidates(
+                        browser,
+                        store,
+                        ctx,
+                        candidates
                     );
+                    results[i] = scraped.result;
+                    storeSuccessfulCreds.set(store.storeNumber, {
+                        credentials: scraped.credentials,
+                        source: scraped.source,
+                    });
+                } catch (storeErr) {
+                    if (storeErr?.aborted) throw storeErr;
+                    if (isStoreInaccessibleError(storeErr)) {
+                        results[i] = null;
+                        continue;
+                    }
+                    console.error(
+                        `[Macromatix] Worker ${workerId} store ${label} failed:`,
+                        storeErr.message
+                    );
+                    results[i] = buildErrorResult(store, storeErr, todayKey);
                 }
             }
+        };
 
+        const workers = [];
+        for (let w = 0; w < concurrency; w++) {
+            workers.push(runSingleStoreWorker(w));
+        }
+        await Promise.all(workers);
+
+        throwIfSalesScrapeAborted();
+
+        const credGroups = groupStoresByMacromatixCredentials(
+            stores.filter((s) => storeSuccessfulCreds.has(s.storeNumber)),
+            new Map(
+                [...storeSuccessfulCreds.entries()].map(([storeNumber, row]) => [
+                    storeNumber,
+                    { ...row.credentials, source: row.source },
+                ])
+            )
+        );
+        for (const group of credGroups) {
             console.log(
-                `[Macromatix] Single-store login mode — ${stores.length} store(s), concurrency ${concurrency} (login → select → scrape → logout per store)`
+                `[Macromatix] SSSG LY batch (${group.stores.length} store(s)) via ${group.source} (${group.credentials.username})`
             );
-
-            const storeSuccessfulCreds = new Map();
-
-            const runSingleStoreWorker = async (workerId) => {
-                for (;;) {
-                    throwIfSalesScrapeAborted();
-                    const i = takeNext();
-                    if (i < 0) break;
-                    const store = stores[i];
-                    const label = store.storeNumber || '(default)';
-                    try {
-                        const candidates = listMacromatixCredentialCandidatesForStore(store.storeNumber);
-                        const scraped = await scrapeStoreWithCredentialCandidates(
-                            browser,
-                            store,
-                            ctx,
-                            candidates
-                        );
-                        results[i] = scraped.result;
-                        storeSuccessfulCreds.set(store.storeNumber, {
-                            credentials: scraped.credentials,
-                            source: scraped.source,
-                        });
-                    } catch (storeErr) {
-                        if (storeErr?.aborted) throw storeErr;
-                        if (isStoreInaccessibleError(storeErr)) {
-                            results[i] = null;
-                            continue;
-                        }
-                        console.error(
-                            `[Macromatix] Worker ${workerId} store ${label} failed:`,
-                            storeErr.message
-                        );
-                        results[i] = buildErrorResult(store, storeErr, todayKey);
-                    }
-                }
-            };
-
-            const workers = [];
-            for (let w = 0; w < concurrency; w++) {
-                workers.push(runSingleStoreWorker(w));
-            }
-            await Promise.all(workers);
-
-            throwIfSalesScrapeAborted();
-
-            const credGroups = groupStoresByMacromatixCredentials(
-                stores.filter((s) => storeSuccessfulCreds.has(s.storeNumber)),
-                new Map(
-                    [...storeSuccessfulCreds.entries()].map(([storeNumber, row]) => [
-                        storeNumber,
-                        { ...row.credentials, source: row.source },
-                    ])
-                )
-            );
-            for (const group of credGroups) {
-                if (group.source !== 'global SCRAPER_*') {
-                    console.log(
-                        `[Macromatix] SSSG LY batch (${group.stores.length} store(s)) via ${group.source} (${group.credentials.username})`
-                    );
-                }
-                await runBatchSssgLyScrape(browser, group.stores, todayKey, group.credentials);
-            }
-            for (const result of results) {
-                attachSssgToResult(result, todayKey);
-            }
-        } else {
-            const page = await browser.newPage();
-            await page.setViewport({ width: 1280, height: 720 });
-            await applyResourceBlocking(page);
-            await loginPage(page, username, password);
-
-            const scrapeWithPage = async (workerPage) => {
-                for (;;) {
-                    throwIfSalesScrapeAborted();
-                    const i = takeNext();
-                    if (i < 0) break;
-                    const store = stores[i];
-                    const label = store.storeNumber || '(default)';
-                    try {
-                        results[i] = await scrapeStoreData(workerPage, store, ctx);
-                    } catch (storeErr) {
-                        if (storeErr?.aborted) throw storeErr;
-                        if (isStoreInaccessibleError(storeErr)) {
-                            results[i] = null;
-                            continue;
-                        }
-                        console.error(`[Macromatix] Store ${label} scrape failed:`, storeErr.message);
-                        results[i] = buildErrorResult(store, storeErr, todayKey);
-                    }
-                }
-            };
-
-            if (concurrency <= 1) {
-                await scrapeWithPage(page);
-            } else {
-                console.log(`[Macromatix] Scraping ${stores.length} store(s) with concurrency ${concurrency}`);
-                const extraContexts = [];
-                const workers = [scrapeWithPage(page)];
-                for (let w = 1; w < concurrency; w++) {
-                    const context = await createIsolatedContext(browser);
-                    extraContexts.push(context);
-                    workers.push(
-                        (async () => {
-                            const wp = await context.newPage();
-                            await wp.setViewport({ width: 1280, height: 720 });
-                            await applyResourceBlocking(wp);
-                            try {
-                                await loginPage(wp, username, password);
-                                await scrapeWithPage(wp);
-                            } catch (workerErr) {
-                                console.error(`[Macromatix] Worker ${w} failed:`, workerErr.message);
-                            }
-                        })()
-                    );
-                }
-                await Promise.all(workers);
-                for (const context of extraContexts) {
-                    try {
-                        await context.close();
-                    } catch {
-                        /* ignore */
-                    }
-                }
-            }
-
-            throwIfSalesScrapeAborted();
-
-            try {
-                await runBatchSssgLyScrape(browser, stores, todayKey, credentials);
-                for (const result of results) {
-                    attachSssgToResult(result, todayKey);
-                }
-            } catch (sssgErr) {
-                console.warn('[Macromatix] SSSG scrape/compute failed:', sssgErr.message);
-            }
+            await runBatchSssgLyScrape(browser, group.stores, todayKey, group.credentials);
+        }
+        for (const result of results) {
+            attachSssgToResult(result, todayKey);
         }
 
         summarizeInaccessibleStores(stores, results);
@@ -2966,10 +2692,12 @@ async function scrapeMacromatix(options = {}) {
  * Does NOT use `.storelist` (it ignores it on purpose, so you can see the full account).
  */
 async function listStores() {
-    const { username, password } = getMacromatixCredentials();
-    if (!String(username || '').trim() || !String(password || '').trim()) {
-        throw new Error('Macromatix credentials are not configured (set SCRAPER_USERNAME / SCRAPER_PASSWORD in .env).');
+    const storeList = getStoreList();
+    if (!storeList.length) {
+        throw new Error('No stores in .storelist. Add stores before listing Macromatix access.');
     }
+    const firstStore = storeList[0].storeNumber;
+    const { username, password } = resolveMacromatixCredentialsForStore(firstStore);
 
     let browser;
     try {
@@ -3002,11 +2730,9 @@ async function openMacromatixBrowser(options = {}) {
     const storeNumber = String(options.storeNumber || '').trim();
     const { username, password, source } = resolveMacromatixCredentials(options);
     if (!String(username || '').trim() || !String(password || '').trim()) {
-        const storeHint = storeNumber && storeHasMmxCredentials(storeNumber)
-            ? ''
-            : storeNumber
-              ? ' Create account for this store (Macromatix username/password) or set SCRAPER_STORE_* / SCRAPER_* in .env.'
-              : ' Set SCRAPER_USERNAME / SCRAPER_PASSWORD or create store accounts via Create account.';
+        const storeHint = storeNumber
+            ? ` Configure Macromatix login in Admin menu → Setup Store Logins for store ${storeNumber}.`
+            : ` ${STORE_LOGIN_SETUP_HINT}`;
         throw new Error(`Macromatix credentials are not configured.${storeHint}`);
     }
     if (
@@ -3014,9 +2740,7 @@ async function openMacromatixBrowser(options = {}) {
         /^your-/i.test(String(password || '').trim()) ||
         /^change-this/i.test(String(username || '').trim())
     ) {
-        throw new Error(
-            'Macromatix credentials in .env are still placeholders. Set SCRAPER_USERNAME / SCRAPER_PASSWORD on the server, or complete Create account for this store.'
-        );
+        throw new Error(`Macromatix credentials are placeholders.${STORE_LOGIN_SETUP_HINT}`);
     }
 
     console.log(

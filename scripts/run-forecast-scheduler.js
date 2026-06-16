@@ -12,10 +12,11 @@
  */
 const path = require('path');
 require('../src/loadEnv').loadEnv();
+require('../dashboard/src/forecastMmxAbort');
 
 const { getStoreList } = require('../stores/src/storeList');
 const { storeHasMmxCredentials } = require('../mmx/src/macromatixScraper');
-const { resolveLifeLenzCredentialsForStore } = require('../users/src/core/lifelenzUserCredentials');
+const { listCredentialCandidates } = require('../stores/src/storeCredentials');
 const { assessHistoryReadiness } = require('../dashboard/src/forecast/forecastHistoryLedger');
 const { buildStatusForStores, getTargetForecastWeekStarts } = require('../dashboard/src/forecast/forecastStatusLedger');
 const { runCombinedForecastForStores } = require('../dashboard/src/forecast/forecastRunner');
@@ -31,7 +32,7 @@ const {
     markScheduledRun,
     appendScheduleLog,
 } = require('../dashboard/src/forecast/forecastSchedule');
-const { isMmxResourceBusy, acquireMmxResource, releaseMmxResource, abortCompetingMmxWork } = require('../src/services/mmxResourceGate');
+const { runWithPriority, PRIORITY } = require('../src/services/mmxTaskQueue');
 
 function sleep(ms) {
     return new Promise((r) => setTimeout(r, ms));
@@ -41,7 +42,6 @@ async function listEligibleStores() {
     const targetWeeks = getTargetForecastWeekStarts();
     const weekStart = targetWeeks[0];
     const status = buildStatusForStores(getStoreList().map((s) => String(s.storeNumber)));
-    const accessCache = new Map();
     const eligible = [];
 
     for (const cfg of getStoreList()) {
@@ -53,8 +53,9 @@ async function listEligibleStores() {
         const readiness = assessHistoryReadiness(store);
         if (!readiness.ready) continue;
 
-        const lifelenzCredentials = await resolveLifeLenzCredentialsForStore(store, { accessCache });
-        if (!lifelenzCredentials) continue;
+        const lifelenzCandidates = listCredentialCandidates(store, 'lifelenz');
+        const lifelenzCredentials = lifelenzCandidates[0];
+        if (!lifelenzCredentials?.email || !lifelenzCredentials?.password) continue;
 
         eligible.push({ storeNumber: store, lifelenzCredentials });
     }
@@ -76,36 +77,53 @@ async function runScheduledForecastJob() {
         return { skipped: true, weekStart, stores: [] };
     }
 
-    if (isMmxResourceBusy()) {
-        console.warn('[ForecastScheduler] MMX resource busy — deferring.');
-        appendScheduleLog(runDateKey, { action: 'defer', reason: 'mmx busy', weekStart });
-        return { deferred: true, weekStart };
-    }
-
     const storeNumbers = eligible.map((row) => row.storeNumber);
-    const credsByStore = new Map(eligible.map((row) => [row.storeNumber, row.lifelenzCredentials]));
+    const lifelenzByStore = Object.fromEntries(
+        eligible.map((row) => [
+            row.storeNumber,
+            { email: row.lifelenzCredentials.email, password: row.lifelenzCredentials.password },
+        ])
+    );
 
     console.log(`[ForecastScheduler] Running ${storeNumbers.length} store(s) for week ${weekStart}…`);
 
-    abortCompetingMmxWork('forecast scheduler');
-    acquireMmxResource('forecast scheduler');
+    const windowEndMs = Date.now() + scheduleWindowMinutes() * 60 * 1000;
+    let deferred = false;
 
-    const results = [];
-    try {
-        for (const storeNumber of storeNumbers) {
-            const lifelenzCredentials = credsByStore.get(storeNumber);
-            const row = await runCombinedForecastForStores([storeNumber], {
-                completedBy: 'scheduler',
-                headless: true,
-                lifelenzCredentials,
-                onProgress: (payload) => {
-                    console.log(`[ForecastScheduler] [${storeNumber}]`, JSON.stringify(payload));
-                },
-            });
-            results.push({ storeNumber, ...row });
+    const results = await runWithPriority(PRIORITY.ADMIN, {
+        type: 'forecast-scheduler',
+        label: 'forecast scheduler',
+        run: async () => {
+            const out = [];
+            for (const storeNumber of storeNumbers) {
+                if (!isWithinScheduleWindow() && Date.now() > windowEndMs) {
+                    deferred = true;
+                    break;
+                }
+                const row = await runCombinedForecastForStores([storeNumber], {
+                    completedBy: 'scheduler',
+                    headless: true,
+                    lifelenzCredentials: { byStore: lifelenzByStore },
+                    onProgress: (payload) => {
+                        console.log(`[ForecastScheduler] [${storeNumber}]`, JSON.stringify(payload));
+                    },
+                });
+                out.push({ storeNumber, ...row });
+            }
+            return out;
+        },
+    }).catch((err) => {
+        if (String(err?.name || '') === 'MmxTaskQueueTimeoutError') {
+            deferred = true;
+            appendScheduleLog(runDateKey, { action: 'defer', reason: 'queue timeout', weekStart });
+            return null;
         }
-    } finally {
-        releaseMmxResource('forecast scheduler');
+        throw err;
+    });
+
+    if (deferred || !results) {
+        console.warn('[ForecastScheduler] Deferred — MMX queue busy during schedule window.');
+        return { deferred: true, weekStart };
     }
 
     markScheduledRun(runDateKey, weekStart, { storeCount: storeNumbers.length });

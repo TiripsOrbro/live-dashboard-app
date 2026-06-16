@@ -19,12 +19,12 @@ const {
 const { createSession, getSession, destroySessionsForStore } = require('../../mmx/src/dailyCountSession');
 const { setCheckpoint, getCheckpoint, clearCheckpoint } = require('./dailyStockCountCheckpoint');
 const {
-    acquireMmxResource,
-    releaseMmxResource,
-    refreshScrapePauseTimeout,
-    abortCompetingMmxWork,
-    isMmxResourceBusy,
-} = require('../../mmx/src/mmxResourceGate');
+    PRIORITY,
+    acquirePrioritySlot,
+    releasePrioritySlot,
+    getLocalHoldCount,
+} = require('../../mmx/src/mmxTaskQueue');
+const { refreshScrapePauseTimeout } = require('../../mmx/src/mmxResourceGate');
 
 const log = {
     info: (...args) => console.log('[DailyStockCount]', ...args),
@@ -63,15 +63,15 @@ async function withStoreLock(storeNumber, fn) {
     }
 }
 
-function beginDailyCountMmxWork(reason, storeNumber) {
-    abortCompetingMmxWork(reason);
-    acquireMmxResource(reason);
+async function beginDailyCountMmxWork(reason, storeNumber) {
+    await acquirePrioritySlot(PRIORITY.MIC, { type: 'mic-daily-count', label: reason });
     refreshScrapePauseTimeout();
     void storeNumber;
 }
 
-function endDailyCountMmxWork(storeNumber, reason) {
-    releaseMmxResource(reason || `daily count finished (store ${storeNumber})`);
+async function endDailyCountMmxWork(storeNumber, reason) {
+    void storeNumber;
+    await releasePrioritySlot(PRIORITY.MIC, reason || `daily count finished (store ${storeNumber})`);
 }
 
 function touchPipelineStep(storeNumber, stepLabel) {
@@ -82,7 +82,7 @@ function touchPipelineStep(storeNumber, stepLabel) {
 async function probeOpenCounts(storeNumber, options = {}) {
     let browser;
     let page;
-    beginDailyCountMmxWork(`daily count status probe (store ${storeNumber})`, storeNumber);
+    await beginDailyCountMmxWork(`daily count status probe (store ${storeNumber})`, storeNumber);
     try {
         ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
         const cfg = loadMmxStockCountConfig();
@@ -98,7 +98,7 @@ async function probeOpenCounts(storeNumber, options = {}) {
         };
     } finally {
         await closeBrowserQuietly(browser, 'daily count probe');
-        endDailyCountMmxWork(storeNumber, `daily count probe finished (store ${storeNumber})`);
+        await endDailyCountMmxWork(storeNumber, `daily count probe finished (store ${storeNumber})`);
     }
 }
 
@@ -135,7 +135,7 @@ async function prepareDailyCountForMmx(storeNumber, options = {}) {
             resolution,
         });
 
-        beginDailyCountMmxWork(`daily count prepare (store ${storeNumber})`, storeNumber);
+        await beginDailyCountMmxWork(`daily count prepare (store ${storeNumber})`, storeNumber);
         let sessionStarted = false;
         let browser;
         let page;
@@ -219,15 +219,15 @@ async function prepareDailyCountForMmx(storeNumber, options = {}) {
             throw error;
         } finally {
             if (!sessionStarted) {
-                endDailyCountMmxWork(storeNumber, `daily count prepare ended without session (store ${storeNumber})`);
+                await endDailyCountMmxWork(storeNumber, `daily count prepare ended without session (store ${storeNumber})`);
             }
         }
     });
 }
 
 async function applyDailyCountSessionWork(storeNumber, sessionId, options = {}) {
-    if (!isMmxResourceBusy()) {
-        beginDailyCountMmxWork(`daily count apply (store ${storeNumber})`, storeNumber);
+    if (getLocalHoldCount(PRIORITY.MIC) === 0) {
+        await beginDailyCountMmxWork(`daily count apply (store ${storeNumber})`, storeNumber);
     } else {
         refreshScrapePauseTimeout();
     }
@@ -259,14 +259,14 @@ async function applyDailyCountSessionWork(storeNumber, sessionId, options = {}) 
             dateKey: session.dateKey,
         };
     } finally {
-        endDailyCountMmxWork(storeNumber, `daily count apply finished (store ${storeNumber})`);
+        await endDailyCountMmxWork(storeNumber, `daily count apply finished (store ${storeNumber})`);
     }
 }
 
 async function cancelDailyCountSession(storeNumber) {
     await destroySessionsForStore(storeNumber, 'recount');
     await clearCheckpoint(storeNumber);
-    endDailyCountMmxWork(storeNumber, `daily count session cancelled (store ${storeNumber})`);
+    await endDailyCountMmxWork(storeNumber, `daily count session cancelled (store ${storeNumber})`);
     return { success: true };
 }
 

@@ -51,6 +51,7 @@ dashboard/data/sssg-weekly/*.json
 
 # Stores runtime data
 stores/data/mic/*.json
+stores/data/store-logins/
 stores/.storelist
 
 # Vendors runtime data
@@ -74,6 +75,10 @@ tacaudit/data/audit-state.json
 
 # MMX runtime data
 mmx/data/report-download-schedule-state.json
+dashboard/data/mmx-task-queue.json
+dashboard/data/mmx-task-active.json
+dashboard/data/mmx-task-lock
+dashboard/data/mmx-preempt-request.json
 
 # Legacy root paths (until migration complete)
 data/upselling/

@@ -1,106 +1,52 @@
 #!/usr/bin/env node
 /**
- * Print which Macromatix credentials each env file sets and what the app loads.
+ * Print store credential encryption key status and per-store MMX login coverage.
  */
-const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
-const ENV_KEYS = [
-    'SCRAPER_USERNAME',
-    'SCRAPER_PASSWORD',
-    'SCRAPER_CREDENTIALS_ENCRYPTED',
-    'SCRAPER_CREDENTIALS_KEY',
-];
-
-function parseEnvFile(relPath) {
-    const filePath = path.join(ROOT, relPath);
-    if (!fs.existsSync(filePath)) {
-        return { exists: false, values: {} };
-    }
-    const values = {};
-    const raw = fs.readFileSync(filePath, 'utf8');
-    for (const line of raw.split(/\r?\n/)) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('#')) continue;
-        for (const key of ENV_KEYS) {
-            if (!trimmed.startsWith(`${key}=`)) continue;
-            let val = trimmed.slice(key.length + 1).trim();
-            if (
-                (val.startsWith('"') && val.endsWith('"')) ||
-                (val.startsWith("'") && val.endsWith("'"))
-            ) {
-                val = val.slice(1, -1);
-            }
-            values[key] = val;
-        }
-    }
-    return { exists: true, values };
-}
-
-function summarizeFileValues(values) {
-    const out = {};
-    if (values.SCRAPER_USERNAME != null) {
-        out.SCRAPER_USERNAME = String(values.SCRAPER_USERNAME).trim() || '(empty string)';
-    }
-    if (values.SCRAPER_PASSWORD != null) {
-        const p = String(values.SCRAPER_PASSWORD);
-        out.SCRAPER_PASSWORD = p.length ? `(set, ${p.length} chars)` : '(empty string)';
-    }
-    if (values.SCRAPER_CREDENTIALS_ENCRYPTED != null) {
-        const e = String(values.SCRAPER_CREDENTIALS_ENCRYPTED).trim();
-        out.SCRAPER_CREDENTIALS_ENCRYPTED = e.length ? `(set, ${e.length} chars)` : '(empty string)';
-    }
-    if (values.SCRAPER_CREDENTIALS_KEY != null) {
-        const k = String(values.SCRAPER_CREDENTIALS_KEY).trim();
-        out.SCRAPER_CREDENTIALS_KEY = k.length ? '(set)' : '(empty string)';
-    }
-    return out;
-}
 
 function main() {
-    const baseEnv = parseEnvFile('.env');
-
     const { loadEnv } = require('../src/loadEnv');
     const loadResult = loadEnv({ root: ROOT });
 
-    const {
-        resolveMacromatixCredentials,
-    } = require('../src/services/macromatixScraper');
+    const { getStoreList } = require('../stores/src/storeList');
+    const { storeHasServiceCredentials } = require('../stores/src/storeCredentials');
 
-    let creds = { username: '', password: '' };
-    let resolveError = '';
-    try {
-        creds = resolveMacromatixCredentials({});
-    } catch (err) {
-        resolveError = err.message || String(err);
+    const storeKey = Boolean(String(process.env.STORE_CREDENTIALS_KEY || '').trim());
+    const legacyKey = Boolean(String(process.env.MMX_USER_CREDENTIALS_KEY || '').trim());
+
+    const stores = getStoreList();
+    const mmxConfigured = [];
+    const mmxMissing = [];
+    for (const row of stores) {
+        const store = String(row.storeNumber || '').trim();
+        if (!store) continue;
+        if (storeHasServiceCredentials(store, 'mmx')) mmxConfigured.push(store);
+        else mmxMissing.push(store);
     }
 
-    const enc = Boolean(String(process.env.SCRAPER_CREDENTIALS_ENCRYPTED || '').trim());
     const out = {
         loadMode: loadResult.mode,
         loadedFiles: loadResult.loaded,
-        note: 'The app and PM2 load `.env` only.',
-        files: {
-            '.env': {
-                exists: baseEnv.exists,
-                defines: summarizeFileValues(baseEnv.values),
-            },
+        encryptionKey: {
+            STORE_CREDENTIALS_KEY: storeKey ? 'set' : 'missing',
+            MMX_USER_CREDENTIALS_KEY: legacyKey ? 'set (legacy migration only)' : 'not set',
         },
-        effectiveAfterLoad: {
-            credentialMode: enc ? 'SCRAPER_CREDENTIALS_ENCRYPTED' : 'SCRAPER_USERNAME/PASSWORD',
-            SCRAPER_USERNAME: String(creds.username || '').trim() || '(empty)',
-            SCRAPER_PASSWORD: String(creds.password || '').length
-                ? `(set, ${String(creds.password).length} chars)`
-                : '(empty)',
-            resolveError: resolveError || null,
+        storeMmxLogins: {
+            configured: mmxConfigured.length,
+            missing: mmxMissing.length,
+            missingStores: mmxMissing,
         },
-        perUserMode: /^(1|true|yes|on)$/i.test(String(process.env.MMX_USE_PER_USER_CREDENTIALS ?? '')),
+        note: 'MMX logins are per-store — Admin menu → Setup Store Logins. Global SCRAPER_* env vars are no longer used.',
     };
 
     console.log(JSON.stringify(out, null, 2));
 
-    if (resolveError || !creds.username || !creds.password) {
+    if (!storeKey && !legacyKey && process.env.NODE_ENV === 'production') {
+        process.exit(1);
+    }
+    if (mmxMissing.length && stores.length) {
         process.exit(1);
     }
 }

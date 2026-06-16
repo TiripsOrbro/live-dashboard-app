@@ -1,0 +1,366 @@
+/**
+ * Market / area / store scope picker — modal popup or inline chip rows.
+ */
+(function (global) {
+    let backdrop = null;
+    let escHandler = null;
+    let scopeTree = null;
+    let scopeTreePromise = null;
+    let browseScope = { market: '', area: '', storeNumber: '' };
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function escapeAttr(value) {
+        return escapeHtml(value);
+    }
+
+    function resolveBrowseScope(tree, selections = {}, preferredStore = '') {
+        let market = selections.market || '';
+        let area = selections.area || '';
+        let storeNumber = selections.storeNumber || '';
+
+        const pref = String(preferredStore || '').trim();
+        if (pref && !market && !area && !storeNumber) {
+            storeNumber = pref;
+            for (const [areaName, stores] of Object.entries(tree.storesByArea || {})) {
+                if (!stores.some((row) => row.storeNumber === storeNumber)) continue;
+                area = areaName;
+                for (const [marketName, areas] of Object.entries(tree.areasByMarket || {})) {
+                    if ((areas || []).includes(areaName)) {
+                        market = marketName;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+
+        if (!market && tree.markets.length === 1) market = tree.markets[0];
+        if (!market && tree.defaults?.market) market = tree.defaults.market;
+
+        const areas = market ? tree.areasByMarket[market] || [] : [];
+        if (area && !areas.includes(area)) area = '';
+        if (!area && areas.length === 1) area = areas[0];
+        if (!area && tree.defaults?.area && areas.includes(tree.defaults.area)) area = tree.defaults.area;
+
+        const stores = area ? tree.storesByArea[area] || [] : [];
+        if (storeNumber && !stores.some((row) => row.storeNumber === storeNumber)) storeNumber = '';
+        if (!storeNumber && stores.length === 1) storeNumber = stores[0].storeNumber;
+        if (
+            !storeNumber &&
+            tree.defaults?.storeNumber &&
+            stores.some((row) => row.storeNumber === tree.defaults.storeNumber)
+        ) {
+            storeNumber = tree.defaults.storeNumber;
+        }
+
+        return { market, area, storeNumber };
+    }
+
+    function filterScopeTreeForStores(tree, storeRows) {
+        const allowed = new Set(
+            (storeRows || []).map((row) => String(row.storeNumber || row).trim()).filter(Boolean)
+        );
+        if (!tree || !allowed.size) return tree;
+
+        const storesByArea = {};
+        for (const [area, stores] of Object.entries(tree.storesByArea || {})) {
+            const filtered = (stores || []).filter((row) => allowed.has(String(row.storeNumber)));
+            if (filtered.length) storesByArea[area] = filtered;
+        }
+
+        const areasByMarket = {};
+        for (const [market, areas] of Object.entries(tree.areasByMarket || {})) {
+            const filteredAreas = (areas || []).filter((area) => storesByArea[area]?.length);
+            if (filteredAreas.length) areasByMarket[market] = filteredAreas;
+        }
+
+        const markets = (tree.markets || []).filter((market) => (areasByMarket[market] || []).length);
+        const defaults = { ...(tree.defaults || {}) };
+        if (defaults.storeNumber && !allowed.has(String(defaults.storeNumber))) {
+            defaults.storeNumber = '';
+        }
+        if (defaults.area && !storesByArea[defaults.area]?.length) defaults.area = '';
+        if (defaults.market && !areasByMarket[defaults.market]?.length) defaults.market = '';
+
+        return {
+            ...tree,
+            markets,
+            areasByMarket,
+            storesByArea,
+            defaults,
+        };
+    }
+
+    function renderBrowseScopeRow(scopePrefix, label, rows, selectedValue, getValue, getLabel) {
+        const labelFn = getLabel || getValue;
+        const colCount = Math.max(rows.length, 1);
+        const items = rows
+            .map((row) => {
+                const value = getValue(row);
+                const active = String(value) === String(selectedValue);
+                return `
+                    <button
+                        type="button"
+                        class="admin-accounts-scope-chip${active ? ' is-active' : ''}"
+                        data-browse-scope="${escapeAttr(scopePrefix)}"
+                        data-browse-value="${escapeAttr(value)}"
+                        aria-pressed="${active ? 'true' : 'false'}"
+                    >${escapeHtml(labelFn(row))}</button>`;
+            })
+            .join('');
+        return `
+            <div class="admin-accounts-scope-row-wrap">
+                <span class="admin-accounts-scope-row-label">${escapeHtml(label)}</span>
+                <div class="admin-accounts-scope-row admin-accounts-scope-row--equal" role="group" aria-label="${escapeAttr(label)}" style="--scope-cols: ${colCount};">${items}</div>
+            </div>`;
+    }
+
+    function buildNavigatorRows(tree, scope, scopePrefix = 'browse') {
+        const resolved = resolveBrowseScope(tree, scope, scope.storeNumber || '');
+        const rows = [];
+
+        if (tree.markets.length > 1) {
+            rows.push(
+                renderBrowseScopeRow(`${scopePrefix}-market`, 'Market', tree.markets, resolved.market, (row) => row)
+            );
+        }
+
+        const areas = resolved.market ? tree.areasByMarket[resolved.market] || [] : [];
+        if (areas.length > 1) {
+            rows.push(renderBrowseScopeRow(`${scopePrefix}-area`, 'Area', areas, resolved.area, (row) => row));
+        }
+
+        const stores = resolved.area ? tree.storesByArea[resolved.area] || [] : [];
+        if (stores.length > 1) {
+            rows.push(
+                renderBrowseScopeRow(
+                    `${scopePrefix}-store`,
+                    'Store',
+                    stores,
+                    resolved.storeNumber,
+                    (row) => row.storeNumber,
+                    (row) => String(row.storeNumber)
+                )
+            );
+        } else if (stores.length === 1) {
+            resolved.storeNumber = stores[0].storeNumber;
+        }
+
+        const finalScope = resolveBrowseScope(tree, resolved, '');
+        return {
+            html: rows.join('') || '<p class="admin-scope-picker-empty">No stores available.</p>',
+            scope: finalScope,
+        };
+    }
+
+    function storesMatchingScope(storeRows, tree, scope) {
+        const list = storeRows || [];
+        const { market, area, storeNumber } = scope || {};
+        if (storeNumber) {
+            return list.filter((row) => String(row.storeNumber) === String(storeNumber));
+        }
+        const allowed = new Set();
+        if (area && tree?.storesByArea?.[area]) {
+            tree.storesByArea[area].forEach((row) => allowed.add(String(row.storeNumber)));
+        } else if (market && tree?.areasByMarket?.[market]) {
+            for (const areaName of tree.areasByMarket[market]) {
+                (tree.storesByArea[areaName] || []).forEach((row) => allowed.add(String(row.storeNumber)));
+            }
+        } else {
+            return list;
+        }
+        return list.filter((row) => allowed.has(String(row.storeNumber)));
+    }
+
+    function mountInline(host, { tree, initialScope = {}, preferredStore = '', onChange, scopePrefix = 'inline' } = {}) {
+        if (!host || !tree) return null;
+
+        let scope = { market: '', area: '', storeNumber: '', ...initialScope };
+        let treeRef = tree;
+
+        function render() {
+            if (preferredStore && !scope.storeNumber) {
+                scope = resolveBrowseScope(treeRef, scope, preferredStore);
+            }
+            const built = buildNavigatorRows(treeRef, scope, scopePrefix);
+            scope = built.scope;
+            host.innerHTML = built.html;
+        }
+
+        if (!host.dataset.scopeInlineWired) {
+            host.dataset.scopeInlineWired = '1';
+            host.addEventListener('click', (event) => {
+                const chip = event.target.closest('[data-browse-scope]');
+                if (!chip) return;
+                const name = chip.dataset.browseScope || '';
+                const value = chip.dataset.browseValue || '';
+                if (name === `${scopePrefix}-market`) {
+                    scope = { market: value, area: '', storeNumber: '' };
+                } else if (name === `${scopePrefix}-area`) {
+                    scope = { ...scope, area: value, storeNumber: '' };
+                } else if (name === `${scopePrefix}-store`) {
+                    scope = { ...scope, storeNumber: value };
+                }
+                render();
+                onChange?.({ ...scope });
+            });
+        }
+
+        render();
+        return {
+            refresh(preferred) {
+                if (preferred) preferredStore = preferred;
+                render();
+            },
+            getScope() {
+                return { ...scope };
+            },
+            setScope(next) {
+                scope = { market: '', area: '', storeNumber: '', ...next };
+                render();
+            },
+            setTree(nextTree) {
+                treeRef = nextTree;
+                render();
+            },
+        };
+    }
+
+    function ensureBackdrop() {
+        if (backdrop) return backdrop;
+        backdrop = document.createElement('div');
+        backdrop.className = 'mic-item-picker admin-scope-picker';
+        backdrop.hidden = true;
+        backdrop.innerHTML = `
+            <div class="mic-item-picker-panel admin-scope-picker-panel" role="dialog" aria-modal="true" aria-labelledby="admin-scope-picker-title">
+                <h2 id="admin-scope-picker-title">Select store</h2>
+                <p class="admin-scope-picker-hint" id="admin-scope-picker-hint"></p>
+                <div id="admin-scope-picker-nav" class="admin-scope-picker-nav"></div>
+                <div class="admin-scope-picker-actions">
+                    <button type="button" class="mic-settings-btn admin-scope-picker-select" id="admin-scope-picker-select" disabled>Select store</button>
+                    <button type="button" class="admin-scope-picker-cancel">Cancel</button>
+                </div>
+            </div>`;
+        document.body.appendChild(backdrop);
+        backdrop.addEventListener('click', (event) => {
+            if (event.target === backdrop) close();
+        });
+        backdrop.querySelector('.admin-scope-picker-cancel')?.addEventListener('click', close);
+        backdrop.querySelector('#admin-scope-picker-select')?.addEventListener('click', () => {
+            const store = String(browseScope.storeNumber || '').trim();
+            if (!store || !pendingOnSelect) return;
+            const cb = pendingOnSelect;
+            close();
+            cb(store);
+        });
+        backdrop.addEventListener('click', (event) => {
+            const chip = event.target.closest('[data-browse-scope]');
+            if (!chip || !scopeTree) return;
+            const name = chip.dataset.browseScope;
+            const value = chip.dataset.browseValue || '';
+            if (name === 'browse-market') browseScope = { market: value, area: '', storeNumber: '' };
+            else if (name === 'browse-area') browseScope = { ...browseScope, area: value, storeNumber: '' };
+            else if (name === 'browse-store') browseScope = { ...browseScope, storeNumber: value };
+            renderModalNavigator(scopeTree, browseScope.storeNumber);
+        });
+        return backdrop;
+    }
+
+    let pendingOnSelect = null;
+
+    function close() {
+        pendingOnSelect = null;
+        if (!backdrop) return;
+        backdrop.hidden = true;
+        if (escHandler) {
+            document.removeEventListener('keydown', escHandler);
+            escHandler = null;
+        }
+    }
+
+    function renderModalNavigator(tree, preferredStore = '') {
+        const host = backdrop?.querySelector('#admin-scope-picker-nav');
+        const selectBtn = backdrop?.querySelector('#admin-scope-picker-select');
+        if (!host || !tree) return browseScope.storeNumber;
+
+        const built = buildNavigatorRows(tree, browseScope, 'browse');
+        browseScope = resolveBrowseScope(tree, built.scope, preferredStore);
+        const finalBuilt = buildNavigatorRows(tree, browseScope, 'browse');
+        browseScope = finalBuilt.scope;
+        host.innerHTML = finalBuilt.html;
+        if (selectBtn) selectBtn.disabled = !browseScope.storeNumber;
+        return browseScope.storeNumber;
+    }
+
+    async function loadScopeTree() {
+        if (scopeTree) return scopeTree;
+        if (scopeTreePromise) return scopeTreePromise;
+        scopeTreePromise = fetch('/api/admin/store-scope', { credentials: 'same-origin' })
+            .then((res) => res.json())
+            .then((data) => {
+                if (!data.success || !data.scopeTree) {
+                    throw new Error(data.error || 'Could not load store list.');
+                }
+                scopeTree = data.scopeTree;
+                return scopeTree;
+            })
+            .finally(() => {
+                scopeTreePromise = null;
+            });
+        return scopeTreePromise;
+    }
+
+    function open({ title, hint, preferredStore, onSelect, onCancel } = {}) {
+        pendingOnSelect = typeof onSelect === 'function' ? onSelect : null;
+        const root = ensureBackdrop();
+        root.querySelector('#admin-scope-picker-title').textContent = title || 'Select store';
+        const hintEl = root.querySelector('#admin-scope-picker-hint');
+        if (hint) {
+            hintEl.textContent = hint;
+            hintEl.hidden = false;
+        } else {
+            hintEl.textContent = '';
+            hintEl.hidden = true;
+        }
+
+        return loadScopeTree()
+            .then((tree) => {
+                browseScope = { market: '', area: '', storeNumber: '' };
+                renderModalNavigator(tree, preferredStore || '');
+                root.hidden = false;
+                root.querySelector('#admin-scope-picker-nav button')?.focus();
+                escHandler = (event) => {
+                    if (event.key === 'Escape') {
+                        event.preventDefault();
+                        close();
+                        onCancel?.();
+                    }
+                };
+                document.addEventListener('keydown', escHandler);
+                return true;
+            })
+            .catch((err) => {
+                close();
+                alert(err.message || 'Could not open store picker.');
+                onCancel?.();
+                return false;
+            });
+    }
+
+    global.AdminScopePicker = {
+        open,
+        close,
+        loadScopeTree,
+        filterScopeTreeForStores,
+        storesMatchingScope,
+        resolveBrowseScope,
+        mountInline,
+    };
+})(window);

@@ -44,9 +44,9 @@
 }
 
 .admin-modal--build-to {
-    --admin-buildto-pad-left: 2.25rem;
+    --admin-buildto-pad-left: 3rem;
     --admin-buildto-pad-right: 1.5rem;
-    --admin-buildto-pad-top: 2.25rem;
+    --admin-buildto-pad-top: 2.75rem;
     --admin-buildto-radius: 0;
     --admin-buildto-control-radius: 0;
     padding-left: 0;
@@ -72,6 +72,7 @@ html.mic-rounded-corners .admin-modal--build-to {
 
 .admin-buildto-header h2 {
     margin: 0;
+    padding-left: 0.35rem;
     font-size: 1.35rem;
     font-weight: 700;
     letter-spacing: -0.01em;
@@ -80,9 +81,47 @@ html.mic-rounded-corners .admin-modal--build-to {
 
 .admin-buildto-subtitle {
     margin: 0.35rem 0 0;
+    padding-left: 0.35rem;
     font-size: 0.875rem;
     color: rgba(0, 0, 0, 0.55);
     line-height: 1.4;
+}
+
+.admin-buildto-scope-wrap {
+    padding: 0.85rem var(--admin-buildto-pad-right) 0.85rem var(--admin-buildto-pad-left);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    background: #f8f7fa;
+}
+
+.admin-buildto-scope-nav {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.admin-modal--build-to .admin-buildto-scope-nav .admin-accounts-scope-row-label {
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgba(0, 0, 0, 0.55);
+}
+
+.admin-modal--build-to .admin-buildto-scope-nav .admin-accounts-scope-row {
+    border-radius: var(--admin-buildto-control-radius);
+    background: #fff;
+}
+
+.admin-modal--build-to .admin-buildto-scope-nav .admin-accounts-scope-chip {
+    background: #fff;
+    color: rgba(0, 0, 0, 0.72);
+}
+
+.admin-modal--build-to .admin-buildto-scope-nav .admin-accounts-scope-chip:hover:not(.is-active) {
+    background: rgba(122, 62, 177, 0.06);
+}
+
+.admin-modal--build-to .admin-buildto-scope-nav .admin-accounts-scope-chip.is-active {
+    background: rgba(122, 62, 177, 0.12);
+    color: #5c2d91;
 }
 
 .admin-modal--build-to > .admin-tabs--full,
@@ -865,6 +904,35 @@ html.mic-dark-mode .admin-buildto-header h2 {
 
 html.mic-dark-mode .admin-buildto-subtitle {
     color: rgba(255, 255, 255, 0.55);
+}
+
+html.mic-dark-mode .admin-buildto-scope-wrap {
+    background: #24242c;
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+html.mic-dark-mode .admin-modal--build-to .admin-buildto-scope-nav .admin-accounts-scope-row-label {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+html.mic-dark-mode .admin-modal--build-to .admin-buildto-scope-nav .admin-accounts-scope-row {
+    background: #2a2a32;
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.mic-dark-mode .admin-modal--build-to .admin-buildto-scope-nav .admin-accounts-scope-chip {
+    background: #2a2a32;
+    color: rgba(255, 255, 255, 0.78);
+    border-right-color: rgba(255, 255, 255, 0.08);
+}
+
+html.mic-dark-mode .admin-modal--build-to .admin-buildto-scope-nav .admin-accounts-scope-chip:hover:not(.is-active) {
+    background: #35353f;
+}
+
+html.mic-dark-mode .admin-modal--build-to .admin-buildto-scope-nav .admin-accounts-scope-chip.is-active {
+    background: rgba(155, 89, 208, 0.22);
+    color: #e8d4ff;
 }
 
 html.mic-dark-mode .admin-buildto-toolbar {

@@ -3,6 +3,10 @@
     let profile = null;
     let activeTab = 'global';
     let catalogCache = null;
+    let storeList = [];
+    let scopeTree = null;
+    let scopeNavigator = null;
+    let browseScope = { market: '', area: '', storeNumber: '' };
 
     function escapeHtml(text) {
         return String(text)
@@ -68,11 +72,10 @@
                     <button type="button" class="admin-tab is-active" data-tab="global" id="admin-buildto-global-tab" hidden>Global</button>
                     <button type="button" class="admin-tab" data-tab="store">Stores</button>
                 </div>
+                <div id="admin-buildto-scope-wrap" class="admin-buildto-scope-wrap" hidden>
+                    <div id="admin-buildto-scope-nav" class="admin-buildto-scope-nav"></div>
+                </div>
                 <div class="admin-modal-toolbar admin-buildto-toolbar">
-                    <label id="admin-buildto-store-wrap" class="admin-buildto-store-field" hidden>
-                        <span>Store</span>
-                        <select id="admin-buildto-store"></select>
-                    </label>
                     <div class="admin-buildto-search-wrap">
                         <input type="search" id="admin-buildto-search" placeholder="Search items…" aria-label="Search items" />
                     </div>
@@ -97,11 +100,9 @@
             btn.addEventListener('click', () => {
                 activeTab = btn.dataset.tab;
                 applyTabUi();
-                renderRows();
+                if (activeTab === 'store') renderScopeNavigator();
+                void loadCatalog();
             });
-        });
-        backdrop.querySelector('#admin-buildto-store')?.addEventListener('change', () => {
-            void loadCatalog();
         });
         return backdrop;
     }
@@ -116,7 +117,48 @@
             if (tab.hidden) return;
             tab.classList.toggle('is-active', tab.dataset.tab === activeTab);
         });
-        root.querySelector('#admin-buildto-store-wrap').hidden = activeTab === 'global';
+        root.querySelector('#admin-buildto-scope-wrap').hidden = activeTab === 'global';
+    }
+
+    function getStoreForCatalog() {
+        if (activeTab === 'global') return '';
+        return String(browseScope.storeNumber || '').trim();
+    }
+
+    async function loadScopeTree() {
+        if (!global.AdminScopePicker) throw new Error('Store picker not available.');
+        const raw = await global.AdminScopePicker.loadScopeTree();
+        scopeTree = global.AdminScopePicker.filterScopeTreeForStores(raw, storeList);
+        return scopeTree;
+    }
+
+    function renderScopeNavigator() {
+        const root = ensureBackdrop();
+        const host = root.querySelector('#admin-buildto-scope-nav');
+        if (!host) return;
+        if (!scopeTree || !global.AdminScopePicker) {
+            host.innerHTML = '<p class="admin-accounts-meta">No stores available.</p>';
+            return;
+        }
+
+        const onScopeChange = (scope) => {
+            browseScope = { ...scope };
+            void loadCatalog();
+        };
+
+        if (!scopeNavigator) {
+            scopeNavigator = global.AdminScopePicker.mountInline(host, {
+                tree: scopeTree,
+                initialScope: browseScope,
+                preferredStore: browseScope.storeNumber,
+                scopePrefix: 'buildto',
+                onChange: onScopeChange,
+            });
+        } else {
+            scopeNavigator.setTree(scopeTree);
+            scopeNavigator.setScope(browseScope);
+        }
+        browseScope = scopeNavigator.getScope();
     }
 
     async function fetchProfile() {
@@ -141,7 +183,13 @@
 
     async function loadCatalog() {
         const root = ensureBackdrop();
-        const store = root.querySelector('#admin-buildto-store')?.value || '';
+        const body = root.querySelector('#admin-buildto-body');
+        const store = getStoreForCatalog();
+        if (activeTab === 'store' && !store) {
+            catalogCache = null;
+            body.innerHTML = '<p>Select a store to view build-to adjustments.</p>';
+            return;
+        }
         const params = new URLSearchParams({ store });
         const res = await fetch(`/api/admin/build-to/catalog?${params}`, { credentials: 'same-origin' });
         const data = await res.json().catch(() => ({}));
@@ -325,10 +373,12 @@
         const root = ensureBackdrop();
         root.querySelector('#admin-buildto-error').textContent = '';
         const patch = collectPatch();
+        const store = getStoreForCatalog();
+        if (activeTab === 'store' && !store) throw new Error('Select a store first.');
         const body =
             activeTab === 'global'
                 ? { global: patch }
-                : { stores: { [root.querySelector('#admin-buildto-store').value]: patch } };
+                : { stores: { [store]: patch } };
         const res = await fetch('/api/admin/build-to/overrides', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -354,14 +404,9 @@
             activeTab = 'store';
         }
         applyTabUi();
-        const stores = await loadStores();
-        const select = root.querySelector('#admin-buildto-store');
-        select.innerHTML = stores
-            .map(
-                (s) =>
-                    `<option value="${escapeHtml(s.storeNumber)}">${escapeHtml(s.storeNumber)} — ${escapeHtml(s.storeName || s.storeNumber)}</option>`
-            )
-            .join('');
+        storeList = await loadStores();
+        await loadScopeTree();
+        renderScopeNavigator();
         root.querySelector('#admin-buildto-body').innerHTML = '<p>Loading…</p>';
         try {
             await loadCatalog();

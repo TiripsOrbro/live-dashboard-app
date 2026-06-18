@@ -3,6 +3,7 @@ const pathMatch = window.location.pathname.match(/\/(teststore|\d{3,6})\/stock-c
 const STORE_NUMBER = pathMatch ? pathMatch[1].toLowerCase() : '';
 const VENDOR_SLUG = pathMatch ? pathMatch[2] : '';
 const IS_COMBINED = VENDOR_SLUG === 'combined';
+const IS_LEVELS = VENDOR_SLUG === 'levels';
 
 let catalog = null;
 let draft = null;
@@ -38,6 +39,8 @@ let mmxLastKnownServerInProgress = false;
 let mmxPollInFlight = null;
 let lowStockAlerts = [];
 let lowStockPanelOpen = false;
+let levelsSummary = null;
+let levelsChecking = false;
 
 const MMX_UI_WATCH_KEY = 'stockCountMmxUiWatch';
 const MMX_UI_WATCH_MAX_MS = 15 * 60 * 1000;
@@ -2632,12 +2635,112 @@ async function dismissStaleMmxSessionOnLoad() {
     }
 }
 
+function levelsSummaryUrl() {
+    return `${window.location.origin}/api/stock-count/low-stock-summary?store=${encodeURIComponent(STORE_NUMBER)}`;
+}
+
+async function loadLevelsSummary() {
+    const { res, data } = await fetchJson(levelsSummaryUrl());
+    if (!res.ok || !data.success) throw new Error(data.error || 'Could not load stock levels.');
+    levelsSummary = data;
+    lowStockAlerts = Array.isArray(data.lowStockAlerts)
+        ? data.lowStockAlerts
+        : Array.isArray(data.lowStockItems)
+          ? data.lowStockItems
+          : [];
+    lowStockPanelOpen = lowStockAlerts.length > 0;
+    return data;
+}
+
+async function runLevelsCheck() {
+    if (levelsChecking) return;
+    levelsChecking = true;
+    renderLevelsView();
+    try {
+        const { res, data } = await fetchJson(
+            `${window.location.origin}/api/stock-count/check-stock-levels?store=${encodeURIComponent(STORE_NUMBER)}`,
+            { method: 'POST' }
+        );
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || `Check failed (${res.status})`);
+        }
+        levelsSummary = data;
+        lowStockAlerts = Array.isArray(data.lowStockAlerts)
+            ? data.lowStockAlerts
+            : Array.isArray(data.lowStockItems)
+              ? data.lowStockItems
+              : [];
+        lowStockPanelOpen = lowStockAlerts.length > 0;
+    } catch (error) {
+        statusMessage = error.message || 'Could not check stock levels.';
+        statusKind = 'error';
+    } finally {
+        levelsChecking = false;
+        renderLevelsView();
+    }
+}
+
+function renderLevelsView() {
+    const threshold = levelsSummary?.thresholdDays ?? 5;
+    const count = Number(levelsSummary?.lowStockCount) || lowStockAlerts.length;
+    const subtitle = levelsSummary?.stockLevelsSub
+        || (count > 0
+            ? `${count} item${count === 1 ? '' : 's'} under ${threshold} days stock`
+            : levelsSummary?.stockLevelsChecked
+              ? `No stock shortfalls (under ${threshold} days)`
+              : 'Run a check to refresh on-hand from Macromatix');
+    const statusHtml = statusMessage
+        ? `<div class="stock-count-status${statusKind ? ` stock-count-status--${statusKind}` : ''}" role="status">${escapeHtml(statusMessage)}</div>`
+        : '';
+    const lowStockHtml = buildLowStockWarningHtml();
+    app.innerHTML = `
+        <div class="stock-count stock-count--levels">
+            <header class="stock-count-header">
+                <div class="nav-back-host" id="stock-nav-back"></div>
+                <div>
+                    <h1>Stock levels</h1>
+                    <p class="stock-count-subtitle">Store ${escapeHtml(STORE_NUMBER)} · ${escapeHtml(subtitle)}</p>
+                </div>
+            </header>
+            ${statusHtml}
+            <div class="stock-count-levels-actions">
+                <button type="button" class="stock-count-btn stock-count-btn--primary" id="sc-levels-check" ${levelsChecking ? 'disabled aria-busy="true"' : ''}>
+                    ${escapeHtml(levelsChecking ? 'Checking Macromatix…' : 'Check stock levels')}
+                </button>
+            </div>
+            ${lowStockHtml}
+        </div>`;
+    window.DashboardNavBack?.mountBackButton(document.getElementById('stock-nav-back'), {
+        fallback: dashboardPath(),
+    });
+    app.querySelector('#sc-levels-check')?.addEventListener('click', () => {
+        statusMessage = '';
+        statusKind = '';
+        void runLevelsCheck();
+    });
+    app.querySelector('#sc-low-stock-toggle')?.addEventListener('click', () => {
+        lowStockPanelOpen = !lowStockPanelOpen;
+        renderLevelsView();
+    });
+}
+
 async function init() {
     document.documentElement.classList.add('stock-count-page');
     document.body.classList.add('stock-count-page');
     setupMmxPipelineVisibilityRecovery();
     if (!STORE_NUMBER || !VENDOR_SLUG) {
         app.textContent = 'Invalid stock count URL.';
+        return;
+    }
+
+    if (IS_LEVELS) {
+        try {
+            await loadLevelsSummary();
+            document.title = `Stock levels — Store ${STORE_NUMBER}`;
+            renderLevelsView();
+        } catch (error) {
+            app.innerHTML = `<div class="stock-count"><p class="stock-count-status stock-count-status--error">${escapeHtml(error.message)}</p><p><a class="stock-count-back" href="${escapeHtml(dashboardPath())}">← Dashboard</a></p></div>`;
+        }
         return;
     }
 

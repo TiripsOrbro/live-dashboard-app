@@ -156,6 +156,7 @@ async function enrichStockCountTileState(base, storeNumber) {
             stockLevelsCheckedAt: summary.checkedAt || null,
             stockLevelsSub,
             stockLevelsCheckLabel,
+            stockLevelsHref: store ? `/${store}/stock-count/levels` : '',
             sub: base.active ? `${base.message} · ${stockLevelsSub}` : stockLevelsSub,
         };
     } catch {
@@ -163,6 +164,7 @@ async function enrichStockCountTileState(base, storeNumber) {
             ...base,
             stockLevelsSub: 'Stock levels not checked today',
             stockLevelsCheckLabel: 'Check stock levels',
+            stockLevelsHref: store ? `/${store}/stock-count/levels` : '',
             stockLevelsChecked: false,
         };
     }

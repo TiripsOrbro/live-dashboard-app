@@ -94,6 +94,7 @@ const {
     getMelbourneWeekStart,
     getStoreWeekDays,
 } = require('./services/sssg/sssgWeeklyLedger');
+const { getLowStockSummary } = require('../vendors/src/lowStockAlerts');
 const {
     prepareStockCountForMmx,
     applyStockCountSession,
@@ -526,6 +527,30 @@ function sendUnauthorized(req, res) {
     res.redirect('/login');
 }
 
+/** Wall displays bookmarking /3811 or /kiosk/3811 — send them to /nologin/3811 when that store is allowlisted. */
+function tryRedirectUnauthenticatedToNologin(req, res) {
+    if (isApiRequest(req)) return false;
+    const match =
+        req.path.match(/^\/(\d{3,6})\/?$/) || req.path.match(/^\/kiosk\/(\d{3,6})\/?$/i);
+    if (!match) return false;
+    const storeNumber = normalizeStoreKey(match[1]);
+    if (!storeNumber || !isNologinStoreAllowed(storeNumber) || !verifyNologinSecret(req.query.key)) {
+        return false;
+    }
+    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+    res.redirect(302, `/nologin/${storeNumber}${qs}`);
+    return true;
+}
+
+function redirectNologinUserToWallDashboard(req, res, storeNumber) {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isNologinUser(user)) return false;
+    const store = normalizeStoreKey(storeNumber);
+    if (!store) return false;
+    res.redirect(302, `/nologin/${store}`);
+    return true;
+}
+
 function sendForbidden(req, res, message = 'You do not have access to this store.') {
     if (isApiRequest(req)) {
         res.status(403).json({ success: false, error: message });
@@ -727,6 +752,10 @@ function dashboardAuthMiddleware(req, res, next) {
 
     if (req.dashboardUser) {
         next();
+        return;
+    }
+
+    if (tryRedirectUnauthenticatedToNologin(req, res)) {
         return;
     }
 
@@ -2377,6 +2406,7 @@ app.get(/^\/MIC\/teststore\/?$/i, (req, res) => {
 
 app.get(/^\/MIC\/(\d{3,6})\/?$/i, (req, res) => {
     const storeNumber = (req.path.match(/^\/MIC\/(\d{3,6})\/?$/i) || [])[1];
+    if (redirectNologinUserToWallDashboard(req, res, storeNumber)) return;
     if (dashboardEntryFromRequest(req) === 'kiosk') {
         res.redirect(`/kiosk/${storeNumber}`);
         return;
@@ -2401,6 +2431,7 @@ app.get(/^\/kiosk\/teststore\/?$/i, (req, res) => {
 
 app.get(/^\/kiosk\/(\d{3,6})\/?$/i, (req, res) => {
     const storeNumber = (req.path.match(/^\/kiosk\/(\d{3,6})\/?$/i) || [])[1];
+    if (redirectNologinUserToWallDashboard(req, res, storeNumber)) return;
     if (!assertStoreAccess(req, res, storeNumber)) return;
     res.sendFile(path.join(paths.dashboard.public, 'index.html'));
 });
@@ -2421,6 +2452,7 @@ app.get(/^\/teststore\/?$/i, (req, res) => {
 
 app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
     const storeNumber = (req.path.match(/^\/(\d{3,6})\/?$/) || [])[1];
+    if (redirectNologinUserToWallDashboard(req, res, storeNumber)) return;
     if (dashboardEntryFromRequest(req) === 'kiosk') {
         res.redirect(`/kiosk/${storeNumber}`);
         return;
@@ -4160,6 +4192,32 @@ app.post('/api/stock-count/fill-orders', async (req, res) => {
     }
 });
 
+app.get('/api/stock-count/low-stock-summary', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const summary = await getLowStockSummary(store);
+        res.json({
+            success: true,
+            storeNumber: String(store),
+            lowStockCount: summary.count,
+            lowStockItems: summary.items || [],
+            lowStockAlerts: summary.alerts || summary.items || [],
+            stockLevelsSub: summary.count
+                ? `${summary.count} item${summary.count === 1 ? '' : 's'} under ${summary.thresholdDays} days stock`
+                : summary.checked
+                  ? `No stock shortfalls (under ${summary.thresholdDays} days)`
+                  : 'Stock levels not checked today',
+            stockLevelsChecked: Boolean(summary.checked),
+            stockLevelsCheckedAt: summary.checkedAt || null,
+            thresholdDays: summary.thresholdDays,
+        });
+    } catch (error) {
+        console.error('API: Error loading low stock summary:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.post('/api/stock-count/check-stock-levels', async (req, res) => {
     try {
         const store = stockCountStoreFromQuery(req);
@@ -4183,6 +4241,7 @@ app.post('/api/stock-count/check-stock-levels', async (req, res) => {
             storeNumber: String(store),
             lowStockCount: summary.count,
             lowStockItems: summary.items || [],
+            lowStockAlerts: summary.alerts || summary.items || [],
             stockLevelsSub: summary.count
                 ? `${summary.count} item${summary.count === 1 ? '' : 's'} under ${summary.thresholdDays} days stock`
                 : `No stock shortfalls (under ${summary.thresholdDays} days)`,

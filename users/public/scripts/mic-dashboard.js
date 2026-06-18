@@ -673,6 +673,27 @@ function renderOrdersToPlaceTile(data, { tabbed = false, inRow = false } = {}) {
     const sc = data?.stockCount || {};
     const active = Boolean(sc.active);
     const ordersSub = active ? ordersStoreDetail(sc) : 'All orders are placed for today';
+    const href = active ? sc.href || window.AppPaths?.micStore?.(STORE_NUMBER) || `/MIC/${STORE_NUMBER}` : '';
+    const posClass = tabbed || inRow ? '' : ' mic-tile--pos-orders';
+    const body = `
+            <div class="mic-tile-body">
+                <div class="mic-tile-label">Orders to place</div>
+                <div class="mic-tile-sub">${escapeHtml(ordersSub)}</div>
+            </div>`;
+    if (href) {
+        return `
+        <a
+            class="mic-tile mic-tile--link mic-tile--orders-to-place${posClass}"
+            href="${escapeHtml(href)}"
+            aria-label="${escapeHtml(`Orders to place — ${ordersSub}`)}"
+        >${body}
+        </a>`;
+    }
+    return `<article class="mic-tile mic-tile--orders-to-place${posClass}">${body}</article>`;
+}
+
+function renderStockLevelsTile(data, { tabbed = false, inRow = false } = {}) {
+    const sc = data?.stockCount || {};
     const stockSub =
         sc.stockLevelsSub ||
         (Number(sc.lowStockCount) > 0
@@ -681,44 +702,28 @@ function renderOrdersToPlaceTile(data, { tabbed = false, inRow = false } = {}) {
               ? 'No stock shortfalls'
               : 'Stock levels not checked today');
     const checkLabel = sc.stockLevelsCheckLabel || 'Check stock levels';
-    const href = active ? sc.href || window.AppPaths?.micStore?.(STORE_NUMBER) || `/MIC/${STORE_NUMBER}` : '';
-    const posClass = tabbed || inRow ? '' : ' mic-tile--pos-orders';
+    const href = sc.stockLevelsHref || (STORE_NUMBER ? `/${STORE_NUMBER}/stock-count/levels` : '');
+    const hasShortfalls = Number(sc.lowStockCount) > 0;
+    const warnClass = hasShortfalls ? ' mic-tile--stock-warn' : sc.stockLevelsChecked ? ' mic-tile--stock-ok' : '';
+    const posClass = tabbed || inRow ? '' : ' mic-tile--pos-stock-levels';
     const checking = stockLevelsChecking;
-    const stockButton = `
-        <button
-            type="button"
-            class="mic-tile-stock-check"
-            id="mic-check-stock-levels"
-            ${checking ? 'disabled aria-busy="true"' : ''}
-        >${escapeHtml(checking ? 'Checking…' : checkLabel)}</button>`;
-    const ordersBlock = `
-            <div class="mic-tile-body mic-tile-body--orders">
-                <div class="mic-tile-label">Orders to place</div>
-                <div class="mic-tile-sub">${escapeHtml(ordersSub)}</div>
-            </div>`;
-    const stockBlock = `
-            <div class="mic-tile-body mic-tile-body--stock-levels">
-                <div class="mic-tile-label">Stock shortfalls</div>
-                <div class="mic-tile-sub">${escapeHtml(stockSub)}</div>
-                ${stockButton}
-            </div>`;
-
-    if (href) {
-        return `
-        <article class="mic-tile mic-tile--orders-to-place mic-tile--orders-split${posClass}">
-            <a
-                class="mic-tile-orders-link"
-                href="${escapeHtml(href)}"
-                aria-label="${escapeHtml(`Orders to place — ${ordersSub}`)}"
-            >${ordersBlock}</a>
-            ${stockBlock}
-        </article>`;
-    }
-
+    const viewLink =
+        sc.stockLevelsChecked && href
+            ? `<a class="mic-tile-stock-view" href="${escapeHtml(href)}">${escapeHtml(hasShortfalls ? 'View shortfalls' : 'View stock levels')}</a>`
+            : '';
     return `
-        <article class="mic-tile mic-tile--orders-to-place mic-tile--orders-split${posClass}">
-            ${ordersBlock}
-            ${stockBlock}
+        <article class="mic-tile mic-tile--stock-levels${warnClass}${posClass}">
+            <div class="mic-tile-body">
+                <div class="mic-tile-label">Stock levels</div>
+                <div class="mic-tile-sub">${escapeHtml(stockSub)}</div>
+            </div>
+            <button
+                type="button"
+                class="mic-tile-stock-check"
+                id="mic-check-stock-levels"
+                ${checking ? 'disabled aria-busy="true"' : ''}
+            >${escapeHtml(checking ? 'Checking…' : checkLabel)}</button>
+            ${viewLink}
         </article>`;
 }
 
@@ -820,6 +825,7 @@ function renderDesktopMiddleRow(data) {
     if (shouldShowOrdersTile(data)) {
         tiles.push(renderOrdersToPlaceTile(data, { inRow: true }));
     }
+    tiles.push(renderStockLevelsTile(data, { inRow: true }));
     return renderEqualWidthRow(tiles, { rowNum: 1, extraClass: 'mic-tile--pos-middle-row' });
 }
 
@@ -829,6 +835,7 @@ function renderMobileOrdersTab(data) {
         tiles.push(renderOrdersToPlaceTile(data, { tabbed: true }));
     }
     tiles.push(renderDailyCountTile(data, { tabbed: true }));
+    tiles.push(renderStockLevelsTile(data, { tabbed: true }));
     return renderEqualWidthRow(tiles, { tabbed: true });
 }
 

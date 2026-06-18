@@ -2635,6 +2635,41 @@ html.mic-dark-mode .mic-audit-stat--complete {
     padding: 0;
 }
 
+.mic-tile--stock-levels {
+    justify-content: flex-start;
+    gap: calc(8px * var(--dashboard-scale));
+    padding-bottom: calc(14px * var(--dashboard-scale));
+}
+
+.mic-tile--stock-levels .mic-tile-body {
+    flex: 1 1 auto;
+}
+
+.mic-tile--stock-warn {
+    background: color-mix(in srgb, #f5c400 14%, var(--white));
+    border-color: color-mix(in srgb, #f5c400 45%, var(--charcoal));
+}
+
+.mic-tile--stock-ok {
+    background: color-mix(in srgb, var(--good, #43a047) 8%, var(--white));
+}
+
+.mic-tile-stock-view {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--tb-purple, #702082);
+    text-align: center;
+    text-decoration: none;
+}
+
+.mic-tile-stock-view:hover,
+.mic-tile-stock-view:focus-visible {
+    text-decoration: underline;
+}
+
 .mic-tile-orders-link {
     display: flex;
     flex: 1 1 auto;
@@ -3476,6 +3511,7 @@ button.mic-tile.mic-tile--link {
     .mic-grid--admin .mic-tile--pos-sssg,
     .mic-grid--admin .mic-tile--pos-daily-count,
     .mic-grid--admin .mic-tile--pos-orders,
+    .mic-grid--admin .mic-tile--pos-stock-levels,
     .mic-grid--admin .mic-tile--pos-blank,
     .mic-grid--admin .mic-tile--pos-weekly-audits,
     .mic-grid--admin .mic-tile--pos-weekly-audit-row,

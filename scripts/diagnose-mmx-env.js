@@ -38,7 +38,7 @@ function main() {
             missing: mmxMissing.length,
             missingStores: mmxMissing,
         },
-        note: 'MMX logins prefer per-store files (Admin → Setup Store Logins). Stores without a login fall back to SCRAPER_USERNAME / SCRAPER_PASSWORD in .env.',
+        note: 'MMX logins are per-store only — configure in Admin menu → Setup Store Logins.',
     };
 
     console.log(JSON.stringify(out, null, 2));

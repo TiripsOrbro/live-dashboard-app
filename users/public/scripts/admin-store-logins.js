@@ -267,6 +267,9 @@
         host.innerHTML = `
             <p class="admin-accounts-meta">Masked logins only. Full credentials are never shown after save.</p>
             <table class="admin-table admin-store-logins-table">
+                <colgroup>
+                    ${'<col class="admin-store-logins-col" />'.repeat(5)}
+                </colgroup>
                 <thead>
                     <tr>
                         <th>Store</th>

@@ -142,6 +142,23 @@
         return true;
     }
 
+    function bindEditPanelActions() {
+        const editRoot = ensureBackdrop().querySelector('#admin-store-logins-edit');
+        if (!editRoot || editRoot.dataset.actionsBound === '1') return;
+        editRoot.dataset.actionsBound = '1';
+        editRoot.addEventListener('submit', (event) => {
+            const form = event.target.closest('.admin-store-logins-form');
+            if (!form) return;
+            event.preventDefault();
+            void submitForm(form);
+        });
+        editRoot.addEventListener('click', (event) => {
+            const btn = event.target.closest('.admin-store-logins-remove');
+            if (!btn) return;
+            void removeFallback(btn.dataset.fallbackId);
+        });
+    }
+
     function ensureBackdrop() {
         if (backdrop) return backdrop;
         backdrop = document.createElement('div');
@@ -192,6 +209,7 @@
                 renderEditPanel();
             });
         });
+        bindEditPanelActions();
         return backdrop;
     }
 
@@ -205,6 +223,7 @@
         if (message) {
             el.textContent = message;
             el.hidden = false;
+            el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         } else {
             el.textContent = '';
             el.hidden = true;
@@ -502,17 +521,6 @@
                 </form>
             </section>`;
 
-        body.querySelectorAll('.admin-store-logins-form').forEach((form) => {
-            form.addEventListener('submit', (event) => {
-                event.preventDefault();
-                void submitForm(form);
-            });
-        });
-        body.querySelectorAll('.admin-store-logins-remove').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                void removeFallback(btn.dataset.fallbackId);
-            });
-        });
         updateScopeSummary();
     }
 
@@ -524,9 +532,23 @@
     }
 
     async function submitForm(form) {
+        if (!currentStore) {
+            setError('Select a store before saving logins.');
+            return;
+        }
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn?.disabled) return;
+        const originalText = submitBtn?.textContent || '';
+
         setError('');
         const role = form.dataset.role;
         const payload = formPayload(form);
+        const loginField = loginFieldForService(activeTab);
+        if (!payload[loginField] || !payload.password) {
+            setError(`${loginLabelForService(activeTab)} and password are required.`);
+            return;
+        }
+
         const url =
             role === 'fallback'
                 ? `/api/admin/store-logins/${encodeURIComponent(currentStore)}/${activeTab}/fallbacks`
@@ -535,47 +557,59 @@
             role === 'fallback'
                 ? { ...payload, verify: true }
                 : { ...payload, save: true, asFallback: false };
-        const res = await fetch(url, {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.success) {
-            setError(data.error || 'Could not save login.');
-            return;
+
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Verifying…';
         }
-        form.reset();
-        await loadStores();
-        await loadScopeTree();
-        ensurePreferredStoreSelected();
-        renderScopeNavigator();
-        browseScope = scopeNavigator?.getScope?.() || browseScope;
-        ensurePreferredStoreSelected();
-        await loadStoreDetail();
-        if (activeView === 'overview') renderOverview();
+
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+                setError(data.error || 'Could not save login.');
+                return;
+            }
+            form.reset();
+            await loadStoreDetail();
+            void loadStores().then(() => {
+                if (activeView === 'overview') renderOverview();
+            });
+        } catch (err) {
+            setError(err?.message || 'Could not save login.');
+        } finally {
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+            }
+        }
     }
 
     async function removeFallback(fallbackId) {
+        if (!currentStore || !fallbackId) return;
         setError('');
-        const res = await fetch(
-            `/api/admin/store-logins/${encodeURIComponent(currentStore)}/${activeTab}/fallbacks/${encodeURIComponent(fallbackId)}`,
-            { method: 'DELETE', credentials: 'same-origin' }
-        );
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.success) {
-            setError(data.error || 'Could not remove fallback.');
-            return;
+        try {
+            const res = await fetch(
+                `/api/admin/store-logins/${encodeURIComponent(currentStore)}/${activeTab}/fallbacks/${encodeURIComponent(fallbackId)}`,
+                { method: 'DELETE', credentials: 'same-origin' }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) {
+                setError(data.error || 'Could not remove fallback.');
+                return;
+            }
+            await loadStoreDetail();
+            void loadStores().then(() => {
+                if (activeView === 'overview') renderOverview();
+            });
+        } catch (err) {
+            setError(err?.message || 'Could not remove fallback.');
         }
-        await loadStores();
-        await loadScopeTree();
-        ensurePreferredStoreSelected();
-        renderScopeNavigator();
-        browseScope = scopeNavigator?.getScope?.() || browseScope;
-        ensurePreferredStoreSelected();
-        await loadStoreDetail();
-        if (activeView === 'overview') renderOverview();
     }
 
     async function refresh() {
@@ -605,6 +639,7 @@
             throw new Error('You do not have permission to manage store logins.');
         }
         ensureBackdrop();
+        bindEditPanelActions();
         backdrop.hidden = false;
         activeTab = 'mmx';
         scopeNavigator = null;

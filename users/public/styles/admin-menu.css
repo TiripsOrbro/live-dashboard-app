@@ -1844,15 +1844,17 @@ html.mic-dark-mode .admin-forecast-lifelenz-status--warn {
 /* —— Setup Store Logins modal —— */
 .admin-modal--store-logins {
     padding: 0;
-    background: #f4f3f7;
+    background: #d8d8d8;
     overflow: hidden;
+    color: #2a2a2a;
 }
 
 .admin-modal--store-logins > h2 {
     margin: 0;
     padding: 1.15rem 1.5rem 0.85rem;
-    background: #fff;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    background: #d0d0d0;
+    border-bottom: 1px solid #a8a8a8;
+    color: #1a1a1a;
 }
 
 .admin-modal--store-logins .admin-store-logins-scope-wrap,
@@ -1861,8 +1863,8 @@ html.mic-dark-mode .admin-forecast-lifelenz-status--warn {
     gap: 0.55rem;
     margin: 0;
     padding: 0.85rem 1.5rem;
-    background: #34343e;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: #c8c8c8;
+    border-bottom: 1px solid #a8a8a8;
 }
 
 .admin-modal--store-logins .admin-store-logins-scope-nav {
@@ -1875,7 +1877,7 @@ html.mic-dark-mode .admin-forecast-lifelenz-status--warn {
 }
 
 .admin-modal--store-logins .admin-store-logins-scope-nav .admin-accounts-scope-row-label {
-    color: rgba(255, 255, 255, 0.65);
+    color: rgba(0, 0, 0, 0.55);
     font-size: 0.78rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -1883,26 +1885,26 @@ html.mic-dark-mode .admin-forecast-lifelenz-status--warn {
 
 .admin-modal--store-logins .admin-store-logins-scope-nav .admin-accounts-scope-row {
     border: none;
-    border-radius: 8px;
+    border-radius: 0;
     overflow: hidden;
-    background: #2a2a32;
+    background: #b8b8b8;
 }
 
 .admin-modal--store-logins .admin-store-logins-scope-nav .admin-accounts-scope-chip {
-    background: #3d3d48;
-    color: rgba(255, 255, 255, 0.78);
-    border-right-color: rgba(255, 255, 255, 0.08);
+    background: #c4c4c4;
+    color: rgba(0, 0, 0, 0.72);
+    border-right-color: rgba(0, 0, 0, 0.1);
     transition: background 0.15s ease, color 0.15s ease;
 }
 
 .admin-modal--store-logins .admin-store-logins-scope-nav .admin-accounts-scope-chip:hover:not(.is-active) {
-    background: #4a4a56;
-    color: #fff;
+    background: #d0d0d0;
+    color: #1a1a1a;
 }
 
 .admin-modal--store-logins .admin-store-logins-scope-nav .admin-accounts-scope-chip.is-active {
-    background: #7a3eb1;
-    color: #fff;
+    background: #e0e0e0;
+    color: #1a1a1a;
     box-shadow: none;
 }
 
@@ -1913,42 +1915,48 @@ html.mic-dark-mode .admin-forecast-lifelenz-status--warn {
 .admin-modal--store-logins .admin-store-logins-scope-summary {
     margin: 0;
     font-size: 0.84rem;
-    color: rgba(255, 255, 255, 0.58);
+    color: rgba(0, 0, 0, 0.55);
 }
 
 .admin-modal--store-logins .admin-store-logins-overview,
 .admin-modal--store-logins .admin-store-logins-edit {
+    padding: 0;
+    background: #e0e0e0;
+}
+
+.admin-modal--store-logins .admin-store-logins-overview {
     padding: 1rem 1.5rem 0.25rem;
-    background: #fff;
 }
 
 .admin-modal--store-logins .admin-store-logins-edit #admin-store-logins-body {
-    margin-top: 0.25rem;
+    margin-top: 0;
+    padding: 1rem 1.5rem 0.25rem;
 }
 
 .admin-modal--store-logins .admin-store-logins-section h3 {
     margin: 0 0 0.65rem;
     font-size: 0.95rem;
     font-weight: 700;
-    color: #2a2a32;
+    color: #1a1a1a;
 }
 
 .admin-modal--store-logins .admin-store-logins-section + .admin-store-logins-section {
     margin-top: 1.25rem;
     padding-top: 1.1rem;
-    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .admin-modal--store-logins .admin-store-logins-entry {
     margin-bottom: 0.75rem;
     padding: 0.75rem 0.85rem;
-    border-radius: 8px;
-    background: #3a3a44;
-    color: #eee;
+    border-radius: 0;
+    background: #d4d4d4;
+    color: #1a1a1a;
+    border: 1px solid #b0b0b0;
 }
 
 .admin-modal--store-logins .admin-store-logins-entry .admin-accounts-meta {
-    color: rgba(255, 255, 255, 0.55);
+    color: rgba(0, 0, 0, 0.5);
 }
 
 .admin-modal--store-logins .admin-store-logins-entry .admin-store-logins-remove {
@@ -1966,42 +1974,54 @@ html.mic-dark-mode .admin-forecast-lifelenz-status--warn {
 .admin-modal--store-logins .admin-store-logins-form .admin-accounts-field input[type='email'] {
     font: inherit;
     padding: 0.6rem 0.7rem;
-    border: 1px solid #4a4a55;
-    border-radius: 8px;
-    background: #3a3a44;
-    color: #f2f2f2;
+    border: 1px solid #a0a0a0;
+    border-radius: 0;
+    background: #ececec;
+    color: #1a1a1a;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .admin-modal--store-logins .admin-store-logins-form .admin-accounts-field input::placeholder {
-    color: rgba(255, 255, 255, 0.35);
+    color: rgba(0, 0, 0, 0.35);
 }
 
 .admin-modal--store-logins .admin-store-logins-form .admin-accounts-field input:focus {
     outline: none;
-    border-color: #9b59d0;
-    box-shadow: 0 0 0 3px rgba(122, 62, 177, 0.28);
+    border-color: #707070;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.12);
+}
+
+.admin-modal--store-logins .admin-store-logins-form .admin-accounts-create-actions .mic-settings-btn.admin-btn-primary {
+    background: #5a5a5a;
+    border-color: #4a4a4a;
+    color: #f0f0f0;
+}
+
+.admin-modal--store-logins .admin-store-logins-form .admin-accounts-create-actions .mic-settings-btn.admin-btn-primary:hover:not(:disabled) {
+    background: #4a4a4a;
+    filter: none;
 }
 
 .admin-modal--store-logins .admin-store-logins-form .admin-accounts-create-actions .mic-settings-btn:not(.admin-btn-primary) {
-    background: #ececef;
-    border-color: rgba(0, 0, 0, 0.12);
-    color: #2a2a32;
+    background: #d0d0d0;
+    border-color: rgba(0, 0, 0, 0.15);
+    color: #2a2a2a;
 }
 
 .admin-modal--store-logins .admin-store-logins-form .admin-accounts-create-actions .mic-settings-btn:not(.admin-btn-primary):hover {
-    background: #e0e0e6;
+    background: #c4c4c4;
 }
 
 .admin-modal--store-logins .admin-store-logins-overview .admin-table th {
-    background: #2a2a32;
-    color: rgba(255, 255, 255, 0.88);
+    background: #b8b8b8;
+    color: rgba(0, 0, 0, 0.82);
     border-bottom: none;
     font-weight: 600;
 }
 
 .admin-modal--store-logins .admin-store-logins-overview .admin-table td {
-    border-bottom-color: rgba(0, 0, 0, 0.06);
+    border-bottom-color: rgba(0, 0, 0, 0.08);
+    background: #e0e0e0;
 }
 
 .admin-modal--store-logins .admin-store-logins-table {
@@ -2026,7 +2046,7 @@ html.mic-dark-mode .admin-forecast-lifelenz-status--warn {
 }
 
 .admin-modal--store-logins .admin-store-logins-overview-row:hover td {
-    background: rgba(122, 62, 177, 0.08);
+    background: #d4d4d4;
 }
 
 .admin-modal--store-logins .admin-store-logins-missing {
@@ -2037,18 +2057,19 @@ html.mic-dark-mode .admin-forecast-lifelenz-status--warn {
 .admin-modal--store-logins > .admin-modal-error {
     margin: 0;
     padding: 0.5rem 1.5rem 0;
-    background: #fff;
+    background: #e0e0e0;
 }
 
 .admin-modal--store-logins > .admin-modal-actions {
     margin: 0;
     padding: 1rem 1.5rem 1.25rem;
-    background: #fff;
-    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    background: #d0d0d0;
+    border-top: 1px solid #a8a8a8;
 }
 
 html.mic-dark-mode .admin-modal--store-logins {
-    background: #1a1a20;
+    background: #2a2a2a;
+    color: #e8e8e8;
 }
 
 html.mic-dark-mode .admin-modal--store-logins > h2,
@@ -2056,9 +2077,24 @@ html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-overview,
 html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-edit,
 html.mic-dark-mode .admin-modal--store-logins > .admin-modal-error,
 html.mic-dark-mode .admin-modal--store-logins > .admin-modal-actions {
-    background: #222228;
-    border-color: rgba(255, 255, 255, 0.08);
+    background: #323232;
+    border-color: rgba(255, 255, 255, 0.1);
     color: #eee;
+}
+
+html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-scope-wrap {
+    background: #3a3a3a;
+}
+
+html.mic-dark-mode .admin-modal--store-logins .admin-tabs--full,
+html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-view-tabs {
+    --app-tab-inactive-bg: #404040;
+    --app-tab-active-bg: #323232;
+    --app-tab-active-bottom: 1px solid #323232;
+    --app-tab-text: rgba(255, 255, 255, 0.65);
+    --app-tab-text-active: #f0f0f0;
+    --app-tab-hover-bg: #484848;
+    background: #3a3a3a;
 }
 
 html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-section h3 {
@@ -2075,7 +2111,21 @@ html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-missing {
 }
 
 html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-form .admin-accounts-create-actions .mic-settings-btn:not(.admin-btn-primary) {
-    background: #3a3a44;
+    background: #484848;
     border-color: rgba(255, 255, 255, 0.12);
+    color: #eee;
+}
+
+html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-form .admin-accounts-field input[type='text'],
+html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-form .admin-accounts-field input[type='password'],
+html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-form .admin-accounts-field input[type='email'] {
+    background: #3a3a3a;
+    border-color: #555;
+    color: #f0f0f0;
+}
+
+html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-entry {
+    background: #3a3a3a;
+    border-color: #555;
     color: #eee;
 }

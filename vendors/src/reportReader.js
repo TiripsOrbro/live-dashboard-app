@@ -540,6 +540,16 @@ function reportsReadyForReportIds(storeNumber, reportIds, reportsRoot, options =
     return { ready: issues.length === 0, files, issues };
 }
 
+function reportsReadyForStore(storeNumber, reportsDir) {
+    const files = resolveStoreReports(storeNumber, reportsDir);
+    const validation = validateStoreReports(storeNumber, files);
+    return {
+        ready: validation.valid,
+        files,
+        validation,
+    };
+}
+
 function reportIdsNeedingDownload(storeNumber, reportIds, reportsDir, options = {}) {
     const ids = (reportIds || []).filter(Boolean);
     if (!ids.length) return [];
@@ -842,6 +852,7 @@ module.exports = {
     validateStoreReports,
     validateReportId,
     reportsReadyForReportIds,
+    reportsReadyForStore,
     reportIdsNeedingDownload,
     resolveStoreReports,
     clearStoreReportFiles,

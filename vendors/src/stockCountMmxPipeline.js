@@ -360,18 +360,6 @@ function formatOrderFailures(orderPipelineResult) {
     return failed.map((f) => `${f.label}: ${f.error || 'failed'}`).join('; ');
 }
 
-function reportsReadyForStore(storeNumber, reportsDir) {
-    const { resolveStoreReports, validateStoreReports } = require('./reportReader');
-    const { REPORTS_DIR } = require('./buildToCalculator');
-    const files = resolveStoreReports(storeNumber, reportsDir || REPORTS_DIR);
-    const validation = validateStoreReports(storeNumber, files);
-    return {
-        ready: validation.valid,
-        files,
-        validation,
-    };
-}
-
 async function ensureReportsForOrders(storeNumber, options = {}) {
     touchStockCountWork();
     const { REPORTS_DIR } = require('./buildToCalculator');

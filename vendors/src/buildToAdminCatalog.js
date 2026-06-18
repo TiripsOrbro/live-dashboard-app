@@ -3,6 +3,7 @@ const { buildToOverridesForStore, mergeBuildToRules } = require('./buildToStoreO
 const {
     adminOverridesForStore,
     readOverridesDoc,
+    DEFAULT_STOCK_WARNING_DAYS,
     effectiveSkipKeyItemCount,
     effectiveSkipStockCount,
     effectiveIncludeDaily,
@@ -103,6 +104,15 @@ function effectiveRuleForCatalogItem(item, vendorSlug, storeNumber) {
         buildToManual: Boolean(effective?.buildToManual),
         buildToOrderManual: Boolean(effective?.buildToOrderManual),
         onHandOnly: ruleType === 'on-hand',
+        stockWarningDays:
+            effective?.stockWarningDays != null && Number.isFinite(Number(effective.stockWarningDays))
+                ? Number(effective.stockWarningDays)
+                : null,
+        defaultStockWarningDays:
+            doc.settings?.stockWarningDays != null &&
+            Number.isFinite(Number(doc.settings.stockWarningDays))
+                ? Number(doc.settings.stockWarningDays)
+                : DEFAULT_STOCK_WARNING_DAYS,
         catalogRule,
         storeOverride: storeMap.get(code) || null,
         adminOverride: adminMap.get(code) || null,
@@ -125,7 +135,7 @@ function buildAdminBuildToCatalog(storeNumber) {
             vendors.push({ slug: vendor.slug, label: vendor.label || vendor.slug, items });
         }
     }
-    return { storeNumber: store, vendors };
+    return { storeNumber: store, vendors, settings: readOverridesDoc().settings || {} };
 }
 
 function filterOverridesForActor(doc, actorStores, canEditGlobal) {

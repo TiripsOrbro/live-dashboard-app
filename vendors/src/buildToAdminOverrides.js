@@ -9,11 +9,13 @@ const OVERRIDES_PATH =
     process.env.BUILD_TO_ADMIN_OVERRIDES_PATH ||
     path.join(paths.vendors.config, 'build-to-admin-overrides.json');
 
+const DEFAULT_STOCK_WARNING_DAYS = 5;
+
 let cache = null;
 let cacheMtime = 0;
 
 function emptyDoc() {
-    return { global: {}, stores: {} };
+    return { settings: { stockWarningDays: DEFAULT_STOCK_WARNING_DAYS }, global: {}, stores: {} };
 }
 
 function readOverridesDoc() {
@@ -23,6 +25,13 @@ function readOverridesDoc() {
         if (cache && stat.mtimeMs === cacheMtime) return cache;
         const raw = JSON.parse(fs.readFileSync(OVERRIDES_PATH, 'utf8'));
         cache = {
+            settings: {
+                stockWarningDays:
+                    raw.settings?.stockWarningDays != null &&
+                    Number.isFinite(Number(raw.settings.stockWarningDays))
+                        ? Number(raw.settings.stockWarningDays)
+                        : DEFAULT_STOCK_WARNING_DAYS,
+            },
             global: raw.global && typeof raw.global === 'object' ? raw.global : {},
             stores: raw.stores && typeof raw.stores === 'object' ? raw.stores : {},
         };
@@ -35,6 +44,13 @@ function readOverridesDoc() {
 
 function writeOverridesDoc(doc) {
     const next = {
+        settings: {
+            stockWarningDays:
+                doc.settings?.stockWarningDays != null &&
+                Number.isFinite(Number(doc.settings.stockWarningDays))
+                    ? Number(doc.settings.stockWarningDays)
+                    : DEFAULT_STOCK_WARNING_DAYS,
+        },
         global: doc.global && typeof doc.global === 'object' ? doc.global : {},
         stores: doc.stores && typeof doc.stores === 'object' ? doc.stores : {},
     };
@@ -66,6 +82,9 @@ function normalizeRule(raw) {
     if (raw.skipStockCount === false) rule.skipStockCount = false;
     if (raw.includeDaily === true) rule.includeDaily = true;
     if (raw.includeDaily === false) rule.includeDaily = false;
+    if (raw.stockWarningDays != null && Number.isFinite(Number(raw.stockWarningDays))) {
+        rule.stockWarningDays = Number(raw.stockWarningDays);
+    }
     return Object.keys(rule).length ? rule : null;
 }
 
@@ -132,6 +151,7 @@ function mergeItemOverridePatch(existing, itemPatch) {
         'buildToManual',
         'buildToOrderManual',
         'onHandOnly',
+        'stockWarningDays',
     ];
     for (const key of clearKeys) {
         if (itemPatch?.[key] === null) delete merged[key];
@@ -173,8 +193,16 @@ function adminOverridesForStore(storeNumber) {
     return map;
 }
 
-function patchOverrides({ global = null, stores = null }) {
+function patchOverrides({ global = null, stores = null, settings = null }) {
     const doc = readOverridesDoc();
+    if (settings && typeof settings === 'object') {
+        doc.settings = doc.settings || {};
+        if (settings.stockWarningDays != null) {
+            const n = Number(settings.stockWarningDays);
+            if (Number.isFinite(n) && n > 0) doc.settings.stockWarningDays = n;
+            else delete doc.settings.stockWarningDays;
+        }
+    }
     if (global && typeof global === 'object') {
         doc.global = doc.global || {};
         for (const [itemCode, itemPatch] of Object.entries(global)) {
@@ -214,6 +242,7 @@ function patchOverrides({ global = null, stores = null }) {
 
 module.exports = {
     OVERRIDES_PATH,
+    DEFAULT_STOCK_WARNING_DAYS,
     readOverridesDoc,
     writeOverridesDoc,
     patchOverrides,

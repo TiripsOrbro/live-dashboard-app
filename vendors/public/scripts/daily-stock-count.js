@@ -616,41 +616,35 @@ async function resolveStartupFromMmxStatus() {
         openCounts = mmxData.openCounts || [];
         if (openCounts.length) {
             startupComplete = false;
+            render();
             return;
         }
-        await setStartChoice('create');
+        if (!draft?.resolution) {
+            await setStartChoice('create');
+        }
     } catch (error) {
         if (error.name === 'AbortError') {
-            if (draft?.resolution) {
-                startupComplete = true;
-                return;
-            }
-            await setStartChoice('create');
+            if (draft?.resolution) return;
+            if (!draft?.resolution) await setStartChoice('create');
             return;
         }
         if (error.status === 403 && error.data?.needsMmxCredentials) {
             needsMmxCredentials = true;
+            render();
             return;
         }
-        if (draft?.resolution) {
-            startupComplete = true;
-            return;
-        }
+        if (draft?.resolution) return;
         await setStartChoice('create');
     }
 }
 
 async function finishStartup() {
-    startupProbing = true;
-    render();
     try {
         await resolveStartupFromMmxStatus();
     } catch (error) {
         statusMessage = error.message;
         statusKind = 'error';
-        startupComplete = Boolean(draft?.resolution);
-    } finally {
-        startupProbing = false;
+        startupComplete = Boolean(draft?.resolution) || startupComplete;
         render();
     }
 }
@@ -690,6 +684,7 @@ async function init() {
             return;
         }
 
+        startupComplete = true;
         render();
         void finishStartup();
     } catch (error) {

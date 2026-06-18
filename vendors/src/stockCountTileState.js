@@ -117,6 +117,8 @@ function buildStockCountTileState(storeNumber, storeSlice = {}) {
         href,
         pendingCount: visible.length,
         stockCountVendors,
+        lowStockCount: 0,
+        lowStockItems: [],
         message: hasOrdersToPlace
             ? visible.length
                 ? `${visible.length} vendor${visible.length === 1 ? '' : 's'} to count`
@@ -127,8 +129,54 @@ function buildStockCountTileState(storeNumber, storeSlice = {}) {
     };
 }
 
+function stockLevelsSubFromSummary(summary) {
+    const threshold = summary.thresholdDays ?? 5;
+    if (summary.count > 0) {
+        return `${summary.count} item${summary.count === 1 ? '' : 's'} under ${threshold} days stock`;
+    }
+    if (summary.checked) {
+        return `No stock shortfalls (under ${threshold} days)`;
+    }
+    return 'Stock levels not checked today';
+}
+
+async function enrichStockCountTileState(base, storeNumber) {
+    if (!base) return base;
+    try {
+        const { getLowStockSummary } = require('./lowStockAlerts');
+        const summary = await getLowStockSummary(storeNumber);
+        const stockLevelsSub = stockLevelsSubFromSummary(summary);
+        const stockLevelsCheckLabel =
+            summary.count > 0 ? 'Check again' : summary.checked ? 'Check again' : 'Check stock levels';
+        return {
+            ...base,
+            lowStockCount: summary.count,
+            lowStockItems: summary.items || [],
+            stockLevelsChecked: Boolean(summary.checked),
+            stockLevelsCheckedAt: summary.checkedAt || null,
+            stockLevelsSub,
+            stockLevelsCheckLabel,
+            sub: base.active ? `${base.message} · ${stockLevelsSub}` : stockLevelsSub,
+        };
+    } catch {
+        return {
+            ...base,
+            stockLevelsSub: 'Stock levels not checked today',
+            stockLevelsCheckLabel: 'Check stock levels',
+            stockLevelsChecked: false,
+        };
+    }
+}
+
+async function buildStockCountTileStateAsync(storeNumber, storeSlice = {}) {
+    const base = buildStockCountTileState(storeNumber, storeSlice);
+    return enrichStockCountTileState(base, storeNumber);
+}
+
 module.exports = {
     buildStockCountTileState,
+    buildStockCountTileStateAsync,
+    enrichStockCountTileState,
     getVisiblePendingVendors,
     combinedStockCountPath,
 };

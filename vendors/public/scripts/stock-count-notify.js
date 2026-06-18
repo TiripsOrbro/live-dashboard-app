@@ -121,6 +121,23 @@
         );
     }
 
+    function notifyLowStock(store, alerts) {
+        if (wasNotified('low-stock')) return;
+        const list = Array.isArray(alerts) ? alerts : [];
+        if (!list.length) return;
+        markNotified('low-stock');
+        const top = list
+            .slice(0, 3)
+            .map((item) => item.description || item.itemCode)
+            .filter(Boolean)
+            .join(', ');
+        const extra = list.length > 3 ? ` (+${list.length - 3} more)` : '';
+        notify(`Store ${store} — low stock`, `${list.length} item${list.length === 1 ? '' : 's'} under warning threshold${top ? `: ${top}${extra}` : ''}.`, {
+            tag: `stock-count-low-stock-${store}`,
+            url: stockCountUrl(store, readWatch()?.vendorSlug),
+        });
+    }
+
     function notifyOrdersReady(store, vendorSlug, options = {}) {
         if (wasNotified('orders')) return;
         markNotified('orders');
@@ -208,6 +225,7 @@
         clearWatch,
         notifyVariancesReady,
         notifyOrdersReady,
+        notifyLowStock,
         initPipelineWatcher,
         startPolling,
         stopPolling,

@@ -170,6 +170,11 @@ async function openReportsHub(page, settings) {
     await navigateToSupplyChainReports(page, reportNav, settings.navTimeoutMs);
 }
 
+function chainReportsEnabled(settings) {
+    if (settings?.chainReports === false) return false;
+    return process.env.MMX_CHAIN_REPORT_DOWNLOAD !== '0';
+}
+
 async function downloadReports(page, settings) {
     const reports = settings.pipeline.reports || [];
     const paths = {};
@@ -185,6 +190,16 @@ async function downloadReports(page, settings) {
     }
 
     await configureDownloadPath(page, getReportDownloadDir(settings));
+
+    if (chainReportsEnabled(settings) && !settings.chainSession) {
+        settings.chainSession = {
+            hubOpen: false,
+            lastGroup: null,
+            lastFormat: null,
+            lastStartDate: null,
+            lastEndDate: null,
+        };
+    }
 
     const failures = [];
 

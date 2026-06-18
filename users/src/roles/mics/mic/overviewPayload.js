@@ -73,6 +73,7 @@ async function buildStoreOverviewPayload(user, deps) {
     const {
         storeSlice,
         buildDailyStockCountTileStateAsync,
+        buildStockCountTileStateAsync,
         getAuditState,
         isTestStore,
         getAuditSchedule,
@@ -97,6 +98,7 @@ async function buildStoreOverviewPayload(user, deps) {
         accessibleAreas: getAccessibleAreasForUser(user),
         accessibleMarkets: getUserAccessScope(user).markets,
         ...buildMicPayload(store, storeSlice, { canAccessDfsc: canUserAccessDfsc(user) }),
+        stockCount: await buildStockCountTileStateAsync(store, storeSlice),
         dailyStockCount: await buildDailyStockCountTileStateAsync(store),
         weeklyAudits,
         squareOneTiles,

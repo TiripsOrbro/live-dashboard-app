@@ -27,6 +27,24 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.9.3 – June 2026
+
+**Added**
+
+- **Stock shortfall alerts** — warns when on-hand plus on-order is below your configured days of stock (default 5). Shows on the stock count screen after orders run and on the MIC **Orders to place** tile.
+- **Check stock levels** — button on the MIC tile downloads fresh Macromatix reports and re-checks shortfalls without running a full stock count.
+- **Build-to adjustments** — global default and per-item **Warn** days for stock shortfall thresholds.
+
+**Changed**
+
+- **Orders pipeline speed** — skips redundant report downloads when today’s reports are already valid; after a count apply only SOH/SOO refresh; chains report navigation in one MMX session.
+- **Daily count page** — open-count probe is cached and runs in the background so the page loads immediately.
+
+**What you need to do**
+
+- On the Pi: `git pull origin Version-0.4 && npm install && pm2 restart dashboard`
+- Hard refresh (Ctrl+F5) on MIC overview and stock count pages after deploy.
+
 ### Version 0.4.8.4.1 – June 2026
 
 **Fixed**

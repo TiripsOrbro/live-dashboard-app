@@ -38,9 +38,22 @@ async function triggerStoreSelectionReload(page) {
     await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_STORE_SETTLE_MS || 3500));
 }
 
-async function configureAndGenerateStoreReport(page, report, reportNav) {
-    await openReportSelectionPage(page, reportNav, report.navTimeoutMs || 45000);
-    await setGroupDropdown(page, report.group || 'Store Reports');
+async function configureAndGenerateStoreReport(page, report, reportNav, hooks = {}) {
+    const chain = hooks.chainSession;
+    const useChain =
+        hooks.chainReports !== false &&
+        process.env.MMX_CHAIN_REPORT_DOWNLOAD !== '0' &&
+        Boolean(chain);
+
+    if (!useChain || !chain.hubOpen) {
+        await openReportSelectionPage(page, reportNav, report.navTimeoutMs || 45000);
+        if (chain) chain.hubOpen = true;
+    }
+    const group = report.group || 'Store Reports';
+    if (!useChain || chain.lastGroup !== group) {
+        await setGroupDropdown(page, group);
+        if (chain) chain.lastGroup = group;
+    }
     await selectReportInList(page, report.reportName, { loose: true });
     await page.waitForTimeout(2000);
 
@@ -78,7 +91,10 @@ async function runStoreReport(page, report, settings) {
     };
 
     await withPageContextRetry(page, `store report ${report.id}`, async () => {
-        await configureAndGenerateStoreReport(page, cfg, reportNav);
+        await configureAndGenerateStoreReport(page, cfg, reportNav, {
+            chainSession: settings.chainSession,
+            chainReports: settings.chainReports,
+        });
     });
 }
 

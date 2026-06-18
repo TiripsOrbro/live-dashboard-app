@@ -142,10 +142,14 @@ async function scrapeOrderGridByItemCode(page) {
                 );
                 if (!input || input.disabled || input.offsetParent === null) continue;
 
+                const readBack = String(input.value || '').trim();
+                const numericQty = Number(readBack.replace(/,/g, ''));
                 rows.push({
                     itemCode,
                     itemName: itemName || itemCode,
                     inputId: input.id || '',
+                    readBack,
+                    hasQuantity: Number.isFinite(numericQty) && numericQty > 0,
                 });
             }
 
@@ -281,17 +285,27 @@ async function processOneVendorOrder(page, settings, vendor, buildToEntries) {
     await clickCreateForVendorRow(page, vendor);
     await waitForOrderItemsGrid(page);
 
-    await withPageContextRetry(page, `fill order ${vendor.id}`, async () => {
-        await clickClearQuantities(page, settings.vendorOrders.orderEntry);
+    const grid = await scrapeOrderGridByItemCode(page);
+    if (!grid.tableFound || !grid.rows.length) {
+        throw new Error('Order items grid (Item Code / Quantity columns) not found after Create');
+    }
 
-        const grid = await scrapeOrderGridByItemCode(page);
-        if (!grid.tableFound || !grid.rows.length) {
+    await withPageContextRetry(page, `fill order ${vendor.id}`, async () => {
+        const hasExistingQty = grid.rows.some((row) => row.hasQuantity);
+        if (hasExistingQty) {
+            await clickClearQuantities(page, settings.vendorOrders.orderEntry);
+        } else {
+            log.info(`${vendor.label}: order grid empty — skipping Clear Quantities`);
+        }
+
+        const gridAfterClear = hasExistingQty ? await scrapeOrderGridByItemCode(page) : grid;
+        if (!gridAfterClear.tableFound || !gridAfterClear.rows.length) {
             throw new Error('Order items grid (Item Code / Quantity columns) not found after Create');
         }
 
-        const lines = linesFromOrderGridByName(grid, buildToEntries);
+        const lines = linesFromOrderGridByName(gridAfterClear, buildToEntries);
         log.info(
-            `${vendor.label}: ${grid.rows.length} item(s) on MMX order form — filling ${lines.length} by name match`
+            `${vendor.label}: ${gridAfterClear.rows.length} item(s) on MMX order form — filling ${lines.length} by name match`
         );
         for (const line of lines) {
             log.info(`  ${line.itemName || line.itemCode} × ${line.quantity} ← ${line.matchedFrom || '?'}`);
@@ -300,7 +314,7 @@ async function processOneVendorOrder(page, settings, vendor, buildToEntries) {
             log.info(`${vendor.label}: no name-matched build-to quantities — saving cleared order`);
         }
 
-        await fillOrderLineQuantities(page, lines, grid);
+        await fillOrderLineQuantities(page, lines, gridAfterClear);
         await clickUpdateOnly(page, settings.vendorOrders.orderEntry);
     });
 }

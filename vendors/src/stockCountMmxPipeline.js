@@ -243,7 +243,6 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
             page,
             browser,
             skipReportDownload: false,
-            requireAllReports: true,
             cleanupReports: options.cleanupReports !== false,
         });
         const orders = cycle.orders;
@@ -375,27 +374,53 @@ function reportsReadyForStore(storeNumber, reportsDir) {
 
 async function ensureReportsForOrders(storeNumber, options = {}) {
     touchStockCountWork();
-    await updateCheckpoint(storeNumber, {
-        stage: 'downloading-reports',
-        stepLabel:
-            'Downloading build-to reports — Inventory Special Event, Stock On Hand, Stock On Order',
-    });
     const { REPORTS_DIR } = require('./buildToCalculator');
+    const {
+        reportIdsNeedingDownload,
+        reportsReadyForReportIds,
+        resolveStoreReports,
+    } = require('./reportReader');
     const reportsDir = options.reportsDir || REPORTS_DIR;
-    const { ready, files, validation } = reportsReadyForStore(storeNumber, reportsDir);
-    if (ready && !options.forceDownload) return;
-    if (!ready && validation?.issues?.length && !options.forceDownload) {
-        log.info(
-            `Reports need refresh for store ${storeNumber}: ${validation.issues.join('; ')}`
-        );
+    const allReportIds = ['report1', 'report2', 'report3'];
+    const targetReportIds = Array.isArray(options.onlyReportIds) && options.onlyReportIds.length
+        ? options.onlyReportIds.filter((id) => allReportIds.includes(id))
+        : allReportIds;
+    const idsToDownload = reportIdsNeedingDownload(storeNumber, targetReportIds, reportsDir, {
+        forceDownload: Boolean(options.forceDownload),
+        dateKey: options.dateKey,
+    });
+
+    if (!idsToDownload.length) {
+        log.info(`Reports already valid for store ${storeNumber} — skipping download (${targetReportIds.join(', ')})`);
+        return;
     }
 
-    const downloadOpts = { storeNumber, reportsDir: options.reportsDir };
+    const labelForIds = {
+        report1: 'Stock On Hand',
+        report2: 'Stock On Order',
+        report3: 'Inventory Special Event',
+    };
+    const downloadLabels = idsToDownload.map((id) => labelForIds[id] || id).join(', ');
+    await updateCheckpoint(storeNumber, {
+        stage: 'downloading-reports',
+        stepLabel: `Downloading build-to reports — ${downloadLabels}`,
+    });
+
+    const { ready, validation } = reportsReadyForReportIds(storeNumber, targetReportIds, reportsDir);
+    if (!ready && validation?.issues?.length && !options.forceDownload) {
+        log.info(`Reports need refresh for store ${storeNumber}: ${validation.issues.join('; ')}`);
+    }
+
+    const downloadOpts = {
+        storeNumber,
+        reportsDir: options.reportsDir,
+        onlyReportIds: idsToDownload,
+    };
     if (options.page) {
         log.info(
             options.forceDownload
-                ? `Re-downloading reports for store ${storeNumber} (current MMX session)`
-                : `Reports missing for store ${storeNumber} — downloading via current MMX session`
+                ? `Re-downloading ${idsToDownload.join(', ')} for store ${storeNumber} (current MMX session)`
+                : `Reports missing for store ${storeNumber} — downloading ${idsToDownload.join(', ')} via current MMX session`
         );
         await downloadReportsForStores({
             ...downloadOpts,
@@ -406,8 +431,8 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
     } else {
         log.info(
             options.forceDownload
-                ? `Re-downloading reports for store ${storeNumber}`
-                : `Reports missing for store ${storeNumber} — downloading in a separate browser pass`
+                ? `Re-downloading ${idsToDownload.join(', ')} for store ${storeNumber}`
+                : `Reports missing for store ${storeNumber} — downloading ${idsToDownload.join(', ')} in a separate browser pass`
         );
         let browser;
         let page;
@@ -424,13 +449,13 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         }
     }
 
-    const after = reportsReadyForStore(storeNumber, reportsDir);
+    const after = reportsReadyForReportIds(storeNumber, targetReportIds, reportsDir);
     if (!after.ready) {
-        const detail = after.validation?.issues?.length
-            ? after.validation.issues.join('; ')
+        const detail = after.issues?.length
+            ? after.issues.join('; ')
             : 'inventory-special-event, stock-on-hand, and stock-on-order required';
         throw new Error(
-            `Report download did not produce valid ISE, SOH, and SOO in ${after.files.storeDir}: ${detail}`
+            `Report download did not produce valid reports in ${after.files.storeDir}: ${detail}`
         );
     }
     const { loadPipelineConfig } = require('../../mmx/src/mmxReportDownloader');
@@ -443,16 +468,17 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
               dateOnly: false,
           })
         : '';
+    const files = resolveStoreReports(storeNumber, reportsDir);
     log.info(
-        `Reports ready for store ${storeNumber}: ISE=${path.basename(after.files.inventorySpecialEvent || '')}, SOH=${path.basename(after.files.stockOnHand || '')} (MMX start ${sohStart || '—'}), SOO=${path.basename(after.files.stockOnOrder || '')}`
+        `Reports ready for store ${storeNumber}: ISE=${path.basename(files.inventorySpecialEvent || '')}, SOH=${path.basename(files.stockOnHand || '')} (MMX start ${sohStart || '—'}), SOO=${path.basename(files.stockOnOrder || '')}`
     );
     const { writeStoreReportManifest } = require('./reportReader');
     writeStoreReportManifest(storeNumber, reportsDir, {
         storeNumber: String(storeNumber),
         sohStartDate: sohStart,
-        ise: path.basename(after.files.inventorySpecialEvent || ''),
-        soh: path.basename(after.files.stockOnHand || ''),
-        soo: path.basename(after.files.stockOnOrder || ''),
+        ise: path.basename(files.inventorySpecialEvent || ''),
+        soh: path.basename(files.stockOnHand || ''),
+        soo: path.basename(files.stockOnOrder || ''),
     });
 }
 
@@ -468,41 +494,64 @@ async function ensureReportsOnDisk(storeNumber, options = {}) {
 async function runStoreBuildToCycle(storeNumber, options = {}) {
     const {
         clearStoreReportFiles,
+        clearStoreReportFilesByReportIds,
         validateStoreReports,
         resolveStoreReports,
         describeResolvedStoreReports,
+        reportsReadyForStore,
     } = require('./reportReader');
     const { REPORTS_DIR, calculateBuildToOrders } = require('./buildToCalculator');
+    const { computeLowStockAlerts } = require('./lowStockAlerts');
     const reportsDir = options.reportsDir || REPORTS_DIR;
     const dateKey = options.dateKey || melbourneDateKey();
+    const afterCountApply = Boolean(options.afterCountApply);
+    const allReportIds = ['report1', 'report2', 'report3'];
+    const refreshReportIds = afterCountApply ? ['report1', 'report2'] : allReportIds;
+    const preReady = reportsReadyForStore(storeNumber, reportsDir);
     const skipDownload = options.requireAllReports
         ? false
-        : Boolean(options.skipReportDownload);
+        : Boolean(options.skipReportDownload) ||
+          (!afterCountApply && !options.forceReportDownload && preReady.ready);
     const cleanup = options.cleanupReports !== false;
     const page = options.page;
 
     if (!skipDownload) {
-        const { removed } = clearStoreReportFiles(storeNumber, reportsDir);
-        if (removed.length) {
-            log.info(
-                `Build-to cycle: cleared ${removed.length} old report file(s) for store ${storeNumber}`
-            );
+        if (afterCountApply) {
+            const { removed } = clearStoreReportFilesByReportIds(storeNumber, reportsDir, refreshReportIds);
+            if (removed.length) {
+                log.info(
+                    `Build-to cycle: cleared ${removed.length} SOH/SOO file(s) for store ${storeNumber} (keeping ISE if present)`
+                );
+            }
+        } else if (!preReady.ready || options.forceReportDownload) {
+            const { removed } = clearStoreReportFiles(storeNumber, reportsDir);
+            if (removed.length) {
+                log.info(
+                    `Build-to cycle: cleared ${removed.length} old report file(s) for store ${storeNumber}`
+                );
+            }
         }
     }
 
     let cycleSucceeded = false;
     try {
         if (!skipDownload) {
-            if (options.requireAllReports) {
+            if (afterCountApply) {
                 log.info(
-                    `Store ${storeNumber}: downloading all build-to reports (ISE, stock-on-hand, stock-on-order)`
+                    `Store ${storeNumber}: refreshing SOH + SOO after count apply (reusing ISE when valid)`
+                );
+            } else if (!preReady.ready) {
+                log.info(
+                    `Store ${storeNumber}: downloading build-to reports (ISE, stock-on-hand, stock-on-order)`
                 );
             }
             await ensureReportsForOrders(storeNumber, {
                 page: options.page,
                 browser: options.browser,
                 reportsDir,
-                forceDownload: true,
+                onlyReportIds: refreshReportIds,
+                forceDownload: Boolean(options.forceReportDownload),
+                dateKey,
             });
             await touchPipelineStep(
                 storeNumber,
@@ -529,6 +578,18 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
             preferReportOnHand: true,
         };
         const buildTo = await calculateBuildToOrders(storeNumber, buildToOpts);
+        const lowStockAlerts = computeLowStockAlerts(buildTo.lines || [], { storeNumber });
+        if (lowStockAlerts.length) {
+            await updateCheckpoint(storeNumber, {
+                lowStockAlerts,
+                lowStockCount: lowStockAlerts.length,
+            });
+            log.info(
+                `Store ${storeNumber}: ${lowStockAlerts.length} item(s) below stock warning threshold`
+            );
+            const { invalidateLowStockSummaryCache } = require('./lowStockAlerts');
+            invalidateLowStockSummaryCache(storeNumber);
+        }
         const onOrderLines = (buildTo.lines || []).filter((l) => Number(l.onOrderCartons) > 0);
         log.info(
             `Build-to for store ${storeNumber}: ${buildTo.lines?.length || 0} ISE line(s), ${onOrderLines.length} with on-order deducted`
@@ -567,7 +628,7 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
 
         if (options.dryRun) {
             cycleSucceeded = true;
-            return { dryRun: true, dateKey, buildTo, orderPack };
+            return { dryRun: true, dateKey, buildTo, orderPack, lowStockAlerts };
         }
         if (!page) {
             throw new Error('runStoreBuildToCycle requires an active MMX page to fill scheduled orders');
@@ -579,7 +640,7 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
         });
         const orders = await runVendorOrdersForStore(page, storeNumber, dateKey, orderPack);
         cycleSucceeded = true;
-        return { dateKey, buildTo, orderPack, orders };
+        return { dateKey, buildTo, orderPack, orders, lowStockAlerts };
     } finally {
         if (cleanup && cycleSucceeded) {
             const { removed } = clearStoreReportFiles(storeNumber, reportsDir);
@@ -603,6 +664,7 @@ async function runOrdersAfterApply(storeNumber, dateKey, mmx = {}) {
         reportsDir: mmx.reportsDir,
         noOrderRounding: mmx.noOrderRounding,
         skipReportDownload: false,
+        afterCountApply: true,
         cleanupReports: true,
     });
     return result.orders;
@@ -921,6 +983,8 @@ async function getStockCountPipelineStatus(storeNumber) {
         vendorsSent: checkpoint?.vendorSlugs || [],
         variances: [],
         redVarianceCount: 0,
+        lowStockAlerts: Array.isArray(checkpoint?.lowStockAlerts) ? checkpoint.lowStockAlerts : [],
+        lowStockCount: Number(checkpoint?.lowStockCount) || 0,
     };
 
     if (sessionId && stage === 'prepared') {
@@ -1143,6 +1207,53 @@ async function cancelStockCountSession(storeNumber, sessionId) {
     return { success: true, cancelled };
 }
 
+async function checkStockLevelsForStore(storeNumber, options = {}) {
+    const {
+        computeLowStockAlerts,
+        invalidateLowStockSummaryCache,
+        buildLowStockSummaryFromAlerts,
+        setLowStockSummaryCache,
+        defaultStockWarningDays,
+    } = require('./lowStockAlerts');
+    const { calculateBuildToOrders } = require('./buildToCalculator');
+
+    return withStoreLock(storeNumber, async () => {
+        await beginStockCountMmxWork(`check stock levels (store ${storeNumber})`, storeNumber);
+        try {
+            invalidateLowStockSummaryCache(storeNumber);
+            let browser;
+            let page;
+            try {
+                ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
+                await ensureReportsForOrders(storeNumber, {
+                    page,
+                    browser,
+                    forceDownload: true,
+                    dateKey: options.dateKey,
+                });
+            } finally {
+                await closeBrowserQuietly(browser, 'check stock levels');
+            }
+
+            const buildTo = await calculateBuildToOrders(storeNumber, {
+                dateKey: options.dateKey,
+                preferReportOnHand: true,
+            });
+            const alerts = computeLowStockAlerts(buildTo.lines || [], { storeNumber });
+            const summary = buildLowStockSummaryFromAlerts(alerts, {
+                thresholdDays: defaultStockWarningDays(),
+            });
+            setLowStockSummaryCache(storeNumber, summary, options.dateKey);
+            log.info(
+                `Stock levels checked for store ${storeNumber}: ${summary.count} shortfall(s) under ${summary.thresholdDays} days`
+            );
+            return summary;
+        } finally {
+            await endStockCountMmxWork(storeNumber, `check stock levels finished (store ${storeNumber})`);
+        }
+    });
+}
+
 /** @deprecated Use prepareStockCountForMmx + applyStockCountSession */
 async function sendStockCountToMmx(storeNumber, vendorSlug, options = {}) {
     const prepared = await prepareStockCountForMmx(storeNumber, vendorSlug, options);
@@ -1162,6 +1273,7 @@ module.exports = {
     resetStalePipelineCheckpointsOnStartup,
     runScheduledOrdersOnly,
     runStoreBuildToCycle,
+    checkStockLevelsForStore,
     ensureReportsForOrders,
     shouldRunOrderPipeline,
     vendorEntriesNeedKeyItemCount,

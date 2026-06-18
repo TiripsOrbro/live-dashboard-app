@@ -65,6 +65,10 @@
                         Store
                         <select id="admin-buildto-store"></select>
                     </label>
+                    <label id="admin-buildto-global-warn-wrap" hidden>
+                        Default warn days
+                        <input type="number" min="1" max="31" id="admin-buildto-global-warn" />
+                    </label>
                     <input type="search" id="admin-buildto-search" placeholder="Search items…" />
                     <button type="button" class="mic-settings-btn" id="admin-buildto-save">Save changes</button>
                 </div>
@@ -107,6 +111,7 @@
             tab.classList.toggle('is-active', tab.dataset.tab === activeTab);
         });
         root.querySelector('#admin-buildto-store-wrap').hidden = activeTab === 'global';
+        root.querySelector('#admin-buildto-global-warn-wrap').hidden = activeTab !== 'global';
     }
 
     async function fetchProfile() {
@@ -137,6 +142,11 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) throw new Error(data.error || 'Could not load build-to catalog.');
         catalogCache = data;
+        const warnInput = root.querySelector('#admin-buildto-global-warn');
+        if (warnInput) {
+            warnInput.value =
+                data.settings?.stockWarningDays != null ? String(data.settings.stockWarningDays) : '5';
+        }
         renderRows();
     }
 
@@ -177,6 +187,7 @@
                         <th>Days</th>
                         <th>+Buffer</th>
                         <th>Fixed</th>
+                        <th>Warn</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -194,6 +205,7 @@
                             data-global-skip-key-override="${item.globalSkipKeyItemCountOverride != null ? '1' : '0'}"
                             data-store-include-daily-override="${item.storeIncludeDailyOverride != null ? '1' : '0'}"
                             data-global-include-daily-override="${item.globalIncludeDailyOverride != null ? '1' : '0'}"
+                            data-initial-stock-warning="${item.stockWarningDays != null ? escapeHtml(item.stockWarningDays) : ''}"
                             data-initial-rule-type="${escapeHtml(ruleType)}">
                             <td>${escapeHtml(item.name)}<span class="admin-accounts-meta">${escapeHtml(item.itemCode)}</span></td>
                             <td>${escapeHtml(item.vendorLabel || item.vendorSlug)}</td>
@@ -209,6 +221,7 @@
                             <td data-buildto-group="days"><input type="number" min="0" max="31" data-field="buildToDays" value="${item.buildToDays != null ? escapeHtml(item.buildToDays) : ''}" /></td>
                             <td data-buildto-group="days"><input type="number" min="0" max="99" data-field="buildToAdd" value="${escapeHtml(item.buildToAdd || 0)}" /></td>
                             <td data-buildto-group="fixed"><input type="number" min="0" max="999" data-field="buildToFixed" value="${fixedValue !== '' ? escapeHtml(fixedValue) : ''}" /></td>
+                            <td><input type="number" min="1" max="31" data-field="stockWarningDays" placeholder="${escapeHtml(item.defaultStockWarningDays ?? 5)}" value="${item.stockWarningDays != null ? escapeHtml(item.stockWarningDays) : ''}" title="Low stock warning threshold (days)" /></td>
                         </tr>`;
                         })
                         .join('')}
@@ -229,6 +242,8 @@
             const fixed = row.querySelector('[data-field="buildToFixed"]')?.value;
             const needsCount = Boolean(row.querySelector('[data-field="needsCount"]')?.checked);
             const includeDaily = Boolean(row.querySelector('[data-field="includeDaily"]')?.checked);
+            const warnDays = row.querySelector('[data-field="stockWarningDays"]')?.value;
+            const initialWarn = row.dataset.initialStockWarning || '';
             const catalogNeedsCount = row.dataset.catalogNeedsCount === '1';
             const catalogIncludeDaily = row.dataset.catalogIncludeDaily === '1';
             const hadSkipOverride =
@@ -288,6 +303,12 @@
                 rule.includeDaily = null;
             }
 
+            if (warnDays !== '') {
+                if (String(warnDays) !== initialWarn) rule.stockWarningDays = Number(warnDays);
+            } else if (initialWarn !== '') {
+                rule.stockWarningDays = null;
+            }
+
             if (Object.keys(rule).length) patch[code] = rule;
         });
         return patch;
@@ -299,7 +320,12 @@
         const patch = collectPatch();
         const body =
             activeTab === 'global'
-                ? { global: patch }
+                ? {
+                      global: patch,
+                      settings: {
+                          stockWarningDays: Number(root.querySelector('#admin-buildto-global-warn')?.value || 5),
+                      },
+                  }
                 : { stores: { [root.querySelector('#admin-buildto-store').value]: patch } };
         const res = await fetch('/api/admin/build-to/overrides', {
             method: 'PUT',

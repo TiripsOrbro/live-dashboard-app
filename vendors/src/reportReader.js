@@ -409,6 +409,18 @@ function writeStoreReportManifest(storeNumber, reportsRoot, meta = {}) {
     return manifest;
 }
 
+const REPORT_OUTPUT_BASENAMES = {
+    report1: 'stock-on-hand',
+    report2: 'stock-on-order',
+    report3: 'inventory-special-event',
+};
+
+const REPORT_FILE_KEYS = {
+    report1: 'stockOnHand',
+    report2: 'stockOnOrder',
+    report3: 'inventorySpecialEvent',
+};
+
 /** Remove all files under Reports/{storeNumber}/ so the next download is the only source. */
 function clearStoreReportFiles(storeNumber, reportsRoot) {
     const storeDir = path.join(reportsRoot, String(storeNumber));
@@ -425,6 +437,115 @@ function clearStoreReportFiles(storeNumber, reportsRoot) {
     }
     removed.sort();
     return { storeDir, removed };
+}
+
+/** Remove only report files matching output basenames (e.g. stock-on-hand, stock-on-order). */
+function clearStoreReportFilesByBasenames(storeNumber, reportsRoot, basenames) {
+    const want = new Set((basenames || []).map((b) => String(b).trim()).filter(Boolean));
+    const storeDir = path.join(reportsRoot, String(storeNumber));
+    if (!want.size || !fs.existsSync(storeDir)) {
+        return { storeDir, removed: [] };
+    }
+    const removed = [];
+    for (const name of fs.readdirSync(storeDir)) {
+        const filePath = path.join(storeDir, name);
+        if (!fs.statSync(filePath).isFile()) continue;
+        const base = path.basename(name);
+        const matched = [...want].some((slug) => base.includes(`-${slug}.`) || base.includes(`-${slug}-`));
+        if (!matched) continue;
+        fs.unlinkSync(filePath);
+        removed.push(name);
+    }
+    removed.sort();
+    return { storeDir, removed };
+}
+
+function clearStoreReportFilesByReportIds(storeNumber, reportsRoot, reportIds) {
+    const basenames = (reportIds || [])
+        .map((id) => REPORT_OUTPUT_BASENAMES[id])
+        .filter(Boolean);
+    return clearStoreReportFilesByBasenames(storeNumber, reportsRoot, basenames);
+}
+
+function validateReportId(storeNumber, files, reportId, options = {}) {
+    const issues = [];
+    const { melbourneDateKey } = require('./stockCountState');
+    const today = options.dateKey || melbourneDateKey();
+    const minOnHandRows = Number(options.minOnHandRows) || 10;
+    const minOnOrderRows = Number(options.minOnOrderRows) || 3;
+    const fileKey = REPORT_FILE_KEYS[reportId];
+    if (!fileKey) return [`unknown report id ${reportId}`];
+
+    if (reportId === 'report3') {
+        const file = files?.inventorySpecialEvent;
+        if (!file) issues.push('missing inventory-special-event');
+        else if (!isRealMmxReportFilename(file)) {
+            issues.push(`ISE is not a Macromatix export (${path.basename(file)})`);
+        } else {
+            const iseDay = reportDateKeyFromFilename(file);
+            if (iseDay && iseDay !== today) issues.push(`ISE is from ${iseDay} (today ${today})`);
+        }
+        return issues;
+    }
+
+    if (reportId === 'report1') {
+        const file = files?.stockOnHand;
+        if (!file) issues.push('missing stock-on-hand');
+        else if (!isRealMmxReportFilename(file)) {
+            issues.push(`SOH is not a Macromatix export (${path.basename(file)})`);
+        } else {
+            const sohDay = reportDateKeyFromFilename(file);
+            if (sohDay && sohDay !== today) issues.push(`SOH is from ${sohDay} (today ${today})`);
+            try {
+                const rows = parseStockOnHand(file, storeNumber);
+                if (rows.size < minOnHandRows) {
+                    issues.push(`SOH only ${rows.size} item row(s) for store ${storeNumber}`);
+                }
+            } catch (err) {
+                issues.push(`SOH unreadable: ${err.message}`);
+            }
+        }
+        return issues;
+    }
+
+    if (reportId === 'report2') {
+        const file = files?.stockOnOrder;
+        if (!file) issues.push('missing stock-on-order');
+        else if (!isRealMmxReportFilename(file)) {
+            issues.push(`SOO is not a Macromatix export (${path.basename(file)})`);
+        } else {
+            const sooDay = reportDateKeyFromFilename(file);
+            if (sooDay && sooDay !== today) issues.push(`SOO is from ${sooDay} (today ${today})`);
+            try {
+                const rows = parseStockOnOrder(file, storeNumber);
+                if (rows.size < minOnOrderRows) {
+                    issues.push(`SOO only ${rows.size} item row(s) for store ${storeNumber}`);
+                }
+            } catch (err) {
+                issues.push(`SOO unreadable: ${err.message}`);
+            }
+        }
+        return issues;
+    }
+
+    return issues;
+}
+
+function reportsReadyForReportIds(storeNumber, reportIds, reportsRoot, options = {}) {
+    const files = resolveStoreReports(storeNumber, reportsRoot);
+    const issues = [];
+    for (const reportId of reportIds || []) {
+        issues.push(...validateReportId(storeNumber, files, reportId, options));
+    }
+    return { ready: issues.length === 0, files, issues };
+}
+
+function reportIdsNeedingDownload(storeNumber, reportIds, reportsDir, options = {}) {
+    const ids = (reportIds || []).filter(Boolean);
+    if (!ids.length) return [];
+    if (options.forceDownload) return ids;
+    const { files } = resolveStoreReports(storeNumber, reportsDir);
+    return ids.filter((reportId) => validateReportId(storeNumber, files, reportId, options).length > 0);
 }
 
 function onHandToCartons(onHandRow, iseUnit, isePackSize, itemCode) {
@@ -719,8 +840,15 @@ module.exports = {
     reportTimestampFromFilename,
     describeResolvedStoreReports,
     validateStoreReports,
+    validateReportId,
+    reportsReadyForReportIds,
+    reportIdsNeedingDownload,
     resolveStoreReports,
     clearStoreReportFiles,
+    clearStoreReportFilesByBasenames,
+    clearStoreReportFilesByReportIds,
+    REPORT_OUTPUT_BASENAMES,
+    REPORT_FILE_KEYS,
     writeStoreReportManifest,
     onHandToCartons,
     onOrderToCartons,

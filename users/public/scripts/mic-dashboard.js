@@ -11,6 +11,7 @@ let micData = null;
 let pickerOpen = false;
 let pickerEscHandler = null;
 let micCanViewAdminAuditSummary = false;
+let stockLevelsChecking = false;
 
 const VOC_PLACEHOLDER = { count: 30, osatPercent: 83, accuracyPercent: 90 };
 const SMG_REPORTING_URL = 'https://reporting.smg.com/Index.aspx';
@@ -671,24 +672,87 @@ function renderWeeklyAuditTiles(data, { tabbed = false, rowNum = 2 } = {}) {
 function renderOrdersToPlaceTile(data, { tabbed = false, inRow = false } = {}) {
     const sc = data?.stockCount || {};
     const active = Boolean(sc.active);
-    const sub = active ? ordersStoreDetail(sc) : 'All orders are placed for today';
+    const ordersSub = active ? ordersStoreDetail(sc) : 'All orders are placed for today';
+    const stockSub =
+        sc.stockLevelsSub ||
+        (Number(sc.lowStockCount) > 0
+            ? `${sc.lowStockCount} item${sc.lowStockCount === 1 ? '' : 's'} under stock warning`
+            : sc.stockLevelsChecked
+              ? 'No stock shortfalls'
+              : 'Stock levels not checked today');
+    const checkLabel = sc.stockLevelsCheckLabel || 'Check stock levels';
     const href = active ? sc.href || window.AppPaths?.micStore?.(STORE_NUMBER) || `/MIC/${STORE_NUMBER}` : '';
     const posClass = tabbed || inRow ? '' : ' mic-tile--pos-orders';
-    const body = `
-            <div class="mic-tile-body">
+    const checking = stockLevelsChecking;
+    const stockButton = `
+        <button
+            type="button"
+            class="mic-tile-stock-check"
+            id="mic-check-stock-levels"
+            ${checking ? 'disabled aria-busy="true"' : ''}
+        >${escapeHtml(checking ? 'Checking…' : checkLabel)}</button>`;
+    const ordersBlock = `
+            <div class="mic-tile-body mic-tile-body--orders">
                 <div class="mic-tile-label">Orders to place</div>
-                <div class="mic-tile-sub">${escapeHtml(sub)}</div>
+                <div class="mic-tile-sub">${escapeHtml(ordersSub)}</div>
             </div>`;
+    const stockBlock = `
+            <div class="mic-tile-body mic-tile-body--stock-levels">
+                <div class="mic-tile-label">Stock shortfalls</div>
+                <div class="mic-tile-sub">${escapeHtml(stockSub)}</div>
+                ${stockButton}
+            </div>`;
+
     if (href) {
         return `
-        <a
-            class="mic-tile mic-tile--link mic-tile--orders-to-place${posClass}"
-            href="${escapeHtml(href)}"
-            aria-label="${escapeHtml(`Orders to place — ${sub}`)}"
-        >${body}
-        </a>`;
+        <article class="mic-tile mic-tile--orders-to-place mic-tile--orders-split${posClass}">
+            <a
+                class="mic-tile-orders-link"
+                href="${escapeHtml(href)}"
+                aria-label="${escapeHtml(`Orders to place — ${ordersSub}`)}"
+            >${ordersBlock}</a>
+            ${stockBlock}
+        </article>`;
     }
-    return `<article class="mic-tile mic-tile--orders-to-place${posClass}">${body}</article>`;
+
+    return `
+        <article class="mic-tile mic-tile--orders-to-place mic-tile--orders-split${posClass}">
+            ${ordersBlock}
+            ${stockBlock}
+        </article>`;
+}
+
+async function runStockLevelsCheck() {
+    if (stockLevelsChecking || !STORE_NUMBER) return;
+    stockLevelsChecking = true;
+    if (micData) renderTiles(micData);
+    try {
+        const res = await fetch(
+            `/api/stock-count/check-stock-levels?store=${encodeURIComponent(STORE_NUMBER)}`,
+            {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json' },
+            }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || `Check failed (${res.status})`);
+        }
+    } catch (error) {
+        window.alert(error.message || 'Could not check stock levels.');
+    } finally {
+        stockLevelsChecking = false;
+        await loadMicData();
+    }
+}
+
+function bindStockLevelsCheck() {
+    document.getElementById('mic-check-stock-levels')?.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void runStockLevelsCheck();
+    });
 }
 
 function renderDailyCountTile(data, { tabbed = false, inRow = false } = {}) {
@@ -819,6 +883,8 @@ function renderTiles(data) {
         grid.style.removeProperty('--mic-content-rows');
     }
     grid.innerHTML = mobile ? renderMobileTabbedTiles(data) : renderDesktopTiles(data);
+
+    bindStockLevelsCheck();
 
     if (mobile) {
         applyMicOverviewTab(activeMicTab);

@@ -99,6 +99,7 @@ const {
     applyStockCountSession,
     cancelStockCountSession,
     runScheduledOrdersOnly,
+    checkStockLevelsForStore,
     getStockCountSendPlan,
     getStockCountPipelineStatus,
     isStockCountPipelineBusy,
@@ -107,6 +108,7 @@ const {
 } = require('./services/stockCountMmxPipeline');
 const { buildDailyStockCountCatalog } = require('./services/dailyStockCountCatalog');
 const { buildDailyStockCountTileStateAsync } = require('./services/dailyStockCountTileState');
+const { buildStockCountTileStateAsync } = require('./services/stockCountTileState');
 const {
     getDraft: getDailyCountDraft,
     saveDraftLocation: saveDailyCountDraftLocation,
@@ -3418,6 +3420,13 @@ app.put('/api/admin/build-to/overrides', (req, res) => {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const patch = { stores: {} };
 
+    if (body.settings && canUserEditGlobalBuildTo(user)) {
+        patch.settings = body.settings;
+    } else if (body.settings && !canUserEditGlobalBuildTo(user)) {
+        res.status(403).json({ success: false, error: 'Area access or above is required for global build-to settings.' });
+        return;
+    }
+
     if (body.global && canUserEditGlobalBuildTo(user)) {
         patch.global = body.global;
     } else if (body.global && !canUserEditGlobalBuildTo(user)) {
@@ -4151,6 +4160,42 @@ app.post('/api/stock-count/fill-orders', async (req, res) => {
     }
 });
 
+app.post('/api/stock-count/check-stock-levels', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+
+        if (isStockCountPipelineBusy((await getStockCountPipelineStatus(store))?.stage)) {
+            res.status(409).json({
+                success: false,
+                error: 'Stock count pipeline is running — try again when it finishes.',
+            });
+            return;
+        }
+
+        console.log(`[StockCount] Check stock levels — store ${store}`);
+        const summary = await checkStockLevelsForStore(
+            store,
+            mmxAutomationOptions(req, store, {})
+        );
+        res.json({
+            success: true,
+            storeNumber: String(store),
+            lowStockCount: summary.count,
+            lowStockItems: summary.items || [],
+            stockLevelsSub: summary.count
+                ? `${summary.count} item${summary.count === 1 ? '' : 's'} under ${summary.thresholdDays} days stock`
+                : `No stock shortfalls (under ${summary.thresholdDays} days)`,
+            stockLevelsChecked: true,
+            stockLevelsCheckedAt: summary.checkedAt,
+            thresholdDays: summary.thresholdDays,
+        });
+    } catch (error) {
+        console.error('API: Error checking stock levels:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.post('/api/stock-count/send-to-mmx/recount', async (req, res) => {
     try {
         const store = stockCountStoreFromQuery(req);
@@ -4511,6 +4556,7 @@ async function handleOverviewApi(req, res) {
                 store,
                 storeSlice,
                 buildDailyStockCountTileStateAsync,
+                buildStockCountTileStateAsync,
                 getAuditState,
                 isTestStore,
                 getAuditSchedule,

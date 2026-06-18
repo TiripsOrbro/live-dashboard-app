@@ -1558,16 +1558,34 @@ function dateOpts(report) {
 
 async function configureAndGenerateReport(page, report, reportNav, hooks = {}) {
     const reportLabel = report.label || report.reportName || report.id || 'report';
+    const chain = hooks.chainSession;
+    const useChain =
+        hooks.chainReports !== false &&
+        process.env.MMX_CHAIN_REPORT_DOWNLOAD !== '0' &&
+        Boolean(chain);
     const emit = async (detail) => {
         if (typeof hooks.onStep === 'function') {
             await hooks.onStep(`${reportLabel}: ${detail}`);
         }
     };
 
-    await emit('opening Report Selection…');
-    await openReportSelectionPage(page, reportNav, report.navTimeoutMs || 45000);
-    await emit(`choosing ${report.group || 'Supply Chain'} group…`);
-    await setGroupDropdown(page, report.group || 'Supply Chain');
+    if (!useChain || !chain.hubOpen) {
+        await emit('opening Report Selection…');
+        await openReportSelectionPage(page, reportNav, report.navTimeoutMs || 45000);
+        if (chain) chain.hubOpen = true;
+    } else {
+        await emit('reusing Report Selection…');
+    }
+
+    const group = report.group || 'Supply Chain';
+    if (!useChain || chain.lastGroup !== group) {
+        await emit(`choosing ${group} group…`);
+        await setGroupDropdown(page, group);
+        if (chain) chain.lastGroup = group;
+    } else {
+        await emit(`keeping ${group} group…`);
+    }
+
     await emit(`selecting ${report.reportName}…`);
     await selectReportInList(page, report.reportName);
 
@@ -1575,17 +1593,33 @@ async function configureAndGenerateReport(page, report, reportNav, hooks = {}) {
     const formatText = report.format || 'Excel Data Only';
     const hasEndDate = Boolean(report.endDate);
 
-    // Format before dates — SOH/SOO date inputs are often hidden until format is chosen (especially on Pi/Chromium).
-    await emit('choosing export format…');
-    await setReportFormat(page, formatText);
+    if (!useChain || chain.lastFormat !== formatText) {
+        await emit('choosing export format…');
+        await setReportFormat(page, formatText);
+        if (chain) chain.lastFormat = formatText;
+    } else {
+        await emit('keeping export format…');
+    }
 
-    await emit(`setting start date (${startDate})…`);
-    await setStartDate(page, startDate);
+    if (!useChain || chain.lastStartDate !== startDate) {
+        await emit(`setting start date (${startDate})…`);
+        await setStartDate(page, startDate);
+        if (chain) chain.lastStartDate = startDate;
+    } else {
+        await emit(`keeping start date (${startDate})…`);
+    }
 
     if (hasEndDate) {
         const endDate = resolveReportDate(report.endDate, dateOpts(report));
-        await emit(`setting end date (${endDate})…`);
-        await setEndDate(page, endDate);
+        if (!useChain || chain.lastEndDate !== endDate) {
+            await emit(`setting end date (${endDate})…`);
+            await setEndDate(page, endDate);
+            if (chain) chain.lastEndDate = endDate;
+        } else {
+            await emit(`keeping end date (${endDate})…`);
+        }
+    } else if (chain) {
+        chain.lastEndDate = null;
     }
 
     if (report.scmTreeStoreNumber) {
@@ -1620,6 +1654,8 @@ async function runSupplyChainReport(page, report, settings) {
     await withPageContextRetry(page, `supply chain ${report.id}`, async () => {
         await configureAndGenerateReport(page, cfg, reportNav, {
             onStep: settings.onReportStep,
+            chainSession: settings.chainSession,
+            chainReports: settings.chainReports,
         });
     });
 }

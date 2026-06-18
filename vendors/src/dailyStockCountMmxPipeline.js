@@ -32,6 +32,23 @@ const log = {
 };
 
 const runLockByStore = new Map();
+const PROBE_CACHE_MS = Number(process.env.DAILY_COUNT_PROBE_CACHE_MS || 8 * 60 * 1000);
+const probeCacheByStore = new Map();
+
+function invalidateDailyCountProbeCache(storeNumber) {
+    probeCacheByStore.delete(String(storeNumber || '').trim());
+}
+
+function readCachedProbe(storeNumber) {
+    const key = String(storeNumber || '').trim();
+    const entry = probeCacheByStore.get(key);
+    if (!entry || Date.now() - entry.at > PROBE_CACHE_MS) return null;
+    return entry.result;
+}
+
+function writeCachedProbe(storeNumber, result) {
+    probeCacheByStore.set(String(storeNumber || '').trim(), { at: Date.now(), result });
+}
 
 const PIPELINE_IN_PROGRESS_STAGES = new Set(['checking-existing', 'preparing', 'prepared', 'applying']);
 const PIPELINE_ACTIVE_WORK_STAGES = new Set(['checking-existing', 'preparing', 'applying']);
@@ -80,6 +97,14 @@ function touchPipelineStep(storeNumber, stepLabel) {
 }
 
 async function probeOpenCounts(storeNumber, options = {}) {
+    if (!options.forceRefresh) {
+        const cached = readCachedProbe(storeNumber);
+        if (cached) {
+            log.info(`Using cached open-count probe for store ${storeNumber}`);
+            return cached;
+        }
+    }
+
     let browser;
     let page;
     await beginDailyCountMmxWork(`daily count status probe (store ${storeNumber})`, storeNumber);
@@ -90,12 +115,15 @@ async function probeOpenCounts(storeNumber, options = {}) {
         await page.waitForTimeout(1500);
         await selectStoreInMacromatix(page, storeNumber);
         const openCounts = await listOpenCounts(page, cfg);
-        return {
+        const result = {
             success: true,
             storeNumber: String(storeNumber),
             openCounts,
             hasOpenCount: openCounts.length > 0,
+            cached: false,
         };
+        writeCachedProbe(storeNumber, { ...result, cached: true });
+        return result;
     } finally {
         await closeBrowserQuietly(browser, 'daily count probe');
         await endDailyCountMmxWork(storeNumber, `daily count probe finished (store ${storeNumber})`);
@@ -117,6 +145,7 @@ async function buildVendorEntry(storeNumber, dateKey) {
 }
 
 async function prepareDailyCountForMmx(storeNumber, options = {}) {
+    invalidateDailyCountProbeCache(storeNumber);
     return withStoreLock(storeNumber, async () => {
         const dateKey = options.dateKey || melbourneDateKey();
         const draft = await getDraft(storeNumber, dateKey);
@@ -306,6 +335,7 @@ async function getDailyCountPipelineStatus(storeNumber) {
 
 module.exports = {
     probeOpenCounts,
+    invalidateDailyCountProbeCache,
     prepareDailyCountForMmx,
     applyDailyCountSessionWork,
     cancelDailyCountSession,

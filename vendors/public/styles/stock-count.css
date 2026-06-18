@@ -100,6 +100,40 @@ body.stock-count-page {
     background: color-mix(in srgb, var(--good, #43a047) 12%, var(--blank, #fff));
 }
 
+.stock-count-status--warning {
+    border-color: #e65100;
+    background: color-mix(in srgb, #fb8c00 14%, var(--blank, #fff));
+}
+
+.stock-count-low-stock {
+    margin-bottom: 16px;
+}
+
+.stock-count-low-stock-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.stock-count-low-stock-note {
+    margin: 8px 0 0;
+    font-size: 0.92rem;
+    opacity: 0.85;
+}
+
+.stock-count-low-stock-table {
+    margin-top: 12px;
+    width: 100%;
+}
+
+.stock-count-btn--compact {
+    min-height: 32px;
+    padding: 4px 10px;
+    font-size: 0.85rem;
+}
+
 .stock-count-locations {
     display: flex;
     flex-wrap: nowrap;

@@ -36,6 +36,8 @@ let mmxPipelineManualOnly = false;
 let mmxActivityLog = [];
 let mmxLastKnownServerInProgress = false;
 let mmxPollInFlight = null;
+let lowStockAlerts = [];
+let lowStockPanelOpen = false;
 
 const MMX_UI_WATCH_KEY = 'stockCountMmxUiWatch';
 const MMX_UI_WATCH_MAX_MS = 15 * 60 * 1000;
@@ -1178,6 +1180,14 @@ function isRecoverableMmxError(message) {
     );
 }
 
+function pipelineSuccessPayload(status) {
+    return {
+        orderFailures: status?.lastError || null,
+        lowStockAlerts: Array.isArray(status?.lowStockAlerts) ? status.lowStockAlerts : [],
+        lowStockCount: Number(status?.lowStockCount) || 0,
+    };
+}
+
 function finishMmxOrdersSuccess(data) {
     clearMmxUiWatch();
     mmxLastKnownServerInProgress = false;
@@ -1188,6 +1198,7 @@ function finishMmxOrdersSuccess(data) {
         partial: Boolean(data?.orderFailures),
         orderFailures: data?.orderFailures || null,
     };
+    lowStockAlerts = Array.isArray(data?.lowStockAlerts) ? data.lowStockAlerts : [];
     processing = true;
     processingStageLabel = data?.orderFailures
         ? 'Finished — some scheduled orders need review in MMX'
@@ -1197,6 +1208,9 @@ function finishMmxOrdersSuccess(data) {
     window.StockCountNotify?.notifyOrdersReady?.(STORE_NUMBER, VENDOR_SLUG, {
         partial: Boolean(data?.orderFailures),
     });
+    if (lowStockAlerts.length) {
+        window.StockCountNotify?.notifyLowStock?.(STORE_NUMBER, lowStockAlerts);
+    }
     setStatus('', '');
     render();
 }
@@ -1206,6 +1220,11 @@ function dismissMmxProcessingSuccess() {
         setStatus(
             `Some scheduled orders could not be filled: ${mmxProcessingSuccess.orderFailures}`,
             'error'
+        );
+    } else if (lowStockAlerts.length) {
+        setStatus(
+            `${lowStockAlerts.length} item${lowStockAlerts.length === 1 ? '' : 's'} below stock warning threshold — review below.`,
+            'warning'
         );
     } else {
         setStatus('Counts sent — scheduled orders updated in Macromatix.', 'success');
@@ -1439,7 +1458,7 @@ async function pollStockCountPipelineUntilDone() {
         }
 
         if (pipelineOrdersActuallyComplete(status)) {
-            finishMmxOrdersSuccess({ orderFailures: status.lastError || null });
+            finishMmxOrdersSuccess(pipelineSuccessPayload(status));
             return { autoApplied: true };
         }
 
@@ -1478,7 +1497,7 @@ async function pollStockCountPipelineUntilDone() {
                 continue;
             }
             if (verify.ok && pipelineOrdersActuallyComplete(verify.status)) {
-                finishMmxOrdersSuccess({ orderFailures: verify.status.lastError || null });
+                finishMmxOrdersSuccess(pipelineSuccessPayload(verify.status));
                 return { autoApplied: true };
             }
             break;
@@ -1487,7 +1506,7 @@ async function pollStockCountPipelineUntilDone() {
 
     const final = await fetchPipelineStatusOrNull();
     if (final.ok && pipelineOrdersActuallyComplete(final.status)) {
-        finishMmxOrdersSuccess({ orderFailures: final.status.lastError || null });
+        finishMmxOrdersSuccess(pipelineSuccessPayload(final.status));
         return { autoApplied: true };
     }
     if (final.ok && pipelineNeedsVarianceReview(final.status)) {
@@ -1583,7 +1602,7 @@ async function refreshMmxPipelineUi() {
     const status = result.status;
 
     if (pipelineOrdersActuallyComplete(status)) {
-        finishMmxOrdersSuccess({ orderFailures: status.lastError || null });
+                finishMmxOrdersSuccess(pipelineSuccessPayload(status));
         return;
     }
 
@@ -1638,7 +1657,7 @@ async function tryResumePipelineOnLoad() {
     }
 
     if (status && pipelineOrdersActuallyComplete(status)) {
-        finishMmxOrdersSuccess({ orderFailures: status.lastError || null });
+                finishMmxOrdersSuccess(pipelineSuccessPayload(status));
         return true;
     }
 
@@ -1892,7 +1911,11 @@ async function applyMmxCount() {
                 return;
             }
         }
-        finishMmxOrdersSuccess({ orderFailures: data.orderFailures || null });
+        finishMmxOrdersSuccess({
+            orderFailures: data.orderFailures || null,
+            lowStockAlerts: data.lowStockAlerts || [],
+            lowStockCount: data.lowStockCount || 0,
+        });
         saving = false;
         return;
     } catch (error) {
@@ -2481,11 +2504,44 @@ function buildView() {
     `;
 }
 
+function buildLowStockWarningHtml() {
+    if (!lowStockAlerts.length) return '';
+    const rows = lowStockAlerts
+        .map(
+            (item) => `
+        <tr>
+            <td>${escapeHtml(item.description || item.itemCode || '')}</td>
+            <td>${escapeHtml(String(item.onHandCartons ?? '—'))}</td>
+            <td>${escapeHtml(String(item.onOrderCartons ?? '—'))}</td>
+            <td>${escapeHtml(String(item.daysOfStock ?? '—'))}</td>
+        </tr>`
+        )
+        .join('');
+    const toggleLabel = lowStockPanelOpen ? 'Hide items' : 'Show items';
+    return `
+        <div class="stock-count-status stock-count-status--warning stock-count-low-stock" role="status">
+            <div class="stock-count-low-stock-head">
+                <strong>${lowStockAlerts.length} item${lowStockAlerts.length === 1 ? '' : 's'} under stock warning</strong>
+                <button type="button" class="stock-count-btn stock-count-btn--secondary stock-count-btn--compact" id="sc-low-stock-toggle">${escapeHtml(toggleLabel)}</button>
+            </div>
+            <p class="stock-count-low-stock-note">On hand + on order is below the configured warning threshold (days of stock).</p>
+            ${
+                lowStockPanelOpen
+                    ? `<table class="stock-count-table stock-count-low-stock-table">
+                <thead><tr><th>Item</th><th>On hand</th><th>On order</th><th>Days left</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`
+                    : ''
+            }
+        </div>`;
+}
+
 function render() {
     if (!catalog) return;
     const statusHtml = statusMessage
         ? `<div class="stock-count-status${statusKind ? ` stock-count-status--${statusKind}` : ''}" role="status">${escapeHtml(statusMessage)}</div>`
         : '';
+    const lowStockHtml = buildLowStockWarningHtml();
 
     app.innerHTML = `
         <div class="stock-count">
@@ -2497,6 +2553,7 @@ function render() {
                 </div>
             </header>
             ${statusHtml}
+            ${lowStockHtml}
             ${viewMode === 'variances' ? buildVarianceView() : buildView()}
         </div>
         ${buildMmxProcessingOverlay()}
@@ -2525,6 +2582,11 @@ function render() {
 }
 
 function bindEvents() {
+    app.querySelector('#sc-low-stock-toggle')?.addEventListener('click', () => {
+        lowStockPanelOpen = !lowStockPanelOpen;
+        render();
+    });
+
     app.querySelectorAll('[data-loc-index]').forEach((btn) => {
         btn.addEventListener('click', async () => {
             const idx = Number(btn.getAttribute('data-loc-index'));

@@ -44,6 +44,10 @@
 }
 
 .admin-modal--build-to {
+    --admin-buildto-pad-left: 2.25rem;
+    --admin-buildto-pad-right: 1.5rem;
+    --admin-buildto-radius: 0;
+    --admin-buildto-control-radius: 0;
     padding-left: 0;
     padding-right: 0;
     padding-top: 0;
@@ -51,11 +55,16 @@
     display: flex;
     flex-direction: column;
     max-height: min(90vh, 820px);
-    border-radius: 0 12px 12px 0;
+    border-radius: var(--admin-buildto-radius);
+}
+
+html.mic-rounded-corners .admin-modal--build-to {
+    --admin-buildto-radius: 12px;
+    --admin-buildto-control-radius: 8px;
 }
 
 .admin-buildto-header {
-    padding: 1.35rem 1.5rem 0.25rem;
+    padding: 1.35rem var(--admin-buildto-pad-right) 0.25rem var(--admin-buildto-pad-left);
     background: linear-gradient(135deg, rgba(122, 62, 177, 0.08) 0%, rgba(122, 62, 177, 0.02) 100%);
     border-bottom: 1px solid rgba(122, 62, 177, 0.12);
 }
@@ -81,8 +90,8 @@
 .admin-modal--build-to > .admin-modal-error,
 .admin-modal--build-to > .admin-modal-actions,
 .admin-modal--build-to > .admin-buildto-actions {
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
+    padding-left: var(--admin-buildto-pad-left);
+    padding-right: var(--admin-buildto-pad-right);
 }
 
 .admin-buildto-toolbar {
@@ -108,7 +117,7 @@
     min-width: 14rem;
     padding: 0.5rem 0.65rem;
     border: 1px solid rgba(0, 0, 0, 0.14);
-    border-radius: 8px;
+    border-radius: var(--admin-buildto-control-radius);
     background: #fff;
     font: inherit;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -129,7 +138,7 @@
     width: 100%;
     padding: 0.55rem 0.75rem 0.55rem 2.1rem;
     border: 1px solid rgba(0, 0, 0, 0.14);
-    border-radius: 8px;
+    border-radius: var(--admin-buildto-control-radius);
     background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E") 0.65rem center no-repeat;
     font: inherit;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -144,8 +153,12 @@
 .admin-buildto-save {
     flex-shrink: 0;
     padding: 0.55rem 1.25rem;
-    border-radius: 8px;
+    border-radius: var(--admin-buildto-control-radius);
     font-weight: 600;
+}
+
+.admin-modal--build-to .mic-settings-btn {
+    border-radius: var(--admin-buildto-control-radius);
 }
 
 .admin-buildto-table-wrap {
@@ -186,6 +199,11 @@
     padding: 0.65rem 0.5rem;
     border-bottom: 2px solid rgba(122, 62, 177, 0.15);
     white-space: nowrap;
+}
+
+.admin-buildto-table thead th:first-child,
+.admin-buildto-table .admin-buildto-item-cell {
+    padding-left: 1rem;
 }
 
 .admin-buildto-table tbody tr {
@@ -229,7 +247,7 @@
     width: 3.5rem;
     padding: 0.35rem 0.4rem;
     border: 1px solid rgba(0, 0, 0, 0.14);
-    border-radius: 6px;
+    border-radius: var(--admin-buildto-control-radius);
     background: #fff;
     font: inherit;
     font-size: 0.85rem;
@@ -293,7 +311,7 @@
 .admin-buildto-close-btn {
     padding: 0.45rem 1rem;
     border: 1px solid rgba(0, 0, 0, 0.14);
-    border-radius: 8px;
+    border-radius: var(--admin-buildto-control-radius);
     background: #fff;
     font: inherit;
     cursor: pointer;
@@ -429,7 +447,7 @@ html.mic-dark-mode .admin-btn-primary {
     font-size: 0.85rem;
     padding: 0.35rem 0.45rem;
     border: 1px solid rgba(0, 0, 0, 0.14);
-    border-radius: 6px;
+    border-radius: var(--admin-buildto-control-radius);
     background: #fff;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }

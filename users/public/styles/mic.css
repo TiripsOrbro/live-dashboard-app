@@ -58,9 +58,18 @@
 }
 
 .mic-overview-tabs {
-    display: none;
+    display: none !important;
     width: 100%;
     box-sizing: border-box;
+}
+
+.mic-overview-page .mic-page--admin > .mic-header--admin {
+    grid-row: 1;
+}
+
+.mic-overview-page .mic-page--admin > .mic-grid--admin {
+    grid-row: 2;
+    min-height: 0;
 }
 
 .mic-tile--area-header {
@@ -3417,17 +3426,51 @@ button.mic-tile.mic-tile--link {
     }
 
     .mic-overview--mobile .mic-overview-tabs {
-        display: flex;
+        display: flex !important;
         flex-wrap: nowrap;
         gap: 0;
         padding: calc(2px * var(--dashboard-scale)) 0 calc(8px * var(--dashboard-scale));
         flex-shrink: 0;
+        border-bottom: var(--app-tab-bar-border, var(--cell-border) var(--charcoal));
+    }
+
+    .mic-overview--mobile .mic-page--admin > .mic-overview-tabs {
+        grid-row: 2;
+    }
+
+    .mic-overview--mobile .mic-page--admin > .mic-grid--admin {
+        grid-row: 3;
     }
 
     .mic-overview--mobile .mic-overview-tab {
+        flex: 1 1 0;
+        min-width: 0;
+        margin: 0 0 -1px;
+        margin-right: -1px;
+        border: var(--cell-border) var(--charcoal);
+        border-bottom: none;
+        border-radius: 0;
+        background: color-mix(in srgb, var(--charcoal) 7%, var(--white));
+        color: color-mix(in srgb, var(--charcoal) 68%, white);
         font-size: var(--font-size-6);
+        font-weight: var(--font-weight-semibold, 600);
         min-height: calc(36px * var(--dashboard-scale));
         padding: calc(8px * var(--dashboard-scale)) calc(4px * var(--dashboard-scale));
+        text-align: center;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+
+    .mic-overview--mobile .mic-overview-tab:last-child {
+        margin-right: 0;
+    }
+
+    .mic-overview--mobile .mic-overview-tab.is-active {
+        z-index: 1;
+        color: var(--charcoal);
+        background: var(--white);
+        border-bottom: var(--cell-border) var(--white);
+        padding-bottom: calc(8px * var(--dashboard-scale) + 1px);
     }
 
     .mic-overview--mobile .mic-grid--tabbed {

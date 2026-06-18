@@ -52,8 +52,42 @@
         return service === 'lifelenz' ? 'Email' : 'Username';
     }
 
-    function loginLabelForService(service) {
-        return service === 'lifelenz' ? 'Email' : 'Username';
+    function storeInList(storeNumber) {
+        const num = String(storeNumber || '').trim();
+        return num && storeList.some((row) => String(row.storeNumber) === num);
+    }
+
+    function preferredStoreNumber() {
+        const candidates = [
+            currentStore,
+            browseScope.storeNumber,
+            storeList.length === 1 ? storeList[0].storeNumber : '',
+            scopeTree?.defaults?.storeNumber,
+        ];
+        const effective = profile?.effectiveStores;
+        if (Array.isArray(effective)) {
+            if (effective.length === 1) candidates.push(effective[0]);
+            if (profile?.skipStorePicker && effective[0]) candidates.push(effective[0]);
+        }
+        const pathMatch = global.location?.pathname?.match(/\/(?:MIC|mic)\/(\d+)/i);
+        if (pathMatch?.[1]) candidates.push(pathMatch[1]);
+
+        for (const candidate of candidates) {
+            const num = String(candidate || '').trim();
+            if (storeInList(num)) return num;
+        }
+        return '';
+    }
+
+    function ensurePreferredStoreSelected() {
+        if (!scopeTree) return false;
+        const preferred = preferredStoreNumber();
+        if (!preferred) return false;
+        browseScope = global.AdminScopePicker.resolveBrowseScope(scopeTree, browseScope, preferred);
+        if (!browseScope.storeNumber) return false;
+        currentStore = browseScope.storeNumber;
+        scopeNavigator?.setScope?.(browseScope);
+        return true;
     }
 
     function ensureBackdrop() {
@@ -168,16 +202,6 @@
         return global.AdminScopePicker.storesMatchingScope(storeList, scopeTree, browseScope);
     }
 
-    function ensureSingleStoreSelected() {
-        if (storeList.length !== 1 || !scopeTree) return false;
-        const only = String(storeList[0].storeNumber || '').trim();
-        if (!only) return false;
-        browseScope = global.AdminScopePicker.resolveBrowseScope(scopeTree, browseScope, only);
-        currentStore = only;
-        scopeNavigator?.setScope?.(browseScope);
-        return true;
-    }
-
     function updateScopeSummary() {
         const el = ensureBackdrop().querySelector('#admin-store-logins-scope-summary');
         if (!el) return;
@@ -194,7 +218,7 @@
     }
 
     function syncCurrentStoreFromScope() {
-        if (ensureSingleStoreSelected()) return true;
+        if (ensurePreferredStoreSelected()) return true;
 
         const store = String(browseScope.storeNumber || '').trim();
         if (store && storeList.some((row) => String(row.storeNumber) === store)) {
@@ -239,14 +263,10 @@
         };
 
         if (!scopeNavigator) {
-            const preferredStore =
-                currentStore ||
-                browseScope.storeNumber ||
-                (storeList.length === 1 ? String(storeList[0].storeNumber || '') : '');
             scopeNavigator = global.AdminScopePicker.mountInline(host, {
                 tree: scopeTree,
                 initialScope: browseScope,
-                preferredStore,
+                preferredStore: preferredStoreNumber(),
                 onChange: onScopeChange,
             });
         } else {
@@ -469,10 +489,10 @@
         form.reset();
         await loadStores();
         await loadScopeTree();
-        ensureSingleStoreSelected();
+        ensurePreferredStoreSelected();
         renderScopeNavigator();
         browseScope = scopeNavigator?.getScope?.() || browseScope;
-        ensureSingleStoreSelected();
+        ensurePreferredStoreSelected();
         await loadStoreDetail();
         if (activeView === 'overview') renderOverview();
     }
@@ -490,10 +510,10 @@
         }
         await loadStores();
         await loadScopeTree();
-        ensureSingleStoreSelected();
+        ensurePreferredStoreSelected();
         renderScopeNavigator();
         browseScope = scopeNavigator?.getScope?.() || browseScope;
-        ensureSingleStoreSelected();
+        ensurePreferredStoreSelected();
         await loadStoreDetail();
         if (activeView === 'overview') renderOverview();
     }
@@ -502,10 +522,10 @@
         setError('');
         await loadStores();
         await loadScopeTree();
-        ensureSingleStoreSelected();
+        ensurePreferredStoreSelected();
         renderScopeNavigator();
         browseScope = scopeNavigator?.getScope?.() || browseScope;
-        ensureSingleStoreSelected();
+        ensurePreferredStoreSelected();
         if (activeView === 'overview') {
             renderOverview();
             return;
@@ -525,13 +545,19 @@
         }
         ensureBackdrop();
         backdrop.hidden = false;
-        activeView = 'overview';
         activeTab = 'mmx';
         scopeNavigator = null;
         browseScope = { market: '', area: '', storeNumber: '' };
         currentStore = '';
+        activeView = 'overview';
         applyViewUi();
         applyTabUi();
+        await loadStores();
+        await loadScopeTree();
+        if (preferredStoreNumber()) {
+            activeView = 'edit';
+            applyViewUi();
+        }
         await refresh();
     }
 

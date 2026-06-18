@@ -1132,7 +1132,6 @@ async function initStoreOverview(me) {
     window.MicSettings?.bind?.({
         getViewAccountsOptions: () => ({ storeNumber: STORE_NUMBER }),
         storeNumber: STORE_NUMBER || '',
-        adminMenuHidden: me?.canAccessAdminMenu === false,
         resolveAdminMenuVisibility: false,
         onReportEmailSaved: (email) => {
             if (micData) micData.reportEmail = email;

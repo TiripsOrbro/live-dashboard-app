@@ -25,9 +25,9 @@
 
     function renderPanel(options = {}) {
         const darkHint = options.darkModeHint || 'Dark background and tiles on this page.';
-        const adminMenuHidden = options.adminMenuHidden !== false;
         const hasStoreTab = Boolean(options.storeNumber);
         const email = String(options.reportEmail || '').trim();
+        const adminActionsHtml = global.AdminMenu?.renderActionsHtml?.() || '';
 
         return `
         <div id="mic-settings-picker" class="mic-item-picker" hidden>
@@ -38,12 +38,12 @@
                     <button type="button" class="mic-settings-tab" role="tab" data-settings-tab="preferences" aria-selected="false">Preferences</button>
                     ${hasStoreTab ? '<button type="button" class="mic-settings-tab" role="tab" data-settings-tab="store" aria-selected="false">Store</button>' : ''}
                     <button type="button" class="mic-settings-tab" role="tab" data-settings-tab="general" aria-selected="false">General</button>
+                    <button type="button" class="mic-settings-tab" role="tab" data-settings-tab="admin" id="mic-settings-admin-tab" aria-selected="false" hidden>Admin</button>
                 </div>
                 <div class="mic-settings-tabpanels">
                     <div class="mic-settings-tabpanel is-active" data-settings-panel="account" role="tabpanel">
                         <div class="mic-settings-actions">
                             <button type="button" class="mic-settings-btn" data-action="change-password">Change password</button>
-                            <button type="button" class="mic-settings-btn" data-action="admin-menu" id="mic-admin-menu-btn"${adminMenuHidden ? ' hidden' : ''}>Admin menu</button>
                             <button type="button" class="mic-settings-btn mic-settings-btn--danger" data-action="logout">Sign out</button>
                         </div>
                     </div>
@@ -112,6 +112,9 @@
                             <button type="button" class="mic-settings-btn" data-action="changelog">What's new</button>
                             <button type="button" class="mic-settings-btn" data-action="hard-refresh">Refresh page</button>
                         </div>
+                    </div>
+                    <div class="mic-settings-tabpanel" data-settings-panel="admin" role="tabpanel" hidden>
+                        ${adminActionsHtml}
                     </div>
                 </div>
                 <button type="button" class="mic-settings-close" id="mic-settings-close">Close</button>
@@ -395,10 +398,6 @@
             closeSettingsPanel();
             global.DashboardAccount?.openChangePasswordModal?.();
         });
-        picker.querySelector('[data-action="admin-menu"]')?.addEventListener('click', () => {
-            closeSettingsPanel();
-            global.AdminMenu?.open?.();
-        });
         picker.querySelector('[data-action="changelog"]')?.addEventListener('click', () => {
             closeSettingsPanel();
             global.location.href = '/changelog';
@@ -418,16 +417,29 @@
             void saveReportEmail();
         });
 
+        const getViewAccountsOptions =
+            typeof bindOptions.getViewAccountsOptions === 'function'
+                ? bindOptions.getViewAccountsOptions
+                : () => bindOptions.viewAccountsOptions || {};
+
+        global.AdminMenu?.bindActionButtons?.(picker.querySelector('[data-settings-panel="admin"]'), {
+            onBeforeAction: closeSettingsPanel,
+            getViewAccountsOptions,
+        });
+
         if (bindOptions.resolveAdminMenuVisibility !== false) {
             global.AdminMenu?.fetchProfile?.()
                 .then((data) => {
-                    const adminBtn = document.getElementById('mic-admin-menu-btn');
-                    if (adminBtn && data.canAccessAdminMenu) adminBtn.hidden = false;
+                    const adminTab = document.getElementById('mic-settings-admin-tab');
+                    if (adminTab && (data.canAccessAdminMenu || data.canManageStoreLogins)) {
+                        adminTab.hidden = false;
+                    }
+                    global.AdminMenu?.applyActionVisibility?.(
+                        picker.querySelector('[data-settings-panel="admin"]'),
+                        data
+                    );
                     global.AdminMenu?.bind?.({
-                        getViewAccountsOptions:
-                            typeof bindOptions.getViewAccountsOptions === 'function'
-                                ? bindOptions.getViewAccountsOptions
-                                : () => bindOptions.viewAccountsOptions || {},
+                        getViewAccountsOptions,
                         resolveVisibility: false,
                     });
                 })

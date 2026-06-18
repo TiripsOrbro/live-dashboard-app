@@ -2329,7 +2329,6 @@ function renderDashboardSettingsChrome() {
     return `
         ${window.MicSettings.renderCog()}
         ${window.MicSettings.renderPanel({
-            adminMenuHidden: true,
             darkModeHint: 'Dark background on dashboard pages that support it.',
             storeNumber: STORE_NUMBER || '',
         })}

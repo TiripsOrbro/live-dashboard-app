@@ -1062,9 +1062,6 @@
     }
 
     function renderShell(promoBannerHtml) {
-        const adminMenuHost = meProfile?.canAccessAdminMenu
-            ? '<span id="mic-admin-menu-header-host"></span>'
-            : '';
         app.innerHTML = `
         <div class="mic-page mic-page--admin" id="mic-page">
             <header class="mic-header mic-header--admin">
@@ -1076,7 +1073,6 @@
                 </div>
                 ${promoBannerHtml || ''}
                 <div class="mic-header-actions">
-                    ${adminMenuHost}
                     <div class="mic-clock">
                         <span class="mic-clock-label">Current time</span>
                         <span class="mic-clock-value" id="mic-clock">${formatTime(new Date())}</span>
@@ -1088,15 +1084,9 @@
         </div>
         ${global.MicSettings?.renderCog?.() || ''}
         ${global.MicSettings?.renderPanel?.({
-            adminMenuHidden: !meProfile?.canAccessAdminMenu,
             darkModeHint: 'Dark background and tiles on this MIC page.',
         }) || ''}`;
 
-        if (meProfile?.canAccessAdminMenu) {
-            global.AdminMenu?.mountHeaderTrigger?.(document.getElementById('mic-admin-menu-header-host'), {
-                hidden: false,
-            });
-        }
         global.MicSettings?.bind?.({
             getViewAccountsOptions: () => ({
                 isAdmin: Boolean(meProfile?.canViewCrossStoreAccounts),

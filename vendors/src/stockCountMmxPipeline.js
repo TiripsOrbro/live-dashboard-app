@@ -501,6 +501,7 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
         clearStoreReportFiles,
         clearStoreReportFilesByReportIds,
         validateStoreReports,
+        validateReportId,
         resolveStoreReports,
         describeResolvedStoreReports,
         reportsReadyForStore,
@@ -511,7 +512,17 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
     const dateKey = options.dateKey || melbourneDateKey();
     const afterCountApply = Boolean(options.afterCountApply);
     const allReportIds = ['report1', 'report2', 'report3'];
-    const refreshReportIds = afterCountApply ? ['report1', 'report2'] : allReportIds;
+    let refreshReportIds = afterCountApply ? ['report1', 'report2'] : allReportIds;
+    if (afterCountApply) {
+        const preFiles = resolveStoreReports(storeNumber, reportsDir);
+        const iseIssues = validateReportId(storeNumber, preFiles, 'report3', { dateKey });
+        if (iseIssues.length) {
+            refreshReportIds = [...refreshReportIds, 'report3'];
+            log.info(
+                `Store ${storeNumber}: ISE not reusable (${iseIssues.join('; ')}) — will download inventory-special-event`
+            );
+        }
+    }
     const preReady = reportsReadyForStore(storeNumber, reportsDir);
     const skipDownload = options.requireAllReports
         ? false
@@ -542,8 +553,11 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
     try {
         if (!skipDownload) {
             if (afterCountApply) {
+                const iseReuse = refreshReportIds.includes('report3')
+                    ? 'downloading ISE'
+                    : 'reusing ISE';
                 log.info(
-                    `Store ${storeNumber}: refreshing SOH + SOO after count apply (reusing ISE when valid)`
+                    `Store ${storeNumber}: refreshing SOH + SOO after count apply (${iseReuse})`
                 );
             } else if (!preReady.ready) {
                 log.info(

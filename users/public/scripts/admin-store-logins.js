@@ -19,6 +19,25 @@
 
     const SERVICES = ['mmx', 'lifelenz', 'smg', 'nsf'];
 
+    const VERIFY_STATUS_STEPS = {
+        mmx: [
+            'Starting Macromatix login check…',
+            'Opening a browser on the server to reach Macromatix…',
+            'Signing in to Macromatix…',
+            'Still working — Macromatix checks often take 30–60 seconds on the server…',
+        ],
+        lifelenz: [
+            'Starting LifeLenz login check…',
+            'Opening a browser on the server to reach LifeLenz…',
+            'Signing in to LifeLenz…',
+            'Still working — this can take up to a minute…',
+        ],
+        smg: ['Checking SMG credentials on the server…'],
+        nsf: ['Checking NSF credentials on the server…'],
+    };
+
+    let verifyStatusTimer = null;
+
     function escapeHtml(text) {
         return String(text)
             .replace(/&/g, '&amp;')
@@ -152,11 +171,6 @@
             event.preventDefault();
             void submitForm(form);
         });
-        editRoot.addEventListener('click', (event) => {
-            const btn = event.target.closest('.admin-store-logins-remove');
-            if (!btn) return;
-            void removeFallback(btn.dataset.fallbackId);
-        });
     }
 
     function ensureBackdrop() {
@@ -185,6 +199,7 @@
                     </div>
                     <div id="admin-store-logins-body"></div>
                 </div>
+                <p id="admin-store-logins-status" class="admin-store-logins-status" role="status" hidden></p>
                 <p id="admin-store-logins-error" class="admin-modal-error" role="alert"></p>
                 <div class="admin-modal-actions">
                     <button type="button" id="admin-store-logins-close">Close</button>
@@ -221,6 +236,7 @@
         const el = ensureBackdrop().querySelector('#admin-store-logins-error');
         if (!el) return;
         if (message) {
+            stopVerifyStatus();
             el.textContent = message;
             el.hidden = false;
             el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -228,6 +244,40 @@
             el.textContent = '';
             el.hidden = true;
         }
+    }
+
+    function setStatus(message) {
+        const el = ensureBackdrop().querySelector('#admin-store-logins-status');
+        if (!el) return;
+        if (message) {
+            el.textContent = message;
+            el.hidden = false;
+        } else {
+            el.textContent = '';
+            el.hidden = true;
+        }
+    }
+
+    function stopVerifyStatus() {
+        if (verifyStatusTimer) {
+            clearInterval(verifyStatusTimer);
+            verifyStatusTimer = null;
+        }
+        setStatus('');
+    }
+
+    function startVerifyStatus(service) {
+        stopVerifyStatus();
+        const steps = VERIFY_STATUS_STEPS[service] || VERIFY_STATUS_STEPS.mmx;
+        const started = Date.now();
+        let step = 0;
+        const tick = () => {
+            const secs = Math.floor((Date.now() - started) / 1000);
+            if (secs >= 8 && step < steps.length - 1) step += 1;
+            setStatus(`${steps[step]} (${secs}s)`);
+        };
+        tick();
+        verifyStatusTimer = setInterval(tick, 3000);
     }
 
     function applyViewUi() {
@@ -410,11 +460,6 @@
                                         `<div class="admin-accounts-meta">${formatWhen(primary.updatedAt, primary.updatedBy)}</div>`
                                     );
                                 }
-                                if (status.fallbackCount > 0) {
-                                    lines.push(
-                                        `<div class="admin-accounts-meta">+${status.fallbackCount} fallback${status.fallbackCount === 1 ? '' : 's'}</div>`
-                                    );
-                                }
                                 return `<td>${lines.join('') || 'Configured'}</td>`;
                             }).join('');
                             return `<tr class="admin-store-logins-overview-row" data-store-number="${escapeAttr(row.storeNumber)}" tabindex="0" role="button">
@@ -453,14 +498,9 @@
         }
         return `
             <div class="admin-store-logins-entry">
-                <div><strong>${escapeHtml(entry.label || (isPrimary ? 'Primary' : 'Fallback'))}</strong></div>
+                <div><strong>${escapeHtml(entry.label || 'Primary')}</strong></div>
                 <div>${escapeHtml(entry.maskedLogin || '—')}</div>
                 <div class="admin-accounts-meta">Updated by ${formatWhen(entry.updatedAt, entry.updatedBy)}</div>
-                ${
-                    !isPrimary && entry.id
-                        ? `<button type="button" class="mic-settings-btn admin-store-logins-remove" data-fallback-id="${escapeHtml(entry.id)}">Remove</button>`
-                        : ''
-                }
             </div>`;
     }
 
@@ -496,29 +536,6 @@
                         <button type="submit" class="mic-settings-btn admin-btn-primary">Verify &amp; save primary</button>
                     </div>
                 </form>
-            </section>
-            <section class="admin-store-logins-section">
-                <h3>Fallback logins</h3>
-                <div class="admin-store-logins-fallbacks">
-                    ${(status.fallbacks || []).map((row) => renderCredentialBlock(row, service, false)).join('') || '<p class="admin-accounts-meta">No fallbacks yet.</p>'}
-                </div>
-                <form class="admin-accounts-form-grid admin-store-logins-form" data-role="fallback">
-                    <label class="admin-accounts-field">
-                        ${escapeHtml(loginLabelForService(service))}
-                        <input type="${service === 'lifelenz' ? 'email' : 'text'}" name="${loginField}" autocomplete="off" required>
-                    </label>
-                    <label class="admin-accounts-field">
-                        Password
-                        <input type="password" name="password" autocomplete="new-password" required>
-                    </label>
-                    <label class="admin-accounts-field">
-                        Label
-                        <input type="text" name="label" value="Fallback">
-                    </label>
-                    <div class="admin-accounts-create-actions">
-                        <button type="submit" class="mic-settings-btn">Verify &amp; add fallback</button>
-                    </div>
-                </form>
             </section>`;
 
         updateScopeSummary();
@@ -541,7 +558,6 @@
         const originalText = submitBtn?.textContent || '';
 
         setError('');
-        const role = form.dataset.role;
         const payload = formPayload(form);
         const loginField = loginFieldForService(activeTab);
         if (!payload[loginField] || !payload.password) {
@@ -549,19 +565,16 @@
             return;
         }
 
-        const url =
-            role === 'fallback'
-                ? `/api/admin/store-logins/${encodeURIComponent(currentStore)}/${activeTab}/fallbacks`
-                : `/api/admin/store-logins/${encodeURIComponent(currentStore)}/${activeTab}/verify`;
-        const body =
-            role === 'fallback'
-                ? { ...payload, verify: true }
-                : { ...payload, save: true, asFallback: false };
+        const url = `/api/admin/store-logins/${encodeURIComponent(currentStore)}/${activeTab}/verify`;
+        const body = { ...payload, save: true, asFallback: false };
 
+        form.classList.add('is-verifying');
+        form.setAttribute('aria-busy', 'true');
         if (submitBtn) {
             submitBtn.disabled = true;
             submitBtn.textContent = 'Verifying…';
         }
+        startVerifyStatus(activeTab);
 
         try {
             const res = await fetch(url, {
@@ -575,6 +588,8 @@
                 setError(data.error || 'Could not save login.');
                 return;
             }
+            setStatus('Login verified and saved.');
+            setTimeout(() => setStatus(''), 4000);
             form.reset();
             await loadStoreDetail();
             void loadStores().then(() => {
@@ -583,32 +598,16 @@
         } catch (err) {
             setError(err?.message || 'Could not save login.');
         } finally {
+            if (verifyStatusTimer) {
+                clearInterval(verifyStatusTimer);
+                verifyStatusTimer = null;
+            }
+            form.classList.remove('is-verifying');
+            form.removeAttribute('aria-busy');
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.textContent = originalText;
             }
-        }
-    }
-
-    async function removeFallback(fallbackId) {
-        if (!currentStore || !fallbackId) return;
-        setError('');
-        try {
-            const res = await fetch(
-                `/api/admin/store-logins/${encodeURIComponent(currentStore)}/${activeTab}/fallbacks/${encodeURIComponent(fallbackId)}`,
-                { method: 'DELETE', credentials: 'same-origin' }
-            );
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data.success) {
-                setError(data.error || 'Could not remove fallback.');
-                return;
-            }
-            await loadStoreDetail();
-            void loadStores().then(() => {
-                if (activeView === 'overview') renderOverview();
-            });
-        } catch (err) {
-            setError(err?.message || 'Could not remove fallback.');
         }
     }
 

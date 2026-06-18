@@ -380,30 +380,30 @@ button.admin-store-tabs__tab:last-child {
     border-right: none;
 }
 
-/* Store logins modal — unified grey palette, flush folder tabs */
+/* Store logins modal — charcoal palette, flush folder tabs */
 .admin-modal--store-logins .admin-tabs--full,
 .admin-modal--store-logins .admin-store-logins-view-tabs {
-    --app-tab-bar-border: 1px solid #a8a8a8;
-    --app-tab-border: 1px solid #a8a8a8;
-    --app-tab-inactive-bg: #c4c4c4;
-    --app-tab-active-bg: #e0e0e0;
-    --app-tab-active-bottom: 1px solid #e0e0e0;
-    --app-tab-text: rgba(0, 0, 0, 0.62);
-    --app-tab-text-active: #2a2a2a;
-    --app-tab-hover-bg: #d0d0d0;
-    --app-tab-hover-text: #1a1a1a;
+    --app-tab-bar-border: 1px solid #4a4a52;
+    --app-tab-border: 1px solid #4a4a52;
+    --app-tab-inactive-bg: #3a3a42;
+    --app-tab-active-bg: #2e2e34;
+    --app-tab-active-bottom: 1px solid #2e2e34;
+    --app-tab-text: rgba(255, 255, 255, 0.62);
+    --app-tab-text-active: #f0f0f0;
+    --app-tab-hover-bg: #45454e;
+    --app-tab-hover-text: rgba(255, 255, 255, 0.88);
     margin: 0;
     padding: 0;
-    background: #d0d0d0;
-    border-bottom: 1px solid #a8a8a8;
+    background: #323238;
+    border-bottom: 1px solid #4a4a52;
 }
 
 .admin-modal--store-logins .admin-tabs--full .admin-tab.is-active,
 .admin-modal--store-logins .admin-store-logins-view-tabs .admin-tab.is-active {
-    background: #e0e0e0;
-    border-color: #a8a8a8;
-    border-bottom-color: #e0e0e0;
-    color: #1a1a1a;
+    background: #2e2e34;
+    border-color: #4a4a52;
+    border-bottom-color: #2e2e34;
+    color: #f0f0f0;
 }
 
 /* ========== Dark mode ========== */

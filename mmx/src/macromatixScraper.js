@@ -2280,12 +2280,27 @@ async function verifyMacromatixLogin(username, password) {
  */
 function collectStoreMmxCredentials(storeNumber) {
     const { listCredentialCandidates } = require('../../stores/src/storeCredentials');
-    return listCredentialCandidates(storeNumber, 'mmx').map((entry) => ({
+    const fromStore = listCredentialCandidates(storeNumber, 'mmx').map((entry) => ({
         username: entry.username,
         password: entry.password,
         source: entry.source,
         updatedBy: entry.updatedBy || '',
     }));
+    if (fromStore.length) return fromStore;
+
+    const username = String(process.env.SCRAPER_USERNAME || '').trim();
+    const password = String(process.env.SCRAPER_PASSWORD || '');
+    if (username && password) {
+        return [
+            {
+                username,
+                password,
+                source: 'global SCRAPER_* (.env)',
+                updatedBy: '',
+            },
+        ];
+    }
+    return [];
 }
 
 function storeHasMmxCredentials(storeNumber) {

@@ -232,6 +232,9 @@ function hasBlockingWorkForPriority(priority) {
 }
 
 function requestPreemptLowerPriority(fromPriority, reason) {
+    // Scrape (lowest priority) must not abort its own browser work when acquiring a slot.
+    if (fromPriority >= PRIORITY.SCRAPE) return;
+
     const payload = {
         priority: fromPriority,
         reason: String(reason || 'higher-priority MMX work').trim(),

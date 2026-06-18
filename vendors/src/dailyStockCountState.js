@@ -209,13 +209,17 @@ async function markMmxSent(storeNumber, dateKey = melbourneDateKey()) {
     return getDraft(storeNumber, dateKey);
 }
 
-async function reopenDraft(storeNumber, dateKey = melbourneDateKey()) {
+async function reopenDraft(storeNumber, dateKey = melbourneDateKey(), options = {}) {
     const all = await getStateAll();
     const sk = storeKey(storeNumber);
     const day = all.stores[sk]?.[dateKey];
     if (!day) throw new Error('No daily count draft to reopen.');
     day.submittedAt = null;
     day.mmxSentAt = null;
+    if (options.resumeOpenCountInMmx) {
+        day.resolution = 'overwrite';
+        day.openBatchValue = null;
+    }
     day.updatedAt = new Date().toISOString();
     stateCache = all;
     await writeStateFile(all);

@@ -1780,3 +1780,108 @@ body.stock-count-mmx-wait-active {
         animation: none;
     }
 }
+
+/* MMX-style variance confirm table + screenshot capture */
+.stock-count-panel--variances > h2 {
+    margin-bottom: 0.35rem;
+}
+
+.stock-count-variance-capture {
+    margin: 0.75rem 0 0;
+    padding: 14px 12px 12px;
+    background: #fff;
+    border: 1px solid color-mix(in srgb, var(--charcoal) 14%, var(--blank-border, #c8c0bc));
+    border-radius: 10px;
+}
+
+.stock-count-variance-capture-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--charcoal, #231e1f);
+    margin-bottom: 0.25rem;
+}
+
+.stock-count-variance-capture-sub {
+    font-size: 0.88rem;
+    color: color-mix(in srgb, var(--charcoal) 72%, var(--blank));
+    margin-bottom: 0.5rem;
+}
+
+.stock-count-variance-capture-note {
+    font-size: 0.82rem;
+    line-height: 1.35;
+    color: color-mix(in srgb, var(--purple, #7a3eb1) 78%, var(--charcoal));
+    margin-bottom: 0.75rem;
+    padding: 0.55rem 0.65rem;
+    background: color-mix(in srgb, var(--purple, #7a3eb1) 8%, #fff);
+    border-radius: 6px;
+}
+
+.stock-count-table--variances-mmx .stock-count-variance-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    align-items: flex-start;
+    text-align: left;
+    min-width: 8.5rem;
+}
+
+.stock-count-variance-item-code {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: color-mix(in srgb, var(--charcoal) 65%, var(--blank));
+}
+
+.stock-count-variance-item-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.stock-count-grid-cell--variance-unit {
+    vertical-align: middle;
+    font-weight: 700;
+    font-size: 0.9rem;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.stock-count-value-box--variance-closing {
+    background: #fff;
+    border-color: color-mix(in srgb, var(--charcoal) 18%, var(--blank-border, #c8c0bc));
+}
+
+.stock-count-value-box--variance-alert {
+    background: #f4a6a0;
+    border-color: #d07068;
+    color: #231e1f;
+}
+
+.stock-count-value-box--variance-ok {
+    background: #b8e0b0;
+    border-color: #7cb874;
+    color: #231e1f;
+}
+
+.stock-count-variance-row--alert .stock-count-value-box--variance-alert {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, #8b1a1a 18%, transparent);
+}
+
+.stock-count-actions--variances-tools {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 640px) {
+    .stock-count-actions--variances-tools {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .stock-count-actions--variances-tools .stock-count-btn--mmx {
+        grid-column: 1 / -1;
+    }
+
+    .stock-count-table--variances-mmx {
+        min-width: 720px;
+    }
+}

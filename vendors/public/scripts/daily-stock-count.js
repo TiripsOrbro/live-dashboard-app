@@ -319,29 +319,50 @@ function buildEntryView() {
 }
 
 function formatVarianceQty(value) {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return '—';
-    return n.toLocaleString('en-AU', { maximumFractionDigits: 2 });
+    return window.VarianceDisplay?.formatVarianceQty(value) ?? '—';
+}
+
+function varianceDateLabel() {
+    const key = draft?.dateKey;
+    if (!key) return '';
+    try {
+        const [y, m, d] = key.split('-').map(Number);
+        const date = new Date(y, m - 1, d);
+        return date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
+    } catch {
+        return key;
+    }
 }
 
 function buildVarianceView() {
-    const rows = mmxVariances
-        .map((row) => {
-            const name = row.itemName || row.itemCode || 'Unknown item';
-            return `<tr class="stock-count-grid-row stock-count-variance-row"><th scope="row">${escapeHtml(name)}</th><td>${escapeHtml(formatVarianceQty(row.varianceQty))}</td><td>${escapeHtml(formatVarianceQty(row.varianceValue))}</td></tr>`;
-        })
-        .join('');
-    const tableHtml = rows
-        ? `<table class="stock-count-table stock-count-table--entry"><thead><tr><th>Item</th><th>Variance</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table>`
-        : '<p class="stock-count-empty-location">No red variances — you can apply the count.</p>';
+    const display = window.VarianceDisplay;
+    const count = mmxVariances.length;
+    const tableHtml = display
+        ? display.buildTableHtml(mmxVariances, {
+              catalog,
+              escapeHtml,
+              captureId: 'dc-variance-capture',
+              meta: {
+                  title: 'Confirm count — red variances',
+                  storeLabel: `Store ${STORE_NUMBER}`,
+                  dateLabel: varianceDateLabel(),
+                  countLabel: `${count} red variance${count === 1 ? '' : 's'}`,
+                  note: 'Review before applying. Do not apply if counts need correcting — use Recount instead.',
+              },
+          })
+        : '';
+    const emptyHtml =
+        '<p class="stock-count-empty-location">No red variances — you can apply the count.</p>';
+
     return `
-        <div class="stock-count-panel">
-            <h2>Red variances</h2>
-            ${tableHtml}
-            <div class="stock-count-review-note">Review variances, recount if needed, then apply in Macromatix.</div>
+        <div class="stock-count-panel stock-count-panel--variances">
+            <h2>Confirm count</h2>
+            ${tableHtml || emptyHtml}
+            <div class="stock-count-review-note">Review variances, recount if needed, then apply in Macromatix. Use Screenshot to share this summary.</div>
         </div>
-        <div class="stock-count-actions stock-count-actions--variances">
+        <div class="stock-count-actions stock-count-actions--variances stock-count-actions--variances-tools">
             <button type="button" class="stock-count-btn stock-count-btn--secondary" id="dc-recount">Recount</button>
+            <button type="button" class="stock-count-btn stock-count-btn--secondary" id="dc-screenshot" ${count ? '' : 'disabled'}>Screenshot</button>
             <button type="button" class="stock-count-btn stock-count-btn--mmx" id="dc-apply">Apply count</button>
         </div>`;
 }
@@ -420,6 +441,7 @@ function bindEvents() {
     });
     document.getElementById('dc-submit')?.addEventListener('click', () => void submitToMmx());
     document.getElementById('dc-recount')?.addEventListener('click', () => void recount());
+    document.getElementById('dc-screenshot')?.addEventListener('click', () => void screenshotVariances());
     document.getElementById('dc-apply')?.addEventListener('click', () => void applyCount());
     document.getElementById('dc-overwrite')?.addEventListener('click', () =>
         void setStartChoice('overwrite', openCounts[0]?.value || null)
@@ -528,16 +550,56 @@ async function applyCount() {
     }
 }
 
-async function recount() {
+async function screenshotVariances() {
+    const target = document.getElementById('dc-variance-capture');
+    const btn = document.getElementById('dc-screenshot');
+    if (!target || !window.VarianceDisplay?.shareCapture) return;
+    const prevLabel = btn?.textContent || 'Screenshot';
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Capturing…';
+    }
+    statusMessage = '';
     try {
-        await fetchJson(apiQuery('/api/daily-stock-count/recount'), {
+        const datePart = draft?.dateKey || new Date().toISOString().slice(0, 10);
+        const result = await window.VarianceDisplay.shareCapture(target, {
+            filename: `daily-count-${STORE_NUMBER}-${datePart}.png`,
+            title: `Daily count variances — store ${STORE_NUMBER}`,
+        });
+        statusMessage =
+            result.mode === 'shared'
+                ? 'Variance screenshot shared.'
+                : 'Variance screenshot downloaded.';
+        statusKind = 'info';
+    } catch (error) {
+        if (error?.name === 'AbortError') return;
+        statusMessage = error.message || 'Could not capture screenshot.';
+        statusKind = 'error';
+    } finally {
+        if (btn) {
+            btn.disabled = !mmxVariances.length;
+            btn.textContent = prevLabel;
+        }
+        render();
+    }
+}
+
+async function recount() {
+    mmxPollInFlight = null;
+    processing = false;
+    mmxProcessingError = null;
+    try {
+        const { data } = await fetchJson(apiQuery('/api/daily-stock-count/recount'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessionId: mmxSessionId }),
         });
+        if (data.draft) draft = data.draft;
         mmxSessionId = '';
         mmxVariances = [];
         viewMode = 'entry';
+        statusMessage = '';
+        statusKind = '';
         render();
     } catch (error) {
         statusMessage = error.message;

@@ -4377,8 +4377,8 @@ app.post('/api/daily-stock-count/recount', async (req, res) => {
         const store = dailyCountStoreFromQuery(req);
         if (!store || !assertStoreAccess(req, res, store)) return;
         await cancelDailyCountSession(store);
-        await reopenDailyCountDraft(store);
-        res.json({ success: true, storeNumber: store });
+        const draft = await reopenDailyCountDraft(store, undefined, { resumeOpenCountInMmx: true });
+        res.json({ success: true, storeNumber: store, draft });
     } catch (error) {
         console.error('API: Error cancelling daily count session:', error);
         res.status(500).json({ success: false, error: error.message });

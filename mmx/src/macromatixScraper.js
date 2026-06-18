@@ -1273,7 +1273,7 @@ async function scrapePendingVendors(page, opts = {}) {
         const looksLikeOrderNumber = (text) => {
             const t = norm(text);
             if (!t) return false;
-            if (/^[\s\-–-n\/\.a]*$/i.test(t.replace(/\s/g, ''))) return false;
+            if (/^[\s\-\n\/\.a]*$/i.test(t.replace(/\s/g, ''))) return false;
             return /[0-9]/.test(t);
         };
 

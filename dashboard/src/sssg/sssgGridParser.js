@@ -28,7 +28,7 @@ function parseQuarterHourRangeLabel(label) {
     const text = String(label || '').replace(/\s+/g, ' ').trim();
     if (!text) return null;
 
-    const rangeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*[-–-]\s*(\d{1,2}):(\d{2})/i);
+    const rangeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*-\s*(\d{1,2}):(\d{2})/i);
     if (!rangeMatch) return null;
 
     const startHour = parseInt(rangeMatch[1], 10);

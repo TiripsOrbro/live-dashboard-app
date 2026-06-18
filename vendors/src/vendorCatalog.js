@@ -370,8 +370,8 @@ function inferSectionFromComment(line) {
     const raw = String(line || '').replace(/^#\s*/, '').trim();
     if (!raw) return '';
     const cleaned = raw
-        .replace(/^[-–-\s]+/, '')
-        .replace(/[-–-\s]+$/, '')
+        .replace(/^[-\s]+/, '')
+        .replace(/[-\s]+$/, '')
         .toLowerCase();
     if (cleaned.includes('dry')) return 'Dry';
     if (cleaned.includes('fridge')) return 'Fridge';

@@ -25,6 +25,11 @@
         return '';
     }
 
+    function warnDisplayValue(item) {
+        if (item.stockWarningDays != null) return item.stockWarningDays;
+        return item.defaultStockWarningDays ?? 5;
+    }
+
     function applyRuleTypeRow(row) {
         const type = row.querySelector('[data-field="ruleType"]')?.value || 'days';
         const showDays = type === 'days';
@@ -55,27 +60,28 @@
         backdrop.hidden = true;
         backdrop.innerHTML = `
             <div class="admin-modal admin-modal--wide admin-modal--build-to" role="dialog" aria-modal="true">
-                <h2>Build to adjustments</h2>
+                <div class="admin-buildto-header">
+                    <h2>Build to adjustments</h2>
+                    <p class="admin-buildto-subtitle">Set build-to rules and low-stock warning thresholds per item.</p>
+                </div>
                 <div class="admin-tabs admin-tabs--full" id="admin-buildto-tabs">
                     <button type="button" class="admin-tab is-active" data-tab="global" id="admin-buildto-global-tab" hidden>Global</button>
                     <button type="button" class="admin-tab" data-tab="store">Stores</button>
                 </div>
-                <div class="admin-modal-toolbar">
-                    <label id="admin-buildto-store-wrap" hidden>
-                        Store
+                <div class="admin-modal-toolbar admin-buildto-toolbar">
+                    <label id="admin-buildto-store-wrap" class="admin-buildto-store-field" hidden>
+                        <span>Store</span>
                         <select id="admin-buildto-store"></select>
                     </label>
-                    <label id="admin-buildto-global-warn-wrap" hidden>
-                        Default warn days
-                        <input type="number" min="1" max="31" id="admin-buildto-global-warn" />
-                    </label>
-                    <input type="search" id="admin-buildto-search" placeholder="Search items…" />
-                    <button type="button" class="mic-settings-btn" id="admin-buildto-save">Save changes</button>
+                    <div class="admin-buildto-search-wrap">
+                        <input type="search" id="admin-buildto-search" placeholder="Search items…" aria-label="Search items" />
+                    </div>
+                    <button type="button" class="mic-settings-btn admin-btn-primary admin-buildto-save" id="admin-buildto-save">Save changes</button>
                 </div>
-                <div id="admin-buildto-body"></div>
+                <div class="admin-buildto-table-wrap" id="admin-buildto-body"></div>
                 <p id="admin-buildto-error" class="admin-modal-error" role="alert"></p>
-                <div class="admin-modal-actions">
-                    <button type="button" id="admin-buildto-close">Close</button>
+                <div class="admin-modal-actions admin-buildto-actions">
+                    <button type="button" class="admin-buildto-close-btn" id="admin-buildto-close">Close</button>
                 </div>
             </div>`;
         document.body.appendChild(backdrop);
@@ -111,7 +117,6 @@
             tab.classList.toggle('is-active', tab.dataset.tab === activeTab);
         });
         root.querySelector('#admin-buildto-store-wrap').hidden = activeTab === 'global';
-        root.querySelector('#admin-buildto-global-warn-wrap').hidden = activeTab !== 'global';
     }
 
     async function fetchProfile() {
@@ -142,11 +147,6 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) throw new Error(data.error || 'Could not load build-to catalog.');
         catalogCache = data;
-        const warnInput = root.querySelector('#admin-buildto-global-warn');
-        if (warnInput) {
-            warnInput.value =
-                data.settings?.stockWarningDays != null ? String(data.settings.stockWarningDays) : '5';
-        }
         renderRows();
     }
 
@@ -176,7 +176,7 @@
             return;
         }
         body.innerHTML = `
-            <table class="admin-table">
+            <table class="admin-table admin-buildto-table">
                 <thead>
                     <tr>
                         <th>Item</th>
@@ -195,6 +195,8 @@
                         .map((item) => {
                             const ruleType = dropdownRuleType(item);
                             const fixedValue = fixedDisplayValue(item);
+                            const defaultWarn = item.defaultStockWarningDays ?? 5;
+                            const warnValue = warnDisplayValue(item);
                             return `
                         <tr data-item-code="${escapeHtml(item.itemCode)}"
                             data-catalog-needs-count="${item.catalogNeedsCount ? '1' : '0'}"
@@ -205,10 +207,11 @@
                             data-global-skip-key-override="${item.globalSkipKeyItemCountOverride != null ? '1' : '0'}"
                             data-store-include-daily-override="${item.storeIncludeDailyOverride != null ? '1' : '0'}"
                             data-global-include-daily-override="${item.globalIncludeDailyOverride != null ? '1' : '0'}"
+                            data-default-stock-warning="${escapeHtml(defaultWarn)}"
                             data-initial-stock-warning="${item.stockWarningDays != null ? escapeHtml(item.stockWarningDays) : ''}"
                             data-initial-rule-type="${escapeHtml(ruleType)}">
-                            <td>${escapeHtml(item.name)}<span class="admin-accounts-meta">${escapeHtml(item.itemCode)}</span></td>
-                            <td>${escapeHtml(item.vendorLabel || item.vendorSlug)}</td>
+                            <td class="admin-buildto-item-cell">${escapeHtml(item.name)}<span class="admin-accounts-meta">${escapeHtml(item.itemCode)}</span></td>
+                            <td class="admin-buildto-vendor-cell">${escapeHtml(item.vendorLabel || item.vendorSlug)}</td>
                             <td>
                                 <select data-field="ruleType" class="admin-buildto-type-select">
                                     <option value="days" ${ruleType === 'days' ? 'selected' : ''}>Days</option>
@@ -218,10 +221,10 @@
                             </td>
                             <td class="admin-table-check"><input type="checkbox" data-field="needsCount" ${item.needsCount ? 'checked' : ''} title="Include in weekly stock count" /></td>
                             <td class="admin-table-check"><input type="checkbox" data-field="includeDaily" ${item.includeDaily ? 'checked' : ''} title="Include in daily count" /></td>
-                            <td data-buildto-group="days"><input type="number" min="0" max="31" data-field="buildToDays" value="${item.buildToDays != null ? escapeHtml(item.buildToDays) : ''}" /></td>
-                            <td data-buildto-group="days"><input type="number" min="0" max="99" data-field="buildToAdd" value="${escapeHtml(item.buildToAdd || 0)}" /></td>
-                            <td data-buildto-group="fixed"><input type="number" min="0" max="999" data-field="buildToFixed" value="${fixedValue !== '' ? escapeHtml(fixedValue) : ''}" /></td>
-                            <td><input type="number" min="1" max="31" data-field="stockWarningDays" placeholder="${escapeHtml(item.defaultStockWarningDays ?? 5)}" value="${item.stockWarningDays != null ? escapeHtml(item.stockWarningDays) : ''}" title="Low stock warning threshold (days)" /></td>
+                            <td data-buildto-group="days"><input type="number" min="0" max="31" data-field="buildToDays" class="admin-buildto-num-input" value="${item.buildToDays != null ? escapeHtml(item.buildToDays) : ''}" /></td>
+                            <td data-buildto-group="days"><input type="number" min="0" max="99" data-field="buildToAdd" class="admin-buildto-num-input" value="${escapeHtml(item.buildToAdd || 0)}" /></td>
+                            <td data-buildto-group="fixed"><input type="number" min="0" max="999" data-field="buildToFixed" class="admin-buildto-num-input" value="${fixedValue !== '' ? escapeHtml(fixedValue) : ''}" /></td>
+                            <td><input type="number" min="1" max="31" data-field="stockWarningDays" class="admin-buildto-num-input admin-buildto-warn-input" value="${escapeHtml(warnValue)}" title="Low stock warning threshold (days)" /></td>
                         </tr>`;
                         })
                         .join('')}
@@ -303,10 +306,14 @@
                 rule.includeDaily = null;
             }
 
-            if (warnDays !== '') {
-                if (String(warnDays) !== initialWarn) rule.stockWarningDays = Number(warnDays);
-            } else if (initialWarn !== '') {
-                rule.stockWarningDays = null;
+            const defaultWarn = row.dataset.defaultStockWarning || '5';
+            const effectiveWarn = warnDays !== '' ? String(warnDays) : defaultWarn;
+            if (initialWarn !== '') {
+                if (effectiveWarn !== initialWarn) {
+                    rule.stockWarningDays = effectiveWarn === defaultWarn ? null : Number(effectiveWarn);
+                }
+            } else if (effectiveWarn !== defaultWarn) {
+                rule.stockWarningDays = Number(effectiveWarn);
             }
 
             if (Object.keys(rule).length) patch[code] = rule;
@@ -320,12 +327,7 @@
         const patch = collectPatch();
         const body =
             activeTab === 'global'
-                ? {
-                      global: patch,
-                      settings: {
-                          stockWarningDays: Number(root.querySelector('#admin-buildto-global-warn')?.value || 5),
-                      },
-                  }
+                ? { global: patch }
                 : { stores: { [root.querySelector('#admin-buildto-store').value]: patch } };
         const res = await fetch('/api/admin/build-to/overrides', {
             method: 'PUT',

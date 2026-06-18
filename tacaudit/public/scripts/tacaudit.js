@@ -26,7 +26,7 @@ const AUDIT_CONFIG = {
         auditPath: 'dfsc/audit',
         dateParam: 'dateKey',
         rowTitle(row) {
-            return `${row.dateKey || '—'} · ${row.shift || '—'} shift`;
+            return `${row.dateKey || '-'} · ${row.shift || '-'} shift`;
         },
     },
     'pest-walk': {
@@ -38,7 +38,7 @@ const AUDIT_CONFIG = {
         auditPath: 'pest-walk/audit',
         dateParam: 'periodKey',
         rowTitle(row) {
-            return row.periodKey || '—';
+            return row.periodKey || '-';
         },
     },
     'rgm-cleaning': {
@@ -50,7 +50,7 @@ const AUDIT_CONFIG = {
         auditPath: 'rgm-cleaning/audit',
         dateParam: 'periodKey',
         rowTitle(row) {
-            return row.periodKey || '—';
+            return row.periodKey || '-';
         },
     },
     psi: {
@@ -63,7 +63,7 @@ const AUDIT_CONFIG = {
         dateParam: 'periodKey',
         rowTitle(row) {
             const week = row.psiWeek ? `Week ${row.psiWeek}` : '';
-            return [row.periodKey, week].filter(Boolean).join(' · ') || '—';
+            return [row.periodKey, week].filter(Boolean).join(' · ') || '-';
         },
     },
     'square-one': {
@@ -75,7 +75,7 @@ const AUDIT_CONFIG = {
         auditPath: 'square-one/audit',
         dateParam: 'periodKey',
         rowTitle(row) {
-            return row.areaTitle || row.dashboardLabel || row.periodKey || '—';
+            return row.areaTitle || row.dashboardLabel || row.periodKey || '-';
         },
     },
     'core-ops': {
@@ -87,7 +87,7 @@ const AUDIT_CONFIG = {
         auditPath: 'core-ops/audit',
         dateParam: 'periodKey',
         rowTitle(row) {
-            return row.periodKey || '—';
+            return row.periodKey || '-';
         },
     },
     'core-food-safety': {
@@ -99,7 +99,7 @@ const AUDIT_CONFIG = {
         auditPath: 'core-food-safety/audit',
         dateParam: 'periodKey',
         rowTitle(row) {
-            return row.periodKey || '—';
+            return row.periodKey || '-';
         },
     },
     'visit-coach': {
@@ -111,7 +111,7 @@ const AUDIT_CONFIG = {
         auditPath: 'visit-coach/audit',
         dateParam: 'periodKey',
         rowTitle(row) {
-            return row.periodKey || '—';
+            return row.periodKey || '-';
         },
     },
     'visit-customer': {
@@ -123,7 +123,7 @@ const AUDIT_CONFIG = {
         auditPath: 'visit-customer/audit',
         dateParam: 'periodKey',
         rowTitle(row) {
-            return row.periodKey || '—';
+            return row.periodKey || '-';
         },
     },
 };
@@ -277,7 +277,7 @@ async function fetchJson(url, options = {}) {
 }
 
 function formatAuditTime(iso) {
-    if (!iso) return '—';
+    if (!iso) return '-';
     const parsed = Date.parse(iso);
     if (!Number.isFinite(parsed)) return iso;
     return new Date(parsed).toLocaleString('en-AU', {
@@ -291,7 +291,7 @@ function formatAuditTime(iso) {
 }
 
 function formatDuration(minutes) {
-    if (minutes == null || !Number.isFinite(Number(minutes))) return '—';
+    if (minutes == null || !Number.isFinite(Number(minutes))) return '-';
     const m = Number(minutes);
     if (m < 60) return `${m} min`;
     const h = Math.floor(m / 60);
@@ -301,7 +301,7 @@ function formatDuration(minutes) {
 
 function formatDurationTaken(minutes) {
     const formatted = formatDuration(minutes);
-    return formatted === '—' ? '' : `Took ${formatted}`;
+    return formatted === '-' ? '' : `Took ${formatted}`;
 }
 
 function completedHistoryMeta(row) {
@@ -356,7 +356,7 @@ function renderHistoryList() {
         <ul class="dfsc-history-list">
             ${inspectionHistory
                 .map((row) => {
-                    const title = cfg?.rowTitle ? cfg.rowTitle(row) : row.completedAt || '—';
+                    const title = cfg?.rowTitle ? cfg.rowTitle(row) : row.completedAt || '-';
                     const archiveBadge = row.archiveOnly
                         ? '<span class="tacaudit-archive-badge">archive</span>'
                         : '';
@@ -385,7 +385,7 @@ function renderAdminHistoryList() {
         <ul class="dfsc-history-list">
             ${inspectionHistory
                 .map((row) => {
-                    const detail = cfg?.rowTitle ? cfg.rowTitle(row) : row.completedAt || '—';
+                    const detail = cfg?.rowTitle ? cfg.rowTitle(row) : row.completedAt || '-';
                     const title = `${row.storeName || row.storeNumber} · ${detail}`;
                     const archiveBadge = row.archiveOnly
                         ? '<span class="tacaudit-archive-badge">archive</span>'
@@ -477,13 +477,13 @@ function inProgressForTab(tab) {
 function inProgressMeta(audit) {
     const parts = [`Started ${formatAuditTime(audit.startedAt)}`];
     if (audit.auditType === 'dfsc') {
-        parts.push(`${audit.dateKey || '—'} · ${audit.shift || '—'} shift`);
+        parts.push(`${audit.dateKey || '-'} · ${audit.shift || '-'} shift`);
     } else if (audit.auditType === 'psi' && audit.psiWeek) {
-        parts.push(`${audit.periodKey || '—'} · Week ${audit.psiWeek}`);
+        parts.push(`${audit.periodKey || '-'} · Week ${audit.psiWeek}`);
     } else if (audit.auditType === 'square-one') {
-        parts.push(audit.areaTitle || audit.dashboardLabel || audit.periodKey || '—');
+        parts.push(audit.areaTitle || audit.dashboardLabel || audit.periodKey || '-');
     } else {
-        parts.push(audit.periodKey || audit.dateKey || '—');
+        parts.push(audit.periodKey || audit.dateKey || '-');
     }
     return parts.join(' · ');
 }
@@ -592,7 +592,7 @@ function renderLaunchTiles() {
                         if (tile.placeholder || !tile.href) {
                             return `<article class="tacaudit-launch-tile${stateClass}" role="listitem" aria-disabled="true">${body}</article>`;
                         }
-                        return `<a class="tacaudit-launch-tile tacaudit-launch-tile--link${stateClass}" role="listitem" href="${escapeHtml(tile.href)}" aria-label="${escapeHtml(`${tile.label} — ${tile.sub || 'Start audit'}`)}">${body}</a>`;
+                        return `<a class="tacaudit-launch-tile tacaudit-launch-tile--link${stateClass}" role="listitem" href="${escapeHtml(tile.href)}" aria-label="${escapeHtml(`${tile.label} - ${tile.sub || 'Start audit'}`)}">${body}</a>`;
                     })
                     .join('')}
             </div>
@@ -973,7 +973,7 @@ function renderHistoryDetailNcRows(session) {
                     (row) => `
                 <li class="dfsc-history-nc-item">
                     <div class="dfsc-history-nc-label">${escapeHtml(row.label)}</div>
-                    <div class="dfsc-history-nc-action">${escapeHtml(row.actionText || '—')}</div>
+                    <div class="dfsc-history-nc-action">${escapeHtml(row.actionText || '-')}</div>
                 </li>`
                 )
                 .join('')}
@@ -995,16 +995,16 @@ function renderHistoryDetailView() {
     const summaryHtml = archiveOnly
         ? `
             <dl class="dfsc-history-dl">
-                <div><dt>Conducted by</dt><dd>${escapeHtml(row?.conductorName || '—')}</dd></div>
+                <div><dt>Conducted by</dt><dd>${escapeHtml(row?.conductorName || '-')}</dd></div>
                 <div><dt>Completed</dt><dd>${escapeHtml(formatAuditTime(row?.completedAt))}</dd></div>
                 <div><dt>Duration</dt><dd>${escapeHtml(formatDuration(row?.durationMinutes))}</dd></div>
                 ${row?.score != null ? `<div><dt>Score</dt><dd>${escapeHtml(String(row.score))}</dd></div>` : ''}
             </dl>
-            <p class="dfsc-field-hint">Session data expired — archived PDF only.</p>`
+            <p class="dfsc-field-hint">Session data expired - archived PDF only.</p>`
         : `
             <dl class="dfsc-history-dl">
-                <div><dt>Conducted by</dt><dd>${escapeHtml(session?.conductor?.name || '—')}</dd></div>
-                <div><dt>Signed off by</dt><dd>${escapeHtml(session?.signOff?.name || '—')}</dd></div>
+                <div><dt>Conducted by</dt><dd>${escapeHtml(session?.conductor?.name || '-')}</dd></div>
+                <div><dt>Signed off by</dt><dd>${escapeHtml(session?.signOff?.name || '-')}</dd></div>
                 <div><dt>Started</dt><dd>${escapeHtml(formatAuditTime(session?.startedAt))}</dd></div>
                 <div><dt>Completed</dt><dd>${escapeHtml(formatAuditTime(session?.completedAt))}</dd></div>
             </dl>`;
@@ -1697,7 +1697,7 @@ function renderSummaryView() {
         ? '<p class="tacaudit-summary-historical">Viewing a completed week (read-only snapshot).</p>'
         : '';
     const seedNote = adminSummary?.seededFromReference
-        ? '<p class="tacaudit-summary-historical">Showing one-off reference data for this week (display only — cells are not linked to live audits).</p>'
+        ? '<p class="tacaudit-summary-historical">Showing one-off reference data for this week (display only - cells are not linked to live audits).</p>'
         : '';
     const gridMarkup =
         summaryLoading

@@ -1,5 +1,5 @@
 /**
- * Admin "view dashboard as store user" — session preference + settings UI.
+ * Admin "view dashboard as store user" - session preference + settings UI.
  */
 (function (global) {
     const ENABLED_KEY = 'admin-view-as-store-enabled';

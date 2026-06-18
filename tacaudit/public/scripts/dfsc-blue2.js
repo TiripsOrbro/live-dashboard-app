@@ -1,5 +1,5 @@
 /**
- * Cooper-Atkins Blue2 (20100-K) — Web Bluetooth, aligned with SafetyCulture / iAuditor flow:
+ * Cooper-Atkins Blue2 (20100-K) - Web Bluetooth, aligned with SafetyCulture / iAuditor flow:
  * connect → live readings → capture when stable (< 0.3° change, same as Mobile Auditor).
  */
 (function () {
@@ -285,27 +285,27 @@
         const msg = String(err?.message || err || 'Could not connect to Bluetooth thermometer.');
         if (err?.name === 'NotFoundError') {
             return new Error(
-                'No Bluetooth device found — put Blue2 in pairing mode, enable Chrome “Nearby devices”, and try again.'
+                'No Bluetooth device found - put Blue2 in pairing mode, enable Chrome “Nearby devices”, and try again.'
             );
         }
         if (isSecurityBlockedError(err)) {
             return new Error(
-                'Chrome blocked thermometer access — close this DFSC tab, open DFSC again, put Blue2 in pairing mode (flashing icon), then tap Connect and pick Blue2.'
+                'Chrome blocked thermometer access - close this DFSC tab, open DFSC again, put Blue2 in pairing mode (flashing icon), then tap Connect and pick Blue2.'
             );
         }
         if (err?.name === 'NetworkError' || /gatt|op in progress|connection/i.test(msg)) {
             return new Error(
-                'Bluetooth connection failed — keep Blue2 in pairing mode (flashing icon). If it is paired in Android Settings → Bluetooth, tap Forget device, then connect only through DFSC.'
+                'Bluetooth connection failed - keep Blue2 in pairing mode (flashing icon). If it is paired in Android Settings → Bluetooth, tap Forget device, then connect only through DFSC.'
             );
         }
         if (/temperature service not found/i.test(msg)) {
             return new Error(
-                'Connected to Blue2 but the temperature channel is not available yet — insert the probe, wake the Blue2 (press power so the screen is on), keep the Bluetooth icon flashing, then tap Connect again.'
+                'Connected to Blue2 but the temperature channel is not available yet - insert the probe, wake the Blue2 (press power so the screen is on), keep the Bluetooth icon flashing, then tap Connect again.'
             );
         }
         if (isGattDisconnectedError(err)) {
             return new Error(
-                'Bluetooth disconnected while connecting — keep Blue2 in pairing mode (flashing icon) until connected. If Blue2 appears in Android Settings → Bluetooth, tap Forget device, then connect only through DFSC.'
+                'Bluetooth disconnected while connecting - keep Blue2 in pairing mode (flashing icon) until connected. If Blue2 appears in Android Settings → Bluetooth, tap Forget device, then connect only through DFSC.'
             );
         }
         return err instanceof Error ? err : new Error(msg);
@@ -588,7 +588,7 @@
         return false;
     }
 
-    /** Silent reconnect when audit opens — does not open the device picker. */
+    /** Silent reconnect when audit opens - does not open the device picker. */
     async function tryAutoConnect() {
         if (!isSupported()) return getState();
         if (ready && device?.gatt?.connected && characteristic) return getState();
@@ -683,7 +683,7 @@
         return new Promise((resolve, reject) => {
             const timer = window.setTimeout(() => {
                 pendingCapture = null;
-                reject(new Error('No reading from Bluetooth thermometer yet — insert the probe and wait a moment.'));
+                reject(new Error('No reading from Bluetooth thermometer yet - insert the probe and wait a moment.'));
             }, timeoutMs);
             pendingCapture = (value) => {
                 window.clearTimeout(timer);
@@ -731,7 +731,7 @@
                 if (settled) return;
                 settled = true;
                 stableCaptureSession = null;
-                reject(new Error('Temperature did not stabilize in time — check the probe and try again.'));
+                reject(new Error('Temperature did not stabilize in time - check the probe and try again.'));
             }, timeoutMs);
 
             stableCaptureSession = {

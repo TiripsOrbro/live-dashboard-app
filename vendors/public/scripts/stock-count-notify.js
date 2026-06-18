@@ -1,6 +1,6 @@
 /**
  * Browser notifications for stock count MMX pipeline (variances / orders ready).
- * Uses the Notification API — not Web Push — so no service worker is required.
+ * Uses the Notification API - not Web Push - so no service worker is required.
  */
 (function () {
     const WATCH_KEY = 'stockCountPipelineWatch';
@@ -115,7 +115,7 @@
         if (wasNotified('variances')) return;
         markNotified('variances');
         notify(
-            `Store ${store} — review variances`,
+            `Store ${store} - review variances`,
             'Stock count variances are ready to review in the stock count screen.',
             { tag: `stock-count-variances-${store}`, url: stockCountUrl(store, vendorSlug) }
         );
@@ -132,7 +132,7 @@
             .filter(Boolean)
             .join(', ');
         const extra = list.length > 3 ? ` (+${list.length - 3} more)` : '';
-        notify(`Store ${store} — low stock`, `${list.length} item${list.length === 1 ? '' : 's'} under warning threshold${top ? `: ${top}${extra}` : ''}.`, {
+        notify(`Store ${store} - low stock`, `${list.length} item${list.length === 1 ? '' : 's'} under warning threshold${top ? `: ${top}${extra}` : ''}.`, {
             tag: `stock-count-low-stock-${store}`,
             url: stockCountUrl(store, readWatch()?.vendorSlug),
         });
@@ -144,7 +144,7 @@
         const body = options.partial
             ? 'Scheduled orders were updated in Macromatix, but some lines could not be filled. Review in MMX.'
             : 'Scheduled orders are ready to be reviewed in Macromatix.';
-        notify(`Store ${store} — orders ready`, body, {
+        notify(`Store ${store} - orders ready`, body, {
             tag: `stock-count-orders-${store}`,
             url: options.url || `/${store}`,
         });

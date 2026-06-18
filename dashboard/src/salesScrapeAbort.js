@@ -31,7 +31,7 @@ function requestSalesScrapeAbort(reason) {
     abortRequested = true;
     const browser = activeBrowser;
     if (!browser) return false;
-    console.log(`[MMX Resource] Aborting in-flight sales scrape — ${reason}`);
+    console.log(`[MMX Resource] Aborting in-flight sales scrape - ${reason}`);
     activeBrowser = null;
     browser.close().catch(() => {});
     return true;
@@ -39,7 +39,7 @@ function requestSalesScrapeAbort(reason) {
 
 function throwIfSalesScrapeAborted() {
     if (abortRequested) {
-        throw new MmxWorkAbortedError('Sales scrape aborted — stock count / orders in progress');
+        throw new MmxWorkAbortedError('Sales scrape aborted - stock count / orders in progress');
     }
 }
 

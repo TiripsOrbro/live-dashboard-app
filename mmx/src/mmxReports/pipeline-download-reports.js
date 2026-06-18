@@ -184,7 +184,7 @@ async function downloadReports(page, settings) {
     }
 
     if (!reportsConfigured(reports)) {
-        log.warn('Reports not fully configured — opening Report Selection only');
+        log.warn('Reports not fully configured - opening Report Selection only');
         await openReportsHub(page, settings);
         return paths;
     }

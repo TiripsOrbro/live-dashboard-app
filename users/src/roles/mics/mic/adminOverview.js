@@ -28,7 +28,7 @@ const {
     getLyGridOffsetMinutes,
 } = require('../../../../../dashboard/src/sssg/sssgCalc');
 
-/** Same areas as store picker — always rotate through these even with no stores/data. */
+/** Same areas as store picker - always rotate through these even with no stores/data. */
 const ADMIN_ROTATE_AREAS = ['Area 1', 'Area 2', 'Area 21', 'Area 22'];
 
 function normalizeAreaKey(value) {

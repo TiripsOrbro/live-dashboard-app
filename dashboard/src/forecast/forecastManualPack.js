@@ -60,7 +60,7 @@ function readManualEntryPack(weekStart, storeNumber) {
 
 function buildManualEntryPlainText(pack) {
     const lines = [];
-    lines.push(`Forecast manual entry — store ${pack.storeNumber}`);
+    lines.push(`Forecast manual entry - store ${pack.storeNumber}`);
     lines.push(`Generated: ${pack.generatedAt}`);
     if (pack.failures?.mmx) lines.push(`MMX error: ${pack.failures.mmx}`);
     if (pack.failures?.lifelenz) lines.push(`LifeLenz error: ${pack.failures.lifelenz}`);

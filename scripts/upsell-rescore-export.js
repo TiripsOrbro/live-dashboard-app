@@ -85,7 +85,7 @@ function main() {
                     : `day ${payload.leaderboardDay || '?'}`;
             console.log(`\n[upsell-rescore] Top 7 for ${storeNumber} (${period}):`);
             for (const r of payload.top7 || payload.top5 || payload.top3 || []) {
-                console.log(`  ${r.rank}. ${r.name} — ${r.total} pts`);
+                console.log(`  ${r.rank}. ${r.name} - ${r.total} pts`);
             }
         }
         return;
@@ -107,7 +107,7 @@ function main() {
             : `day ${payload.leaderboardDay || '?'}`;
     console.log(`[upsell-rescore] Top 7 for ${store} (${period}):`);
     for (const r of payload.top7 || payload.top5 || []) {
-        console.log(`  ${r.rank}. ${r.name} — ${r.total} pts`);
+        console.log(`  ${r.rank}. ${r.name} - ${r.total} pts`);
     }
 }
 

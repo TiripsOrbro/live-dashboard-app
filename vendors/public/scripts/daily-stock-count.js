@@ -58,7 +58,7 @@ function buildStorePickerHtml() {
         .map((store) => {
             const num = String(store.storeNumber || '').toLowerCase();
             const name = String(store.storeName || '').trim();
-            const label = name ? `${num} — ${name}` : num;
+            const label = name ? `${num} - ${name}` : num;
             const selected = num === STORE_NUMBER ? ' selected' : '';
             return `<option value="${escapeHtml(num)}"${selected}>${escapeHtml(label)}</option>`;
         })
@@ -319,7 +319,7 @@ function buildEntryView() {
 }
 
 function formatVarianceQty(value) {
-    return window.VarianceDisplay?.formatVarianceQty(value) ?? '—';
+    return window.VarianceDisplay?.formatVarianceQty(value) ?? '-';
 }
 
 function varianceDateLabel() {
@@ -343,16 +343,16 @@ function buildVarianceView() {
               escapeHtml,
               captureId: 'dc-variance-capture',
               meta: {
-                  title: 'Confirm count — red variances',
+                  title: 'Confirm count - red variances',
                   storeLabel: `Store ${STORE_NUMBER}`,
                   dateLabel: varianceDateLabel(),
                   countLabel: `${count} red variance${count === 1 ? '' : 's'}`,
-                  note: 'Review before applying. Do not apply if counts need correcting — use Recount instead.',
+                  note: 'Review before applying. Do not apply if counts need correcting - use Recount instead.',
               },
           })
         : '';
     const emptyHtml =
-        '<p class="stock-count-empty-location">No red variances — you can apply the count.</p>';
+        '<p class="stock-count-empty-location">No red variances - you can apply the count.</p>';
 
     return `
         <div class="stock-count-panel stock-count-panel--variances">
@@ -564,7 +564,7 @@ async function screenshotVariances() {
         const datePart = draft?.dateKey || new Date().toISOString().slice(0, 10);
         const result = await window.VarianceDisplay.shareCapture(target, {
             filename: `daily-count-${STORE_NUMBER}-${datePart}.png`,
-            title: `Daily count variances — store ${STORE_NUMBER}`,
+            title: `Daily count variances - store ${STORE_NUMBER}`,
         });
         statusMessage =
             result.mode === 'shared'

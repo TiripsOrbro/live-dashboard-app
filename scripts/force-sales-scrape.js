@@ -80,7 +80,7 @@ function parseArgs(argv) {
         const stores = Array.isArray(result.stores) ? result.stores : [];
 
         if (result.scrapeSkipped) {
-            console.warn('[force-sales-scrape] Scraper returned scrapeSkipped — no browser run.');
+            console.warn('[force-sales-scrape] Scraper returned scrapeSkipped - no browser run.');
             process.exitCode = 1;
             return;
         }
@@ -102,7 +102,7 @@ function parseArgs(argv) {
             );
         }
 
-        console.log(`\n[force-sales-scrape] Done in ${elapsed}s — ${stores.length} store(s), ${saved} snapshot(s).`);
+        console.log(`\n[force-sales-scrape] Done in ${elapsed}s - ${stores.length} store(s), ${saved} snapshot(s).`);
         if (saved) {
             console.log('[force-sales-scrape] Run: pm2 restart dashboard  (then refresh the browser)');
         } else {

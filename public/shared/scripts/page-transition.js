@@ -148,7 +148,7 @@
         runEnterFade();
     }
 
-    /** Back/forward restores bfcache with fade-out still on body — clear or fade in. */
+    /** Back/forward restores bfcache with fade-out still on body - clear or fade in. */
     function installPageshowReset() {
         global.addEventListener('pageshow', (event) => {
             const stuckOnExit = document.body.classList.contains('page-nav-fade-out');

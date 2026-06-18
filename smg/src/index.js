@@ -1,4 +1,4 @@
-/** SMG / VOC scraping — placeholder until integration. */
+/** SMG / VOC scraping - placeholder until integration. */
 module.exports = {
     enabled: false,
     placeholder: true,

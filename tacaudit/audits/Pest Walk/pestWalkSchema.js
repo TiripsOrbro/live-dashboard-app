@@ -1,4 +1,4 @@
-﻿/** Taco Bell Weekly Pest Inspection — question schema. */
+﻿/** Taco Bell Weekly Pest Inspection - question schema. */
 
 const PEST_WALK_SECTIONS = [
     { id: 'walkingInside', label: 'Walking Inside', order: 1 },

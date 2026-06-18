@@ -1125,7 +1125,7 @@ function openBlue2CaptureModal(questionId) {
         <div class="dfsc-blue2-modal-panel">
             <h2 class="dfsc-blue2-modal-title" id="dfsc-blue2-modal-title">Thermometer reading</h2>
             <p class="dfsc-blue2-modal-question">${escapeHtml(label)}</p>
-            <div class="dfsc-blue2-modal-reading" data-blue2-modal-reading aria-live="polite">—</div>
+            <div class="dfsc-blue2-modal-reading" data-blue2-modal-reading aria-live="polite">-</div>
             <p class="dfsc-blue2-modal-status" data-blue2-modal-status>${escapeHtml(statusLabel)}</p>
             <p class="dfsc-blue2-modal-hint">Insert the probe and wait for a steady reading. Tap ${CAPTURE_TEMP_LABEL} when you are ready to record.</p>
             <div class="dfsc-blue2-modal-actions">
@@ -1648,7 +1648,7 @@ function renderSectionSkips(sectionId) {
 function renderActionsSection() {
     const rows = collectNonCompliant();
     if (!rows.length) {
-        return `<p class="dfsc-field-hint">No non-compliant items — nothing to record.</p>`;
+        return `<p class="dfsc-field-hint">No non-compliant items - nothing to record.</p>`;
     }
     return rows
         .map(
@@ -2056,7 +2056,7 @@ function renderCompleteView() {
 }
 
 function formatAuditTime(iso) {
-    if (!iso) return '—';
+    if (!iso) return '-';
     try {
         return new Date(iso).toLocaleString(undefined, {
             day: 'numeric',
@@ -2071,7 +2071,7 @@ function formatAuditTime(iso) {
 }
 
 function formatDuration(minutes) {
-    if (minutes == null || !Number.isFinite(minutes)) return '—';
+    if (minutes == null || !Number.isFinite(minutes)) return '-';
     if (minutes < 60) return `${minutes} min`;
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
@@ -2161,7 +2161,7 @@ function renderHistoryDetailNcRows(session) {
                     (row) => `
                 <li class="dfsc-history-nc-item">
                     <div class="dfsc-history-nc-label">${escapeHtml(row.label)}</div>
-                    <div class="dfsc-history-nc-action">${escapeHtml(row.actionText || '—')}</div>
+                    <div class="dfsc-history-nc-action">${escapeHtml(row.actionText || '-')}</div>
                 </li>`
                 )
                 .join('')}
@@ -2228,8 +2228,8 @@ function renderHistoryDetailView() {
             <article class="dfsc-card">
                 <h2>Summary</h2>
                 <dl class="dfsc-history-dl">
-                    <div><dt>Conducted by</dt><dd>${escapeHtml(summary.conductorName || '—')}</dd></div>
-                    <div><dt>Signed off by</dt><dd>${escapeHtml(summary.signOffName || '—')}</dd></div>
+                    <div><dt>Conducted by</dt><dd>${escapeHtml(summary.conductorName || '-')}</dd></div>
+                    <div><dt>Signed off by</dt><dd>${escapeHtml(summary.signOffName || '-')}</dd></div>
                     <div><dt>Started</dt><dd>${escapeHtml(formatAuditTime(summary.startedAt))}</dd></div>
                     <div><dt>Duration</dt><dd>${escapeHtml(formatDuration(durationMinutes))}</dd></div>
                 </dl>
@@ -2468,7 +2468,7 @@ function renderOpenAuditsSection(openAudits = []) {
                 <h2 id="dfsc-open-heading">Your open audits</h2>
                 <span class="dfsc-open-count">${openAudits.length}</span>
             </div>
-            <p class="dfsc-open-hint">Your in-progress audits — only you can resume or delete these.</p>
+            <p class="dfsc-open-hint">Your in-progress audits - only you can resume or delete these.</p>
             <ul class="dfsc-open-list">${rows}</ul>
         </section>`;
 }

@@ -73,7 +73,7 @@ function computeLastYearSalesSoFar(
 /**
  * Sum actual sales from store open up to `now` using hourly Labour Scheduler data.
  * The Labour Scheduler's current-hour cell already contains only the sales taken
- * so far in that hour, so it is added in full — interpolating it again would
+ * so far in that hour, so it is added in full - interpolating it again would
  * double-discount the current hour and understate SSSG.
  */
 function computeActualSalesSoFar(actual, forecast, openHour, closeHour, timeZone, now = new Date()) {

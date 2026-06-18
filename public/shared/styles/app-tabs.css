@@ -1,4 +1,4 @@
-/* Shared tab bar design — folder tabs on light surfaces, text tabs on accent tiles. */
+/* Shared tab bar design - folder tabs on light surfaces, text tabs on accent tiles. */
 
 :root {
     --app-tab-bar-border: var(--cell-border, 2px solid) var(--charcoal, #2b2b2b);
@@ -380,7 +380,7 @@ button.admin-store-tabs__tab:last-child {
     border-right: none;
 }
 
-/* Store logins modal — light grey body, charcoal header only */
+/* Store logins modal: light grey body, charcoal header only */
 .admin-modal--store-logins .admin-tabs--full,
 .admin-modal--store-logins .admin-store-logins-view-tabs {
     --app-tab-bar-border: 1px solid #a8a8a8;

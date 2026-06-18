@@ -21,19 +21,19 @@
 
     const VERIFY_STATUS_STEPS = {
         mmx: [
-            'Starting Macromatix login check…',
-            'Opening a browser on the server to reach Macromatix…',
-            'Signing in to Macromatix…',
-            'Still working — Macromatix checks often take 30–60 seconds on the server…',
+            'Starting Macromatix login check...',
+            'Opening a browser on the server to reach Macromatix...',
+            'Signing in to Macromatix...',
+            'Still working: Macromatix checks often take 30-60 seconds on the server...',
         ],
         lifelenz: [
-            'Starting LifeLenz login check…',
-            'Opening a browser on the server to reach LifeLenz…',
-            'Signing in to LifeLenz…',
-            'Still working — this can take up to a minute…',
+            'Starting LifeLenz login check...',
+            'Opening a browser on the server to reach LifeLenz...',
+            'Signing in to LifeLenz...',
+            'Still working: this can take up to a minute...',
         ],
-        smg: ['Checking SMG credentials on the server…'],
-        nsf: ['Checking NSF credentials on the server…'],
+        smg: ['Checking SMG credentials on the server...'],
+        nsf: ['Checking NSF credentials on the server...'],
     };
 
     let verifyStatusTimer = null;
@@ -60,7 +60,7 @@
                 parts.push(escapeHtml(iso));
             }
         }
-        return parts.length ? parts.join(' · ') : '—';
+        return parts.length ? parts.join(' · ') : '-';
     }
 
     function loginFieldForService(service) {
@@ -277,7 +277,7 @@
             setStatus(`${steps[step]} (${secs}s)`);
         };
         tick();
-        verifyStatusTimer = setInterval(tick, 3000);
+        verifyStatusTimer = setInterval(tick, 1000);
     }
 
     function applyViewUi() {
@@ -341,8 +341,8 @@
         const scopeLabel = parts.length ? parts.join(' · ') : 'All stores';
         el.textContent =
             activeView === 'edit'
-                ? `${scopeLabel}${browseScope.storeNumber ? '' : ' — pick a store to edit logins'}`
-                : `${scopeLabel} — showing ${rows.length} store${rows.length === 1 ? '' : 's'}`;
+                ? `${scopeLabel}${browseScope.storeNumber ? '' : ': pick a store to edit logins'}`
+                : `${scopeLabel}: showing ${rows.length} store${rows.length === 1 ? '' : 's'}`;
     }
 
     function syncCurrentStoreFromScope() {
@@ -499,7 +499,7 @@
         return `
             <div class="admin-store-logins-entry">
                 <div><strong>${escapeHtml(entry.label || 'Primary')}</strong></div>
-                <div>${escapeHtml(entry.maskedLogin || '—')}</div>
+                <div>${escapeHtml(entry.maskedLogin || '-')}</div>
                 <div class="admin-accounts-meta">Updated by ${formatWhen(entry.updatedAt, entry.updatedBy)}</div>
             </div>`;
     }
@@ -517,7 +517,7 @@
         const loginField = loginFieldForService(service);
         body.innerHTML = `
             <section class="admin-store-logins-section">
-                <h3>Primary ${escapeHtml(SERVICE_LABELS[service])} login — store ${escapeHtml(currentStore)}</h3>
+                <h3>Primary ${escapeHtml(SERVICE_LABELS[service])} login for store ${escapeHtml(currentStore)}</h3>
                 ${renderCredentialBlock(status.primary, service, true)}
                 <form class="admin-accounts-form-grid admin-store-logins-form" data-role="primary">
                     <label class="admin-accounts-field">
@@ -572,7 +572,7 @@
         form.setAttribute('aria-busy', 'true');
         if (submitBtn) {
             submitBtn.disabled = true;
-            submitBtn.textContent = 'Verifying…';
+            submitBtn.textContent = 'Verifying...';
         }
         startVerifyStatus(activeTab);
 
@@ -588,8 +588,15 @@
                 setError(data.error || 'Could not save login.');
                 return;
             }
-            setStatus('Login verified and saved.');
-            setTimeout(() => setStatus(''), 4000);
+            if (data.bootstrapScrapeStarted) {
+                setStatus(
+                    'Login saved. Loading sales, SSSG, and orders to place for this store (about 1 minute)...'
+                );
+                setTimeout(() => setStatus(''), 12000);
+            } else {
+                setStatus('Login verified and saved.');
+                setTimeout(() => setStatus(''), 4000);
+            }
             form.reset();
             await loadStoreDetail();
             void loadStores().then(() => {

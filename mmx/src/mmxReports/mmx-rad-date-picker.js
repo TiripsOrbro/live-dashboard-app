@@ -1,6 +1,6 @@
 ﻿/**
  * Telerik RadDatePicker on Macromatix report pages.
- * Typing the visible box alone does not commit — use calendar UI + hidden field sync (same as dashboard scraper).
+ * Typing the visible box alone does not commit - use calendar UI + hidden field sync (same as dashboard scraper).
  */
 const log = require('./util-logging');
 
@@ -578,7 +578,7 @@ async function setReportEndDate(page, dateText) {
     return setReportDateField(page, dateText, 'end');
 }
 
-/** Scheduled orders list page — top “Date” field (not Start Date). */
+/** Scheduled orders list page - top “Date” field (not Start Date). */
 async function setReportListDate(page, dateText) {
     return setReportDateField(page, dateText, 'list');
 }

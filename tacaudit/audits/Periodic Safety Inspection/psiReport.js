@@ -20,7 +20,7 @@ function escapeHtml(value) {
 }
 
 function formatReportDateTime(iso) {
-    if (!iso) return '—';
+    if (!iso) return '-';
     const parsed = Date.parse(iso);
     if (!Number.isFinite(parsed)) return iso;
     return new Date(parsed).toLocaleString('en-AU', {
@@ -36,7 +36,7 @@ function formatReportDateTime(iso) {
 function formatDurationMinutes(session) {
     const started = Date.parse(session.startedAt || '');
     const completed = Date.parse(session.completedAt || '');
-    if (!Number.isFinite(started) || !Number.isFinite(completed) || completed <= started) return '—';
+    if (!Number.isFinite(started) || !Number.isFinite(completed) || completed <= started) return '-';
     const mins = Math.round((completed - started) / 60000);
     if (mins < 60) return `${mins} min`;
     const h = Math.floor(mins / 60);
@@ -60,7 +60,7 @@ function buildReportFilename(session) {
 }
 
 function formatAnswerValue(question, value) {
-    if (value === null || value === undefined || String(value).trim() === '') return '—';
+    if (value === null || value === undefined || String(value).trim() === '') return '-';
     const raw = String(value).trim();
     if (isPsiYesType(question.type)) {
         if (raw.toLowerCase() === 'yes') return 'Yes';
@@ -183,7 +183,7 @@ function buildPsiReportHtml(session) {
                         (row) => `
                     <li>
                         <div class="action-question">${escapeHtml(row.label)}</div>
-                        <div class="action-text">${escapeHtml(row.actionText || '—')}</div>
+                        <div class="action-text">${escapeHtml(row.actionText || '-')}</div>
                     </li>`
                     )
                     .join('')}
@@ -197,7 +197,7 @@ function buildPsiReportHtml(session) {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>PSI Week ${escapeHtml(session.psiWeek || '')} — ${escapeHtml(session.storeName || session.storeNumber)}</title>
+<title>PSI Week ${escapeHtml(session.psiWeek || '')} - ${escapeHtml(session.storeName || session.storeNumber)}</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -312,7 +312,7 @@ function buildPsiReportHtml(session) {
 </head>
 <body>
     <header class="report-header">
-        <h1 class="report-title">Taco Bell Periodic Safety Inspection — Week ${escapeHtml(session.psiWeek || '')}</h1>
+        <h1 class="report-title">Taco Bell Periodic Safety Inspection - Week ${escapeHtml(session.psiWeek || '')}</h1>
         <p class="report-subtitle">${escapeHtml(session.psiWeekTitle || '')} · ${escapeHtml(session.storeName || '')} · Store ${escapeHtml(session.storeNumber || '')}</p>
     </header>
 
@@ -332,10 +332,10 @@ function buildPsiReportHtml(session) {
     </div>
 
     <dl class="meta-grid">
-        <div class="meta-row"><dt>Period</dt><dd>${escapeHtml(session.periodKey || '—')}</dd></div>
-        <div class="meta-row"><dt>PSI week</dt><dd>Week ${escapeHtml(session.psiWeek || '—')} — ${escapeHtml(session.psiWeekTitle || '')}</dd></div>
-        <div class="meta-row"><dt>Conducted by</dt><dd>${escapeHtml(session.conductor?.name || '—')}</dd></div>
-        <div class="meta-row"><dt>Signed off by</dt><dd>${escapeHtml(session.signOff?.name || '—')}</dd></div>
+        <div class="meta-row"><dt>Period</dt><dd>${escapeHtml(session.periodKey || '-')}</dd></div>
+        <div class="meta-row"><dt>PSI week</dt><dd>Week ${escapeHtml(session.psiWeek || '-')} - ${escapeHtml(session.psiWeekTitle || '')}</dd></div>
+        <div class="meta-row"><dt>Conducted by</dt><dd>${escapeHtml(session.conductor?.name || '-')}</dd></div>
+        <div class="meta-row"><dt>Signed off by</dt><dd>${escapeHtml(session.signOff?.name || '-')}</dd></div>
         <div class="meta-row"><dt>Started</dt><dd>${escapeHtml(formatReportDateTime(session.startedAt))}</dd></div>
         <div class="meta-row"><dt>Completed</dt><dd>${escapeHtml(formatReportDateTime(session.completedAt))}</dd></div>
         <div class="meta-row"><dt>Duration</dt><dd>${escapeHtml(formatDurationMinutes(session))}</dd></div>
@@ -351,7 +351,7 @@ function buildPsiReportHtml(session) {
 
     <section class="report-section">
         <div class="section-title">Sign Off</div>
-        <p><strong>Name and signature of Manager completing the audit:</strong> ${escapeHtml(session.signOff?.name || '—')}</p>
+        <p><strong>Name and signature of Manager completing the audit:</strong> ${escapeHtml(session.signOff?.name || '-')}</p>
         ${signatureHtml}
     </section>
 

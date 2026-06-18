@@ -29,7 +29,7 @@ const DEFAULT_AREA = 'Area 22';
 const TEST_AREA = 'Test Store';
 const PERTH_STORE_NAMES = ['midland', 'ellenbrook', 'canning vale', 'butler'];
 const PERTH_STORE_NUMBERS = new Set(['3901', '3902', '3903', '3904']);
-/** 375x / 376x — Queensland stores on Macromatix store picker. */
+/** 375x / 376x - Queensland stores on Macromatix store picker. */
 const QLD_STORE_NUMBER_RE = /^37[56]\d{2}$/;
 
 /** Map a weekday word (Monday / Mon / Tues / ...) to a 0=Sunday..6=Saturday index, or -1. */
@@ -114,7 +114,7 @@ function parseStoreList(text) {
         if (!storeNumber) continue;
 
         if (byNumber.has(storeNumber)) {
-            // Duplicate header — keep editing the first one (so stray repeats don't double up).
+            // Duplicate header - keep editing the first one (so stray repeats don't double up).
             current = byNumber.get(storeNumber);
             continue;
         }

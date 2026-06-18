@@ -41,7 +41,7 @@
                 policyEl.textContent = policy.label;
             }
             if (data.welcomeName && introEl) {
-                introEl.textContent = `Hi ${data.welcomeName} — set a personal password before continuing.`;
+                introEl.textContent = `Hi ${data.welcomeName} - set a personal password before continuing.`;
             }
         } catch {
             showError('Could not load account details. Refresh and try again.');

@@ -47,9 +47,9 @@ async function main() {
         : '(unknown)';
 
     console.log(
-        `[refresh] Store ${storeNumber} — clear → download (ISE+SOH+SOO) → ${dryRun ? 'preview' : 'fill MMX'} → clear`
+        `[refresh] Store ${storeNumber} - clear → download (ISE+SOH+SOO) → ${dryRun ? 'preview' : 'fill MMX'} → clear`
     );
-    console.log(`[refresh] SOH startDate: ${sohReport?.startDate || '—'} → ${sohDate}`);
+    console.log(`[refresh] SOH startDate: ${sohReport?.startDate || '-'} → ${sohDate}`);
     console.log(
         '[refresh] Note: SOH filename uses today\'s download time; MMX form date above is what drives on-hand qty. Stock-count overrides are ignored in this cycle.'
     );
@@ -68,7 +68,7 @@ async function main() {
         });
 
         if (dryRun) {
-            console.log('[refresh] Dry-run complete — reports left on disk for inspection');
+            console.log('[refresh] Dry-run complete - reports left on disk for inspection');
             console.log(
                 `[refresh] ${result.buildTo?.lines?.length || 0} build-to lines, on-order lines: ${
                     (result.buildTo?.lines || []).filter((l) => Number(l.onOrderCartons) > 0).length
@@ -79,7 +79,7 @@ async function main() {
 
         const processed = result.orders?.processed || [];
         const ok = processed.filter((p) => p.ok);
-        console.log(`[refresh] Done — ${ok.length}/${processed.length} vendor(s) OK`);
+        console.log(`[refresh] Done - ${ok.length}/${processed.length} vendor(s) OK`);
         if (result.orders?.orderFailures) {
             console.warn(`[refresh] Failures: ${result.orders.orderFailures}`);
             process.exit(1);

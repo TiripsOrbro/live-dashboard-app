@@ -20,7 +20,7 @@ function credentialsKey() {
         );
     }
     console.warn(
-        '[Store credentials] No encryption key in env — using development-only key. Set STORE_CREDENTIALS_KEY on the server.'
+        '[Store credentials] No encryption key in env - using development-only key. Set STORE_CREDENTIALS_KEY on the server.'
     );
     return crypto.createHash('sha256').update('dashboard-store-credentials-dev').digest();
 }

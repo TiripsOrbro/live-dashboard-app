@@ -1,5 +1,5 @@
 /**
- * Canonical dashboard URL paths — MIC and Admin namespaces.
+ * Canonical dashboard URL paths - MIC and Admin namespaces.
  */
 (function (global) {
     function areaCodeFromName(name) {

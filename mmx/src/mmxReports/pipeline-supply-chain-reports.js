@@ -30,7 +30,7 @@ async function openReportSelectionPage(page, reportNav, navTimeoutMs) {
     const onReports =
         /MMS_System_Reports/i.test(page.url() || '') && (await reportSelectionPageReady(page));
     if (onReports) {
-        log.info('Report Selection already open — reusing page');
+        log.info('Report Selection already open - reusing page');
         return;
     }
     log.info(`Opening Report Selection: ${reportNav.url}`);
@@ -459,7 +459,7 @@ async function prepareBulkScmStoreScope(page) {
     if (root) {
         log.info(`Bulk SCM: selected market root "${root}" for all-store export`);
     } else {
-        log.warn('Bulk SCM: market root not found in tree — export may be area-filtered');
+        log.warn('Bulk SCM: market root not found in tree - export may be area-filtered');
     }
     await page.waitForTimeout(Number(process.env.MMX_REPORT_TREE_CLEAR_SETTLE_MS || 500));
 }
@@ -787,7 +787,7 @@ async function waitUntilStoreVisibleInTree(page, storeNumber, timeoutMs) {
             return true;
         }
         if (Date.now() - lastLog >= 4000) {
-            log.info(`SCM store tree: waiting for store ${num} — re-expanding market/area…`);
+            log.info(`SCM store tree: waiting for store ${num} - re-expanding market/area…`);
             lastLog = Date.now();
         }
         await expandScmPathToStore(page, num);
@@ -905,7 +905,7 @@ async function selectScmStoreCheckboxInTree(page, storeNumber, storeName, option
     const waitMs = Number(process.env.MMX_SCM_TREE_WAIT_MS || 12000);
     const visible = await waitUntilStoreVisibleInTree(page, num, waitMs);
     if (!visible) {
-        log.warn(`SCM store tree: store ${num} not visible after ${Math.round(waitMs / 1000)}s — trying checkbox anyway`);
+        log.warn(`SCM store tree: store ${num} not visible after ${Math.round(waitMs / 1000)}s - trying checkbox anyway`);
     }
 
     await clearStoreCheckboxesInTree(page);
@@ -922,14 +922,14 @@ async function selectScmStoreCheckboxInTree(page, storeNumber, storeName, option
         );
         if (sample) log.warn(`SCM store tree sample: ${sample}`);
         throw new Error(
-            `SCM store tree: could not check store ${num}${storeName ? ` (${storeName})` : ''} — is the Stores tree visible?`
+            `SCM store tree: could not check store ${num}${storeName ? ` (${storeName})` : ''} - is the Stores tree visible?`
         );
     }
     log.info(`SCM store tree: checked "${picked}"`);
     await page.waitForTimeout(Number(process.env.MMX_SCM_TREE_SELECT_SETTLE_MS || 250));
 }
 
-/** SCM flat reports: store tree loads after dates — expand Area nodes until the store row appears. */
+/** SCM flat reports: store tree loads after dates - expand Area nodes until the store row appears. */
 async function prepareStoreTreeForSelection(page, storeName, storeNumber, timeoutMs = 45000) {
     const num = String(storeNumber || storeName.match(/\b(\d{4})\b/)?.[1] || '').trim();
     const hints = storeTreeHints(storeName, num);
@@ -951,7 +951,7 @@ async function prepareStoreTreeForSelection(page, storeName, storeNumber, timeou
     }
 
     log.warn(
-        `Store ${num || storeName} not visible in report tree after ${Math.round(timeoutMs / 1000)}s — trying selection anyway`
+        `Store ${num || storeName} not visible in report tree after ${Math.round(timeoutMs / 1000)}s - trying selection anyway`
     );
     return false;
 }
@@ -1340,7 +1340,7 @@ async function selectStoreForStoreReport(page, storeName, opts = {}) {
     }
 
     if (opts.optional) {
-        log.warn(`Store not found for "${storeName}" — continuing (optional)`);
+        log.warn(`Store not found for "${storeName}" - continuing (optional)`);
         return;
     }
 
@@ -1527,7 +1527,7 @@ async function selectStore(page, storeName, opts = {}) {
     }
 
     if (opts.optional) {
-        log.warn(`Store not found for "${storeName}" — continuing (optional)`);
+        log.warn(`Store not found for "${storeName}" - continuing (optional)`);
         return;
     }
 
@@ -1548,7 +1548,7 @@ async function clickGenerate(page, buttonText = 'Generate') {
     }, buttonText);
 
     if (!clicked) throw new Error(`Generate button not found`);
-    log.info('Clicked Generate — waiting for report export');
+    log.info('Clicked Generate - waiting for report export');
     await page.waitForTimeout(Number(process.env.MMX_REPORT_GENERATE_SETTLE_MS || 350));
 }
 
@@ -1635,7 +1635,7 @@ async function configureAndGenerateReport(page, report, reportNav, hooks = {}) {
         });
     }
 
-    await emit('clicking Generate — waiting for Macromatix export…');
+    await emit('clicking Generate - waiting for Macromatix export…');
     await clickGenerate(page, report.generateButtonText || 'Generate');
     refreshScrapePauseTimeout();
 }

@@ -29,7 +29,7 @@ async function enrichDailyStockCountTileState(base, storeNumber) {
     } else if (draft?.mmxSentAt) {
         sub = 'Completed today';
     } else if (draft?.submittedAt) {
-        sub = 'Submitted — open to continue';
+        sub = 'Submitted - open to continue';
     }
 
     return { ...base, sub, draft, pipeline };
@@ -62,7 +62,7 @@ function buildAreaDailyStockCountTileState(areaStores) {
         message: 'Open daily count',
         sub:
             stores.length > 1
-                ? `${stores.length} stores — select store to count`
+                ? `${stores.length} stores - select store to count`
                 : 'Enter counts by location',
     };
 }

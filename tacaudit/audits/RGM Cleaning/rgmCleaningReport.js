@@ -22,7 +22,7 @@ function escapeHtml(value) {
 }
 
 function formatReportDateTime(iso) {
-    if (!iso) return '—';
+    if (!iso) return '-';
     const parsed = Date.parse(iso);
     if (!Number.isFinite(parsed)) return iso;
     return new Date(parsed).toLocaleString('en-AU', {
@@ -38,7 +38,7 @@ function formatReportDateTime(iso) {
 function formatDurationMinutes(session) {
     const started = Date.parse(session.startedAt || '');
     const completed = Date.parse(session.completedAt || '');
-    if (!Number.isFinite(started) || !Number.isFinite(completed) || completed <= started) return '—';
+    if (!Number.isFinite(started) || !Number.isFinite(completed) || completed <= started) return '-';
     const mins = Math.round((completed - started) / 60000);
     if (mins < 60) return `${mins} min`;
     const h = Math.floor(mins / 60);
@@ -62,7 +62,7 @@ function buildReportFilename(session) {
 }
 
 function formatAnswerValue(question, value) {
-    if (value === null || value === undefined || String(value).trim() === '') return '—';
+    if (value === null || value === undefined || String(value).trim() === '') return '-';
     const raw = String(value).trim();
     if (isCleaningRatingType(question.type)) {
         if (raw.toLowerCase() === 'satisfactory') return 'Satisfactory';
@@ -196,7 +196,7 @@ function buildRgmCleaningReportHtml(session) {
                         (row) => `
                     <li>
                         <div class="action-question">${escapeHtml(row.label)} (${escapeHtml(row.group || '')})</div>
-                        <div class="action-text">${escapeHtml(row.note || '—')}</div>
+                        <div class="action-text">${escapeHtml(row.note || '-')}</div>
                     </li>`
                     )
                     .join('')}
@@ -210,7 +210,7 @@ function buildRgmCleaningReportHtml(session) {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>RGM Cleaning — ${escapeHtml(session.storeName || session.storeNumber)}</title>
+<title>RGM Cleaning - ${escapeHtml(session.storeName || session.storeNumber)}</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -345,9 +345,9 @@ function buildRgmCleaningReportHtml(session) {
     </div>
 
     <dl class="meta-grid">
-        <div class="meta-row"><dt>Period</dt><dd>${escapeHtml(session.periodKey || '—')}</dd></div>
-        <div class="meta-row"><dt>Conducted by</dt><dd>${escapeHtml(session.conductor?.name || '—')}</dd></div>
-        <div class="meta-row"><dt>Signed off by</dt><dd>${escapeHtml(session.signOff?.name || '—')}</dd></div>
+        <div class="meta-row"><dt>Period</dt><dd>${escapeHtml(session.periodKey || '-')}</dd></div>
+        <div class="meta-row"><dt>Conducted by</dt><dd>${escapeHtml(session.conductor?.name || '-')}</dd></div>
+        <div class="meta-row"><dt>Signed off by</dt><dd>${escapeHtml(session.signOff?.name || '-')}</dd></div>
         <div class="meta-row"><dt>Started</dt><dd>${escapeHtml(formatReportDateTime(session.startedAt))}</dd></div>
         <div class="meta-row"><dt>Completed</dt><dd>${escapeHtml(formatReportDateTime(session.completedAt))}</dd></div>
         <div class="meta-row"><dt>Duration</dt><dd>${escapeHtml(formatDurationMinutes(session))}</dd></div>
@@ -362,7 +362,7 @@ function buildRgmCleaningReportHtml(session) {
 
     <section class="report-section">
         <div class="section-title">Sign Off</div>
-        <p><strong>Action Plan Completed By:</strong> ${escapeHtml(session.signOff?.name || '—')}</p>
+        <p><strong>Action Plan Completed By:</strong> ${escapeHtml(session.signOff?.name || '-')}</p>
         ${signatureHtml}
     </section>
 

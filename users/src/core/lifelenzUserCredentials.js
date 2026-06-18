@@ -21,7 +21,7 @@ function credentialsKey() {
         );
     }
     console.warn(
-        '[LifeLenz credentials] No encryption key in env — using development-only key. Set LIFELENZ_USER_CREDENTIALS_KEY on the server.'
+        '[LifeLenz credentials] No encryption key in env - using development-only key. Set LIFELENZ_USER_CREDENTIALS_KEY on the server.'
     );
     return crypto.createHash('sha256').update('dashboard-lifelenz-user-dev').digest();
 }
@@ -121,7 +121,7 @@ function readUserLifeLenzSecrets(dashboardUsername) {
             };
         } catch (error) {
             console.warn(
-                `[LifeLenz credentials] Could not decrypt saved login for "${dashUser}" — check LIFELENZ_USER_CREDENTIALS_KEY: ${error.message}`
+                `[LifeLenz credentials] Could not decrypt saved login for "${dashUser}" - check LIFELENZ_USER_CREDENTIALS_KEY: ${error.message}`
             );
             return null;
         }

@@ -104,7 +104,7 @@ function cleanupReportDownloads(reportPaths, downloadDir) {
         try {
             fs.rmSync(downloadDir, { recursive: true, force: true });
         } catch (e) {
-            // Best effort — individual files were already unlinked.
+            // Best effort - individual files were already unlinked.
         }
     }
     return removed;

@@ -1,5 +1,5 @@
 /**
- * PM2 — Live Sales Dashboard (Express + Macromatix scraper).
+ * PM2 - Live Sales Dashboard (Express + Macromatix scraper).
  *
  *   pm2 start ecosystem.config.cjs
  *   pm2 save

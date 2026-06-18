@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Daily scheduler — at 8 AM (Melbourne) download build-to reports for stores
+ * Daily scheduler - at 8 AM (Melbourne) download build-to reports for stores
  * that have pending scheduled orders on the configured order date.
  *
  * Usage:
@@ -37,7 +37,7 @@ async function maybeRunScheduledJob() {
     const runDateKey = melbourneDateKey();
     const orderDateKey = resolveOrderDateKey();
     if (hasScheduledRunToday(runDateKey, orderDateKey)) {
-        console.log(`[ReportDownloadScheduler] Already ran today for order date ${orderDateKey} — skipping.`);
+        console.log(`[ReportDownloadScheduler] Already ran today for order date ${orderDateKey} - skipping.`);
         return;
     }
 
@@ -50,11 +50,11 @@ async function main() {
     const hour = scheduleHour();
     const windowMin = scheduleWindowMinutes();
     console.log(
-        `[ReportDownloadScheduler] Started — ${TIME_ZONE}, daily at ${hour}:00 (window ${windowMin} min), order date: ${resolveOrderDateKey()}`
+        `[ReportDownloadScheduler] Started - ${TIME_ZONE}, daily at ${hour}:00 (window ${windowMin} min), order date: ${resolveOrderDateKey()}`
     );
 
     if (!isScheduleEnabled()) {
-        console.warn('[ReportDownloadScheduler] REPORT_DOWNLOAD_SCHEDULE_ENABLED is not set — sleeping 5 min (set to 1 to activate).');
+        console.warn('[ReportDownloadScheduler] REPORT_DOWNLOAD_SCHEDULE_ENABLED is not set - sleeping 5 min (set to 1 to activate).');
     }
 
     for (;;) {

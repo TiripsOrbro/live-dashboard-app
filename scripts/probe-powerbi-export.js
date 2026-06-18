@@ -48,7 +48,7 @@ async function main() {
         if (onOlap) {
             if (process.argv.includes('--export')) {
                 await exportOlapReportToExcel(page, cfg);
-                console.log('[probe] OLAP Excel export clicked — check downloads folder');
+                console.log('[probe] OLAP Excel export clicked - check downloads folder');
             } else {
                 console.log('[probe] Add --export to click OLAP toolbar Excel');
             }

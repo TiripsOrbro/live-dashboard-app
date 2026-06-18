@@ -285,7 +285,7 @@ function main() {
         for (const storeNumber of result.stores) {
             const readiness = assessHistoryReadiness(storeNumber);
             const status = readiness.ready ? 'ready' : `needs more (${readiness.weekdayGaps.join(', ') || 'days'})`;
-            console.log(`  ${storeNumber}: ${readiness.daysRecorded} days (${readiness.oldestDate} → ${readiness.newestDate}) — ${status}`);
+            console.log(`  ${storeNumber}: ${readiness.daysRecorded} days (${readiness.oldestDate} → ${readiness.newestDate}) - ${status}`);
         }
     }
 }

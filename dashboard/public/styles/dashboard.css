@@ -1,7 +1,7 @@
 @import url('/styles/app-tabs.css');
 
 /* -----------------------------------------------------------
-   Typography — five sizes + weights (tune the dashboard here)
+   Typography - five sizes + weights (tune the dashboard here)
    Scale 1 = largest … 5 = smallest
 ----------------------------------------------------------- */
 :root {
@@ -42,7 +42,7 @@
 }
 
 /* -----------------------------------------------------------
-   Palette — charcoal, grey, blank, grid fills/borders, TB + dark purple
+   Palette - charcoal, grey, blank, grid fills/borders, TB + dark purple
    Everything else references these or uses color-mix(...) below.
 ----------------------------------------------------------- */
 :root {
@@ -59,7 +59,7 @@
     --tb-teal-hover: #0f766e;
     --dark-purple-border: #4b3a63;
 
-    /* Grid — default + status (fills + matching borders) */
+    /* Grid - default + status (fills + matching borders) */
     --blank-border: #cbd5e1;
     --good: #99bb82;
     --good-border: #6d8858;
@@ -68,7 +68,7 @@
     --bad: #d99792;
     --bad-border: #b86f69;
 
-    /* Popups — TB tint over charcoal (multi-card progress overlay) */
+    /* Popups - TB tint over charcoal (multi-card progress overlay) */
     --popup-progress-gradient-start: color-mix(in srgb, var(--tb-purple-light) 45%, var(--charcoal));
     --popup-progress-gradient-end: color-mix(in srgb, var(--tb-purple-light) 62%, var(--charcoal));
 
@@ -76,7 +76,7 @@
     --popup-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Colour-blind mode — “on track” uses blue instead of green (CB… logins) */
+/* Colour-blind mode - “on track” uses blue instead of green (CB… logins) */
 body.color-blind-mode {
     --good: #6b9fd4;
     --good-border: #3d7ab8;
@@ -144,7 +144,7 @@ body {
     overflow: hidden;
 }
 
-/* Desktop dashboards: fit viewport — no page scroll inside .dashboard */
+/* Desktop dashboards: fit viewport - no page scroll inside .dashboard */
 @media (min-width: 901px) {
     .dashboard {
         overflow: hidden;
@@ -311,7 +311,7 @@ body {
     overflow: hidden;
 }
 
-/* Pending Macromatix vendors — sit in footer trail row (desktop: width capped, trail flex-end) */
+/* Pending Macromatix vendors - sit in footer trail row (desktop: width capped, trail flex-end) */
 .pending-vendors-aside {
     width: 100%;
     max-width: 380px;
@@ -324,7 +324,7 @@ body {
     overflow: hidden;
 }
 
-/* Title only — charcoal */
+/* Title only - charcoal */
 .pending-vendors-heading {
     background: var(--charcoal);
     color: var(--white);
@@ -338,7 +338,7 @@ body {
     box-sizing: border-box;
 }
 
-/* Vendor rows — each its own purple box; clip chip motion so nothing scrolls horizontally */
+/* Vendor rows - each its own purple box; clip chip motion so nothing scrolls horizontally */
 .pending-vendors-list {
     display: flex;
     flex-direction: column;
@@ -455,13 +455,13 @@ body {
     background: color-mix(in srgb, var(--blank) 22%, var(--dark-purple-border));
 }
 
-/* Order reminders — not dismissible */
+/* Order reminders - not dismissible */
 .pending-vendor-chip--order {
     cursor: default;
     pointer-events: none;
 }
 
-/* Combined stock count — mobile portrait only, teal */
+/* Combined stock count - mobile portrait only, teal */
 .pending-vendor-item--combined {
     display: none;
 }
@@ -544,7 +544,7 @@ body {
     }
 }
 
-/* Audits list (left) — mirrors orders styling; dismiss animates left */
+/* Audits list (left) - mirrors orders styling; dismiss animates left */
 .audits-aside {
     width: 100%;
     max-width: 380px;
@@ -630,7 +630,7 @@ body {
     border-radius: 0;
     border: none;
     background: color-mix(in srgb, var(--blank) 12%, var(--dark-purple-border));
-    color: var(--blank);
+    color: var(--white);
     transition: background 0.15s ease;
 }
 
@@ -638,9 +638,17 @@ body {
     background: color-mix(in srgb, var(--blank) 22%, var(--dark-purple-border));
 }
 
-a.audit-chip--link {
+a.audit-chip,
+a.audit-chip--link,
+a.audit-chip--link:visited {
     text-decoration: none;
-    color: inherit;
+    color: var(--white);
+}
+
+a.audit-chip--link:hover,
+a.audit-chip:hover {
+    color: var(--white);
+    text-decoration: none;
 }
 
 .audit-chip:focus-visible {
@@ -710,7 +718,7 @@ a.audit-chip--link {
 }
 
 /* -----------------------------------------------------------
-   Grid cells — shared, header row, row labels, data
+   Grid cells - shared, header row, row labels, data
 ----------------------------------------------------------- */
 .grid-label,
 .grid-cell {
@@ -779,7 +787,7 @@ a.audit-chip--link {
     text-align: center;
 }
 
-/* Charcoal day-total cell — full-day actual/forecast; bottom strip always full width, colour only (no time pace) */
+/* Charcoal day-total cell - full-day actual/forecast; bottom strip always full width, colour only (no time pace) */
 .grid-label.meal-period-day-sales-total {
     flex-direction: column;
     justify-content: flex-start;
@@ -857,7 +865,7 @@ a.audit-chip--link {
     border: var(--cell-border) var(--bad-border);
 }
 
-/* Current hour / live day part — dual fills; outer border colour set inline (actual vs full forecast) */
+/* Current hour / live day part - dual fills; outer border colour set inline (actual vs full forecast) */
 .grid-cell.grid-cell--live-hour,
 .grid-cell.meal-period-cell.meal-period-cell--live {
     position: relative;
@@ -876,7 +884,7 @@ a.audit-chip--link {
     z-index: 0;
 }
 
-/* Main area: fill only (outcome colour), grows with time — no frame border */
+/* Main area: fill only (outcome colour), grows with time - no frame border */
 .grid-cell-live-main-frame {
     flex: 1;
     min-height: 0;
@@ -926,7 +934,7 @@ a.audit-chip--link {
 }
 
 /* -----------------------------------------------------------
-   Lunch / Dinner — spanned totals row (aligned to hour columns)
+   Lunch / Dinner - spanned totals row (aligned to hour columns)
 ----------------------------------------------------------- */
 .grid-cell.meal-period-cell {
     flex-direction: column;
@@ -1008,7 +1016,7 @@ a.audit-chip--link {
     text-align: center;
 }
 
-/* Loading skeleton — shown before first sales payload arrives */
+/* Loading skeleton - shown before first sales payload arrives */
 .dashboard-grid--skeleton {
     display: grid;
     gap: calc(8px * var(--dashboard-scale));
@@ -1159,7 +1167,7 @@ body.rotate-hint-active .dashboard {
 }
 
 /* -----------------------------------------------------------
-   Mobile — same layout as desktop, scaled via --dashboard-scale
+   Mobile - same layout as desktop, scaled via --dashboard-scale
    (no stacked footer / separate mobile grid; JS sets scale from viewport)
 ----------------------------------------------------------- */
 @media (max-width: 900px) {
@@ -1214,7 +1222,7 @@ body.rotate-hint-active .dashboard {
     }
 }
 
-/* Portrait phone — hours | forecast | actual columns, scrollable page */
+/* Portrait phone - hours | forecast | actual columns, scrollable page */
 @media (max-width: 900px) and (orientation: portrait) {
     body.dashboard--portrait #app {
         align-items: stretch;
@@ -1568,7 +1576,7 @@ body.rotate-hint-active .dashboard {
 }
 
 /* -----------------------------------------------------------
-   Notifications — container & panel
+   Notifications - container & panel
 ----------------------------------------------------------- */
 #popup-container {
     position: fixed;
@@ -1691,7 +1699,7 @@ body.rotate-hint-active .dashboard {
 }
 
 /* -----------------------------------------------------------
-   Multi-card popups — 3-col grid: icon in outer column, text centred in middle
+   Multi-card popups - 3-col grid: icon in outer column, text centred in middle
 ----------------------------------------------------------- */
 .popup.popup-multi {
     position: relative;
@@ -1855,7 +1863,7 @@ body.rotate-hint-active .dashboard {
     object-fit: contain;
 }
 
-/* Test store only — injected by dashboard.js on /teststore */
+/* Test store only - injected by dashboard.js on /teststore */
 #popup-test-btn {
     position: fixed;
     bottom: 100px;
@@ -1872,7 +1880,7 @@ body.rotate-hint-active .dashboard {
     pointer-events: auto;
 }
 
-/* Admin area workspace — /Admin/A{area} (index.html, in-page store tabs) */
+/* Admin area workspace - /Admin/A{area} (index.html, in-page store tabs) */
 body.dashboard-page--admin-store {
     --admin-store-header-top: max(14px, env(safe-area-inset-top));
     --admin-store-header-band: 44px;

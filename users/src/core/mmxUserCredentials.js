@@ -18,7 +18,7 @@ function credentialsKey() {
         );
     }
     console.warn(
-        '[MMX credentials] No encryption key in env — using development-only key. Set MMX_USER_CREDENTIALS_KEY on the server.'
+        '[MMX credentials] No encryption key in env - using development-only key. Set MMX_USER_CREDENTIALS_KEY on the server.'
     );
     return crypto.createHash('sha256').update('dashboard-mmx-user-dev').digest();
 }
@@ -123,7 +123,7 @@ function readUserAccountSecrets(dashboardUsername) {
             };
         } catch (error) {
             console.warn(
-                `[MMX credentials] Could not decrypt saved login for "${dashUser}" — check MMX_USER_CREDENTIALS_KEY: ${error.message}`
+                `[MMX credentials] Could not decrypt saved login for "${dashUser}" - check MMX_USER_CREDENTIALS_KEY: ${error.message}`
             );
             return null;
         }

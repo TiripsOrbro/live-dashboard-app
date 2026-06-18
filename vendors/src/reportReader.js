@@ -169,7 +169,7 @@ function parseInventorySpecialEventFromGrid(grid) {
     return { items, dayLabels, layout };
 }
 
-/** Inventory Special Event CSV — usage is in cartons (or report unit). */
+/** Inventory Special Event CSV - usage is in cartons (or report unit). */
 function parseInventorySpecialEvent(filePath) {
     const { grid } = loadGrid(filePath);
     return parseInventorySpecialEventFromGrid(grid).items;
@@ -202,12 +202,12 @@ function logIseSpotCheck(filePath, catalogCodes, logFn) {
                 }
             }
             if (!hit) {
-                write(`ISE spot-check ${name}: ${catalogCode} — no row found`);
+                write(`ISE spot-check ${name}: ${catalogCode} - no row found`);
                 continue;
             }
             const days = (hit.dayValues || []).map((v) => round4(v)).join(', ');
             write(
-                `ISE spot-check ${name}: ${hitKey} ${hit.description} — days [${days}] sum=${round4(hit.daySum)} avg=${round4(hit.avgDaily)}`
+                `ISE spot-check ${name}: ${hitKey} ${hit.description} - days [${days}] sum=${round4(hit.daySum)} avg=${round4(hit.avgDaily)}`
             );
         }
     } catch (err) {
@@ -219,7 +219,7 @@ function round4(n) {
     return Math.round(Number(n) * 10000) / 10000;
 }
 
-/** SCM Items On Hand (Flat) — filter to one store; qty col 7 in report unit col 6. */
+/** SCM Items On Hand (Flat) - filter to one store; qty col 7 in report unit col 6. */
 function parseStockOnHand(filePath, storeNumber) {
     const { grid } = loadGrid(filePath);
     const want = String(storeNumber || '').trim();
@@ -244,7 +244,7 @@ function parseStockOnHand(filePath, storeNumber) {
     return items;
 }
 
-/** SCM Items On Order (Flat) — sum qty in column L (index 11) per item for store. */
+/** SCM Items On Order (Flat) - sum qty in column L (index 11) per item for store. */
 function parseStockOnOrder(filePath, storeNumber) {
     const { grid } = loadGrid(filePath);
     const want = String(storeNumber || '').trim();
@@ -697,7 +697,7 @@ function storesPresentInGrid(grid, colIndex = 2) {
     return [...found].sort();
 }
 
-/** SCM flat exports often include every store — keep only rows for the target store. */
+/** SCM flat exports often include every store - keep only rows for the target store. */
 function filterSpreadsheetByStoreColumn(filePath, storeNumber, colIndex = 2) {
     const want = String(storeNumber || '').trim();
     if (!want || !fs.existsSync(filePath)) return { kept: 0, total: 0 };

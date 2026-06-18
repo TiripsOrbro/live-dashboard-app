@@ -196,7 +196,7 @@ async function prepareDailyCountForMmx(storeNumber, options = {}) {
             sessionStarted = true;
 
             if (!redVariances.length) {
-                log.info(`Store ${storeNumber}: no red variances — applying daily count immediately`);
+                log.info(`Store ${storeNumber}: no red variances - applying daily count immediately`);
                 const applyResult = await applyDailyCountSessionWork(storeNumber, session.sessionId, {
                     ...options,
                     _withinStoreLock: true,
@@ -264,7 +264,7 @@ async function applyDailyCountSessionWork(storeNumber, sessionId, options = {}) 
     try {
         const session = getSession(storeNumber, sessionId);
         if (!session?.page) {
-            throw new Error('Daily count session expired — submit again.');
+            throw new Error('Daily count session expired - submit again.');
         }
 
         await setCheckpoint(storeNumber, {

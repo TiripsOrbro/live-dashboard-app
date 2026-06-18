@@ -1,4 +1,4 @@
-/* Login + welcome — dark “front door”; dashboard stays light grey after sign-in */
+/* Login + welcome - dark “front door”; dashboard stays light grey after sign-in */
 :root {
     --login-bg: #000000;
     --login-surface: #1a1618;
@@ -543,7 +543,7 @@ body.login-body--dashboard-reveal .login-root {
     line-height: 1.4;
 }
 
-/* ── Welcome stage — quick reveal, brief hold, fade to dashboard ── */
+/* ── Welcome stage - quick reveal, brief hold, fade to dashboard ── */
 .welcome-stage {
     position: fixed;
     top: 0;
@@ -737,7 +737,7 @@ body.welcome-overlay-active .stores-sign-out-btn {
     }
 }
 
-/* Desktop — much larger pulse mark, shifted down; layout box unchanged so text stays put */
+/* Desktop - much larger pulse mark, shifted down; layout box unchanged so text stays put */
 @media (min-width: 901px) {
     .login-brand-hero {
         --login-mark-scale: 2.15;
@@ -753,7 +753,7 @@ body.welcome-overlay-active .stores-sign-out-btn {
     }
 }
 
-/* Portrait phone — edge-to-edge login, larger brand mark */
+/* Portrait phone - edge-to-edge login, larger brand mark */
 @media (max-width: 900px) and (orientation: portrait) {
     html,
     body.login-body {
@@ -839,7 +839,7 @@ body.welcome-overlay-active .stores-sign-out-btn {
     }
 }
 
-/* Small screens — welcome centering even in landscape */
+/* Small screens - welcome centering even in landscape */
 @media (max-width: 900px) {
     .welcome-stage {
         display: grid;

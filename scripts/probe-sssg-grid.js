@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Probe Macromatix SPA Forecasting grid — dump Last Year row indices, labels, and parsed slots.
+ * Probe Macromatix SPA Forecasting grid - dump Last Year row indices, labels, and parsed slots.
  *
  * Usage:
  *   npm run probe-sssg-grid

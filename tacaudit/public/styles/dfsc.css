@@ -1,4 +1,4 @@
-/* DFSC — SafetyCulture-inspired audit UI */
+/* DFSC - SafetyCulture-inspired audit UI */
 
 :root {
     --dfsc-bg: #eef1f4;
@@ -603,7 +603,7 @@ body.dfsc-page {
     transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 
-/* Unselected button text colours (compliant / not compliant — not PPM bands) */
+/* Unselected button text colours (compliant / not compliant - not PPM bands) */
 .dfsc-radio-group:not(.dfsc-radio-group--ppm) .dfsc-choice:not(.dfsc-choice--nc):not(.dfsc-choice--na) span {
     color: var(--dfsc-green);
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Headed LifeLenz forecast entry probe — one store, visible browser.
+ * Headed LifeLenz forecast entry probe - one store, visible browser.
  *
  * Usage:
  *   npm run probe-lifelenz-forecast -- 3806
@@ -47,7 +47,7 @@ async function main() {
             onProgress: (payload) => console.log('[progress]', JSON.stringify(payload)),
         });
         console.log(JSON.stringify(result, null, 2));
-        console.log('[probe-lifelenz-forecast] Browser left open — close manually when done.');
+        console.log('[probe-lifelenz-forecast] Browser left open - close manually when done.');
     } catch (err) {
         await closeBrowserQuietly(session.browser, 'probe-error');
         throw err;

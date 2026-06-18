@@ -39,11 +39,11 @@ const DEFAULT_BUILD_TO_DAYS = 10;
 const EXTENDED_BUILD_TO_DAYS = 13;
 const SALAD_BUILD_TO_DAYS = 7;
 
-/** Cut fresh / short shelf-life — 7-day build-to (lettuce, tomato, onion, herbs, pico). */
+/** Cut fresh / short shelf-life - 7-day build-to (lettuce, tomato, onion, herbs, pico). */
 const SALAD_NAME_RE =
     /\blettuce\b|\btomato\b|\bonion\b|\bcorriander\b|\bcoriander\b|\bpico de gallo\b|\bsalad\b/i;
 
-/** Beef, tortillas, flatbread, tostadas, nacho chips, fries — 13-day build-to when catalog has no day prefix. */
+/** Beef, tortillas, flatbread, tostadas, nacho chips, fries - 13-day build-to when catalog has no day prefix. */
 const BUILD_TO_13_DAY_ITEM_CODES = new Set(
     [
         '39520', // Beef

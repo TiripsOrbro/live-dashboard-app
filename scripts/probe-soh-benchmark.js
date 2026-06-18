@@ -202,10 +202,10 @@ async function runPool(storeNumber, workers, totalRuns, allReports) {
             const wall = ((Date.now() - started) / 1000).toFixed(1);
             if (r.ok) {
                 console.log(
-                    `[w${workerId}] job ${jobId + 1} OK ${wall}s wall — login ${fmtSec(r.loginMs / 1000)}, pipeline ${fmtSec(r.downloadMs / 1000)}, total ${fmtSec(r.totalMs / 1000)}`
+                    `[w${workerId}] job ${jobId + 1} OK ${wall}s wall - login ${fmtSec(r.loginMs / 1000)}, pipeline ${fmtSec(r.downloadMs / 1000)}, total ${fmtSec(r.totalMs / 1000)}`
                 );
             } else {
-                console.log(`[w${workerId}] job ${jobId + 1} FAIL ${wall}s — ${r.error}`);
+                console.log(`[w${workerId}] job ${jobId + 1} FAIL ${wall}s - ${r.error}`);
             }
             results.push(r);
         }
@@ -250,36 +250,36 @@ function suggestCuts(rows, okResults) {
 
     if (login.avg >= 3) {
         tips.push(
-            `Login averages ${fmtSec(login.avg)} per browser — reuse one MMX session for all 3 reports instead of reopening (stock count already does this).`
+            `Login averages ${fmtSec(login.avg)} per browser - reuse one MMX session for all 3 reports instead of reopening (stock count already does this).`
         );
     }
     for (const r of top) {
         if (r.key === 'set_format' && r.avg >= 4) {
             tips.push(
-                `Format selection ~${fmtSec(r.avg)} — often retries waiting for dropdown; trim MMX_REPORT_FORMAT_ATTEMPTS or skip wait when Excel is already selected.`
+                `Format selection ~${fmtSec(r.avg)} - often retries waiting for dropdown; trim MMX_REPORT_FORMAT_ATTEMPTS or skip wait when Excel is already selected.`
             );
         }
         if (r.key === 'open_report_page' && r.avg >= 2) {
             tips.push(
-                `Report page navigation ~${fmtSec(r.avg)} per report — chain SOH→SOO→ISE without full page.goto between reports (change report dropdown only).`
+                `Report page navigation ~${fmtSec(r.avg)} per report - chain SOH→SOO→ISE without full page.goto between reports (change report dropdown only).`
             );
         }
         if (r.key === 'set_start_date' && r.avg >= 2) {
             tips.push(
-                `Start date ~${fmtSec(r.avg)} — skip re-entry when value already matches tomorrow (partially implemented).`
+                `Start date ~${fmtSec(r.avg)} - skip re-entry when value already matches tomorrow (partially implemented).`
             );
         }
         if (r.key === 'scm_tree' && r.avg >= 3) {
-            tips.push(`SCM tree ~${fmtSec(r.avg)} — area expand postback; tune MMX_SCM_TREE_AREA_POSTBACK_MS if stable.`);
+            tips.push(`SCM tree ~${fmtSec(r.avg)} - area expand postback; tune MMX_SCM_TREE_AREA_POSTBACK_MS if stable.`);
         }
         if (r.key === 'file_download' && r.avg >= 5) {
             tips.push(
-                `File download ~${fmtSec(r.avg)} — Macromatix server time; not much to cut client-side.`
+                `File download ~${fmtSec(r.avg)} - Macromatix server time; not much to cut client-side.`
             );
         }
         if (r.key === 'select_store' && r.avg >= 5) {
             tips.push(
-                `ISE store reload ~${fmtSec(r.avg)} — triggerStoreSelectionReload does full page.reload; investigate lighter postback.`
+                `ISE store reload ~${fmtSec(r.avg)} - triggerStoreSelectionReload does full page.reload; investigate lighter postback.`
             );
         }
     }

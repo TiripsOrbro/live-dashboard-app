@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Read-only Key Item Count match test — opens MMX, checks catalog items exist on each tab.
+ * Read-only Key Item Count match test - opens MMX, checks catalog items exist on each tab.
  * Does NOT fill quantities, Save, Continue, or Apply.
  *
  * Usage:
@@ -45,22 +45,22 @@ function printReportResults(reportResults) {
     for (const r of reportResults) {
         console.log(`\n=== Reports: ${r.vendor} (${r.slug}) ===`);
         if (!r.hasAnyReport) {
-            console.log(`  No files under ${path.join(r.reportsRoot, '…')} — drop ISE exports in Reports/<store>/ to verify.`);
+            console.log(`  No files under ${path.join(r.reportsRoot, '…')} - drop ISE exports in Reports/<store>/ to verify.`);
             continue;
         }
         console.log(
-            `  ISE: ${r.files.inventorySpecialEvent ? path.basename(r.files.inventorySpecialEvent) : '—'}`
+            `  ISE: ${r.files.inventorySpecialEvent ? path.basename(r.files.inventorySpecialEvent) : '-'}`
         );
-        console.log(`  On hand: ${r.files.stockOnHand ? path.basename(r.files.stockOnHand) : '—'}`);
-        console.log(`  On order: ${r.files.stockOnOrder ? path.basename(r.files.stockOnOrder) : '—'}`);
+        console.log(`  On hand: ${r.files.stockOnHand ? path.basename(r.files.stockOnHand) : '-'}`);
+        console.log(`  On order: ${r.files.stockOnOrder ? path.basename(r.files.stockOnOrder) : '-'}`);
         console.log(
             `  ISE usage check: ${r.summary.checked} catalog lines  ${r.summary.missing} need alias/usage  ${r.summary.skippedManual} count-driven (reports optional)`
         );
         console.log(
-            '  (On-hand / on-order gaps are normal — ordering uses app counts vs build-to, then scheduled orders in MMX.)'
+            '  (On-hand / on-order gaps are normal - ordering uses app counts vs build-to, then scheduled orders in MMX.)'
         );
         for (const m of r.missing) {
-            const hint = m.diagnosis?.length ? ` — ${m.diagnosis.join('; ')}` : '';
+            const hint = m.diagnosis?.length ? ` - ${m.diagnosis.join('; ')}` : '';
             console.log(
                 `    ✗ ${m.itemCode}  ${m.name}  [ISE]  keys: ${m.lookupKeys.join(', ')}${hint}`
             );
@@ -79,28 +79,28 @@ function printResults(allResults) {
             console.log(`\n  ${loc.locationName} → MMX "${loc.mmxTab}" (${loc.gridRows} grid rows)`);
             if (loc.error) console.log(`    TAB ERROR: ${loc.error}`);
             for (const f of loc.found) {
-                console.log(`    ✓ ${f.itemCode || '—'}  ${f.name}`);
+                console.log(`    ✓ ${f.itemCode || '-'}  ${f.name}`);
                 if (f.columns) console.log(`        ${f.columns}`);
             }
             for (const c of loc.columnIssues || []) {
                 const miss = c.columnCheck?.missing || [];
                 const mmxSlots = c.columnCheck?.mmxSlots?.join(',') || '?';
-                console.log(`    ⚠ ${c.itemCode || '—'}  ${c.name}  (on tab; MMX slots: ${mmxSlots})`);
+                console.log(`    ⚠ ${c.itemCode || '-'}  ${c.name}  (on tab; MMX slots: ${mmxSlots})`);
                 for (const col of miss) {
                     console.log(
-                        `        catalog "${col.catalogLabel}" needs ${col.mmxLabel} (tbOH${col.mmxSlot}) — not on row`
+                        `        catalog "${col.catalogLabel}" needs ${col.mmxLabel} (tbOH${col.mmxSlot}) - not on row`
                     );
                 }
             }
             for (const m of loc.missing) {
-                console.log(`    ✗ ${m.itemCode || '—'}  ${m.name}${m.reason ? ` (${m.reason})` : ''}`);
+                console.log(`    ✗ ${m.itemCode || '-'}  ${m.name}${m.reason ? ` (${m.reason})` : ''}`);
             }
         }
 
         if (result.skippedKeyItemCount.length) {
             console.log(`\n  Skipped Key Item Count (${result.skippedKeyItemCount.length} order= / manual lines):`);
             for (const s of result.skippedKeyItemCount.slice(0, 5)) {
-                console.log(`    · ${s.itemCode || '—'}  ${s.name}`);
+                console.log(`    · ${s.itemCode || '-'}  ${s.name}`);
             }
             if (result.skippedKeyItemCount.length > 5) {
                 console.log(`    … +${result.skippedKeyItemCount.length - 5} more`);
@@ -136,7 +136,7 @@ async function main() {
 
         const countMode = await openKeyItemCountForVerification(page, cfg, { allowCreate });
         console.log(`Key Item Count mode: ${countMode.mode}${countMode.batch ? ` batch ${countMode.batch}` : ''}`);
-        console.log('Read-only — no Save, Continue, or Apply will be clicked.\n');
+        console.log('Read-only - no Save, Continue, or Apply will be clicked.\n');
 
         const allResults = [];
         const reportResults = [];
@@ -165,7 +165,7 @@ async function main() {
             `\nDone. Not on KIC tab: ${totalMissing}, column mismatch: ${totalColumnMissing}, tab errors: ${totalTabErrors}, ISE alias gaps (13-day build-to only): ${totalReportMissing}`
         );
         console.log(
-            'MMX slots: 1=Box/carton, 2=Inner/bag, 3=Unit/kg/each — catalog columns map left-to-right to these fields.'
+            'MMX slots: 1=Box/carton, 2=Inner/bag, 3=Unit/kg/each - catalog columns map left-to-right to these fields.'
         );
         process.exit(totalMissing || totalColumnMissing || totalTabErrors ? 1 : 0);
     } finally {

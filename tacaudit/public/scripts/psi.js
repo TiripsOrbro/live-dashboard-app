@@ -63,7 +63,7 @@ function mountBackNav() {
 function psiWeekLabel(ctx = context) {
     const week = ctx?.psiWeek ?? session?.psiWeek;
     const title = ctx?.psiWeekTitle ?? session?.psiWeekTitle;
-    if (week && title) return `Week ${week} — ${title}`;
+    if (week && title) return `Week ${week} - ${title}`;
     if (week) return `Week ${week}`;
     return title || 'Periodic Safety Inspection';
 }
@@ -345,7 +345,7 @@ function renderQuestion(question) {
     const ncAlert = !isNc
         ? ''
         : hasNote
-          ? `<div class="dfsc-nc-alert dfsc-nc-alert--done">Non-compliant — note recorded</div>`
+          ? `<div class="dfsc-nc-alert dfsc-nc-alert--done">Non-compliant - note recorded</div>`
           : `<div class="dfsc-nc-alert">ADD A NOTE FOR THIS ITEM</div>`;
 
     const cardClass = [
@@ -613,7 +613,7 @@ function renderCompleteView() {
                 <h2>Inspection completed</h2>
                 <p class="dfsc-signoff-text">${escapeHtml(session.storeName)} · ${escapeHtml(psiWeekLabel())}</p>
                 <p class="dfsc-signoff-text">
-                    Score ${score.yesCount ?? '—'} / ${score.total ?? '—'} (${score.percent ?? 0}%)
+                    Score ${score.yesCount ?? '-'} / ${score.total ?? '-'} (${score.percent ?? 0}%)
                     · ${score.flaggedCount ?? 0} flagged
                 </p>
                 <p class="dfsc-signoff-text">Completed at ${escapeHtml(new Date(session.completedAt).toLocaleString())}</p>
@@ -634,7 +634,7 @@ function renderCompleteView() {
 }
 
 function formatAuditTime(iso) {
-    if (!iso) return '—';
+    if (!iso) return '-';
     try {
         return new Date(iso).toLocaleString(undefined, {
             day: 'numeric',
@@ -689,7 +689,7 @@ function renderPeriodCompletedSection(rows = []) {
                 <div class="dfsc-open-meta">
                     Completed ${escapeHtml(formatAuditTime(row.completedAt))}
                     · Week ${escapeHtml(row.psiWeek || '?')}
-                    · Score ${row.score?.yesCount ?? '—'}/${row.score?.total ?? '—'}
+                    · Score ${row.score?.yesCount ?? '-'}/${row.score?.total ?? '-'}
                 </div>
             </div>
             <div class="dfsc-open-actions">
@@ -718,7 +718,7 @@ function renderLandingView() {
             <div class="dfsc-landing-head">
                 <h1>Periodic Safety Inspection</h1>
                 <p>${escapeHtml(periodStatus)} · ${escapeHtml(psiWeekLabel())}</p>
-                <p class="dfsc-field-hint">Period ${escapeHtml(context.periodKey)} — one PSI form rotates each week (Weeks 1–4).</p>
+                <p class="dfsc-field-hint">Period ${escapeHtml(context.periodKey)} - one PSI form rotates each week (Weeks 1–4).</p>
             </div>
             ${renderPeriodCompletedSection(periodCompleted)}
             ${renderOpenAuditsSection(openAudits)}

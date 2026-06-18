@@ -28,11 +28,11 @@ function diagnoseMissing(row, ise, catalogItem) {
         const nameHit = catalogItem ? findIseRowForCatalogItem(catalogItem, ise) : null;
         if (nameHit && nameHit.matchSource === 'name') {
             reasons.push(
-                `no code match — ISE name fallback: ${nameHit.reportItemCode} "${nameHit.ise.description}" (add "${nameHit.reportItemCode}" to .item-codes)`
+                `no code match - ISE name fallback: ${nameHit.reportItemCode} "${nameHit.ise.description}" (add "${nameHit.reportItemCode}" to .item-codes)`
             );
         } else {
             reasons.push(
-                'no ISE row with usage (add alias in .item-codes, or zero usage — compare app count to build-to)'
+                'no ISE row with usage (add alias in .item-codes, or zero usage - compare app count to build-to)'
             );
         }
     }
@@ -42,7 +42,7 @@ function diagnoseMissing(row, ise, catalogItem) {
 /**
  * Check catalog item codes against ISE (for usage-based build-to).
  *
- * Stock-on-hand and stock-on-order are looked up for diagnostics only — missing rows are
+ * Stock-on-hand and stock-on-order are looked up for diagnostics only - missing rows are
  * normal. Ordering uses manual counts from the app vs build-to target; scheduled orders
  * in MMX align after you place them.
  */
@@ -74,7 +74,7 @@ function verifyCatalogReportCoverage(storeNumber, catalog, reportsRoot) {
             skipped.push({
                 itemCode: code,
                 name: item.name,
-                reason: 'on-hand only (oh:N — no travel-path count; build-to uses SCM reports)',
+                reason: 'on-hand only (oh:N - no travel-path count; build-to uses SCM reports)',
             });
             continue;
         }
@@ -83,7 +83,7 @@ function verifyCatalogReportCoverage(storeNumber, catalog, reportsRoot) {
             skipped.push({
                 itemCode: code,
                 name: item.name,
-                reason: 'count-driven (=N / order= / manual= — use app count vs catalog build-to; reports optional)',
+                reason: 'count-driven (=N / order= / manual= - use app count vs catalog build-to; reports optional)',
             });
             continue;
         }

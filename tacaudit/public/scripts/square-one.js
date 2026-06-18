@@ -380,7 +380,7 @@ function renderQuestion(question) {
     const ncAlert = !isNc
         ? ''
         : hasNote
-          ? `<div class="dfsc-nc-alert dfsc-nc-alert--done">Non-compliant — note recorded</div>`
+          ? `<div class="dfsc-nc-alert dfsc-nc-alert--done">Non-compliant - note recorded</div>`
           : `<div class="dfsc-nc-alert">ADD A NOTE FOR THIS ITEM</div>`;
 
     const cardClass = [
@@ -670,7 +670,7 @@ function renderCompleteView() {
 }
 
 function formatAuditTime(iso) {
-    if (!iso) return '—';
+    if (!iso) return '-';
     try {
         return new Date(iso).toLocaleString(undefined, {
             day: 'numeric',
@@ -725,7 +725,7 @@ function renderPeriodCompletedSection(rows = []) {
                 <div class="dfsc-open-meta">
                     Completed ${escapeHtml(formatAuditTime(row.completedAt))}
                     · Week ${escapeHtml(row.psiWeek || '?')}
-                    · Score ${row.score?.yesCount ?? '—'}/${row.score?.total ?? '—'}
+                    · Score ${row.score?.yesCount ?? '-'}/${row.score?.total ?? '-'}
                 </div>
             </div>
             <div class="dfsc-open-actions">
@@ -754,7 +754,7 @@ function renderDueAreaCards() {
             return `
             <button type="button" class="dfsc-area-card${stateClass}" data-pick-area="${escapeHtml(area.id)}" ${complete ? 'disabled' : ''}>
                 <div class="dfsc-area-card__title">${escapeHtml(area.title || area.dashboardLabel)}</div>
-                <div class="dfsc-area-card__sub">${complete ? 'Complete this week' : inProgress ? 'In progress — resume below' : 'Due this week'}</div>
+                <div class="dfsc-area-card__sub">${complete ? 'Complete this week' : inProgress ? 'In progress - resume below' : 'Due this week'}</div>
             </button>`;
         })
         .join('');
@@ -838,7 +838,7 @@ function selectArea(areaId) {
     const label = document.getElementById('sq-area-label');
     const heading = document.getElementById('sq-start-heading');
     if (label) label.value = area?.title || area?.dashboardLabel || selectedAreaId;
-    if (heading) heading.textContent = `Before you begin — ${area?.title || area?.dashboardLabel || 'Square One'}`;
+    if (heading) heading.textContent = `Before you begin - ${area?.title || area?.dashboardLabel || 'Square One'}`;
     if (card) card.hidden = !selectedAreaId;
     if (area?.inProgress) {
         void resumeSession(area.inProgress);

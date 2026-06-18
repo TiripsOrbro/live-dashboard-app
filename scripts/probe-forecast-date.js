@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Headed probe — dump Forecasting/Edit date toolbar DOM for scraper debugging.
+ * Headed probe - dump Forecasting/Edit date toolbar DOM for scraper debugging.
  *
  * Usage:
  *   npm run probe-forecast-date
@@ -192,7 +192,7 @@ async function main() {
     let browser;
     let page;
     try {
-        console.log(`[probe-forecast-date] Store ${storeNumber} — opening headed browser…`);
+        console.log(`[probe-forecast-date] Store ${storeNumber} - opening headed browser…`);
         ({ browser, page } = await openMacromatixBrowser({
             browserOptions: { headless: false, skipSlowMo: false },
         }));
@@ -238,7 +238,7 @@ async function main() {
         console.log(`[probe-forecast-date] Next click: ${nextClicked}, after: ${afterNextDate}`);
         console.log(`[probe-forecast-date] Date elements found: ${beforeDump.dateElements.length}`);
         console.log(`[probe-forecast-date] Top clickables: ${beforeDump.topClickables.length}`);
-        console.log('[probe-forecast-date] Browser stays open 20s — inspect the window…');
+        console.log('[probe-forecast-date] Browser stays open 20s - inspect the window…');
         await page.waitForTimeout(20000);
     } finally {
         await closeBrowserQuietly(browser, 'probe-forecast-date');

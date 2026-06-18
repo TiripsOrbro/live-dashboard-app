@@ -156,7 +156,7 @@ function main() {
     }
 
     const locLabel = locations.length ? locations.join(' + ') : 'all locations';
-    console.log(`\n=== ${catalog.label || vendor} — store ${storeNumber} (${locLabel}) ===`);
+    console.log(`\n=== ${catalog.label || vendor} - store ${storeNumber} (${locLabel}) ===`);
     console.log(`ISE: ${path.basename(files.inventorySpecialEvent)}`);
     console.log(`SOH: ${files.stockOnHand ? path.basename(files.stockOnHand) : '(missing)'}`);
     console.log('');
@@ -195,7 +195,7 @@ function main() {
 
     const missing = rows.filter((r) => r.status === 'missing');
     if (missing.length) {
-        console.log('\n--- Missing items — top ISE name candidates ---');
+        console.log('\n--- Missing items - top ISE name candidates ---');
         for (const m of missing) {
             const candidates = [];
             for (const [c, row] of ise.entries()) {

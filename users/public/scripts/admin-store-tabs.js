@@ -1,5 +1,5 @@
 /**
- * Admin store dashboard — /Admin/A1…A22 with in-page store switching; legacy /Admin/{store}.
+ * Admin store dashboard - /Admin/A1…A22 with in-page store switching; legacy /Admin/{store}.
  */
 (function (global) {
     const MOBILE_MAX = 768;

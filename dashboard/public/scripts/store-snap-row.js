@@ -1,5 +1,5 @@
 /**
- * Store snapshot rows — name, actual/forecast, SSSG %, on-track status bar.
+ * Store snapshot rows - name, actual/forecast, SSSG %, on-track status bar.
  */
 (function () {
     const TRACK_FILL = {
@@ -40,7 +40,7 @@
 
     function formatSssg(store) {
         const v = store?.sssgPercent;
-        if (v == null || v === '' || Number.isNaN(Number(v))) return '—';
+        if (v == null || v === '' || Number.isNaN(Number(v))) return '-';
         const n = Number(v);
         const sign = n > 0 ? '+' : '';
         return `${sign}${n}%`;

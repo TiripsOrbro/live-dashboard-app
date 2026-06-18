@@ -22,7 +22,7 @@ function escapeHtml(value) {
 function formatReportDate(session) {
     const raw = session.completedAt || session.dateKey || '';
     const parsed = Date.parse(raw.includes('T') ? raw : `${raw}T12:00:00`);
-    if (!Number.isFinite(parsed)) return raw || '—';
+    if (!Number.isFinite(parsed)) return raw || '-';
     return new Date(parsed).toLocaleDateString('en-AU', {
         day: 'numeric',
         month: 'short',
@@ -31,7 +31,7 @@ function formatReportDate(session) {
 }
 
 function formatReportDateTime(iso) {
-    if (!iso) return '—';
+    if (!iso) return '-';
     const parsed = Date.parse(iso);
     if (!Number.isFinite(parsed)) return iso;
     return new Date(parsed).toLocaleString('en-AU', {
@@ -47,7 +47,7 @@ function formatReportDateTime(iso) {
 function formatDurationMinutes(session) {
     const started = Date.parse(session.startedAt || '');
     const completed = Date.parse(session.completedAt || '');
-    if (!Number.isFinite(started) || !Number.isFinite(completed) || completed <= started) return '—';
+    if (!Number.isFinite(started) || !Number.isFinite(completed) || completed <= started) return '-';
     const mins = Math.round((completed - started) / 60000);
     if (mins < 60) return `${mins} min`;
     const h = Math.floor(mins / 60);
@@ -96,11 +96,11 @@ function formatAnswerValue(question, value) {
     if (question.type === 'select' || question.type === 'segmented') {
         let effective = String(value ?? '').trim();
         if (effective === '') effective = String(question.defaultValue ?? '').trim();
-        if (effective === '') return '—';
+        if (effective === '') return '-';
         const choice = (question.choices || []).find((c) => c.value === effective);
         return choice?.label || effective;
     }
-    if (value === null || value === undefined || String(value).trim() === '') return '—';
+    if (value === null || value === undefined || String(value).trim() === '') return '-';
     const raw = String(value).trim();
     if (question.type === 'carryover_temp') {
         if (raw.toLowerCase() === 'no') return 'No carryover';
@@ -270,7 +270,7 @@ function buildDfscReportHtml(session) {
                         (row) => `
                     <li>
                         <div class="action-question">${escapeHtml(row.label)}</div>
-                        <div class="action-text">${escapeHtml(row.actionText || '—')}</div>
+                        <div class="action-text">${escapeHtml(row.actionText || '-')}</div>
                     </li>`
                     )
                     .join('')}
@@ -284,7 +284,7 @@ function buildDfscReportHtml(session) {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>DFSC Report — ${escapeHtml(session.storeName || session.storeNumber)}</title>
+<title>DFSC Report - ${escapeHtml(session.storeName || session.storeNumber)}</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -494,12 +494,12 @@ function buildDfscReportHtml(session) {
     </div>
 
     <dl class="meta-grid">
-        <div class="meta-row"><dt>Restaurant name</dt><dd>${escapeHtml(session.storeName || '—')}</dd></div>
-        <div class="meta-row"><dt>Store number</dt><dd>${escapeHtml(session.storeNumber || '—')}</dd></div>
+        <div class="meta-row"><dt>Restaurant name</dt><dd>${escapeHtml(session.storeName || '-')}</dd></div>
+        <div class="meta-row"><dt>Store number</dt><dd>${escapeHtml(session.storeNumber || '-')}</dd></div>
         <div class="meta-row"><dt>Date</dt><dd>${escapeHtml(formatReportDate(session))}</dd></div>
-        <div class="meta-row"><dt>Shift</dt><dd>${escapeHtml(session.shift || '—')}</dd></div>
-        <div class="meta-row"><dt>Conducted by</dt><dd>${escapeHtml(session.conductor?.name || '—')}</dd></div>
-        <div class="meta-row"><dt>Signed off by</dt><dd>${escapeHtml(session.signOff?.name || '—')}</dd></div>
+        <div class="meta-row"><dt>Shift</dt><dd>${escapeHtml(session.shift || '-')}</dd></div>
+        <div class="meta-row"><dt>Conducted by</dt><dd>${escapeHtml(session.conductor?.name || '-')}</dd></div>
+        <div class="meta-row"><dt>Signed off by</dt><dd>${escapeHtml(session.signOff?.name || '-')}</dd></div>
         <div class="meta-row"><dt>Started</dt><dd>${escapeHtml(formatReportDateTime(session.startedAt))}</dd></div>
         <div class="meta-row"><dt>Completed</dt><dd>${escapeHtml(formatReportDateTime(session.completedAt))}</dd></div>
     </dl>
@@ -517,7 +517,7 @@ function buildDfscReportHtml(session) {
         <p class="signoff-copy">
             By signing this, you are acknowledging that you have thoroughly completed all sections of the food safety checklist with integrity, confirm that zero food safety breaches are present, and understand that you will be held accountable for any food safety breaches that arise.
         </p>
-        <p><strong>Full name of the manager who completed this checklist:</strong> ${escapeHtml(session.signOff?.name || '—')}</p>
+        <p><strong>Full name of the manager who completed this checklist:</strong> ${escapeHtml(session.signOff?.name || '-')}</p>
         ${signatureHtml}
     </section>
 
@@ -530,12 +530,12 @@ function buildDfscReportText(session) {
     const lines = [];
     lines.push('MANUAL DAILY FOOD SAFETY CHECKLIST');
     lines.push('='.repeat(48));
-    lines.push(`Restaurant name: ${session.storeName || '—'}`);
-    lines.push(`Store number: ${session.storeNumber || '—'}`);
+    lines.push(`Restaurant name: ${session.storeName || '-'}`);
+    lines.push(`Store number: ${session.storeNumber || '-'}`);
     lines.push(`Date: ${formatReportDate(session)}`);
-    lines.push(`Shift: ${session.shift || '—'}`);
-    lines.push(`Conducted by: ${session.conductor?.name || '—'}`);
-    lines.push(`Signed off by: ${session.signOff?.name || '—'}`);
+    lines.push(`Shift: ${session.shift || '-'}`);
+    lines.push(`Conducted by: ${session.conductor?.name || '-'}`);
+    lines.push(`Signed off by: ${session.signOff?.name || '-'}`);
     lines.push(`Started: ${formatReportDateTime(session.startedAt)}`);
     lines.push(`Completed: ${formatReportDateTime(session.completedAt)}`);
     lines.push(`Duration: ${formatDurationMinutes(session)}`);
@@ -573,7 +573,7 @@ function buildDfscReportText(session) {
     } else {
         for (const row of nc) {
             lines.push(`• ${row.label}`);
-            lines.push(`  ${row.actionText || '—'}`);
+            lines.push(`  ${row.actionText || '-'}`);
         }
     }
 

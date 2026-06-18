@@ -69,7 +69,7 @@
     }
 
     function formatMoney(value) {
-        if (value == null || !Number.isFinite(Number(value))) return '—';
+        if (value == null || !Number.isFinite(Number(value))) return '-';
         return '$' + Number(value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     }
 
@@ -300,7 +300,7 @@
             if (!res.ok || !payload.success) {
                 const fallback =
                     res.status === 404
-                        ? 'Verify API not found — restart the dashboard server.'
+                        ? 'Verify API not found - restart the dashboard server.'
                         : `LifeLenz verification failed (HTTP ${res.status}).`;
                 throw new Error(payload.error || fallback);
             }
@@ -319,7 +319,7 @@
                 '<ul>' +
                 storeRows.map((row) => `<li>${escapeHtml(row.label || row.storeNumber)}</li>`).join('') +
                 '</ul>' +
-                '<p class="admin-accounts-meta admin-forecast-lifelenz-schedule-note">Schedule text in LifeLenz is cosmetic only — forecasts match by store number.</p>';
+                '<p class="admin-accounts-meta admin-forecast-lifelenz-schedule-note">Schedule text in LifeLenz is cosmetic only - forecasts match by store number.</p>';
             root.querySelector('#admin-forecast-lifelenz-form').hidden = true;
             setLifeLenzSubmitAsClose(root);
             root.querySelector('#admin-forecast-lifelenz-remove').hidden = !save;
@@ -394,7 +394,7 @@
     }
 
     function formatShortDate(iso) {
-        if (!iso) return '—';
+        if (!iso) return '-';
         const [y, m, d] = String(iso).split('-').map(Number);
         if (!y || !m || !d) return iso;
         return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
@@ -569,7 +569,7 @@
                 store.lifelenzStatus = 'active';
                 store.status = 'active';
                 state.activeStore = String(payload.storeNumber);
-                state.lifelenzLiveLabel = `Store ${payload.storeNumber} — starting LifeLenz entry…`;
+                state.lifelenzLiveLabel = `Store ${payload.storeNumber} - starting LifeLenz entry…`;
             } else if (payload.type === 'day-start' && store) {
                 state.activeStore = String(payload.storeNumber);
                 state.activeLifelenzDate = payload.date;
@@ -853,7 +853,7 @@
     }
 
     function mmxDayColumnSummary(day) {
-        if (!day) return '—';
+        if (!day) return '-';
         if (day.status === 'done') return `Saved · ${formatMoney(day.forecastTotal)}`;
         if (day.status === 'error') return day.error || 'Failed';
         if (day.hourly?.length) {
@@ -868,7 +868,7 @@
     }
 
     function lifelenzDayColumnSummary(day, { isActive, liveLabel } = {}) {
-        if (!day) return '—';
+        if (!day) return '-';
         if (day.status === 'error') return day.error || 'Failed';
         if (day.status === 'done') return `Saved · ${formatMoney(day.forecastTotal)}`;
         if (isActive && liveLabel && day.status === 'filling') {
@@ -1048,7 +1048,7 @@
             return `<td class="admin-history-num admin-forecast-progress-done-cell--bad">${escapeHtml(failedLabel)}</td>`;
         }
         if (amount == null || !Number.isFinite(Number(amount))) {
-            return '<td class="admin-history-num">—</td>';
+            return '<td class="admin-history-num">-</td>';
         }
         return `<td class="admin-history-num">${formatMoney(amount)}</td>`;
     }
@@ -1083,7 +1083,7 @@
                               ? llByDate.get(day.date) ?? day.forecastTotal
                               : null;
                         return `<tr>
-                            <th scope="row">${escapeHtml(weekdayLabel(day.weekday) || '—')}</th>
+                            <th scope="row">${escapeHtml(weekdayLabel(day.weekday) || '-')}</th>
                             <td>${escapeHtml(formatShortDate(day.date))}</td>
                             ${completeAmountCell(mmxRow?.ok, day.forecastTotal)}
                             ${
@@ -1190,7 +1190,7 @@
             manualEl.innerHTML = [...failedStores]
                 .map(
                     (store) =>
-                        `<button type="button" class="mic-settings-btn" data-manual-store="${escapeHtml(store)}" data-manual-week="${escapeHtml(weekStart || '')}">Manual entry guide — ${escapeHtml(store)}</button>`
+                        `<button type="button" class="mic-settings-btn" data-manual-store="${escapeHtml(store)}" data-manual-week="${escapeHtml(weekStart || '')}">Manual entry guide - ${escapeHtml(store)}</button>`
                 )
                 .join(' ');
             manualEl.querySelectorAll('[data-manual-store]').forEach((btn) => {
@@ -1312,7 +1312,7 @@
         const head = grid.columns
             .map(
                 (col) =>
-                    `<th><span class="admin-history-col-label">${escapeHtml(col.weekdayLabel || col.label || '')}</span><span class="admin-accounts-meta">${escapeHtml(col.date || '—')}</span></th>`
+                    `<th><span class="admin-history-col-label">${escapeHtml(col.weekdayLabel || col.label || '')}</span><span class="admin-accounts-meta">${escapeHtml(col.date || '-')}</span></th>`
             )
             .join('');
         const rows = (grid.rows || [])
@@ -1378,7 +1378,7 @@
             return;
         }
         root.querySelector('#admin-forecast-preview-title').textContent =
-            `Forecast preview — ${preview.storeNumber}${preview.storeName ? ' ' + preview.storeName : ''}`;
+            `Forecast preview - ${preview.storeNumber}${preview.storeName ? ' ' + preview.storeName : ''}`;
         const weeks = (preview.targetWeeks || previewData?.targetWeeks || []).join(', ');
         meta.textContent = weeks
             ? `Week starting ${weeks} (Monday, 2 weeks out). Trimmed weekday averages + hourly shape. Review before submitting to Macromatix${hasLifeLenzForSubmit() ? ' and LifeLenz' : ''}.`
@@ -1388,7 +1388,7 @@
             noteEl.hidden = false;
             noteEl.textContent = hasLifeLenzForSubmit()
                 ? 'Submit forecast writes to Macromatix first, then LifeLenz using your connected login.'
-                : 'LifeLenz is not configured — submit will update Macromatix only. Use Setup LifeLenz to connect.';
+                : 'LifeLenz is not configured - submit will update Macromatix only. Use Setup LifeLenz to connect.';
         }
         if (okPreviews.length > 1) {
             tabs.hidden = false;
@@ -1482,7 +1482,7 @@
             : '';
 
         root.querySelector('#admin-forecast-history-title').textContent =
-            `Sales history & forecast — ${grid.storeNumber}${grid.storeName ? ' ' + grid.storeName : ''}`;
+            `Sales history & forecast - ${grid.storeNumber}${grid.storeName ? ' ' + grid.storeName : ''}`;
 
         meta.textContent = weekLabel
             ? `${grid.weekdayLabel} actual sales (5 weeks, oldest → newest). Target forecast week starting ${weekLabel}.`
@@ -1498,7 +1498,7 @@
             '<section class="admin-forecast-history-section" id="admin-forecast-history-forecast" aria-label="Target forecast week"></section>';
 
         const actualSection = body.querySelector('#admin-forecast-history-actual');
-        actualSection.innerHTML = '<h3 class="admin-forecast-history-heading">Actual sales — selected weekday</h3>';
+        actualSection.innerHTML = '<h3 class="admin-forecast-history-heading">Actual sales - selected weekday</h3>';
         const actualGrid = document.createElement('div');
         actualSection.appendChild(actualGrid);
         renderForecastGrid(actualGrid, {
@@ -1509,7 +1509,7 @@
 
         const forecastSection = body.querySelector('#admin-forecast-history-forecast');
         if (forecastWeek?.grid) {
-            forecastSection.innerHTML = `<h3 class="admin-forecast-history-heading">Forecast week${weekLabel ? ` — starting ${escapeHtml(weekLabel)}` : ''}</h3>`;
+            forecastSection.innerHTML = `<h3 class="admin-forecast-history-heading">Forecast week${weekLabel ? ` - starting ${escapeHtml(weekLabel)}` : ''}</h3>`;
             const forecastGrid = document.createElement('div');
             forecastSection.appendChild(forecastGrid);
             renderForecastGrid(forecastGrid, forecastWeek.grid, { mode: 'preview' });
@@ -1563,7 +1563,7 @@
                 const hist = history[storeNumber] || {};
                 const histLabel = hist.ready
                     ? `History ${hist.daysRecorded}/${hist.daysRequired}d`
-                    : `History ${hist.daysRecorded}/${hist.daysRequired}d — need ${escapeHtml((hist.weekdayGaps || []).join(', ') || 'more days')}`;
+                    : `History ${hist.daysRecorded}/${hist.daysRequired}d - need ${escapeHtml((hist.weekdayGaps || []).join(', ') || 'more days')}`;
                 const runDisabled = hist.ready ? '' : ' disabled title="Import or wait for 5 weeks of hourly history"';
                 const weekCells = weeks
                     .map((weekStart) => {
@@ -1680,7 +1680,7 @@
         root.hidden = false;
         root.querySelector('#admin-forecast-manual-error').textContent = '';
         root.querySelector('#admin-forecast-manual-body').innerHTML = '<p>Loading…</p>';
-        root.querySelector('#admin-forecast-manual-title').textContent = `Manual entry — ${storeNumber}`;
+        root.querySelector('#admin-forecast-manual-title').textContent = `Manual entry - ${storeNumber}`;
         try {
             const qs = weekStart ? `?weekStart=${encodeURIComponent(weekStart)}` : '';
             const res = await fetch(`/api/admin/forecast/manual/${encodeURIComponent(storeNumber)}${qs}`, {

@@ -3902,7 +3902,7 @@ button.mic-tile.mic-tile--link {
 
 }
 
-/* MIC dark mode — scoped to MIC page (class on html/body) */
+/* MIC dark mode - scoped to MIC page (class on html/body) */
 html.mic-dark-mode,
 html.mic-dark-mode body {
     background: #161616;

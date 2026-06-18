@@ -123,8 +123,8 @@ function buildStockCountTileState(storeNumber, storeSlice = {}) {
             ? visible.length
                 ? `${visible.length} vendor${visible.length === 1 ? '' : 's'} to count`
                 : monday
-                  ? 'Monday orders — open stock count'
-                  : 'Monthly orders — open stock count'
+                  ? 'Monday orders - open stock count'
+                  : 'Monthly orders - open stock count'
             : 'All orders are placed for today',
     };
 }

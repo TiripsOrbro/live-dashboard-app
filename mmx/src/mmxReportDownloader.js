@@ -21,7 +21,7 @@ const DEFAULT_OUTPUT_BASENAMES = {
 function loadPipelineConfig() {
     if (!fs.existsSync(PIPELINE_PATH)) {
         throw new Error(
-            'Missing config/reports-pipeline.json — copy from config/reports-pipeline.json.example or pull from git.'
+            'Missing config/reports-pipeline.json - copy from config/reports-pipeline.json.example or pull from git.'
         );
     }
     return JSON.parse(fs.readFileSync(PIPELINE_PATH, 'utf8'));
@@ -155,7 +155,7 @@ async function downloadReportsForStores(options = {}) {
               .filter(Boolean);
     let stores = getStoreList();
     if (!stores.length) {
-        throw new Error('No stores in .storelist — add stores before downloading reports.');
+        throw new Error('No stores in .storelist - add stores before downloading reports.');
     }
 
     const only = String(options.storeNumber || '').trim();
@@ -276,7 +276,7 @@ async function downloadReportsForStores(options = {}) {
                     if (!store) continue;
 
                     log.info(
-                        `Bulk split missed store ${storeNum} — retrying ${report.label || report.id} with per-store selection`
+                        `Bulk split missed store ${storeNum} - retrying ${report.label || report.id} with per-store selection`
                     );
                     const storeDir = path.join(REPORTS_DIR, storeNum);
                     ensureDir(storeDir);

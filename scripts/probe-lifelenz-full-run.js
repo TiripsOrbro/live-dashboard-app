@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Headed LifeLenz run — list accessible stores, then write full target week forecast.
+ * Headed LifeLenz run - list accessible stores, then write full target week forecast.
  *
  * Usage:
  *   npm run probe-lifelenz-full-run -- 3806 3811
@@ -41,7 +41,7 @@ async function main() {
 
     console.log('\n[probe-lifelenz-full-run] Accessible stores detected:');
     for (const row of session.stores) {
-        console.log(`  ${row.storeNumber} — ${row.label}`);
+        console.log(`  ${row.storeNumber} - ${row.label}`);
     }
     console.log(`  (${session.stores.length} total)\n`);
 
@@ -50,7 +50,7 @@ async function main() {
 
     for (const storeNumber of storeNumbers) {
         const store = String(storeNumber).trim();
-        console.log(`[probe-lifelenz-full-run] Store ${store} — building forecast plan...`);
+        console.log(`[probe-lifelenz-full-run] Store ${store} - building forecast plan...`);
         if (!accessible.has(store)) {
             const msg = `Store ${store} not in LifeLenz account (detected: ${[...accessible].join(', ')})`;
             console.error(`  FAILED: ${msg}`);
@@ -78,7 +78,7 @@ async function main() {
 
     console.log('\n[probe-lifelenz-full-run] Summary:');
     console.log(JSON.stringify({ stores: session.stores, results }, null, 2));
-    console.log('[probe-lifelenz-full-run] Browser left open — close manually when done.');
+    console.log('[probe-lifelenz-full-run] Browser left open - close manually when done.');
 }
 
 main().catch((err) => {

@@ -24,7 +24,7 @@ const EXAMPLE_PATH = path.join(paths.vendors.config, 'vendor-orders.json.example
 function loadVendorOrdersConfig() {
     const file = fs.existsSync(CONFIG_PATH) ? CONFIG_PATH : EXAMPLE_PATH;
     if (!fs.existsSync(file)) {
-        throw new Error('Missing config/vendor-orders.json — copy from config/vendor-orders.json.example');
+        throw new Error('Missing config/vendor-orders.json - copy from config/vendor-orders.json.example');
     }
     return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
@@ -260,7 +260,7 @@ function vendorCatalogCodeSet(catalog, vendorCfg) {
 }
 
 /**
- * Build-to entries per vendor — ISE lines matched to vendor catalog by item name.
+ * Build-to entries per vendor - ISE lines matched to vendor catalog by item name.
  */
 async function buildOrderLinesByVendorId(storeNumber, options = {}) {
     const vendorOrdersCfg = options.vendorOrdersCfg || loadVendorOrdersConfig();

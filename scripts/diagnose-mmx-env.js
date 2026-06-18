@@ -38,7 +38,7 @@ function main() {
             missing: mmxMissing.length,
             missingStores: mmxMissing,
         },
-        note: 'MMX logins are per-store only — configure in Admin menu → Setup Store Logins.',
+        note: 'MMX logins are per-store only - configure in Admin menu → Setup Store Logins.',
     };
 
     console.log(JSON.stringify(out, null, 2));

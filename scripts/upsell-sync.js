@@ -78,7 +78,7 @@ async function main() {
     };
 
     if (headed) {
-        console.log('[upsell-sync] Headed mode — Edge/Chrome will open maximized, slow, and stay open 90s at the end');
+        console.log('[upsell-sync] Headed mode - Edge/Chrome will open maximized, slow, and stay open 90s at the end');
     }
 
     if (filePath) {
@@ -135,7 +135,7 @@ function printStoreSummary(storeNumber) {
             : `day ${payload.leaderboardDay || '?'}`;
     console.log(`\n[upsell-sync] Leaderboard ${storeNumber} (${period}):`);
     for (const r of payload.top7 || payload.top5 || []) {
-        console.log(`  ${r.rank}. ${r.name} — ${r.total} pts`);
+        console.log(`  ${r.rank}. ${r.name} - ${r.total} pts`);
     }
 }
 

@@ -1,15 +1,15 @@
 /* ============================================================
-   POPUP TIMING — durations, daily schedule, boilout calendar
+   POPUP TIMING - durations, daily schedule, boilout calendar
 
-   NOTIFICATION_DURATIONS — how long each card stays on screen
-     • seconds — display time (3600 = 1 hour, 600 = 10 min)
-     • duration — alternative: milliseconds
-     • _defaultSeconds — used when a key has no entry (15 sec)
+   NOTIFICATION_DURATIONS - how long each card stays on screen
+     • seconds - display time (3600 = 1 hour, 600 = 10 min)
+     • duration - alternative: milliseconds
+     • _defaultSeconds - used when a key has no entry (15 sec)
 
-   SCHEDULE — when to show cards (Melbourne 24h "H:MM" or "HH:MM")
-     • show — up to 3 keys from NOTIFICATION_CONTENT in popup-content.js
+   SCHEDULE - when to show cards (Melbourne 24h "H:MM" or "HH:MM")
+     • show - up to 3 keys from NOTIFICATION_CONTENT in popup-content.js
 
-   BOILOUT_RULE — fryer boilout reminders (Melbourne dates/times)
+   BOILOUT_RULE - fryer boilout reminders (Melbourne dates/times)
    ============================================================ */
 
 window.POPUP_CONFIG = window.POPUP_CONFIG || {

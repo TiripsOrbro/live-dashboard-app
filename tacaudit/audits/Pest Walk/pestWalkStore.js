@@ -365,7 +365,7 @@ function submitSession(storeNumber, sessionId, signOff = {}, access = {}) {
     if (!isMinimumDurationMet(session)) {
         return {
             ok: false,
-            error: `Pest walk must be at least ${MIN_DURATION_MINUTES} minutes. Keep going — the timer is in the header.`,
+            error: `Pest walk must be at least ${MIN_DURATION_MINUTES} minutes. Keep going - the timer is in the header.`,
         };
     }
 

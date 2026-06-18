@@ -106,7 +106,7 @@ function anyStoreInActiveScrapeWindow(now = new Date()) {
     return storesInActiveScrapeWindow(now).length > 0;
 }
 
-/** True during the post-close window — serve last sales totals, do not scrape. */
+/** True during the post-close window - serve last sales totals, do not scrape. */
 function isPostCloseSalesGrace(store, now = new Date()) {
     return getStoreScrapePhase(store, now) === 'retain';
 }

@@ -244,7 +244,7 @@ async function clickUpdateOnly(page, orderEntryCfg) {
     );
 
     if (!clicked) throw new Error('Update button not found on order page (Submit was not clicked)');
-    log.info(`Clicked "${clicked}" only — order not submitted`);
+    log.info(`Clicked "${clicked}" only - order not submitted`);
     await waitAfterOrderUpdate(page, 20000);
     return clicked;
 }
@@ -295,7 +295,7 @@ async function processOneVendorOrder(page, settings, vendor, buildToEntries) {
         if (hasExistingQty) {
             await clickClearQuantities(page, settings.vendorOrders.orderEntry);
         } else {
-            log.info(`${vendor.label}: order grid empty — skipping Clear Quantities`);
+            log.info(`${vendor.label}: order grid empty - skipping Clear Quantities`);
         }
 
         const gridAfterClear = hasExistingQty ? await scrapeOrderGridByItemCode(page) : grid;
@@ -305,13 +305,13 @@ async function processOneVendorOrder(page, settings, vendor, buildToEntries) {
 
         const lines = linesFromOrderGridByName(gridAfterClear, buildToEntries);
         log.info(
-            `${vendor.label}: ${gridAfterClear.rows.length} item(s) on MMX order form — filling ${lines.length} by name match`
+            `${vendor.label}: ${gridAfterClear.rows.length} item(s) on MMX order form - filling ${lines.length} by name match`
         );
         for (const line of lines) {
             log.info(`  ${line.itemName || line.itemCode} × ${line.quantity} ← ${line.matchedFrom || '?'}`);
         }
         if (!lines.length) {
-            log.info(`${vendor.label}: no name-matched build-to quantities — saving cleared order`);
+            log.info(`${vendor.label}: no name-matched build-to quantities - saving cleared order`);
         }
 
         await fillOrderLineQuantities(page, lines, gridAfterClear);
@@ -338,7 +338,7 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
     const buildToByVendorId =
         settings.orderLinesByVendorId ||
         (() => {
-            throw new Error('orderLinesByVendorId is required — run buildToOrderLines first');
+            throw new Error('orderLinesByVendorId is required - run buildToOrderLines first');
         })();
 
     const queue = buildOrderQueue(table, vendorOrdersCfg, buildToByVendorId, { vendorIdFilter });
@@ -350,7 +350,7 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
         );
     }
 
-    log.info(`Order queue: ${queue.length} — ${queue.map((q) => q.vendor.label).join(' → ')}`);
+    log.info(`Order queue: ${queue.length} - ${queue.map((q) => q.vendor.label).join(' → ')}`);
 
     const processed = [];
     for (let i = 0; i < queue.length; i++) {
@@ -358,7 +358,7 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
         log.info(`--- Order ${i + 1}/${queue.length}: ${vendor.label} ---`);
         refreshScrapePauseTimeout();
         if (settings.onOrderStep) {
-            await settings.onOrderStep(`Placing order — ${vendor.label} (${i + 1}/${queue.length})`);
+            await settings.onOrderStep(`Placing order - ${vendor.label} (${i + 1}/${queue.length})`);
         }
 
         if (i > 0) {

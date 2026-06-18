@@ -55,7 +55,7 @@ async function main() {
     const username = String(creds.username || '').trim();
     const password = String(creds.password || '');
     console.log(
-        `[verify-mmx] Store ${storeNumber} via ${creds.source} — username: ${username || '(empty)'}, password length: ${password.length}`
+        `[verify-mmx] Store ${storeNumber} via ${creds.source} - username: ${username || '(empty)'}, password length: ${password.length}`
     );
 
     const loginCheck = await verifyMacromatixLogin(username, password);

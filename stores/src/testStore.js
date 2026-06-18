@@ -147,7 +147,7 @@ function placeholderLeaderboardPoints(stickyKey, name, index) {
     return 12 + (seed % 78);
 }
 
-/** Upselling podium payload — 7 demo cashiers with session-stable random scores. */
+/** Upselling podium payload - 7 demo cashiers with session-stable random scores. */
 function buildTestStoreLeaderboardPayload(stickyKey = '') {
     const today = melbourneTodayIso();
     const ranked = LEADERBOARD_PLACEHOLDER_NAMES.map((name, index) => {

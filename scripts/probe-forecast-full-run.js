@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Headed full forecast run — Macromatix + LifeLenz in parallel for one target week.
+ * Headed full forecast run - Macromatix + LifeLenz in parallel for one target week.
  *
  * Usage:
  *   npm run probe-forecast-full-run -- 3806 3811
@@ -40,16 +40,16 @@ async function main() {
 
     console.log('\n[probe-forecast-full-run] Macromatix results:');
     for (const row of combined.mmxResults) {
-        console.log(`  ${row.storeNumber}: ${row.ok ? 'ok' : 'FAILED'}${row.error ? ' — ' + row.error : ''}`);
+        console.log(`  ${row.storeNumber}: ${row.ok ? 'ok' : 'FAILED'}${row.error ? ' - ' + row.error : ''}`);
     }
     console.log('\n[probe-forecast-full-run] LifeLenz results:');
     for (const row of combined.lifelenzResults) {
-        console.log(`  ${row.storeNumber}: ${row.ok ? 'ok' : 'FAILED'}${row.error ? ' — ' + row.error : ''}`);
+        console.log(`  ${row.storeNumber}: ${row.ok ? 'ok' : 'FAILED'}${row.error ? ' - ' + row.error : ''}`);
     }
 
     console.log('\n[probe-forecast-full-run] Complete.');
     console.log(JSON.stringify(combined, null, 2));
-    console.log('[probe-forecast-full-run] Browser left open — close manually when done.');
+    console.log('[probe-forecast-full-run] Browser left open - close manually when done.');
 }
 
 main().catch((err) => {

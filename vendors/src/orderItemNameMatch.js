@@ -120,7 +120,7 @@ function lineCoversCatalogItem(line, catalogItem) {
     return buildToLineMatchScore(catalogItem.name, line) >= MIN_NAME_MATCH_SCORE;
 }
 
-/** ISE usage row for a catalog item — code/alias first, then name match. */
+/** ISE usage row for a catalog item - code/alias first, then name match. */
 function findIseRowForCatalogItem(catalogItem, usage, usedIseCodes = new Set()) {
     if (!catalogItem || !usage) return null;
     const code = normalizeItemCode(catalogItem.itemCode);
@@ -160,7 +160,7 @@ function findIseRowForCatalogItem(catalogItem, usage, usedIseCodes = new Set()) 
 }
 
 /**
- * Catalog item for an ISE report row — canonical code first, then name match.
+ * Catalog item for an ISE report row - canonical code first, then name match.
  * Used when .item-codes has no alias for the ISE item code.
  */
 function resolveCatalogItemForIseRow(iseEntry, reportItemCode, catalogItems) {
@@ -195,7 +195,7 @@ function resolveCatalogItemForIseRow(iseEntry, reportItemCode, catalogItems) {
     return null;
 }
 
-/** SOH/SOO row — code/alias first, then name match against catalog label. */
+/** SOH/SOO row - code/alias first, then name match against catalog label. */
 function findInReportMapWithNameFallback(itemCode, itemName, reportMap) {
     const codeHit = findInReportMap(reportMap, itemCode);
     if (codeHit) return { ...codeHit, matchSource: 'code', matchScore: 100 };

@@ -169,11 +169,11 @@ function logStockCountMmxPlan(storeNumber, vendorEntries) {
     const { locationCount, lineCount } = countKeyItemCountLines(vendorEntries);
     if (lineCount === 0) {
         log.info(
-            `Store ${storeNumber}: submitted counts are manual / supplies / oh-only only (${lineCount} Key Item Count lines) — skipping Key Item Count screen`
+            `Store ${storeNumber}: submitted counts are manual / supplies / oh-only only (${lineCount} Key Item Count lines) - skipping Key Item Count screen`
         );
     } else {
         log.info(
-            `Store ${storeNumber}: ${lineCount} Key Item Count line(s) in ${locationCount} location(s) — opening Key Item Count`
+            `Store ${storeNumber}: ${lineCount} Key Item Count line(s) in ${locationCount} location(s) - opening Key Item Count`
         );
     }
 }
@@ -215,7 +215,7 @@ async function getStockCountSendPlan(storeNumber, vendorSlug, options = {}) {
 }
 
 /**
- * Submitted counts are manual / manual= only — skip KIC, use counts for scheduled orders.
+ * Submitted counts are manual / manual= only - skip KIC, use counts for scheduled orders.
  */
 async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options = {}) {
     for (const row of toSend) {
@@ -228,7 +228,7 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
     try {
         ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
         log.info(
-            `Store ${storeNumber}: manual-only stock count — skipping Key Item Count; downloading ISE, SOH, and SOO, then filling scheduled orders from app counts`
+            `Store ${storeNumber}: manual-only stock count - skipping Key Item Count; downloading ISE, SOH, and SOO, then filling scheduled orders from app counts`
         );
         await updateCheckpoint(storeNumber, {
             stage: 'downloading-reports',
@@ -340,7 +340,7 @@ async function runVendorOrdersForStore(page, storeNumber, dateKey, orderPack = n
         onOrderStep: (label) => touchPipelineStep(storeNumber, label),
     };
 
-    log.info(`Store ${storeNumber}: scheduled order entry only — no report downloads or other MMX tasks`);
+    log.info(`Store ${storeNumber}: scheduled order entry only - no report downloads or other MMX tasks`);
     const orderPipelineResult = await runVendorOrderEntry(page, settings, { continueOnError: true });
     orderPipelineResult.buildToSummary = {
         orderLineCount: buildTo.orderLines.length,
@@ -391,7 +391,7 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
     });
 
     if (!idsToDownload.length) {
-        log.info(`Reports already valid for store ${storeNumber} — skipping download (${targetReportIds.join(', ')})`);
+        log.info(`Reports already valid for store ${storeNumber} - skipping download (${targetReportIds.join(', ')})`);
         return;
     }
 
@@ -403,7 +403,7 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
     const downloadLabels = idsToDownload.map((id) => labelForIds[id] || id).join(', ');
     await updateCheckpoint(storeNumber, {
         stage: 'downloading-reports',
-        stepLabel: `Downloading build-to reports — ${downloadLabels}`,
+        stepLabel: `Downloading build-to reports - ${downloadLabels}`,
     });
 
     const { ready, validation } = reportsReadyForReportIds(storeNumber, targetReportIds, reportsDir);
@@ -420,7 +420,7 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         log.info(
             options.forceDownload
                 ? `Re-downloading ${idsToDownload.join(', ')} for store ${storeNumber} (current MMX session)`
-                : `Reports missing for store ${storeNumber} — downloading ${idsToDownload.join(', ')} via current MMX session`
+                : `Reports missing for store ${storeNumber} - downloading ${idsToDownload.join(', ')} via current MMX session`
         );
         await downloadReportsForStores({
             ...downloadOpts,
@@ -432,7 +432,7 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         log.info(
             options.forceDownload
                 ? `Re-downloading ${idsToDownload.join(', ')} for store ${storeNumber}`
-                : `Reports missing for store ${storeNumber} — downloading ${idsToDownload.join(', ')} in a separate browser pass`
+                : `Reports missing for store ${storeNumber} - downloading ${idsToDownload.join(', ')} in a separate browser pass`
         );
         let browser;
         let page;
@@ -470,7 +470,7 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         : '';
     const files = resolveStoreReports(storeNumber, reportsDir);
     log.info(
-        `Reports ready for store ${storeNumber}: ISE=${path.basename(files.inventorySpecialEvent || '')}, SOH=${path.basename(files.stockOnHand || '')} (MMX start ${sohStart || '—'}), SOO=${path.basename(files.stockOnOrder || '')}`
+        `Reports ready for store ${storeNumber}: ISE=${path.basename(files.inventorySpecialEvent || '')}, SOH=${path.basename(files.stockOnHand || '')} (MMX start ${sohStart || '-'}), SOO=${path.basename(files.stockOnOrder || '')}`
     );
     const { writeStoreReportManifest } = require('./reportReader');
     writeStoreReportManifest(storeNumber, reportsDir, {
@@ -555,7 +555,7 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
             });
             await touchPipelineStep(
                 storeNumber,
-                'All build-to reports downloaded — calculating order quantities'
+                'All build-to reports downloaded - calculating order quantities'
             );
         } else {
             const files = resolveStoreReports(storeNumber, reportsDir);
@@ -622,7 +622,7 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
             );
         } else {
             log.warn(
-                `Store ${storeNumber}: no manual= dry order lines — check stock count draft for ${dateKey}`
+                `Store ${storeNumber}: no manual= dry order lines - check stock count draft for ${dateKey}`
             );
         }
 
@@ -649,7 +649,7 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
             );
         } else if (cleanup && !cycleSucceeded) {
             log.warn(
-                `Build-to cycle failed for store ${storeNumber} — report files left in Reports/${storeNumber}/ for retry`
+                `Build-to cycle failed for store ${storeNumber} - report files left in Reports/${storeNumber}/ for retry`
             );
         }
     }
@@ -702,7 +702,7 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
         let page;
         try {
             ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
-            log.info(`Build-to cycle for store ${storeNumber} — download 3 reports, fill orders, clear reports`);
+            log.info(`Build-to cycle for store ${storeNumber} - download 3 reports, fill orders, clear reports`);
             const cycle = await runStoreBuildToCycle(storeNumber, {
                 ...options,
                 dateKey,
@@ -796,7 +796,7 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
 
             if (!redVariances.length) {
                 log.info(
-                    `Store ${storeNumber}: no red variances — applying count and filling scheduled orders in one run`
+                    `Store ${storeNumber}: no red variances - applying count and filling scheduled orders in one run`
                 );
                 const applyResult = await applyStockCountSessionWork(storeNumber, session.sessionId, {
                     ...options,
@@ -910,7 +910,7 @@ function isCheckpointStale(storeNumber, checkpoint, { onStartup = false } = {}) 
 
 async function clearStaleCheckpoint(storeNumber, checkpoint, reason) {
     console.log(
-        `[StockCount] Clearing stale pipeline checkpoint — store ${storeNumber} stage ${checkpoint?.stage || 'unknown'} (${reason})`
+        `[StockCount] Clearing stale pipeline checkpoint - store ${storeNumber} stage ${checkpoint?.stage || 'unknown'} (${reason})`
     );
     await destroySessionsForStore(storeNumber, 'stale-checkpoint');
     await clearCheckpoint(storeNumber);
@@ -996,7 +996,7 @@ async function getStockCountPipelineStatus(storeNumber) {
         }
     }
 
-    // mmxSentAt is set when the count is applied, not when scheduled orders finish — only
+    // mmxSentAt is set when the count is applied, not when scheduled orders finish - only
     // treat all-vendors-sent as orders complete when the pipeline is not actively running.
     if (
         !payload.ordersComplete &&
@@ -1054,7 +1054,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
                 dateKey
             ) {
                 log.info(
-                    `Store ${storeNumber}: MMX session ended — resuming scheduled orders (count already applied)`
+                    `Store ${storeNumber}: MMX session ended - resuming scheduled orders (count already applied)`
                 );
                 const { orders, orderFailures } = await resumeScheduledOrdersInNewBrowser(
                     storeNumber,
@@ -1085,7 +1085,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
 
             if (allVendorsMarkedMmxSent(vendorSlugs, sentSlugs)) {
                 log.info(
-                    `Store ${storeNumber}: count already applied in Macromatix — no further apply needed`
+                    `Store ${storeNumber}: count already applied in Macromatix - no further apply needed`
                 );
                 return {
                     success: true,
@@ -1134,7 +1134,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
             });
 
             if (await shouldRunOrderPipeline(storeNumber, dateKey)) {
-                log.info(`Key Item Count applied for store ${storeNumber} — downloading reports, then scheduled orders`);
+                log.info(`Key Item Count applied for store ${storeNumber} - downloading reports, then scheduled orders`);
                 orderPipelineResult = await runOrdersAfterApply(storeNumber, dateKey, { page, browser });
                 if (ordersAllSuccessful(orderPipelineResult)) {
                     await runStoreOrdersCompleteCleanup(storeNumber, dateKey);

@@ -26,7 +26,7 @@ const lastKnownPendingVendorsByStore = new Map();
 
 const DEFAULT_STORE_KEY = '__default__';
 
-/** Thrown when the Macromatix login cannot access a store — scrape should skip, not error. */
+/** Thrown when the Macromatix login cannot access a store - scrape should skip, not error. */
 class StoreInaccessibleError extends Error {
     constructor(storeNumber, detail) {
         super(`Store ${storeNumber} not accessible with this Macromatix login${detail ? `: ${detail}` : ''}`);
@@ -90,7 +90,7 @@ function warnIfSuspiciousForecast(storeNumber, forecast) {
     const first = values[0];
     if (first >= 5000 && values.every((v) => v === first)) {
         console.warn(
-            `[Macromatix] Store ${storeNumber}: uniform forecast $${first}/hr on ${values.length} hours — likely test data in Macromatix (check Forecasting/Edit for today)`
+            `[Macromatix] Store ${storeNumber}: uniform forecast $${first}/hr on ${values.length} hours - likely test data in Macromatix (check Forecasting/Edit for today)`
         );
     }
 }
@@ -319,7 +319,7 @@ async function closeBrowserQuietly(browser, label) {
 
 /*
  * Scheduled-orders date picker: advance N days from today (default was 2) via RadCalendar + postback.
- * Disabled — Macromatix default date on the page is enough for now.
+ * Disabled - Macromatix default date on the page is enough for now.
  * To re-test / re-enable: uncomment the constant and the `withPageContextRetry(... setScheduledOrdersDateOffset ...)`
  * block in `scrapePendingVendors`. Optional env: SCRAPER_SCHEDULED_ORDERS_DAY_OFFSET (0 = today).
  * For arbitrary calendar dates, the dashboard calls `/api/sales?testScheduledOrdersDate=YYYY-MM-DD` when the
@@ -434,7 +434,7 @@ async function pickDateViaRadCalendarUI(page, year, monthIndex, day) {
         await page.keyboard.press('Escape').catch(() => {});
         return false;
     }
-    /* Day click often fires a full postback — wait for load before any further CDP ops or context is destroyed. */
+    /* Day click often fires a full postback - wait for load before any further CDP ops or context is destroyed. */
     await Promise.race([
         page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {}),
         page.waitForTimeout(1200),
@@ -461,7 +461,7 @@ async function triggerDoPostBackSloppy(page, eventTarget) {
     }, eventTarget);
 }
 
-/** Enter on the date box + click elsewhere to blur — same cues Macromatix often needs before the grid reloads. */
+/** Enter on the date box + click elsewhere to blur - same cues Macromatix often needs before the grid reloads. */
 async function commitScheduledOrdersDateUi(page) {
     const run = async () => {
         const inp = await page.$('[id$="_DatePicker_dateInput"]');
@@ -680,7 +680,7 @@ async function telerikApplyScheduledOrdersYmdFields(page, yyyy, month1, dayNum) 
 }
 
 /**
- * Scheduled orders: Telerik RadDatePicker — calendar pick + Enter/blur, then `__doPostBack` via injected
+ * Scheduled orders: Telerik RadDatePicker - calendar pick + Enter/blur, then `__doPostBack` via injected
  * &lt;script&gt;. Afterward: race navigation vs settle (SCRAPER_SCHEDULED_ORDERS_SETTLE_MS), then `readyState` check.
  * Vendor parsing uses `withPageContextRetry` if a full reload replaces the document mid-scrape.
  * With postback on, toolbar Go/Refresh is skipped. Set SCRAPER_SCHEDULED_DATE_POSTBACK=false to use toolbar only.
@@ -732,7 +732,7 @@ async function setScheduledOrdersToYmd(page, yyyy, month1, dayNum) {
 
     await commitScheduledOrdersDateUi(page);
 
-    /** Date change is usually a partial postback — no document navigation, so `waitForNavigation` would idle until timeout (~30s). */
+    /** Date change is usually a partial postback - no document navigation, so `waitForNavigation` would idle until timeout (~30s). */
     if (SCHEDULED_DATE_POSTBACK && applied.postBackTarget) {
         try {
             const nav = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 12000 }).catch(() => {});
@@ -956,7 +956,7 @@ async function enumerateStores(page) {
 }
 
 /**
- * ASP.NET postback after RadCombo store change — wait before the next page.evaluate.
+ * ASP.NET postback after RadCombo store change - wait before the next page.evaluate.
  */
 async function waitForStoreSelectionPostback(page) {
     const { waitForAspPostback } = require('./mmxReports/mmx-postback');
@@ -974,7 +974,7 @@ async function selectStoreOnPage(page, storeNumber) {
 
     const comboId = await findStoreComboId(page);
     if (comboId) {
-        // Already on this store? Skip — its <li> may not render in the dropdown when selected.
+        // Already on this store? Skip - its <li> may not render in the dropdown when selected.
         const current = await getStoreComboText(page, comboId);
         if (new RegExp(`(^|\\D)${want}(\\D|$)`).test(current)) {
             return current;
@@ -1273,7 +1273,7 @@ async function scrapePendingVendors(page, opts = {}) {
         const looksLikeOrderNumber = (text) => {
             const t = norm(text);
             if (!t) return false;
-            if (/^[\s\-–—n\/\.a]*$/i.test(t.replace(/\s/g, ''))) return false;
+            if (/^[\s\-–-n\/\.a]*$/i.test(t.replace(/\s/g, ''))) return false;
             return /[0-9]/.test(t);
         };
 
@@ -1428,7 +1428,7 @@ async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
         const picked = await selectStoreOnPage(page, storeNumber);
         if (picked) {
             console.log(`[Macromatix] Labour scheduler store selected: ${picked}`);
-            // Entity change is a postback that reloads the scheduler panel — wait for it to settle.
+            // Entity change is a postback that reloads the scheduler panel - wait for it to settle.
             await Promise.race([
                 page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 12000 }).catch(() => {}),
                 page.waitForTimeout(2500),
@@ -1450,7 +1450,7 @@ async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
     }
 
     console.log(
-        `[Macromatix] Store ${label} — actual ${sales.actual.length}h, forecast ${sales.forecast.length}h ${cachedForecast ? '(cached)' : '(fresh)'}`
+        `[Macromatix] Store ${label} - actual ${sales.actual.length}h, forecast ${sales.forecast.length}h ${cachedForecast ? '(cached)' : '(fresh)'}`
     );
 
     let pendingVendors = [];
@@ -1498,7 +1498,7 @@ function resolveStoreHours(store, storeNumber) {
     return { openHour, closeHour };
 }
 
-/** Resource types worth aborting — they don't affect the data we read but cost time/bandwidth. */
+/** Resource types worth aborting - they don't affect the data we read but cost time/bandwidth. */
 const BLOCKED_RESOURCE_TYPES = new Set(['image', 'media', 'font']);
 
 /**
@@ -1661,7 +1661,7 @@ async function isLoginStorePickerPresent(page) {
 }
 
 /**
- * Post-login `#ddlStoreSelection` — required for multi-store accounts so the store appears in labour scheduler.
+ * Post-login `#ddlStoreSelection` - required for multi-store accounts so the store appears in labour scheduler.
  * Returns selected option text, or null if the control is missing / no match.
  */
 async function selectStoreOnLoginDropdown(page, storeNumber) {
@@ -1870,7 +1870,7 @@ async function assertMacromatixAuthenticated(page, context = 'Macromatix') {
     const loginError = await readMacromatixLoginError(page);
     const hint = 'Configure store logins in Admin menu → Setup Store Logins.';
     throw new Error(
-        `${context}: not logged in${loginError ? ` — ${loginError}` : ''}. ${hint}`
+        `${context}: not logged in${loginError ? ` - ${loginError}` : ''}. ${hint}`
     );
 }
 
@@ -1921,7 +1921,7 @@ async function loginPage(page, username, password) {
         return;
     }
 
-    // Headless login sometimes skips SelectStore and lands on home — reopen the picker URL.
+    // Headless login sometimes skips SelectStore and lands on home - reopen the picker URL.
     if (!(await isMacromatixLoginPage(page))) {
         console.log('[Macromatix] Login skipped store picker; reopening SelectStore...');
         await page.goto(SELECT_STORE_URL, LOGIN_GOTO_OPTS);
@@ -1934,7 +1934,7 @@ async function loginPage(page, username, password) {
         }
     }
 
-    console.log('[Macromatix] Logged in (no store picker — single-store account?)');
+    console.log('[Macromatix] Logged in (no store picker - single-store account?)');
 }
 
 const LOGOUT_URL_CANDIDATES = [
@@ -1985,7 +1985,7 @@ async function logoutPage(page) {
 }
 
 /**
- * Post-login store picker — login dropdown, then labour scheduler combo (full store list),
+ * Post-login store picker - login dropdown, then labour scheduler combo (full store list),
  * then Change Store SPA for accounts that only expose stores there.
  */
 async function selectStoreAfterLogin(page, storeNumber, credentials) {
@@ -2344,7 +2344,7 @@ function resolveMacromatixCredentials(options = {}) {
     throw new Error(`Macromatix credentials require a store number. ${STORE_LOGIN_SETUP_HINT}`);
 }
 
-/** Placeholder result used when a single store's scrape throws — keeps the store in the payload. */
+/** Placeholder result used when a single store's scrape throws - keeps the store in the payload. */
 function buildErrorResult(store, err, todayKey) {
     const hours = resolveStoreHours(store, store.storeNumber);
     return {
@@ -2430,8 +2430,8 @@ async function scrapeStoreWithCredentialCandidates(browser, store, ctx, candidat
             const hasMore = attempt < tries.length - 1;
             if (!isStoreInaccessibleError(err) || hasMore) {
                 console.warn(
-                    `[Macromatix] Store ${label}: ${resolved.source} failed — ${err.message}${
-                        hasMore ? ' — trying next login' : ''
+                    `[Macromatix] Store ${label}: ${resolved.source} failed - ${err.message}${
+                        hasMore ? ' - trying next login' : ''
                     }`
                 );
             }
@@ -2479,7 +2479,7 @@ function filterStoresByNumbers(stores, filterNums) {
 }
 
 /**
- * Taco Bell AU Macromatix — for every store the account can access: labour scheduler (hourly sales) +
+ * Taco Bell AU Macromatix - for every store the account can access: labour scheduler (hourly sales) +
  * scheduled orders (pending vendor labels). Returns `{ success, timestamp, stores: [...] }`.
  */
 async function scrapeMacromatix(options = {}) {
@@ -2505,11 +2505,11 @@ async function scrapeMacromatix(options = {}) {
         const skipped = prelistedStores.filter((s) => getStoreScrapePhase(s) !== 'active');
         for (const s of skipped) {
             console.log(
-                `[Macromatix] Store ${s.storeNumber} outside scrape window (${getStoreScrapePhase(s)}) — ${formatScrapeWindow(s)}`
+                `[Macromatix] Store ${s.storeNumber} outside scrape window (${getStoreScrapePhase(s)}) - ${formatScrapeWindow(s)}`
             );
         }
         if (!activeStores.length) {
-            console.log('[Macromatix] No stores in active scrape window — skipping browser session');
+            console.log('[Macromatix] No stores in active scrape window - skipping browser session');
             return {
                 success: true,
                 timestamp: new Date().toISOString(),
@@ -2541,7 +2541,7 @@ async function scrapeMacromatix(options = {}) {
         let stores = getStoreList();
         if (stores.length) {
             console.log(
-                `[Macromatix] Store list (.storelist) — ${stores.length}:`,
+                `[Macromatix] Store list (.storelist) - ${stores.length}:`,
                 stores.map((s) => s.storeNumber).join(', ')
             );
         } else {
@@ -2569,12 +2569,12 @@ async function scrapeMacromatix(options = {}) {
                 for (const s of skipped) {
                     const phase = getStoreScrapePhase(s);
                     console.log(
-                        `[Macromatix] Store ${s.storeNumber} outside scrape window (${phase}) — ${formatScrapeWindow(s)}`
+                        `[Macromatix] Store ${s.storeNumber} outside scrape window (${phase}) - ${formatScrapeWindow(s)}`
                     );
                 }
             }
             if (!activeStores.length) {
-                console.log('[Macromatix] No stores in active scrape window — skipping remaining scrape');
+                console.log('[Macromatix] No stores in active scrape window - skipping remaining scrape');
                 await closeBrowserQuietly(browser, 'schedule idle');
                 browser = null;
                 return {
@@ -2598,7 +2598,7 @@ async function scrapeMacromatix(options = {}) {
         const concurrency = getScraperConcurrency(stores.length);
 
         console.log(
-            `[Macromatix] Per-store login mode — ${stores.length} store(s), concurrency ${concurrency} (login → select → scrape → logout per store)`
+            `[Macromatix] Per-store login mode - ${stores.length} store(s), concurrency ${concurrency} (login → select → scrape → logout per store)`
         );
 
         const storeSuccessfulCreds = new Map();
@@ -2679,7 +2679,7 @@ async function scrapeMacromatix(options = {}) {
     } catch (error) {
         await closeBrowserQuietly(browser, 'error cleanup');
         if (error?.aborted || isSalesScrapeAbortRequested()) {
-            throw error?.aborted ? error : new MmxWorkAbortedError('Sales scrape aborted — stock count / orders in progress');
+            throw error?.aborted ? error : new MmxWorkAbortedError('Sales scrape aborted - stock count / orders in progress');
         }
         console.error('[Macromatix] Error:', error.message);
         throw error;
@@ -2753,7 +2753,7 @@ async function openMacromatixBrowser(options = {}) {
     });
     const browser = await puppeteer.launch(launchOpts);
     if (!launchOpts.headless) {
-        console.log('[Macromatix] Visible browser — watch for Edge/Chrome window (headed mode)');
+        console.log('[Macromatix] Visible browser - watch for Edge/Chrome window (headed mode)');
     }
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 720 });

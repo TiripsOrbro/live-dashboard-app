@@ -31,7 +31,7 @@ function requestForecastMmxAbort(reason) {
     abortRequested = true;
     const browser = activeBrowser;
     if (!browser) return false;
-    console.log(`[MMX Queue] Aborting in-flight forecast MMX — ${reason}`);
+    console.log(`[MMX Queue] Aborting in-flight forecast MMX - ${reason}`);
     activeBrowser = null;
     browser.close().catch(() => {});
     return true;
@@ -39,7 +39,7 @@ function requestForecastMmxAbort(reason) {
 
 function throwIfForecastMmxAborted() {
     if (abortRequested) {
-        throw new MmxForecastAbortedError('Forecast MMX aborted — higher-priority work in progress');
+        throw new MmxForecastAbortedError('Forecast MMX aborted - higher-priority work in progress');
     }
 }
 

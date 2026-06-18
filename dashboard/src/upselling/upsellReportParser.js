@@ -3,9 +3,9 @@ const { normalizeLabel } = require('./pointsFile');
 const { melbourneTodayIso } = require('./upsellingConfig');
 
 const ONLINE_CASHIER_RE = /online\s*\d*\s*cashier/i;
-/** Store / entity label rows in the BI grid — not a person. */
+/** Store / entity label rows in the BI grid - not a person. */
 const STORE_ENTITY_RE = /^\d{4}\s+[a-z]|^entity\b|chirnside\s+park$/i;
-/** MMX category group headers (BOX_MEALS, DESSERTS) — not leaf item columns. */
+/** MMX category group headers (BOX_MEALS, DESSERTS) - not leaf item columns. */
 const CATEGORY_COLUMN_RE = /^[A-Z][A-Z0-9_]*$/;
 const TOTAL_COLUMN_RE = /^(total|points|score|competition\s*total|grand\s*total)$/i;
 function isDateColumnHeader(raw) {
@@ -721,7 +721,7 @@ function parseFlatFiscalCashierRows(grid, layout, filterStore, pointsByLabel, op
         }
         const hasQty = Object.keys(qtyByColumn).length > 0;
 
-        // Store label row (e.g. "3811 Chirnside Park" in fiscal col) — not a cashier line.
+        // Store label row (e.g. "3811 Chirnside Park" in fiscal col) - not a cashier line.
         if (
             entityCol < 0 &&
             !hasQty &&
@@ -762,7 +762,7 @@ function parseFlatFiscalCashierRows(grid, layout, filterStore, pointsByLabel, op
                   !isDateLabel(dateRaw)
                 : looksLikeCashierName(dateCell, productLabels) && extractStoreNumber(nameCell)
         ) {
-            // Continuation: col1=name, col2=store — or single-store layout with no entity column
+            // Continuation: col1=name, col2=store - or single-store layout with no entity column
             name = dateCell.trim();
             storeLabel = entityCol >= 0 ? nameCell.trim() : '';
             store =
@@ -928,7 +928,7 @@ function parseUpsellGrid(grid, pointsByLabel, options = {}) {
             activeCols = activeCols.filter((col) => col.storeNumber === filterStore);
             if (!activeCols.length) {
                 console.warn(
-                    `[Upselling] No item columns for store ${filterStore} in BI grid — check report layout`
+                    `[Upselling] No item columns for store ${filterStore} in BI grid - check report layout`
                 );
             }
         }

@@ -56,7 +56,7 @@ function startSalesScrapeScheduler(handlers) {
     }
 
     console.log(
-        `[Dashboard] Sales scrape scheduler — full market every ${INTERVAL_MS / 1000}s during store active hours (${TIME_ZONE})`
+        `[Dashboard] Sales scrape scheduler - full market every ${INTERVAL_MS / 1000}s during store active hours (${TIME_ZONE})`
     );
 
     return {

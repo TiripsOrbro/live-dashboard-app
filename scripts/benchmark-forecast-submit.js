@@ -58,7 +58,7 @@ async function main() {
     mark('end');
 
     const total = marks[marks.length - 1].t - marks[0].t;
-    console.log(`\n[benchmark] Store ${storeNumber} — ${plan.length} days — total ${fmt(total)}`);
+    console.log(`\n[benchmark] Store ${storeNumber} - ${plan.length} days - total ${fmt(total)}`);
     console.log(`[benchmark] login+nav: ${fmt(since('start'))} (until first day)`);
     if (since('login+nav') != null) {
         console.log(`[benchmark] login+nav only: ${fmt(since('login+nav'))} (nav segment)`);

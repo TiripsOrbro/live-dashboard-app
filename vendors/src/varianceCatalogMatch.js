@@ -127,7 +127,7 @@ function nameMatchScore(varianceName, catalogName) {
 }
 
 function parseClosingNum(raw) {
-    if (raw == null || raw === '' || raw === '—' || raw === '-') return null;
+    if (raw == null || raw === '' || raw === '-' || raw === '-') return null;
     const n = Number(String(raw).replace(/,/g, '').trim());
     return Number.isFinite(n) ? n : null;
 }

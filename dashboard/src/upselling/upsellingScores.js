@@ -81,7 +81,7 @@ function scoreCashierRow(qtyByColumn, byLabel, options = {}) {
         mmxPoints += qtyNum * pts;
     }
     for (const col of unmapped) {
-        console.warn(`[Upselling] Unmapped item column "${col}" — scoring as 0 points`);
+        console.warn(`[Upselling] Unmapped item column "${col}" - scoring as 0 points`);
     }
     if (skippedHuge.length) {
         console.warn(
@@ -276,7 +276,7 @@ function scoreAllStoresFromParsed(parsed, options = {}) {
         const top = results[store].top3[0];
         console.log(
             `[Upselling] Store ${store}: ${results[store].byDay.length} cashier-day row(s)` +
-                (top ? ` — leader ${top.name} (${top.total} pts on ${top.bestDay || syncDay || '?'})` : '')
+                (top ? ` - leader ${top.name} (${top.total} pts on ${top.bestDay || syncDay || '?'})` : '')
         );
     }
 
@@ -295,7 +295,7 @@ function scoreAllStoresFromParsed(parsed, options = {}) {
         console.warn(
             `[Upselling] CSV only has data for: ${storesInExport.join(', ') || '(none)'}. ` +
                 `${missing.length} other enabled store(s) got 0 new row(s) today: ${missing.join(', ')}. ` +
-                'The BI export is not regional — in MMX add Entity (all sites) to Upsell by Cashier, or export the wide grid with a store row above each item column (see data/upselling/sample-multi-store.csv).'
+                'The BI export is not regional - in MMX add Entity (all sites) to Upsell by Cashier, or export the wide grid with a store row above each item column (see data/upselling/sample-multi-store.csv).'
         );
     }
 

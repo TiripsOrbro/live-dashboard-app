@@ -1,5 +1,5 @@
 /**
- * Market / area / store scope picker — modal popup or inline chip rows.
+ * Market / area / store scope picker - modal popup or inline chip rows.
  */
 (function (global) {
     let backdrop = null;

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Headless sweep of LIFELENZ_QUIRK_RELOAD_MAX_MS values — one store, one day.
+ * Headless sweep of LIFELENZ_QUIRK_RELOAD_MAX_MS values - one store, one day.
  *
  * Usage:
  *   npm run benchmark-lifelenz-quirk -- 3806 2026-06-22
@@ -79,7 +79,7 @@ async function main() {
             if (row.ok) passes += 1;
             console.log(
                 `  cap=${capMs} attempt=${attempt} ${row.ok ? 'PASS' : 'FAIL'} ${row.elapsedMs}ms` +
-                    (row.error ? ` — ${row.error}` : '')
+                    (row.error ? ` - ${row.error}` : '')
             );
         }
         if (passes === REPEAT_OK) {

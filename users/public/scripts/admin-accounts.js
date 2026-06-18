@@ -557,7 +557,7 @@
                 resultEl.hidden = false;
                 resultEl.innerHTML = `
                     <strong>Account created for ${escapeHtml(data.username || username)}</strong>
-                    <span class="admin-accounts-meta">Copy this temporary password now — it will not be shown again.</span>
+                    <span class="admin-accounts-meta">Copy this temporary password now - it will not be shown again.</span>
                     <code>${escapeHtml(data.temporaryPassword || '')}</code>
                     <span class="admin-accounts-meta">${escapeHtml(data.message || '')}</span>
                 `;
@@ -647,7 +647,7 @@
                 <div>
                     <strong>${escapeHtml(row.nickname || row.username)}</strong>
                     <span class="admin-accounts-meta">${escapeHtml(row.username)} · ${escapeHtml(row.accountLevel || 'mic')} · stores: ${escapeHtml(storesLabel)}</span>
-                    <span class="admin-accounts-meta">Last login: ${escapeHtml(row.lastLoginAt || '—')}</span>
+                    <span class="admin-accounts-meta">Last login: ${escapeHtml(row.lastLoginAt || '-')}</span>
                 </div>
                 <div>
                     <button type="button" class="mic-settings-btn" data-action="edit">Edit</button>

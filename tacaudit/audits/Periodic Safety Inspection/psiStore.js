@@ -380,7 +380,7 @@ function submitSession(storeNumber, sessionId, signOff = {}, access = {}) {
     if (normalizePsiWeek(session.psiWeek) !== currentWeek) {
         return {
             ok: false,
-            error: `This session is for PSI Week ${session.psiWeek}. Week ${currentWeek} is due this week — start a new inspection.`,
+            error: `This session is for PSI Week ${session.psiWeek}. Week ${currentWeek} is due this week - start a new inspection.`,
         };
     }
 

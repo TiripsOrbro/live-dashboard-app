@@ -1,4 +1,4 @@
-﻿/** Daily Food Safety Checklist — question schema (Manual DFSC 2025). */
+﻿/** Daily Food Safety Checklist - question schema (Manual DFSC 2025). */
 
 const DFSC_SECTIONS = [
     { id: 'initialChecks', label: 'Initial Checks', order: 1 },
@@ -106,7 +106,7 @@ const RICE_HOT_TEMP_OPTS = { hint: 'Minimum 71°C', tempMin: RICE_COOK_TEMP_MIN 
 const CABINET_INGREDIENT_TEMP_HINT = 'Minimum 74°C (71°C for rice)';
 
 const DFSC_QUESTIONS = [
-    // ── Initial Checks — Thermometer Calibration ──
+    // ── Initial Checks - Thermometer Calibration ──
     q(
         'init_bluetoothThermo',
         'initialChecks',
@@ -132,7 +132,7 @@ const DFSC_QUESTIONS = [
         tempMax: 1,
     }),
 
-    // ── Initial Checks — Carryover ──
+    // ── Initial Checks - Carryover ──
     q(
         'init_settingUpBanner',
         'initialChecks',
@@ -149,7 +149,7 @@ const DFSC_QUESTIONS = [
     q('init_chickenCarryover', 'initialChecks', 'carryover_temp', 'Is there carryover Chicken?', { group: 'Carryover', tempMax: 5 }),
     q('init_nachoCarryover', 'initialChecks', 'carryover_temp', 'Is there carryover Nacho Cheese?', { group: 'Carryover', tempMax: 5 }),
 
-    // ── Initial Checks — Washup Sink ──
+    // ── Initial Checks - Washup Sink ──
     q('init_sinkHotWaterTemp', 'initialChecks', 'temperature', '3-compartment sink hot water is a minimum of 49°C. Record the temp.', {
         group: 'Washup Sink',
         hint: 'Min 49°C',
@@ -185,7 +185,7 @@ const DFSC_QUESTIONS = [
         { group: 'Washup Sink' }
     ),
 
-    // ── Initial Checks — Hand Washing Sinks ──
+    // ── Initial Checks - Hand Washing Sinks ──
     q(
         'init_handwashAccessible',
         'initialChecks',
@@ -206,7 +206,7 @@ const DFSC_QUESTIONS = [
         { group: 'Hand Washing Sinks' }
     ),
 
-    // ── Initial Checks — Setting Up ──
+    // ── Initial Checks - Setting Up ──
     q(
         'init_pestActivity',
         'initialChecks',
@@ -282,7 +282,7 @@ const DFSC_QUESTIONS = [
         { group: 'Setting Up' }
     ),
 
-    // ── Initial Checks — FOH ──
+    // ── Initial Checks - FOH ──
     q(
         'init_bathroomSinksClean',
         'initialChecks',
@@ -294,13 +294,13 @@ const DFSC_QUESTIONS = [
         'init_janitorCupboard',
         'initialChecks',
         'compliant',
-        'Janitor cupboard — is all cleaning equipment hanging and stored correctly?',
+        'Janitor cupboard - is all cleaning equipment hanging and stored correctly?',
         { group: 'FOH' }
     ),
     q('init_drinkNozzles', 'initialChecks', 'compliant', 'Drink machine nozzles are cleaned daily and free from mould?', { group: 'FOH' }),
 
-    // ── Fridge & Freezer — Walk-in freezer ──
-    q('freezer_walkInTemp', 'freezerColdrooms', 'temperature', 'Walk-in freezer — internal air temp', {
+    // ── Fridge & Freezer - Walk-in freezer ──
+    q('freezer_walkInTemp', 'freezerColdrooms', 'temperature', 'Walk-in freezer - internal air temp', {
         group: 'Walk-in Freezer',
         ...FREEZER_TEMP_OPTS,
     }),
@@ -309,7 +309,7 @@ const DFSC_QUESTIONS = [
         choices: FREEZER_INGREDIENT_CHOICES,
         defaultValue: 'chicken',
     }),
-    q('freezer_ingredient1Temp', 'freezerColdrooms', 'temperature', 'Ingredient 1 — temperature', {
+    q('freezer_ingredient1Temp', 'freezerColdrooms', 'temperature', 'Ingredient 1 - temperature', {
         group: 'Walk-in Freezer',
         ...FREEZER_TEMP_OPTS,
     }),
@@ -318,7 +318,7 @@ const DFSC_QUESTIONS = [
         choices: FREEZER_INGREDIENT_CHOICES,
         defaultValue: 'beef',
     }),
-    q('freezer_ingredient2Temp', 'freezerColdrooms', 'temperature', 'Ingredient 2 — temperature', {
+    q('freezer_ingredient2Temp', 'freezerColdrooms', 'temperature', 'Ingredient 2 - temperature', {
         group: 'Walk-in Freezer',
         ...FREEZER_TEMP_OPTS,
     }),
@@ -328,8 +328,8 @@ const DFSC_QUESTIONS = [
         choices: COLDROOM_COUNT_CHOICES,
     }),
 
-    // ── Fridge & Freezer — Coldroom 1 ──
-    q('coldroom1_airTemp', 'freezerColdrooms', 'temperature', 'Coldroom 1 — internal air temp', {
+    // ── Fridge & Freezer - Coldroom 1 ──
+    q('coldroom1_airTemp', 'freezerColdrooms', 'temperature', 'Coldroom 1 - internal air temp', {
         group: 'Coldroom 1',
         ...FRIDGE_TEMP_OPTS,
     }),
@@ -338,7 +338,7 @@ const DFSC_QUESTIONS = [
         choices: COLDROOM_INGREDIENT_CHOICES,
         defaultValue: 'lettuce',
     }),
-    q('coldroom1_ingredient1Temp', 'freezerColdrooms', 'temperature', 'Ingredient 1 — temperature', {
+    q('coldroom1_ingredient1Temp', 'freezerColdrooms', 'temperature', 'Ingredient 1 - temperature', {
         group: 'Coldroom 1',
         ...FRIDGE_TEMP_OPTS,
     }),
@@ -347,7 +347,7 @@ const DFSC_QUESTIONS = [
         choices: COLDROOM_INGREDIENT_CHOICES,
         defaultValue: 'tomato',
     }),
-    q('coldroom1_ingredient2Temp', 'freezerColdrooms', 'temperature', 'Ingredient 2 — temperature', {
+    q('coldroom1_ingredient2Temp', 'freezerColdrooms', 'temperature', 'Ingredient 2 - temperature', {
         group: 'Coldroom 1',
         ...FRIDGE_TEMP_OPTS,
     }),
@@ -372,14 +372,14 @@ const DFSC_QUESTIONS = [
         'Open bags of ingredients are sealed with a clip and marked with an open bag hold time?',
         { group: 'Coldroom 1' }
     ),
-    q('coldroom1_lettuceUbd', 'freezerColdrooms', 'date', 'Lettuce — earliest use by / best before', { group: 'Coldroom 1 — dates' }),
-    q('coldroom1_tomatoUbd', 'freezerColdrooms', 'date', 'Tomato — earliest use by / best before', { group: 'Coldroom 1 — dates' }),
-    q('coldroom1_onionUbd', 'freezerColdrooms', 'date', 'Onion — earliest use by / best before', { group: 'Coldroom 1 — dates' }),
-    q('coldroom1_corianderUbd', 'freezerColdrooms', 'date', 'Coriander — earliest use by / best before', { group: 'Coldroom 1 — dates' }),
-    q('coldroom1_sourCreamUbd', 'freezerColdrooms', 'datetime', 'Sour Cream — earliest use by / best before', { group: 'Coldroom 1 — dates' }),
+    q('coldroom1_lettuceUbd', 'freezerColdrooms', 'date', 'Lettuce - earliest use by / best before', { group: 'Coldroom 1 - dates' }),
+    q('coldroom1_tomatoUbd', 'freezerColdrooms', 'date', 'Tomato - earliest use by / best before', { group: 'Coldroom 1 - dates' }),
+    q('coldroom1_onionUbd', 'freezerColdrooms', 'date', 'Onion - earliest use by / best before', { group: 'Coldroom 1 - dates' }),
+    q('coldroom1_corianderUbd', 'freezerColdrooms', 'date', 'Coriander - earliest use by / best before', { group: 'Coldroom 1 - dates' }),
+    q('coldroom1_sourCreamUbd', 'freezerColdrooms', 'datetime', 'Sour Cream - earliest use by / best before', { group: 'Coldroom 1 - dates' }),
 
-    // ── Fridge & Freezer — Coldroom 2 (when 2 coldrooms) ──
-    q('coldroom2_airTemp', 'freezerColdrooms', 'temperature', 'Coldroom 2 — internal air temp', {
+    // ── Fridge & Freezer - Coldroom 2 (when 2 coldrooms) ──
+    q('coldroom2_airTemp', 'freezerColdrooms', 'temperature', 'Coldroom 2 - internal air temp', {
         group: 'Coldroom 2',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: COLDROOM2_VISIBLE,
@@ -390,7 +390,7 @@ const DFSC_QUESTIONS = [
         defaultValue: 'lettuce',
         showWhenAnswer: COLDROOM2_VISIBLE,
     }),
-    q('coldroom2_ingredient1Temp', 'freezerColdrooms', 'temperature', 'Ingredient 1 — temperature', {
+    q('coldroom2_ingredient1Temp', 'freezerColdrooms', 'temperature', 'Ingredient 1 - temperature', {
         group: 'Coldroom 2',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: COLDROOM2_VISIBLE,
@@ -401,7 +401,7 @@ const DFSC_QUESTIONS = [
         defaultValue: 'tomato',
         showWhenAnswer: COLDROOM2_VISIBLE,
     }),
-    q('coldroom2_ingredient2Temp', 'freezerColdrooms', 'temperature', 'Ingredient 2 — temperature', {
+    q('coldroom2_ingredient2Temp', 'freezerColdrooms', 'temperature', 'Ingredient 2 - temperature', {
         group: 'Coldroom 2',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: COLDROOM2_VISIBLE,
@@ -414,7 +414,7 @@ const DFSC_QUESTIONS = [
         { group: 'Coldroom 2', showWhenAnswer: COLDROOM2_VISIBLE }
     ),
 
-    // ── Cook Temps & Fry — Cook temps ──
+    // ── Cook Temps & Fry - Cook temps ──
     q('prepFry_beefTemp', 'prepFry', 'temperature', 'Beef', { group: 'Cook Temps', ...HOT_HOLD_TEMP_OPTS }),
     q('prepFry_chickenTemp', 'prepFry', 'temperature', 'Chicken', { group: 'Cook Temps', ...HOT_HOLD_TEMP_OPTS }),
     q('prepFry_blackBeansTemp', 'prepFry', 'temperature', 'Black Beans', { group: 'Cook Temps', ...HOT_HOLD_TEMP_OPTS }),
@@ -449,7 +449,7 @@ const DFSC_QUESTIONS = [
         group: 'Heated Cabinet',
         remindWhenAnswer: 'no',
         remindAfterMinutes: 60,
-        remindTitle: 'Heated cabinet — check protein',
+        remindTitle: 'Heated cabinet - check protein',
         remindBody: 'Reminder: check whether protein should be in the heated cabinet after your first cook.',
     }),
     q('prepFry_cabinetIngredient1Item', 'prepFry', 'select', 'Ingredient 1', {
@@ -457,7 +457,7 @@ const DFSC_QUESTIONS = [
         choices: HOT_CABINET_INGREDIENT_CHOICES,
         defaultValue: 'beef',
     }),
-    q('prepFry_cabinetIngredient1Temp', 'prepFry', 'temperature', 'Ingredient 1 — temperature', {
+    q('prepFry_cabinetIngredient1Temp', 'prepFry', 'temperature', 'Ingredient 1 - temperature', {
         group: 'Heated Cabinet',
         hint: CABINET_INGREDIENT_TEMP_HINT,
         tempMinFromSelect: {
@@ -471,7 +471,7 @@ const DFSC_QUESTIONS = [
         choices: HOT_CABINET_INGREDIENT_CHOICES,
         defaultValue: 'chicken',
     }),
-    q('prepFry_cabinetIngredient2Temp', 'prepFry', 'temperature', 'Ingredient 2 — temperature', {
+    q('prepFry_cabinetIngredient2Temp', 'prepFry', 'temperature', 'Ingredient 2 - temperature', {
         group: 'Heated Cabinet',
         hint: CABINET_INGREDIENT_TEMP_HINT,
         tempMinFromSelect: {
@@ -481,7 +481,7 @@ const DFSC_QUESTIONS = [
         },
     }),
 
-    // ── Cook Temps & Fry — Fry station ──
+    // ── Cook Temps & Fry - Fry station ──
     q('prepFry_oilAmBanner', 'prepFry', 'banner', '', {
         group: 'Fry Station',
         amOnly: true,
@@ -489,17 +489,17 @@ const DFSC_QUESTIONS = [
         bannerSubtitle:
             'Complete oil quality checks with the oil quality tester and record the TMP% for each vat',
     }),
-    q('prepFry_oilVat1', 'prepFry', 'ppm_band', 'Vat 1 — TMP%', {
+    q('prepFry_oilVat1', 'prepFry', 'ppm_band', 'Vat 1 - TMP%', {
         group: 'Fry Station',
         amOnly: true,
         choices: OIL_TMP_BAND_CHOICES,
     }),
-    q('prepFry_oilVat2', 'prepFry', 'ppm_band', 'Vat 2 — TMP%', {
+    q('prepFry_oilVat2', 'prepFry', 'ppm_band', 'Vat 2 - TMP%', {
         group: 'Fry Station',
         amOnly: true,
         choices: OIL_TMP_BAND_CHOICES,
     }),
-    q('prepFry_oilVat3', 'prepFry', 'ppm_band', 'Vat 3 — TMP%', {
+    q('prepFry_oilVat3', 'prepFry', 'ppm_band', 'Vat 3 - TMP%', {
         group: 'Fry Station',
         amOnly: true,
         choices: OIL_TMP_BAND_CHOICES,
@@ -516,38 +516,38 @@ const DFSC_QUESTIONS = [
         { group: 'Fry Station' }
     ),
     q('prepFry_holdExpiriesBanner', 'prepFry', 'banner', '', {
-        group: 'Fry Station — hold times',
+        group: 'Fry Station - hold times',
         bannerSubtitle: 'Check and record the earliest hold time expiries on the following prepped ingredients:',
     }),
-    q('prepFry_tacoShellsExpiry', 'prepFry', 'datetime', 'Taco Shells', { group: 'Fry Station — hold times' }),
-    q('prepFry_tostadaExpiry', 'prepFry', 'datetime', 'Tostadas', { group: 'Fry Station — hold times' }),
-    q('prepFry_tortillaChipsExpiry', 'prepFry', 'datetime', 'Tortilla Chips', { group: 'Fry Station — hold times' }),
-    q('prepFry_cinnyTwistsExpiry', 'prepFry', 'datetime', 'Cinnamon Twists', { group: 'Fry Station — hold times' }),
+    q('prepFry_tacoShellsExpiry', 'prepFry', 'datetime', 'Taco Shells', { group: 'Fry Station - hold times' }),
+    q('prepFry_tostadaExpiry', 'prepFry', 'datetime', 'Tostadas', { group: 'Fry Station - hold times' }),
+    q('prepFry_tortillaChipsExpiry', 'prepFry', 'datetime', 'Tortilla Chips', { group: 'Fry Station - hold times' }),
+    q('prepFry_cinnyTwistsExpiry', 'prepFry', 'datetime', 'Cinnamon Twists', { group: 'Fry Station - hold times' }),
 
     // ── Production Lines ──
     q('prodLines_lineCount', 'productionLines', 'segmented', 'How many lines do you have operating today?', {
         choices: LINE_COUNT_CHOICES,
     }),
 
-    // Line 1 — Hot Line
+    // Line 1 - Hot Line
     q('prodLine1_tacoTowerTemp', 'productionLines', 'temperature', 'Taco Tower Temp', {
-        group: 'Line 1 — Hot Line',
+        group: 'Line 1 - Hot Line',
         hint: 'Minimum 49°C',
         tempMin: 49,
         unlockAfterAnswer: { questionId: 'init_tacoTowerHotWaterCup', minutes: 30 },
     }),
-    q('prodLine1_beefTemp', 'productionLines', 'temperature', 'Beef Temp', { group: 'Line 1 — Hot Line', ...HOT_HOLD_TEMP_OPTS }),
-    q('prodLine1_chickenTemp', 'productionLines', 'temperature', 'Chicken Temp', { group: 'Line 1 — Hot Line', ...HOT_HOLD_TEMP_OPTS }),
-    q('prodLine1_beansTemp', 'productionLines', 'temperature', 'Bean Temp', { group: 'Line 1 — Hot Line', ...HOT_HOLD_TEMP_OPTS }),
-    q('prodLine1_riceTemp', 'productionLines', 'temperature', 'Rice Temp', { group: 'Line 1 — Hot Line', ...RICE_HOT_TEMP_OPTS }),
-    q('prodLine1_nachoCheeseTemp', 'productionLines', 'temperature', 'Nacho Cheese Temp', { group: 'Line 1 — Hot Line', ...HOT_HOLD_TEMP_OPTS }),
+    q('prodLine1_beefTemp', 'productionLines', 'temperature', 'Beef Temp', { group: 'Line 1 - Hot Line', ...HOT_HOLD_TEMP_OPTS }),
+    q('prodLine1_chickenTemp', 'productionLines', 'temperature', 'Chicken Temp', { group: 'Line 1 - Hot Line', ...HOT_HOLD_TEMP_OPTS }),
+    q('prodLine1_beansTemp', 'productionLines', 'temperature', 'Bean Temp', { group: 'Line 1 - Hot Line', ...HOT_HOLD_TEMP_OPTS }),
+    q('prodLine1_riceTemp', 'productionLines', 'temperature', 'Rice Temp', { group: 'Line 1 - Hot Line', ...RICE_HOT_TEMP_OPTS }),
+    q('prodLine1_nachoCheeseTemp', 'productionLines', 'temperature', 'Nacho Cheese Temp', { group: 'Line 1 - Hot Line', ...HOT_HOLD_TEMP_OPTS }),
     q('prodLine1_crispyChickenLocation', 'productionLines', 'select', 'Where are you holding crispy chicken strips?', {
-        group: 'Line 1 — Hot Line',
+        group: 'Line 1 - Hot Line',
         choices: CRISPY_CHICKEN_LOCATION_CHOICES,
         selectPlaceholder: 'Select location',
     }),
-    q('prodLine1_crispyChickenLineTemp', 'productionLines', 'temperature', 'Crispy chicken strips — temperature', {
-        group: 'Line 1 — Hot Line',
+    q('prodLine1_crispyChickenLineTemp', 'productionLines', 'temperature', 'Crispy chicken strips - temperature', {
+        group: 'Line 1 - Hot Line',
         ...HOT_HOLD_TEMP_OPTS,
         showWhenAnswer: { prodLine1_crispyChickenLocation: 'on_line' },
     }),
@@ -555,76 +555,76 @@ const DFSC_QUESTIONS = [
         'prodLine1_crispyChickenTowerInTime',
         'productionLines',
         'compliant',
-        'Crispy chicken strips in taco tower — in hold time?',
-        { group: 'Line 1 — Hot Line', showWhenAnswer: { prodLine1_crispyChickenLocation: 'taco_tower' } }
+        'Crispy chicken strips in taco tower - in hold time?',
+        { group: 'Line 1 - Hot Line', showWhenAnswer: { prodLine1_crispyChickenLocation: 'taco_tower' } }
     ),
     q(
         'prodLine1_hotHoldChart',
         'productionLines',
         'compliant',
-        'Check the hot line hold time chart — there are no expired hold times?',
-        { group: 'Line 1 — Hot Line' }
+        'Check the hot line hold time chart - there are no expired hold times?',
+        { group: 'Line 1 - Hot Line' }
     ),
 
-    // Line 1 — Cold Line
-    q('prodLine1_guacTemp', 'productionLines', 'temperature', 'Guac Temp', { group: 'Line 1 — Cold Line', ...FRIDGE_TEMP_OPTS }),
-    q('prodLine1_lettuceTemp', 'productionLines', 'temperature', 'Lettuce Temp', { group: 'Line 1 — Cold Line', ...FRIDGE_TEMP_OPTS }),
-    q('prodLine1_tomatoesTemp', 'productionLines', 'temperature', 'Tomatoes Temp', { group: 'Line 1 — Cold Line', ...FRIDGE_TEMP_OPTS }),
-    q('prodLine1_fiestaTemp', 'productionLines', 'temperature', 'Fiesta Temp', { group: 'Line 1 — Cold Line', ...FRIDGE_TEMP_OPTS }),
-    q('prodLine1_cheeseTemp', 'productionLines', 'temperature', 'Cheese Temp', { group: 'Line 1 — Cold Line', ...FRIDGE_TEMP_OPTS }),
+    // Line 1 - Cold Line
+    q('prodLine1_guacTemp', 'productionLines', 'temperature', 'Guac Temp', { group: 'Line 1 - Cold Line', ...FRIDGE_TEMP_OPTS }),
+    q('prodLine1_lettuceTemp', 'productionLines', 'temperature', 'Lettuce Temp', { group: 'Line 1 - Cold Line', ...FRIDGE_TEMP_OPTS }),
+    q('prodLine1_tomatoesTemp', 'productionLines', 'temperature', 'Tomatoes Temp', { group: 'Line 1 - Cold Line', ...FRIDGE_TEMP_OPTS }),
+    q('prodLine1_fiestaTemp', 'productionLines', 'temperature', 'Fiesta Temp', { group: 'Line 1 - Cold Line', ...FRIDGE_TEMP_OPTS }),
+    q('prodLine1_cheeseTemp', 'productionLines', 'temperature', 'Cheese Temp', { group: 'Line 1 - Cold Line', ...FRIDGE_TEMP_OPTS }),
     q(
         'prodLine1_coldHoldChart',
         'productionLines',
         'compliant',
-        'Check the cold line hold time chart — there are no expired hold times?',
-        { group: 'Line 1 — Cold Line' }
+        'Check the cold line hold time chart - there are no expired hold times?',
+        { group: 'Line 1 - Cold Line' }
     ),
     q(
         'prodLine1_prepHoldStickers',
         'productionLines',
         'compliant',
-        'Check the prep hold time stickers of each pan on the line — there are no expired hold times?',
-        { group: 'Line 1 — Cold Line' }
+        'Check the prep hold time stickers of each pan on the line - there are no expired hold times?',
+        { group: 'Line 1 - Cold Line' }
     ),
 
-    // Line 1 — Underline fridge
+    // Line 1 - Underline fridge
     q('prodLine1_underlineFridgeInUse', 'productionLines', 'yes_no', 'Is the underline fridge in use?', {
-        group: 'Line 1 — Underline fridge',
+        group: 'Line 1 - Underline fridge',
     }),
     q('prodLine1_underlineIngredient1Item', 'productionLines', 'select', 'Ingredient 1', {
-        group: 'Line 1 — Underline fridge',
+        group: 'Line 1 - Underline fridge',
         choices: UNDERLINE_ING1_CHOICES,
         defaultValue: 'lettuce',
         showWhenAnswer: UNDERLINE_FRIDGE_VISIBLE,
     }),
-    q('prodLine1_underlineIngredient1Temp', 'productionLines', 'temperature', 'Ingredient 1 — temperature', {
-        group: 'Line 1 — Underline fridge',
+    q('prodLine1_underlineIngredient1Temp', 'productionLines', 'temperature', 'Ingredient 1 - temperature', {
+        group: 'Line 1 - Underline fridge',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: UNDERLINE_FRIDGE_VISIBLE,
     }),
     q('prodLine1_underlineIngredient2Item', 'productionLines', 'select', 'Ingredient 2', {
-        group: 'Line 1 — Underline fridge',
+        group: 'Line 1 - Underline fridge',
         choices: UNDERLINE_ING2_CHOICES,
         defaultValue: 'tomato',
         showWhenAnswer: UNDERLINE_FRIDGE_VISIBLE,
     }),
-    q('prodLine1_underlineIngredient2Temp', 'productionLines', 'temperature', 'Ingredient 2 — temperature', {
-        group: 'Line 1 — Underline fridge',
+    q('prodLine1_underlineIngredient2Temp', 'productionLines', 'temperature', 'Ingredient 2 - temperature', {
+        group: 'Line 1 - Underline fridge',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: UNDERLINE_FRIDGE_VISIBLE,
     }),
 
-    // Line 1 — Free-standing prep fridge
+    // Line 1 - Free-standing prep fridge
     q('prodLine1_prepFridgeInUse', 'productionLines', 'yes_no', 'Do you have a free standing prep fridge in use?', {
-        group: 'Line 1 — Prep fridge',
+        group: 'Line 1 - Prep fridge',
     }),
     q('prodLine1_prepFridgeGuacTemp', 'productionLines', 'temperature', 'Guac', {
-        group: 'Line 1 — Prep fridge',
+        group: 'Line 1 - Prep fridge',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: PREP_FRIDGE_VISIBLE,
     }),
     q('prodLine1_prepFridgeFiestaTemp', 'productionLines', 'temperature', 'Fiesta', {
-        group: 'Line 1 — Prep fridge',
+        group: 'Line 1 - Prep fridge',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: PREP_FRIDGE_VISIBLE,
     }),
@@ -633,50 +633,50 @@ const DFSC_QUESTIONS = [
         'productionLines',
         'compliant',
         'Prepped ingredients and open bags are labelled correctly, within hold time and rotated? Open bags are sealed with a clip?',
-        { group: 'Line 1 — Prep fridge', showWhenAnswer: PREP_FRIDGE_VISIBLE }
+        { group: 'Line 1 - Prep fridge', showWhenAnswer: PREP_FRIDGE_VISIBLE }
     ),
 
-    // Line 2 — Hot Line (split layout: includes taco tower; shared layout: hot/cold only)
+    // Line 2 - Hot Line (split layout: includes taco tower; shared layout: hot/cold only)
     q('prodLine2_tacoTowerTemp', 'productionLines', 'temperature', 'Taco Tower Temp', {
-        group: 'Line 2 — Hot Line',
+        group: 'Line 2 - Hot Line',
         hint: 'Minimum 49°C',
         tempMin: 49,
         unlockAfterAnswer: { questionId: 'init_tacoTowerHotWaterCup', minutes: 30 },
         showWhenAnswer: TWO_LINE_SPLIT_VISIBLE,
     }),
     q('prodLine2_beefTemp', 'productionLines', 'temperature', 'Beef Temp', {
-        group: 'Line 2 — Hot Line',
+        group: 'Line 2 - Hot Line',
         ...HOT_HOLD_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_chickenTemp', 'productionLines', 'temperature', 'Chicken Temp', {
-        group: 'Line 2 — Hot Line',
+        group: 'Line 2 - Hot Line',
         ...HOT_HOLD_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_beansTemp', 'productionLines', 'temperature', 'Bean Temp', {
-        group: 'Line 2 — Hot Line',
+        group: 'Line 2 - Hot Line',
         ...HOT_HOLD_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_riceTemp', 'productionLines', 'temperature', 'Rice Temp', {
-        group: 'Line 2 — Hot Line',
+        group: 'Line 2 - Hot Line',
         ...RICE_HOT_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_nachoCheeseTemp', 'productionLines', 'temperature', 'Nacho Cheese Temp', {
-        group: 'Line 2 — Hot Line',
+        group: 'Line 2 - Hot Line',
         ...HOT_HOLD_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_crispyChickenLocation', 'productionLines', 'select', 'Where are you holding crispy chicken strips?', {
-        group: 'Line 2 — Hot Line',
+        group: 'Line 2 - Hot Line',
         choices: CRISPY_CHICKEN_LOCATION_CHOICES,
         selectPlaceholder: 'Select location',
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
-    q('prodLine2_crispyChickenLineTemp', 'productionLines', 'temperature', 'Crispy chicken strips — temperature', {
-        group: 'Line 2 — Hot Line',
+    q('prodLine2_crispyChickenLineTemp', 'productionLines', 'temperature', 'Crispy chicken strips - temperature', {
+        group: 'Line 2 - Hot Line',
         ...HOT_HOLD_TEMP_OPTS,
         showWhenAnswer: { prodLine2_crispyChickenLocation: 'on_line', ...TWO_LINES_VISIBLE },
     }),
@@ -684,9 +684,9 @@ const DFSC_QUESTIONS = [
         'prodLine2_crispyChickenTowerInTime',
         'productionLines',
         'compliant',
-        'Crispy chicken strips in taco tower — in hold time?',
+        'Crispy chicken strips in taco tower - in hold time?',
         {
-            group: 'Line 2 — Hot Line',
+            group: 'Line 2 - Hot Line',
             showWhenAnswer: { prodLine2_crispyChickenLocation: 'taco_tower', ...TWO_LINES_VISIBLE },
         }
     ),
@@ -694,33 +694,33 @@ const DFSC_QUESTIONS = [
         'prodLine2_hotHoldChart',
         'productionLines',
         'compliant',
-        'Check the hot line hold time chart — there are no expired hold times?',
-        { group: 'Line 2 — Hot Line', showWhenAnswer: TWO_LINES_VISIBLE }
+        'Check the hot line hold time chart - there are no expired hold times?',
+        { group: 'Line 2 - Hot Line', showWhenAnswer: TWO_LINES_VISIBLE }
     ),
 
-    // Line 2 — Cold Line
+    // Line 2 - Cold Line
     q('prodLine2_guacTemp', 'productionLines', 'temperature', 'Guac Temp', {
-        group: 'Line 2 — Cold Line',
+        group: 'Line 2 - Cold Line',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_lettuceTemp', 'productionLines', 'temperature', 'Lettuce Temp', {
-        group: 'Line 2 — Cold Line',
+        group: 'Line 2 - Cold Line',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_tomatoesTemp', 'productionLines', 'temperature', 'Tomatoes Temp', {
-        group: 'Line 2 — Cold Line',
+        group: 'Line 2 - Cold Line',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_fiestaTemp', 'productionLines', 'temperature', 'Fiesta Temp', {
-        group: 'Line 2 — Cold Line',
+        group: 'Line 2 - Cold Line',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_cheeseTemp', 'productionLines', 'temperature', 'Cheese Temp', {
-        group: 'Line 2 — Cold Line',
+        group: 'Line 2 - Cold Line',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
@@ -728,41 +728,41 @@ const DFSC_QUESTIONS = [
         'prodLine2_coldHoldChart',
         'productionLines',
         'compliant',
-        'Check the cold line hold time chart — there are no expired hold times?',
-        { group: 'Line 2 — Cold Line', showWhenAnswer: TWO_LINES_VISIBLE }
+        'Check the cold line hold time chart - there are no expired hold times?',
+        { group: 'Line 2 - Cold Line', showWhenAnswer: TWO_LINES_VISIBLE }
     ),
     q(
         'prodLine2_prepHoldStickers',
         'productionLines',
         'compliant',
-        'Check the prep hold time stickers of each pan on the line — there are no expired hold times?',
-        { group: 'Line 2 — Cold Line', showWhenAnswer: TWO_LINES_VISIBLE }
+        'Check the prep hold time stickers of each pan on the line - there are no expired hold times?',
+        { group: 'Line 2 - Cold Line', showWhenAnswer: TWO_LINES_VISIBLE }
     ),
 
-    // Line 2 — Underline fridge (split layout only)
+    // Line 2 - Underline fridge (split layout only)
     q('prodLine2_underlineFridgeInUse', 'productionLines', 'yes_no', 'Is the underline fridge in use?', {
-        group: 'Line 2 — Underline fridge',
+        group: 'Line 2 - Underline fridge',
         showWhenAnswer: TWO_LINE_SPLIT_VISIBLE,
     }),
     q('prodLine2_underlineIngredient1Item', 'productionLines', 'select', 'Ingredient 1', {
-        group: 'Line 2 — Underline fridge',
+        group: 'Line 2 - Underline fridge',
         choices: UNDERLINE_ING1_CHOICES,
         defaultValue: 'lettuce',
         showWhenAnswer: { ...TWO_LINE_SPLIT_VISIBLE, ...UNDERLINE_FRIDGE_LINE2_VISIBLE },
     }),
-    q('prodLine2_underlineIngredient1Temp', 'productionLines', 'temperature', 'Ingredient 1 — temperature', {
-        group: 'Line 2 — Underline fridge',
+    q('prodLine2_underlineIngredient1Temp', 'productionLines', 'temperature', 'Ingredient 1 - temperature', {
+        group: 'Line 2 - Underline fridge',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: { ...TWO_LINE_SPLIT_VISIBLE, ...UNDERLINE_FRIDGE_LINE2_VISIBLE },
     }),
     q('prodLine2_underlineIngredient2Item', 'productionLines', 'select', 'Ingredient 2', {
-        group: 'Line 2 — Underline fridge',
+        group: 'Line 2 - Underline fridge',
         choices: UNDERLINE_ING2_CHOICES,
         defaultValue: 'tomato',
         showWhenAnswer: { ...TWO_LINE_SPLIT_VISIBLE, ...UNDERLINE_FRIDGE_LINE2_VISIBLE },
     }),
-    q('prodLine2_underlineIngredient2Temp', 'productionLines', 'temperature', 'Ingredient 2 — temperature', {
-        group: 'Line 2 — Underline fridge',
+    q('prodLine2_underlineIngredient2Temp', 'productionLines', 'temperature', 'Ingredient 2 - temperature', {
+        group: 'Line 2 - Underline fridge',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: { ...TWO_LINE_SPLIT_VISIBLE, ...UNDERLINE_FRIDGE_LINE2_VISIBLE },
     }),
@@ -797,13 +797,13 @@ const DFSC_QUESTIONS = [
         'other_fcbSyrupExpiry',
         'other',
         'compliant',
-        'Check the FCB syrup expiry dates on each box — are they within date?'
+        'Check the FCB syrup expiry dates on each box - are they within date?'
     ),
     q(
         'other_postMixSyrupExpiry',
         'other',
         'compliant',
-        'Check the Post Mix syrup expiry dates on each box — are they within date?'
+        'Check the Post Mix syrup expiry dates on each box - are they within date?'
     ),
 
     // ── Deliveries & Transfers ──
@@ -812,12 +812,12 @@ const DFSC_QUESTIONS = [
     q('deliveries_americoldChilled', 'deliveriesTransfers', 'received', 'Americold/Sands'),
     q('deliveries_americoldFrozen', 'deliveriesTransfers', 'received', 'Americold/Sands Frozen'),
     q('deliveries_transfersReceived', 'deliveriesTransfers', 'yes_no', 'Did you receive any refrigerated transfers?'),
-    q('deliveries_transferFreezerTemp', 'deliveriesTransfers', 'temperature', 'Stock Transfers — Freezer', {
+    q('deliveries_transferFreezerTemp', 'deliveriesTransfers', 'temperature', 'Stock Transfers - Freezer', {
         group: 'Stock Transfers',
         ...FREEZER_TEMP_OPTS,
         showWhenAnswer: { deliveries_transfersReceived: 'yes' },
     }),
-    q('deliveries_transferFridgeTemp', 'deliveriesTransfers', 'temperature', 'Stock Transfers — Fridge', {
+    q('deliveries_transferFridgeTemp', 'deliveriesTransfers', 'temperature', 'Stock Transfers - Fridge', {
         group: 'Stock Transfers',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: { deliveries_transfersReceived: 'yes' },

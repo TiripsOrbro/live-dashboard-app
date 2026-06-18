@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Monday 2 AM (Melbourne) — auto-submit forecasts for eligible stores.
+ * Monday 2 AM (Melbourne) - auto-submit forecasts for eligible stores.
  *
  * Usage:
  *   npm run forecast-scheduler
@@ -67,13 +67,13 @@ async function runScheduledForecastJob() {
     const { weekStart, eligible } = await listEligibleStores();
 
     if (!eligible.length) {
-        console.log('[ForecastScheduler] No eligible stores — skipping.');
+        console.log('[ForecastScheduler] No eligible stores - skipping.');
         appendScheduleLog(runDateKey, { action: 'skip', reason: 'no eligible stores', weekStart });
         return { skipped: true, weekStart, stores: [] };
     }
 
     if (hasScheduledRunForWeek(runDateKey, weekStart)) {
-        console.log(`[ForecastScheduler] Already ran today for week ${weekStart} — skipping.`);
+        console.log(`[ForecastScheduler] Already ran today for week ${weekStart} - skipping.`);
         return { skipped: true, weekStart, stores: [] };
     }
 
@@ -122,7 +122,7 @@ async function runScheduledForecastJob() {
     });
 
     if (deferred || !results) {
-        console.warn('[ForecastScheduler] Deferred — MMX queue busy during schedule window.');
+        console.warn('[ForecastScheduler] Deferred - MMX queue busy during schedule window.');
         return { deferred: true, weekStart };
     }
 
@@ -136,11 +136,11 @@ async function main() {
     const hour = scheduleHour();
     const windowMin = scheduleWindowMinutes();
     console.log(
-        `[ForecastScheduler] Started — ${TIME_ZONE}, Monday ~${hour}:00 (window ${windowMin} min), week target +14d`
+        `[ForecastScheduler] Started - ${TIME_ZONE}, Monday ~${hour}:00 (window ${windowMin} min), week target +14d`
     );
 
     if (!isScheduleEnabled()) {
-        console.warn('[ForecastScheduler] FORECAST_SCHEDULE_ENABLED is not set — sleeping 5 min.');
+        console.warn('[ForecastScheduler] FORECAST_SCHEDULE_ENABLED is not set - sleeping 5 min.');
     }
 
     for (;;) {

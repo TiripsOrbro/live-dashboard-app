@@ -86,14 +86,14 @@ async function main() {
         origLog(`[probe] Variances: ${result.variances?.length ?? 0}`);
 
         if (maxSaveMs != null && maxSaveMs > 15000) {
-            console.error('[probe] FAIL — save still slower than 15s (navigation timeout may still be firing)');
+            console.error('[probe] FAIL - save still slower than 15s (navigation timeout may still be firing)');
             process.exit(1);
         }
         if (saves.length < 3) {
-            console.error(`[probe] FAIL — expected 3 saves, got ${saves.length}`);
+            console.error(`[probe] FAIL - expected 3 saves, got ${saves.length}`);
             process.exit(1);
         }
-        origLog('[probe] PASS — tab saves completed quickly');
+        origLog('[probe] PASS - tab saves completed quickly');
     } finally {
         console.log = origLog;
         await closeBrowserQuietly(browser, 'probe-stock-count-save');

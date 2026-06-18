@@ -1,5 +1,5 @@
 /**
- * Cross-process MMX task queue — MIC (1) > Admin (2) > Scrape (3).
+ * Cross-process MMX task queue - MIC (1) > Admin (2) > Scrape (3).
  * One browser slot on disk; in-process ref-count for nested MIC/admin holds.
  */
 const fs = require('fs');
@@ -342,7 +342,7 @@ async function acquirePrioritySlot(priority, { type, label }) {
     };
     const position = enqueueTask(meta);
     if (position > 1) {
-        console.log(`[MMX Queue] Waiting (P${priority} ${meta.label}) — position ${position}`);
+        console.log(`[MMX Queue] Waiting (P${priority} ${meta.label}) - position ${position}`);
     }
 
     await waitForQueueTurn(taskId, priority);

@@ -65,7 +65,7 @@ function loadItemCodes() {
     return cache;
 }
 
-/** All report/order lookup keys for an ISE (MMX) item code — MMX code plus any order-form aliases. */
+/** All report/order lookup keys for an ISE (MMX) item code - MMX code plus any order-form aliases. */
 function lookupKeysForMmx(mmxItemCode) {
     const mmx = normalizeItemCode(mmxItemCode);
     if (!mmx) return [];

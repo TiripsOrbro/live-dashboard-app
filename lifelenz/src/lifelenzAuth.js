@@ -66,7 +66,7 @@ function dedupeStores(stores) {
 
 async function prepareLifeLenzPage(page) {
     await page.setViewport({ width: 1400, height: 900 });
-    // LifeLenz admin is an Aurelia SPA — do not use Macromatix resource blocking here.
+    // LifeLenz admin is an Aurelia SPA - do not use Macromatix resource blocking here.
 }
 
 async function waitForSelectorSafe(page, selector, timeout = LOGIN_WAIT_MS) {
@@ -108,7 +108,7 @@ async function waitForBusinessExplorerUrl(page, timeoutMs = BUSINESS_PICKER_WAIT
     );
 }
 
-/** After login submit — Business Explorer picker or store shell (remembered session). */
+/** After login submit - Business Explorer picker or store shell (remembered session). */
 async function waitForPostLoginLanding(page, timeoutMs = BUSINESS_PICKER_WAIT_MS) {
     await page.waitForFunction(
         () => {

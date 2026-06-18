@@ -523,7 +523,7 @@ function renderQuestion(question) {
     const ncAlert = !isNc
         ? ''
         : hasNote
-          ? `<div class="dfsc-nc-alert dfsc-nc-alert--done">Not satisfactory — note recorded</div>`
+          ? `<div class="dfsc-nc-alert dfsc-nc-alert--done">Not satisfactory - note recorded</div>`
           : `<div class="dfsc-nc-alert">ADD A NOTE AND PHOTO FOR THIS ITEM</div>`;
 
     const cardClass = [
@@ -948,7 +948,7 @@ function renderCompleteView() {
                     ${escapeHtml(session.storeName)} · Week ${escapeHtml(session.periodKey)}
                 </p>
                 <p class="dfsc-signoff-text">
-                    Score ${score.satisfactoryCount ?? '—'} / ${score.total ?? '—'} (${score.percent ?? 0}%)
+                    Score ${score.satisfactoryCount ?? '-'} / ${score.total ?? '-'} (${score.percent ?? 0}%)
                     · ${score.flaggedCount ?? 0} flagged
                 </p>
                 <p class="dfsc-signoff-text">Completed at ${escapeHtml(new Date(session.completedAt).toLocaleString())}</p>
@@ -969,7 +969,7 @@ function renderCompleteView() {
 }
 
 function formatAuditTime(iso) {
-    if (!iso) return '—';
+    if (!iso) return '-';
     try {
         return new Date(iso).toLocaleString(undefined, {
             day: 'numeric',
@@ -1023,7 +1023,7 @@ function renderPeriodCompletedSection(rows = []) {
                 <div class="dfsc-open-title">${escapeHtml(row.conductorName || 'Unknown')}</div>
                 <div class="dfsc-open-meta">
                     Completed ${escapeHtml(formatAuditTime(row.completedAt))}
-                    · Score ${row.score?.satisfactoryCount ?? '—'}/${row.score?.total ?? '—'}
+                    · Score ${row.score?.satisfactoryCount ?? '-'}/${row.score?.total ?? '-'}
                 </div>
             </div>
             <div class="dfsc-open-actions">

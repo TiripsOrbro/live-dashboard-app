@@ -1,5 +1,5 @@
 /* -----------------------------------------------------------
-   Root element — dashboard mounts here (`#app`)
+   Root element - dashboard mounts here (`#app`)
 ----------------------------------------------------------- */
 const app = document.getElementById('app');
 
@@ -61,7 +61,7 @@ function isNologinDashboardEntry() {
     return document.cookie.split(';').some((c) => c.trim().startsWith('dashboard_nologin='));
 }
 
-/** Settings cog on sales dashboard — MIC and admin logins only, not wall/kiosk tablets. */
+/** Settings cog on sales dashboard - MIC and admin logins only, not wall/kiosk tablets. */
 function shouldShowDashboardSettings() {
     if (isKioskDashboardEntry() || isNologinDashboardEntry()) return false;
     if (IS_ADMIN_STORE_DASHBOARD || IS_MIC_STORE_DASHBOARD) return true;
@@ -333,7 +333,7 @@ function setDashboardTimeZone(value) {
 }
 
 /* -----------------------------------------------------------
-   Trading hours — grid columns and the lunch/dinner split are derived from the
+   Trading hours - grid columns and the lunch/dinner split are derived from the
    store's open/close (from .storelist, delivered by the API). Defaults to 10AM–10PM
    until the store's hours load. See setTradingHours().
 ----------------------------------------------------------- */
@@ -379,7 +379,7 @@ function setTradingHours(open, close) {
     const len = closeHour - openHour;
     times = Array.from({ length: len }, (_, i) => hourLabel(openHour + i));
     // Drive the CSS grid column count off the actual number of trading hours so the
-    // grid stays aligned for any store (12h, 13h, etc.) — see --grid-hours in the CSS.
+    // grid stays aligned for any store (12h, 13h, etc.) - see --grid-hours in the CSS.
     if (typeof document !== 'undefined' && document.documentElement) {
         document.documentElement.style.setProperty('--grid-hours', String(len));
     }
@@ -397,7 +397,7 @@ function tradingEndHourExclusive() {
 
 
 /* -----------------------------------------------------------
-   Sales data in memory — forecast and actual (filled by API)
+   Sales data in memory - forecast and actual (filled by API)
 ----------------------------------------------------------- */
 let forecastSales = [];
 let liveSales = [];
@@ -413,7 +413,7 @@ let stockCountVendors = [];
 const dismissedPendingVendors = new Set();
 
 /**
- * Vendors that may appear in Macromatix early — we only surface them on the last Melbourne Monday of the month.
+ * Vendors that may appear in Macromatix early - we only surface them on the last Melbourne Monday of the month.
  * Match is case-insensitive with spaces removed (e.g. "Eco Lab", "ECOLAB").
  */
 function matchesLastMondayOnlyVendor(label) {
@@ -476,13 +476,13 @@ function adminStockCountPickerOptions() {
         if (visible.length) {
             sub = `${visible.length} vendor${visible.length === 1 ? '' : 's'} to count`;
         } else if (isMelbourneMonday()) {
-            sub = 'Monday orders — open stock count';
+            sub = 'Monday orders - open stock count';
         } else if (isMelbourneLastMondayOfMonth()) {
-            sub = 'Monthly orders — open stock count';
+            sub = 'Monthly orders - open stock count';
         }
         options.push({
             id: num,
-            label: name && name !== num ? `${num} — ${name}` : num,
+            label: name && name !== num ? `${num} - ${name}` : num,
             sub,
             href: path,
         });
@@ -517,7 +517,7 @@ function bindAdminStockCountPicker() {
 }
 
 /* -----------------------------------------------------------
-   Audits list — dismissal period + Square One pair from server schedule (see data/audit-recurrence.json)
+   Audits list - dismissal period + Square One pair from server schedule (see data/audit-recurrence.json)
 ----------------------------------------------------------- */
 const AUDIT_FALLBACK_ITEMS = [
     'Pest Walk',
@@ -527,7 +527,7 @@ const AUDIT_FALLBACK_ITEMS = [
     'Restrooms',
 ];
 
-/** Weekly audits with an in-app form — chip links to the audit page instead of dismiss-only. */
+/** Weekly audits with an in-app form - chip links to the audit page instead of dismiss-only. */
 const AUDIT_FORM_ROUTES = {
     'Pest Walk': (store) => `/${store}/pest-walk`,
     'RGM Cleaning Checklist': (store) => `/${store}/rgm-cleaning`,
@@ -633,14 +633,14 @@ function isMelbourneLastMondayOfMonth(d) {
     return day === lastMon;
 }
 
-/** Fixed label for Mondays — not returned by Macromatix `pendingVendors`. */
+/** Fixed label for Mondays - not returned by Macromatix `pendingVendors`. */
 function mondayCashOrderReminderHtml() {
     return `<div class="pending-vendor-item pending-vendor-item--info" role="status">
         <div class="pending-vendor-monday-note">${escapeHtml('Cash Order')}</div>
     </div>`;
 }
 
-/** Last Monday of the month — one row per vendor (not from Macromatix list on other days). */
+/** Last Monday of the month - one row per vendor (not from Macromatix list on other days). */
 function lastMondayMonthlyOrdersReminderHtml() {
     const labels = ['Eco Lab', 'Reward', 'Franke', 'Staples'];
     return labels
@@ -774,7 +774,7 @@ async function saveAuditState() {
 }
 
 /* -----------------------------------------------------------
-   Sales API — fetch JSON from API, trim hours, refresh grid & timestamp
+   Sales API - fetch JSON from API, trim hours, refresh grid & timestamp
 ----------------------------------------------------------- */
 function applySalesPayload(data) {
     if (Number.isFinite(data.openHour) && Number.isFinite(data.closeHour)) {
@@ -807,7 +807,7 @@ function updateStoreHeader() {
     const el = document.getElementById('store-label');
     if (el) el.textContent = currentStoreLabel ? `Store ${currentStoreLabel}` : '';
     if (currentStoreLabel) {
-        document.title = `Sales Dashboard — ${currentStoreLabel}`;
+        document.title = `Sales Dashboard - ${currentStoreLabel}`;
     }
 }
 
@@ -868,7 +868,7 @@ async function loadSalesData() {
 }
 
 /* -----------------------------------------------------------
-   Header clock — updates `#time-display` every second
+   Header clock - updates `#time-display` every second
 ----------------------------------------------------------- */
 function formatTime(dateObj) {
     return dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: DASHBOARD_TIME_ZONE });
@@ -882,7 +882,7 @@ function updateClock() {
 }
 
 /* -----------------------------------------------------------
-   Header "Last updated" — formats API `timestamp` for `#last-updated`
+   Header "Last updated" - formats API `timestamp` for `#last-updated`
 ----------------------------------------------------------- */
 let lastTimestampShown = '';
 
@@ -915,7 +915,7 @@ function updateSalesStatus(data = {}) {
     el.hidden = true;
 }
 
-/* Popups — edit popup-timing.js (when/how long) and popup-content.js (text/icons) */
+/* Popups - edit popup-timing.js (when/how long) and popup-content.js (text/icons) */
 const iconMap = window.iconMap || {};
 const POPUP_CONFIG = window.POPUP_CONFIG || {};
 
@@ -924,7 +924,7 @@ if (typeof POPUP_CONFIG.cardMinHeight === 'number') {
 }
 
 /* -----------------------------------------------------------
-   Notification sound — preload file, play, Web Audio beep fallback
+   Notification sound - preload file, play, Web Audio beep fallback
 ----------------------------------------------------------- */
 let _popupAudio = null;
 function preloadPopupAudio() {
@@ -971,7 +971,7 @@ function generateBeep({duration = 140, frequency = 880, volume = 0.06} = {}) {
 }
 
 /* -----------------------------------------------------------
-   Single notification — one message, top progress bar (drains R→L)
+   Single notification - one message, top progress bar (drains R→L)
 ----------------------------------------------------------- */
 function showPopup(message, duration = POPUP_CONFIG.defaultSinglePopupMs ?? 10000, type = null, options = {}) {
     const container = document.getElementById('popup-container');
@@ -1034,7 +1034,7 @@ function showPopup(message, duration = POPUP_CONFIG.defaultSinglePopupMs ?? 1000
 }
 
 /* -----------------------------------------------------------
-   Two independent cards — same shell as single popup, no shared wrapper
+   Two independent cards - same shell as single popup, no shared wrapper
    Config shape: { title, instruction, message, type, duration, options }
 ----------------------------------------------------------- */
 function makeMultiPopupCard(cfg, cellDuration, iconSide) {
@@ -1128,7 +1128,7 @@ function parseScheduleTime(value) {
 function presetKeyToCardConfig(key) {
     const p = (window.NOTIFICATION_CONTENT || {})[key];
     if (!p) {
-        console.warn('[Notifications] Unknown key — not in popup-content.js:', key);
+        console.warn('[Notifications] Unknown key - not in popup-content.js:', key);
         return null;
     }
     return {
@@ -1403,7 +1403,7 @@ window.openNotificationCards = openNotificationCards;
 window.registerSchedule = registerSchedule;
 
 /* -----------------------------------------------------------
-   Past-hour cells — actual vs forecast (beat / slightly low / well below)
+   Past-hour cells - actual vs forecast (beat / slightly low / well below)
 ----------------------------------------------------------- */
 function getActualCellClass(actual, forecast) {
     const difference = actual - forecast;
@@ -1416,7 +1416,7 @@ function getActualCellClass(actual, forecast) {
 
 
 /* -----------------------------------------------------------
-   Current trading hour — which column is "now" + fraction through the hour
+   Current trading hour - which column is "now" + fraction through the hour
 ----------------------------------------------------------- */
 function getCurrentHourProgress() {
     const { hour, minute, second } = melbourneHourMinuteSecond();
@@ -1441,14 +1441,14 @@ function getCurrentHourProgress() {
 }
 
 
-/* Pace fill — same palette as .cell-green / .cell-orange / .cell-red */
+/* Pace fill - same palette as .cell-green / .cell-orange / .cell-red */
 const paceFillMap = {
     'cell-green': 'var(--good)',
     'cell-orange': 'var(--near)',
     'cell-red': 'var(--bad)',
 };
 
-/* Darker rim per status — pairs with paceFillMap like solid grid cells */
+/* Darker rim per status - pairs with paceFillMap like solid grid cells */
 const paceBorderMap = {
     'cell-green': 'var(--good-border)',
     'cell-orange': 'var(--near-border)',
@@ -1457,7 +1457,7 @@ const paceBorderMap = {
 
 
 /* -----------------------------------------------------------
-   Grid numbers — pace vs forecast for current hour + `$` formatting for cells
+   Grid numbers - pace vs forecast for current hour + `$` formatting for cells
 ----------------------------------------------------------- */
 function getPaceClass(actual, forecast, elapsedProgress) {
     const f = Number(forecast) || 0;
@@ -1489,7 +1489,7 @@ function formatCurrency(value) {
     return `$${numericValue.toLocaleString(undefined, options)}`;
 }
 
-/** Always two fractional digits (e.g. $4,914.00) — charcoal day-total forecast only. */
+/** Always two fractional digits (e.g. $4,914.00) - charcoal day-total forecast only. */
 function formatCurrencyTwoDecimals(value) {
     const numericValue = Number(value);
     if (Number.isNaN(numericValue)) {
@@ -1503,7 +1503,7 @@ function formatCurrencyTwoDecimals(value) {
 
 
 /* -----------------------------------------------------------
-   Live progress — dual fills (main = vs forecast, strip = pace)
+   Live progress - dual fills (main = vs forecast, strip = pace)
 ----------------------------------------------------------- */
 function buildLiveProgressLayersHtml(timeFillPercent, outcomeClass, paceClass) {
     const p = Math.max(0, Math.min(100, timeFillPercent));
@@ -1554,7 +1554,7 @@ function buildHourlyDataCell({ index, hourProgress, forecast, actual, displayVal
 }
 
 /* -----------------------------------------------------------
-   Sales grid rows — HTML for forecast row and actual row
+   Sales grid rows - HTML for forecast row and actual row
 ----------------------------------------------------------- */
 function buildPlaceholderHourCell(extraClass = '') {
     const cls = extraClass ? ` grid-cell--placeholder ${extraClass}` : ' grid-cell--placeholder';
@@ -1688,7 +1688,7 @@ function buildActualRow(values, forecasts) {
 }
 
 /* -----------------------------------------------------------
-   Day part row — charcoal cell shows full-day total (colour bar only).
+   Day part row - charcoal cell shows full-day total (colour bar only).
    Lunch open–3PM (hourly slice + wall) | Dinner 3PM–close.
    The split indices/hours (PART_LUNCH_END, LUNCH_WALL_*, DINNER_WALL_START)
    are derived per store in setTradingHours().
@@ -1773,7 +1773,7 @@ function getDayPartPresentation(forecasts, actuals, startIdx, endExclusive, wall
     }
 
     // During the period the bar fills with wall-clock time (10–3 lunch, 3–close dinner),
-    // not by sales — so it never snaps to full just because forecast was beaten.
+    // not by sales - so it never snaps to full just because forecast was beaten.
     const mainClass = totalForecast > 0 ? getActualCellClass(totalActual, totalForecast) : 'cell-green';
     const liveLayersHtml = buildLiveProgressLayersHtml(wallPct, mainClass, paceClass);
     const outcomeBorderColor = paceBorderMap[mainClass] || 'var(--blank-border)';
@@ -1787,7 +1787,7 @@ function getDayPartPresentation(forecasts, actuals, startIdx, endExclusive, wall
     };
 }
 
-/** Full-day total in charcoal cell — bar always full width; colour = green / yellow / red vs forecast (same as hourly cells). */
+/** Full-day total in charcoal cell - bar always full width; colour = green / yellow / red vs forecast (same as hourly cells). */
 function buildDayPartCharcoalCellHtml(forecasts, actuals) {
     if (!Array.isArray(forecasts) || forecasts.length === 0) {
         return `<div class="grid-label meal-period-label meal-period-day-sales-total">
@@ -1848,7 +1848,7 @@ function buildMealPeriodRow(forecasts, actuals) {
     if (dinnerPres.liveLayersHtml) dinnerCellClasses.push('meal-period-cell--live');
 
     // Grid line 1 = day-part label cell, hour columns start at line 2. Lunch spans the
-    // hours before 3PM (PART_LUNCH_END of them), dinner spans the rest — derived from the
+    // hours before 3PM (PART_LUNCH_END of them), dinner spans the rest - derived from the
     // store's trading hours so a 12h or 13h store both stay aligned.
     const lunchSpanEnd = 2 + clampInt(PART_LUNCH_END, 0, times.length);
     const gridEnd = 2 + times.length;
@@ -2169,7 +2169,7 @@ function onDashboardLayoutChange() {
 }
 
 /* -----------------------------------------------------------
-   Refresh sales grid — header row + forecast + actual from global arrays
+   Refresh sales grid - header row + forecast + actual from global arrays
 ----------------------------------------------------------- */
 function escapeHtml(text) {
     return String(text)
@@ -2436,7 +2436,7 @@ function updateGrid() {
 }
 
 /* -----------------------------------------------------------
-   First paint — dashboard layout, header, empty grid, popup mount point
+   First paint - dashboard layout, header, empty grid, popup mount point
 ----------------------------------------------------------- */
 function renderDashboard() {
     app.classList.remove('app-boot-loading');
@@ -2597,7 +2597,7 @@ function renderDashboard() {
 }
 
 /* -----------------------------------------------------------
-   Timer — keep header clock in sync (1s interval)
+   Timer - keep header clock in sync (1s interval)
 ----------------------------------------------------------- */
 setInterval(updateClock, 1000);
 
@@ -2610,7 +2610,7 @@ setInterval(() => {
 }, GRID_PROGRESS_REFRESH_MS);
 
 /* -----------------------------------------------------------
-   Sales polling — load now, then every N minutes on wall-clock boundaries
+   Sales polling - load now, then every N minutes on wall-clock boundaries
 ----------------------------------------------------------- */
 function startSyncedUpdates() {
     // Load immediately
@@ -2738,7 +2738,7 @@ async function tryLockLandscape() {
     try {
         await screen.orientation.lock('landscape');
     } catch {
-        /* Browsers only allow lock in fullscreen/PWA — rotate hint is the fallback. */
+        /* Browsers only allow lock in fullscreen/PWA - rotate hint is the fallback. */
     }
 }
 
@@ -2762,7 +2762,7 @@ function initMobileLandscape() {
 }
 
 /* -----------------------------------------------------------
-   Boot — render dashboard shell, then start clock & sales sync
+   Boot - render dashboard shell, then start clock & sales sync
 ----------------------------------------------------------- */
 (async () => {
     syncDashboardLayoutMode();

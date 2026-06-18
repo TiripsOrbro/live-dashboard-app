@@ -97,7 +97,7 @@ const FIELD_LABELS = {
     auditAutoCollapse: ['auditautocollapse', 'audit auto collapse', 'autocollapse', 'auto collapse'],
 };
 
-/** Ordered account levels — higher rank = more permissions. */
+/** Ordered account levels - higher rank = more permissions. */
 const ACCOUNT_LEVEL_RANK = {
     it: 100,
     market: 80,
@@ -223,7 +223,7 @@ function canUserStartAudits(user) {
     return canUserCompleteAudits(user);
 }
 
-/** Market Manager, IT — coach/customer visit audits (not area coaches). */
+/** Market Manager, IT - coach/customer visit audits (not area coaches). */
 function canAccessCoachAudits(user) {
     if (!user || isNologinUser(user)) return false;
     if (isSuperAdminUser(user)) return true;
@@ -462,7 +462,7 @@ function isCbUsername(name) {
     return /^CB[A-Za-z0-9]+$/i.test(String(name || '').trim());
 }
 
-/** `.Users` comment lines — `#` headers or `//` section dividers (ignored except as labels). */
+/** `.Users` comment lines - `#` headers or `//` section dividers (ignored except as labels). */
 function isUsersCommentLine(trimmed) {
     const line = String(trimmed || '').trim();
     return line.startsWith('#') || line.startsWith('//');
@@ -915,7 +915,7 @@ function isPrimaryStoreLogin(user) {
     return isStorePatternUsername(user.username);
 }
 
-/** Admins and manager-created crew accounts — not primary store logins (3811 / CB3811). */
+/** Admins and manager-created crew accounts - not primary store logins (3811 / CB3811). */
 function canUserAccessDfsc(user) {
     if (!isRealDashboardUser(user)) return false;
     if (isAdminUser(user)) return true;
@@ -1229,7 +1229,7 @@ function blockGrantsStore(block, storeNumber) {
     return getEffectiveStoresForUser(normalized).includes(store);
 }
 
-/** Crew logins created via Create account — not the primary 3811 / CB3811 store login. */
+/** Crew logins created via Create account - not the primary 3811 / CB3811 store login. */
 function isManagedStoreAccountBlock(block) {
     if (!block?.username || block.stores === '*') return false;
     if (isStorePatternUsername(block.username)) return false;
@@ -1488,7 +1488,7 @@ function changeUserPassword(username, currentPassword, newPassword) {
     return { ok: true };
 }
 
-/** First login — replace a temporary plaintext password with a hashed one. */
+/** First login - replace a temporary plaintext password with a hashed one. */
 function completePasswordSetup(username, currentPassword, newPassword) {
     const name = String(username || '').trim();
     const current = String(currentPassword || '');
@@ -2197,7 +2197,7 @@ function sessionCookieOptions(options = {}) {
     return base;
 }
 
-/** res.clearCookie options — same path/domain/flags as set, without maxAge (Express 5 deprecates maxAge on clear). */
+/** res.clearCookie options - same path/domain/flags as set, without maxAge (Express 5 deprecates maxAge on clear). */
 function cookieClearOptions(setOptions) {
     if (!setOptions || typeof setOptions !== 'object') return { path: '/' };
     const { maxAge, expires, ...rest } = setOptions;

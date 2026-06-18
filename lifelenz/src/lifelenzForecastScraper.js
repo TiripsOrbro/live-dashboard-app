@@ -282,7 +282,7 @@ async function setForecastDate(page, isoDate) {
 
 const DAY_PART_INPUT_COUNT = 9;
 
-/** Day-part Adjusted inputs only — first 9 visible fields; the 10th is the day total (auto-calculated). */
+/** Day-part Adjusted inputs only - first 9 visible fields; the 10th is the day total (auto-calculated). */
 async function getDayPartAdjustmentInputs(page) {
     const handles = await page.$$('input.forecast-adjustment.form-control, input.input-number.forecast-adjustment');
     const visible = [];

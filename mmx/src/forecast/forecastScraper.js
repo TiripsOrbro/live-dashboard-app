@@ -156,7 +156,7 @@ async function openForecastDateCalendar(page) {
     }
 }
 
-/** Jump to date via calendar popup (click day) — much faster than day arrows. */
+/** Jump to date via calendar popup (click day) - much faster than day arrows. */
 async function setForecastPageDateByCalendar(page, isoDate) {
     const [year, month, day] = String(isoDate || '').split('-').map(Number);
     if (!year || !month || !day) return { ok: false };
@@ -887,7 +887,7 @@ async function writeForecastPlanToMmx(storeNumber, plan, options = {}) {
         }
 
         if (!headless) {
-            console.log('[Forecast] Headed browser — watch the Macromatix window (FORECAST_SCRAPER_HEADLESS=false)');
+            console.log('[Forecast] Headed browser - watch the Macromatix window (FORECAST_SCRAPER_HEADLESS=false)');
         }
 
         await sssg.ensureSpaAuthenticated(page, credentials, { quick: headless });
@@ -908,14 +908,14 @@ async function writeForecastPlanToMmx(storeNumber, plan, options = {}) {
             /* ignore */
         }
         if (!headless && options.keepBrowserOpen) {
-            console.log('[Forecast] Headed mode — browser left open (keepBrowserOpen)');
+            console.log('[Forecast] Headed mode - browser left open (keepBrowserOpen)');
         } else {
             await scraper.closeBrowserQuietly(browser, 'forecast tool');
         }
     }
 }
 
-/** Optional MMX backfill for missing history days (slow — use import when possible). */
+/** Optional MMX backfill for missing history days (slow - use import when possible). */
 async function backfillStoreHistoryFromMmx(storeNumber, options = {}) {
     const { recordForecastHistoryDay } = require('../../../dashboard/src/forecast/forecastHistoryLedger');
     const LABOUR_URL =

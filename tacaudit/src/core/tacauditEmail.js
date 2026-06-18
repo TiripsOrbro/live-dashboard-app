@@ -19,7 +19,7 @@ function emailFromAddress() {
 function buildDefaultReportText({ auditType, session, storeLabel }) {
     const label = AUDIT_TYPE_LABELS[auditType] || auditType;
     const completed = session.completedAt || '';
-    return `${label} report for ${storeLabel} — completed ${completed}. See attached PDF.`;
+    return `${label} report for ${storeLabel} - completed ${completed}. See attached PDF.`;
 }
 
 async function sendAuditReportEmail({ storeNumber, auditType, session, pdfBuffer, buildFilename, buildText }) {
@@ -44,7 +44,7 @@ async function sendAuditReportEmail({ storeNumber, auditType, session, pdfBuffer
     if (session.dateKey) subjectParts.push(session.dateKey);
     if (session.shift) subjectParts.push(session.shift);
     if (session.periodKey) subjectParts.push(session.periodKey);
-    const subject = `${subjectParts.filter(Boolean).join(' — ')}`.trim();
+    const subject = `${subjectParts.filter(Boolean).join(' - ')}`.trim();
 
     const host = String(process.env.DASHBOARD_SMTP_HOST || '').trim();
     if (!host) {

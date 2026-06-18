@@ -1,5 +1,5 @@
 /**
- * Area totals panel embedded in /Admin/A## — VIC/WA grids + multi-store audits/orders.
+ * Area totals panel embedded in /Admin/A## - VIC/WA grids + multi-store audits/orders.
  */
 (function (global) {
     let cachedPayload = null;

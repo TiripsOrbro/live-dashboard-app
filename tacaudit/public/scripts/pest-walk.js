@@ -581,7 +581,7 @@ function renderCorrectiveSection() {
             </div>`
               )
               .join('')
-        : `<p class="dfsc-field-hint">No flagged items — no corrective actions required for individual questions.</p>`;
+        : `<p class="dfsc-field-hint">No flagged items - no corrective actions required for individual questions.</p>`;
 
     return `
         ${intro ? renderQuestion(intro) : ''}
@@ -593,7 +593,7 @@ function renderMinDurationBanner() {
     if (isMinimumDurationMet()) return '';
     return `
         <div class="dfsc-time-gate" role="status" aria-live="polite">
-            <span class="dfsc-time-gate-label">Minimum ${minDurationMinutes()} min — complete in</span>
+            <span class="dfsc-time-gate-label">Minimum ${minDurationMinutes()} min - complete in</span>
             <span class="dfsc-time-gate-countdown" id="pw-min-duration-remaining">${escapeHtml(formatElapsed(minimumDurationRemainingMs()))}</span>
         </div>`;
 }
@@ -901,7 +901,7 @@ function renderCompleteView() {
                     ${escapeHtml(session.storeName)} · Week ${escapeHtml(session.periodKey)}
                 </p>
                 <p class="dfsc-signoff-text">
-                    Score ${score.yesCount ?? '—'} / ${score.total ?? '—'} (${score.percent ?? 0}%)
+                    Score ${score.yesCount ?? '-'} / ${score.total ?? '-'} (${score.percent ?? 0}%)
                     · ${score.flaggedCount ?? 0} flagged
                 </p>
                 <p class="dfsc-signoff-text">Completed at ${escapeHtml(new Date(session.completedAt).toLocaleString())}</p>
@@ -922,7 +922,7 @@ function renderCompleteView() {
 }
 
 function formatAuditTime(iso) {
-    if (!iso) return '—';
+    if (!iso) return '-';
     try {
         return new Date(iso).toLocaleString(undefined, {
             day: 'numeric',
@@ -976,7 +976,7 @@ function renderPeriodCompletedSection(rows = []) {
                 <div class="dfsc-open-title">${escapeHtml(row.conductorName || 'Unknown')}</div>
                 <div class="dfsc-open-meta">
                     Completed ${escapeHtml(formatAuditTime(row.completedAt))}
-                    · Score ${row.score?.yesCount ?? '—'}/${row.score?.total ?? '—'}
+                    · Score ${row.score?.yesCount ?? '-'}/${row.score?.total ?? '-'}
                 </div>
             </div>
             <div class="dfsc-open-actions">

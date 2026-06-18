@@ -315,7 +315,7 @@ function sectionToMmxOrderClass(sectionName) {
     return 'FRZ';
 }
 
-/** Trailing token: 3811=+2 | 3811=10+2 | 3811=12 — per-store build-to tweak on this line. */
+/** Trailing token: 3811=+2 | 3811=10+2 | 3811=12 - per-store build-to tweak on this line. */
 function parseStoreBuildToHint(part) {
     const raw = String(part || '').trim();
     const m = raw.match(/^(\d{4})=(.+)$/);
@@ -370,8 +370,8 @@ function inferSectionFromComment(line) {
     const raw = String(line || '').replace(/^#\s*/, '').trim();
     if (!raw) return '';
     const cleaned = raw
-        .replace(/^[-–—\s]+/, '')
-        .replace(/[-–—\s]+$/, '')
+        .replace(/^[-–-\s]+/, '')
+        .replace(/[-–-\s]+$/, '')
         .toLowerCase();
     if (cleaned.includes('dry')) return 'Dry';
     if (cleaned.includes('fridge')) return 'Fridge';
@@ -401,8 +401,8 @@ function parseCatalogText(text, def) {
             if (inferredSection) {
                 currentSection = inferredSection;
             } else {
-                // e.g. "# oh:10 — not on KIC" must not overwrite Dry/Fridge/Freezer
-                const sectionMatch = trimmed.match(/^#\s*(.+?)\s*[-—]/);
+                // e.g. "# oh:10 - not on KIC" must not overwrite Dry/Fridge/Freezer
+                const sectionMatch = trimmed.match(/^#\s*(.+?)\s*[--]/);
                 if (sectionMatch) {
                     const fromCandidate = inferSectionFromComment(`# ${sectionMatch[1].trim()}`);
                     if (fromCandidate) currentSection = fromCandidate;

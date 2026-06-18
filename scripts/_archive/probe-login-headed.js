@@ -51,7 +51,7 @@ async function main() {
     }));
 
     console.log(JSON.stringify(info, null, 2));
-    console.log('\nBrowser stays open 60s — inspect the window.');
+    console.log('\nBrowser stays open 60s - inspect the window.');
     await page.waitForTimeout(60000);
     await browser.close();
 }

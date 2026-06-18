@@ -34,7 +34,7 @@ function printStore(store) {
         );
 
     if (!dayRows.length) {
-        console.log('(no scored rows — run upsell sync or rescore first)');
+        console.log('(no scored rows - run upsell sync or rescore first)');
         return;
     }
 
@@ -58,7 +58,7 @@ function printStore(store) {
     console.log(`\nBest day this week ${weekStart} – ${weekEnd} (podium ranking):`);
     weekTop.slice(0, 7).forEach((r, i) => {
         const day = r.bestDay ? ` on ${r.bestDay}` : '';
-        console.log(`  ${i + 1}. ${r.name} — ${r.total} pts${day}`);
+        console.log(`  ${i + 1}. ${r.name} - ${r.total} pts${day}`);
     });
 }
 

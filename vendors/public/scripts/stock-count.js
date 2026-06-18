@@ -97,12 +97,12 @@ async function fetchJson(url, options = {}) {
     } catch {
         if (/^<!DOCTYPE/i.test(text) || /^<html/i.test(text)) {
             if (res.status === 401 || res.status === 403) {
-                throw new Error('Session expired — refresh the page and log in again.');
+                throw new Error('Session expired - refresh the page and log in again.');
             }
             if (res.status === 404) {
-                throw new Error('Dashboard API not found — restart the server (pm2 restart dashboard).');
+                throw new Error('Dashboard API not found - restart the server (pm2 restart dashboard).');
             }
-            throw new Error('Server returned a page instead of JSON — log in again or restart the dashboard.');
+            throw new Error('Server returned a page instead of JSON - log in again or restart the dashboard.');
         }
         throw new Error(`Invalid server response (HTTP ${res.status}).`);
     }
@@ -630,7 +630,7 @@ function fallbackLocationForUnmatched() {
 }
 
 function parseClosingValue(raw) {
-    if (raw == null || raw === '' || raw === '—' || raw === '-') return null;
+    if (raw == null || raw === '' || raw === '-' || raw === '-') return null;
     const n = Number(String(raw).replace(/,/g, '').trim());
     return Number.isFinite(n) ? n : null;
 }
@@ -1065,7 +1065,7 @@ async function saveAndSubmitVendor() {
     if (isCombinedMode()) {
         const ok = await saveAllCombinedLocations();
         if (!ok && currentLocationHasFormData()) {
-            throw new Error('Could not save your counts — check the values and try again.');
+            throw new Error('Could not save your counts - check the values and try again.');
         }
         if (!vendorHasCountableData() && !currentLocationHasFormData()) return false;
         if (isSubmitted()) {
@@ -1089,7 +1089,7 @@ async function saveAndSubmitVendor() {
 
     const ok = await saveAllLocationTabs();
     if (!ok && currentLocationHasFormData()) {
-        throw new Error('Could not save your counts — check the values and try again.');
+        throw new Error('Could not save your counts - check the values and try again.');
     }
     if (!ok && !draft?.locations && !currentLocationHasFormData()) return false;
     if (!vendorHasCountableData() && !currentLocationHasFormData()) return false;
@@ -1204,7 +1204,7 @@ function finishMmxOrdersSuccess(data) {
     lowStockAlerts = Array.isArray(data?.lowStockAlerts) ? data.lowStockAlerts : [];
     processing = true;
     processingStageLabel = data?.orderFailures
-        ? 'Finished — some scheduled orders need review in MMX'
+        ? 'Finished - some scheduled orders need review in MMX'
         : 'All scheduled orders updated in Macromatix';
     pushMmxActivity(processingStageLabel);
     document.body.classList.add('stock-count-mmx-wait-active');
@@ -1226,11 +1226,11 @@ function dismissMmxProcessingSuccess() {
         );
     } else if (lowStockAlerts.length) {
         setStatus(
-            `${lowStockAlerts.length} item${lowStockAlerts.length === 1 ? '' : 's'} below stock warning threshold — review below.`,
+            `${lowStockAlerts.length} item${lowStockAlerts.length === 1 ? '' : 's'} below stock warning threshold - review below.`,
             'warning'
         );
     } else {
-        setStatus('Counts sent — scheduled orders updated in Macromatix.', 'success');
+        setStatus('Counts sent - scheduled orders updated in Macromatix.', 'success');
     }
     mmxProcessingSuccess = null;
     mmxProcessingComplete = false;
@@ -1278,7 +1278,7 @@ function pipelineStageLabel(stage) {
         case 'preparing':
             return 'Opening Key Item Count in Macromatix…';
         case 'prepared':
-            return 'Key Item Count ready — loading variances…';
+            return 'Key Item Count ready - loading variances…';
         case 'applying':
             return 'Applying count in Macromatix…';
         case 'downloading-reports':
@@ -1327,7 +1327,7 @@ function resolveMmxStepIdFromStatus(status) {
         /download|downloaded|inventory special|stock on hand|stock on order|scm - items|build-to reports|calculating order/i.test(
             detail
         );
-    const orderWork = /placing order —|placing scheduled orders in macromatix/i.test(detail);
+    const orderWork = /placing order -|placing scheduled orders in macromatix/i.test(detail);
 
     if (orderWork && !reportWork) return 'orders';
     if (reportWork) return 'reports';
@@ -1400,7 +1400,7 @@ async function pollStockCountPipelineUntilDone() {
                 mmxLastKnownServerInProgress = true;
                 applyPipelineStatusToUi(deadlineCheck.status);
                 pushMmxActivityOnce(
-                    'Taking longer than usual — the Pi is still working. Keep this page open or wait for a notification.'
+                    'Taking longer than usual - the Pi is still working. Keep this page open or wait for a notification.'
                 );
                 render();
                 continue;
@@ -1419,7 +1419,7 @@ async function pollStockCountPipelineUntilDone() {
             if (recoverable) {
                 networkStreak++;
                 if (mmxLastKnownServerInProgress || sawInProgress) {
-                    pushMmxActivityOnce('Connection interrupted — still checking the Pi…');
+                    pushMmxActivityOnce('Connection interrupted - still checking the Pi…');
                 }
                 const grace =
                     mmxLastKnownServerInProgress || sawInProgress
@@ -1434,13 +1434,13 @@ async function pollStockCountPipelineUntilDone() {
                 sawInProgress = true;
                 mmxLastKnownServerInProgress = true;
                 applyPipelineStatusToUi(retry.status);
-                pushMmxActivityOnce('Still running on the server — waiting…');
+                pushMmxActivityOnce('Still running on the server - waiting…');
                 render();
                 continue;
             }
             throw (
                 result.error ||
-                new Error('Could not reach the dashboard — check your connection and try again.')
+                new Error('Could not reach the dashboard - check your connection and try again.')
             );
         }
 
@@ -1483,7 +1483,7 @@ async function pollStockCountPipelineUntilDone() {
             mmxLastKnownServerInProgress = false;
             endMmxProcessing();
             viewMode = 'entry';
-            setStatus('Previous Macromatix run ended — your counts are still saved. Send again when ready.', '');
+            setStatus('Previous Macromatix run ended - your counts are still saved. Send again when ready.', '');
             render();
             return { reset: true };
         }
@@ -1519,7 +1519,7 @@ async function pollStockCountPipelineUntilDone() {
     }
 
     throw new Error(
-        'Timed out waiting for Macromatix. Check pm2 logs on the Pi — the count may still be running.'
+        'Timed out waiting for Macromatix. Check pm2 logs on the Pi - the count may still be running.'
     );
 }
 
@@ -1725,7 +1725,7 @@ async function sendToMmx() {
         if (viewMode === 'recount') {
             const saved = await saveAllRecountLocations();
             if (!saved) {
-                throw new Error('Could not save your recount — check the values and try again.');
+                throw new Error('Could not save your recount - check the values and try again.');
             }
             if (mmxSessionId) {
                 try {
@@ -1764,7 +1764,7 @@ async function sendToMmx() {
         if (planRes.ok && plan.success && plan.manualOnly) {
             mmxPipelineManualOnly = true;
             mmxProcessingStepId = 'reports';
-            processingStageLabel = 'Skipping Key Item Count — downloading reports…';
+            processingStageLabel = 'Skipping Key Item Count - downloading reports…';
             render();
         } else if (planRes.ok && plan.success && plan.needsKeyItemCount) {
             mmxProcessingStepId = 'open-kic';
@@ -2008,14 +2008,14 @@ async function recountMmx() {
 }
 
 function formatQty(value) {
-    if (value == null || !Number.isFinite(Number(value))) return '—';
+    if (value == null || !Number.isFinite(Number(value))) return '-';
     const n = Number(value);
     if (Number.isInteger(n)) return String(n);
     return n.toLocaleString('en-AU', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 }
 
 function formatMoney(value) {
-    if (value == null || !Number.isFinite(Number(value))) return '—';
+    if (value == null || !Number.isFinite(Number(value))) return '-';
     const n = Number(value);
     const abs = Math.abs(n).toLocaleString('en-AU', {
         minimumFractionDigits: 2,
@@ -2037,7 +2037,7 @@ function formatVarianceMoney(value) {
 
 function formatUnitLabel(label) {
     const s = String(label || '').trim();
-    if (!s || /^n\/a/i.test(s) || s === '—') return '';
+    if (!s || /^n\/a/i.test(s) || s === '-') return '';
     const lower = s.toLowerCase();
     if (/^kg/i.test(s)) return 'kg';
     if (/bottle/i.test(s)) return 'Bottles';
@@ -2073,7 +2073,7 @@ function inferStockVarianceUnitLabel(row, item) {
 
 function formatQtyWithUnit(value, unitLabel) {
     const qty = formatQty(value);
-    if (qty === '—') return qty;
+    if (qty === '-') return qty;
     return unitLabel ? `${qty} ${unitLabel}` : qty;
 }
 
@@ -2084,7 +2084,7 @@ function mmxProcessingTitle() {
     return 'Sending to Macromatix';
 }
 
-/** Single expanding progress stream — current step prominent, prior steps fade and compact. */
+/** Single expanding progress stream - current step prominent, prior steps fade and compact. */
 function buildMmxProgressHtml({ showHeading = true } = {}) {
     const entries = mmxActivityLog.length
         ? mmxActivityLog.slice(-24)
@@ -2125,16 +2125,16 @@ function buildMmxNotifySection() {
     if (mmxProcessingError || mmxProcessingSuccess) return '';
     const notify = window.StockCountNotify;
     if (mmxNotifyEnabled || notify?.permissionState?.() === 'granted') {
-        return `<p class="stock-count-mmx-notify-hint stock-count-mmx-notify-hint--ok">Notifications on — we'll alert you when it's ready to review.</p>`;
+        return `<p class="stock-count-mmx-notify-hint stock-count-mmx-notify-hint--ok">Notifications on - we'll alert you when it's ready to review.</p>`;
     }
     if (mmxNotifyDenied || notify?.permissionState?.() === 'denied') {
         return `<p class="stock-count-mmx-notify-hint stock-count-mmx-notify-hint--denied">Notifications are blocked in your browser. Keep this page open, or enable alerts in site settings.</p>`;
     }
     if (notify?.permissionState?.() === 'unsupported') {
-        return `<p class="stock-count-mmx-notify-hint">Keep this page open — your browser can't show background alerts.</p>`;
+        return `<p class="stock-count-mmx-notify-hint">Keep this page open - your browser can't show background alerts.</p>`;
     }
     return `
-        <p class="stock-count-mmx-notify-hint">Leaving? Tap below and allow notifications when prompted — we'll tell you when it's ready to review.</p>
+        <p class="stock-count-mmx-notify-hint">Leaving? Tap below and allow notifications when prompted - we'll tell you when it's ready to review.</p>
         <button type="button" class="stock-count-btn stock-count-btn--notify" id="sc-mmx-notify-btn">Notify me when ready</button>`;
 }
 
@@ -2144,7 +2144,7 @@ function buildMmxProcessingOverlay() {
     if (mmxProcessingSuccess) {
         const msg = mmxProcessingSuccess.partial
             ? `Counts were sent, but some scheduled orders could not be filled. Review them in Macromatix.${mmxProcessingSuccess.orderFailures ? ` (${mmxProcessingSuccess.orderFailures})` : ''}`
-            : 'Counts sent — all scheduled orders have been updated in Macromatix.';
+            : 'Counts sent - all scheduled orders have been updated in Macromatix.';
         return `
         <div class="stock-count-processing stock-count-processing--fullscreen" role="alertdialog" aria-modal="true" aria-labelledby="sc-mmx-success-title">
             <div class="stock-count-processing-card stock-count-processing-card--wait stock-count-processing-card--success stock-count-processing-card--fullscreen">
@@ -2163,7 +2163,7 @@ function buildMmxProcessingOverlay() {
                 <h2 id="sc-mmx-error-title" class="stock-count-processing-label stock-count-processing-label--error">Send to Macromatix failed</h2>
                 <p class="stock-count-mmx-error-step">Failed at: <strong>${escapeHtml(mmxProcessingError.failedAtStep)}</strong></p>
                 <p class="stock-count-mmx-error-msg">${escapeHtml(mmxProcessingError.message)}</p>
-                ${mmxProcessingError.recoverable ? '<p class="stock-count-mmx-error-hint">The Pi may still be working — tap below to check again.</p>' : ''}
+                ${mmxProcessingError.recoverable ? '<p class="stock-count-mmx-error-hint">The Pi may still be working - tap below to check again.</p>' : ''}
                 ${buildMmxProgressHtml({ showHeading: false })}
                 ${mmxProcessingError.recoverable ? '<button type="button" class="stock-count-btn stock-count-btn--primary stock-count-mmx-dismiss" id="sc-mmx-retry-poll">Check server again</button>' : ''}
                 <button type="button" class="stock-count-btn stock-count-btn--secondary stock-count-mmx-dismiss" id="sc-mmx-dismiss-error">Close</button>
@@ -2362,7 +2362,7 @@ function buildVarianceView() {
     const rows = mmxVariances.map(buildVarianceEntryRowHtml).join('');
     const tableHtml = rows
         ? `<div class="stock-count-variance-scroll"><table class="stock-count-table stock-count-table--entry stock-count-table--connected stock-count-table--variances"><thead>${buildVarianceHeaderRowHtml()}</thead><tbody>${rows}</tbody></table></div>`
-        : '<p class="stock-count-empty-location">No red variances found — review looks clear.</p>';
+        : '<p class="stock-count-empty-location">No red variances found - review looks clear.</p>';
 
     const actionsHtml = rows
         ? `<div class="stock-count-actions stock-count-actions--variances">
@@ -2373,7 +2373,7 @@ function buildVarianceView() {
 
     return `
         <div class="stock-count-panel">
-            <h2>Confirm count — red variances</h2>
+            <h2>Confirm count - red variances</h2>
             ${tableHtml}
             <div class="stock-count-review-note">Review variances before applying. Recount opens an editor with your counts pre-filled.</div>
         </div>
@@ -2441,19 +2441,19 @@ function buildEntryRowHtml(item) {
 function buildStatusNote() {
     if (viewMode === 'recount') {
         const tabName = getActiveCatalog()?.locations?.[currentLocationIndex] || '';
-        return `<div class="stock-count-review-note">All location tabs are shown — update red variance lines (empty tabs need no changes), then send to Macromatix again.</div>`;
+        return `<div class="stock-count-review-note">All location tabs are shown - update red variance lines (empty tabs need no changes), then send to Macromatix again.</div>`;
     }
     if (isMmxSent()) {
-        return '<div class="stock-count-review-note">Sent to Macromatix — edit counts below and send again if needed.</div>';
+        return '<div class="stock-count-review-note">Sent to Macromatix - edit counts below and send again if needed.</div>';
     }
     if (isSubmitted()) {
-        return '<div class="stock-count-review-note">Counts submitted — edit below anytime; changes save automatically.</div>';
+        return '<div class="stock-count-review-note">Counts submitted - edit below anytime; changes save automatically.</div>';
     }
     if (canShowSendToMmx() && queueStatus?.readyToSend?.length) {
         return `<div class="stock-count-review-note">Ready to send: ${escapeHtml(queueStatus.readyToSend.join(', '))}</div>`;
     }
     if (isCombinedMode()) {
-        return '<div class="stock-count-review-note">All vendors for today are on each location tab — walk the store once, then send to Macromatix.</div>';
+        return '<div class="stock-count-review-note">All vendors for today are on each location tab - walk the store once, then send to Macromatix.</div>';
     }
     return '<div class="stock-count-review-note">Use the location tabs to enter counts (saved as you type). Clear page resets the current tab.</div>';
 }
@@ -2514,9 +2514,9 @@ function buildLowStockWarningHtml() {
             (item) => `
         <tr>
             <td>${escapeHtml(item.description || item.itemCode || '')}</td>
-            <td>${escapeHtml(String(item.onHandCartons ?? '—'))}</td>
-            <td>${escapeHtml(String(item.onOrderCartons ?? '—'))}</td>
-            <td>${escapeHtml(String(item.daysOfStock ?? '—'))}</td>
+            <td>${escapeHtml(String(item.onHandCartons ?? '-'))}</td>
+            <td>${escapeHtml(String(item.onOrderCartons ?? '-'))}</td>
+            <td>${escapeHtml(String(item.daysOfStock ?? '-'))}</td>
         </tr>`
         )
         .join('');
@@ -2631,7 +2631,7 @@ async function dismissStaleMmxSessionOnLoad() {
             body: JSON.stringify({}),
         });
     } catch {
-        /* ignore — always start on the count entry tab */
+        /* ignore - always start on the count entry tab */
     }
 }
 
@@ -2736,7 +2736,7 @@ async function init() {
     if (IS_LEVELS) {
         try {
             await loadLevelsSummary();
-            document.title = `Stock levels — Store ${STORE_NUMBER}`;
+            document.title = `Stock levels - Store ${STORE_NUMBER}`;
             renderLevelsView();
         } catch (error) {
             app.innerHTML = `<div class="stock-count"><p class="stock-count-status stock-count-status--error">${escapeHtml(error.message)}</p><p><a class="stock-count-back" href="${escapeHtml(dashboardPath())}">← Dashboard</a></p></div>`;
@@ -2775,7 +2775,7 @@ async function init() {
                 await dismissStaleMmxSessionOnLoad();
             }
             await loadQueueStatus();
-            document.title = `Stock Count — ${catalog.label}`;
+            document.title = `Stock Count - ${catalog.label}`;
             render();
             return;
         }
@@ -2794,7 +2794,7 @@ async function init() {
             await dismissStaleMmxSessionOnLoad();
         }
         await loadQueueStatus();
-        document.title = `Stock Count — ${catalog.label}`;
+        document.title = `Stock Count - ${catalog.label}`;
         render();
     } catch (error) {
         app.innerHTML = `<div class="stock-count"><p class="stock-count-status stock-count-status--error">${escapeHtml(error.message)}</p><p><a class="stock-count-back" href="${escapeHtml(dashboardPath())}">← Dashboard</a></p></div>`;

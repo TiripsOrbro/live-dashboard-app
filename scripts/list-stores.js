@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Discover the stores the Macromatix account can access, printed as ready-to-paste
- * `.storelist` lines. Hours default to 10|22 — edit them afterwards.
+ * `.storelist` lines. Hours default to 10|22 - edit them afterwards.
  *
  *   node scripts/list-stores.js
  */
@@ -25,7 +25,7 @@ const { listStores } = require('../src/services/macromatixScraper');
 
         console.log(`\nFound ${sorted.length} store(s):\n`);
         for (const s of sorted) {
-            console.log(`  ${s.storeNumber}  —  ${s.storeName}`);
+            console.log(`  ${s.storeNumber}  -  ${s.storeName}`);
         }
 
         console.log('\n--- Paste into .storelist and adjust the hours (store# | name | openHour | closeHour) ---\n');

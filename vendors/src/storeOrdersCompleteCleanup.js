@@ -63,7 +63,7 @@ async function runStoreOrdersCompleteCleanup(storeNumber, dateKey) {
     };
 
     console.log(
-        `[Macromatix] Store ${label} orders complete for ${dateKey} — cleanup: ` +
+        `[Macromatix] Store ${label} orders complete for ${dateKey} - cleanup: ` +
             `${reportFiles} report file(s), ${tempDirs} temp download folder(s), MMX count session cleared`
     );
 

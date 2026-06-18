@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Headed forecast submit probe — one store, visible browser.
+ * Headed forecast submit probe - one store, visible browser.
  *
  * Usage:
  *   npm run probe-forecast-submit -- 3806
@@ -22,7 +22,7 @@ async function main() {
         keepBrowserOpen: true,
     });
     console.log(JSON.stringify(result, null, 2));
-    console.log('[probe-forecast] Browser left open — close manually when done.');
+    console.log('[probe-forecast] Browser left open - close manually when done.');
 }
 
 main().catch((err) => {

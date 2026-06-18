@@ -1,4 +1,4 @@
-﻿/** Weekly RGM Cleaning Assessment — question schema. */
+﻿/** Weekly RGM Cleaning Assessment - question schema. */
 
 const { SQUARE_ONE_PLACEHOLDERS } = require('../../src/auditRecurrence');
 

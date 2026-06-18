@@ -1,4 +1,4 @@
-/** Post-login welcome overlay — dashboard / store list load underneath while this plays. */
+/** Post-login welcome overlay - dashboard / store list load underneath while this plays. */
 const WELCOME_PENDING_KEY = 'dashboard-welcome-pending';
 
 const TIMING = {

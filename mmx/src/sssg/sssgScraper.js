@@ -32,7 +32,7 @@ async function ensureSpaAuthenticated(page, credentials, options = {}) {
     });
 
     if (onLogin && credentials?.username && credentials?.password) {
-        console.log('[SSSG] SPA login required — signing in...');
+        console.log('[SSSG] SPA login required - signing in...');
         await getMacromatixScraper().loginPage(page, credentials.username, credentials.password);
         await page.goto(CHANGE_STORE_URL, SPA_GOTO_OPTS);
         await page.waitForTimeout(quick ? 700 : 1500);
@@ -234,7 +234,7 @@ async function scrapeSssgLastYearStoreInSession(page, storeNumber) {
 }
 
 /**
- * Scrape Last Year 15-minute slots for one store (standalone — includes SPA auth).
+ * Scrape Last Year 15-minute slots for one store (standalone - includes SPA auth).
  */
 async function scrapeSssgLastYearForStore(page, storeNumber, credentials) {
     await page.goto(CHANGE_STORE_URL, SPA_GOTO_OPTS);

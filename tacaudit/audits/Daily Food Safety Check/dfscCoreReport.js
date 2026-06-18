@@ -13,7 +13,7 @@ function escapeHtml(value) {
 
 function formatDateKey(dateKey) {
     const parsed = Date.parse(`${dateKey}T12:00:00`);
-    if (!Number.isFinite(parsed)) return dateKey || '—';
+    if (!Number.isFinite(parsed)) return dateKey || '-';
     return new Date(parsed).toLocaleDateString('en-AU', {
         weekday: 'short',
         day: 'numeric',
@@ -23,7 +23,7 @@ function formatDateKey(dateKey) {
 }
 
 function formatDateTime(iso) {
-    if (!iso) return '—';
+    if (!iso) return '-';
     const parsed = Date.parse(iso);
     if (!Number.isFinite(parsed)) return iso;
     return new Date(parsed).toLocaleString('en-AU', {
@@ -56,8 +56,8 @@ function buildCoreReportHtml(data) {
             (row) => `
         <tr>
             <td>${escapeHtml(formatDateKey(row.dateKey))}</td>
-            <td class="num">${row.am ? escapeHtml(String(row.am)) : '—'}</td>
-            <td class="num">${row.pm ? escapeHtml(String(row.pm)) : '—'}</td>
+            <td class="num">${row.am ? escapeHtml(String(row.am)) : '-'}</td>
+            <td class="num">${row.pm ? escapeHtml(String(row.pm)) : '-'}</td>
             <td class="num"><strong>${escapeHtml(String(row.total))}</strong></td>
         </tr>`
         )
@@ -80,8 +80,8 @@ function buildCoreReportHtml(data) {
                         (row) => `
                 <tr>
                     <td>${escapeHtml(formatDateKey(row.dateKey))}</td>
-                    <td>${escapeHtml(row.shift || '—')}</td>
-                    <td>${escapeHtml(row.conductorName || '—')}</td>
+                    <td>${escapeHtml(row.shift || '-')}</td>
+                    <td>${escapeHtml(row.conductorName || '-')}</td>
                     <td>${escapeHtml(formatDateTime(row.startedAt))}</td>
                     <td class="num">${escapeHtml(String(row.openActionCount || 0))}</td>
                 </tr>`
@@ -108,9 +108,9 @@ function buildCoreReportHtml(data) {
                         (row) => `
                 <tr>
                     <td>${escapeHtml(formatDateKey(row.dateKey))}</td>
-                    <td>${escapeHtml(row.shift || '—')}</td>
-                    <td>${escapeHtml(row.conductorName || '—')}</td>
-                    <td>${escapeHtml(row.label || '—')}</td>
+                    <td>${escapeHtml(row.shift || '-')}</td>
+                    <td>${escapeHtml(row.conductorName || '-')}</td>
+                    <td>${escapeHtml(row.label || '-')}</td>
                     <td>${row.draftAction ? escapeHtml(row.draftAction) : '<span class="warn">Not submitted</span>'}</td>
                 </tr>`
                     )
@@ -124,8 +124,8 @@ function buildCoreReportHtml(data) {
             (row) => `
         <tr>
             <td>${escapeHtml(formatDateTime(row.completedAt))}</td>
-            <td>${escapeHtml(row.conductorName || '—')}</td>
-            <td class="num">${row.score != null ? escapeHtml(String(row.score)) : '—'}</td>
+            <td>${escapeHtml(row.conductorName || '-')}</td>
+            <td class="num">${row.score != null ? escapeHtml(String(row.score)) : '-'}</td>
             <td class="num">${escapeHtml(String(row.nonCompliantCount ?? 0))}</td>
         </tr>`
         )
@@ -149,7 +149,7 @@ function buildCoreReportHtml(data) {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>CORE Audit Report — ${escapeHtml(data.storeName || data.storeNumber)}</title>
+<title>CORE Audit Report - ${escapeHtml(data.storeName || data.storeNumber)}</title>
 <style>
     * { box-sizing: border-box; }
     body {
@@ -309,7 +309,7 @@ function buildCoreReportHtml(data) {
     <h2>Open corrective actions</h2>
     ${openActionsHtml}
 
-    <h2>Pest Walk — last 12 audits</h2>
+    <h2>Pest Walk - last 12 audits</h2>
     ${pestWalkHtml}
 
     <p class="footer-note">Tacaudit · CORE summary report · DFSC ${escapeHtml(String(data.periodDays || 30))} days · Pest Walk last 12</p>
@@ -345,7 +345,7 @@ function resolveChromiumExecutablePath() {
 
 function buildCoreReportText(data) {
     const lines = [
-        `CORE Audit Report — ${data.storeName || data.storeNumber}`,
+        `CORE Audit Report - ${data.storeName || data.storeNumber}`,
         `${formatDateKey(data.fromDateKey)} to ${formatDateKey(data.toDateKey)}`,
         '',
         'Daily completions:',
@@ -354,10 +354,10 @@ function buildCoreReportText(data) {
         lines.push(`  ${row.dateKey}: AM ${row.am} · PM ${row.pm} · Total ${row.total}`);
     }
     lines.push('', `Open audits: ${data.totals?.openAudits ?? 0}`, `Open actions: ${data.totals?.openActions ?? 0}`);
-    lines.push('', 'Pest Walk — last 12 audits:');
+    lines.push('', 'Pest Walk - last 12 audits:');
     for (const row of data.pestWalkHistory || []) {
         lines.push(
-            `  ${formatDateTime(row.completedAt)} · ${row.conductorName || '—'} · score ${row.score ?? '—'} · NC ${row.nonCompliantCount ?? 0}`
+            `  ${formatDateTime(row.completedAt)} · ${row.conductorName || '-'} · score ${row.score ?? '-'} · NC ${row.nonCompliantCount ?? 0}`
         );
     }
     return lines.join('\n');

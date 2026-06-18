@@ -40,7 +40,7 @@ function resolveOrderDateKey(spec) {
     const ahead = raw.match(/^daysFromNow:(\d+)$/i);
     if (ahead) return addDaysToYmd(today, parseInt(ahead[1], 10));
     if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-    throw new Error(`Invalid order date spec "${raw}" — use today, tomorrow, YYYY-MM-DD, or daysFromNow:N`);
+    throw new Error(`Invalid order date spec "${raw}" - use today, tomorrow, YYYY-MM-DD, or daysFromNow:N`);
 }
 
 function localHourMinute(date = new Date()) {
@@ -142,7 +142,7 @@ async function runOrderDayReportDownload(options = {}) {
 
                 if (!withOrders.length) {
                     console.log(
-                        `[ReportDownload] No stores with pending orders on ${orderDateKey} — skipping report download.`
+                        `[ReportDownload] No stores with pending orders on ${orderDateKey} - skipping report download.`
                     );
                     if (options.scheduled) {
                         markScheduledRun({

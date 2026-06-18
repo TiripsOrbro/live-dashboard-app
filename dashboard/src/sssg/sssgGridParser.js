@@ -1,4 +1,4 @@
-﻿/** Known Macromatix day-part subtotal row indices (combined totals — exclude from sums). */
+﻿/** Known Macromatix day-part subtotal row indices (combined totals - exclude from sums). */
 const EXCLUDED_ROW_INDICES = new Set([37, 63]);
 
 const SUBTOTAL_LABEL_RE = /\b(total|breakfast|lunch|dinner|daypart|subtotal|combined)\b/i;
@@ -28,7 +28,7 @@ function parseQuarterHourRangeLabel(label) {
     const text = String(label || '').replace(/\s+/g, ' ').trim();
     if (!text) return null;
 
-    const rangeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*[-–—]\s*(\d{1,2}):(\d{2})/i);
+    const rangeMatch = text.match(/(\d{1,2})(?::(\d{2}))?\s*[-–-]\s*(\d{1,2}):(\d{2})/i);
     if (!rangeMatch) return null;
 
     const startHour = parseInt(rangeMatch[1], 10);

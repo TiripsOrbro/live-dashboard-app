@@ -1,5 +1,5 @@
 /**
- * Area / market scoped MIC overview — used by mic-dashboard.js for non-store scopes.
+ * Area / market scoped MIC overview - used by mic-dashboard.js for non-store scopes.
  */
 (function (global) {
     const REFRESH_MS = 2 * 60 * 1000;
@@ -53,7 +53,7 @@
             };
         }
         return {
-            count: voc.count == null ? '—' : voc.count,
+            count: voc.count == null ? '-' : voc.count,
             osat: voc.osatPercent,
             acc: voc.accuracyPercent,
         };
@@ -281,7 +281,7 @@
 
     function formatSssgDisplay(value) {
         if (value == null || Number.isNaN(Number(value))) {
-            return { text: '—', toneClass: 'mic-sssg--na' };
+            return { text: '-', toneClass: 'mic-sssg--na' };
         }
         const n = Number(value);
         const sign = n > 0 ? '+' : '';
@@ -451,7 +451,7 @@
     function renderSssgTile(area, { tabbed = false } = {}) {
         const today = formatSssgDisplay(areaSssgToday(area));
         const wtd = formatSssgDisplay(areaSssgWtd(area));
-        const hasData = today.text !== '—' || wtd.text !== '—';
+        const hasData = today.text !== '-' || wtd.text !== '-';
         const futureClass = hasData ? '' : ' mic-tile--future';
         const posClass = tabbed ? '' : ' mic-tile--pos-sssg';
         return `
@@ -473,11 +473,11 @@
         const posClass = tabbed || inRow ? '' : ' mic-tile--pos-voc';
         const footnote = 'Pipeline coming soon';
         return `
-        <a class="mic-tile mic-tile--link mic-tile--voc${posClass}" href="${SMG_REPORTING_URL}" target="_blank" rel="noopener noreferrer" aria-label="VOC — open SMG reporting">
+        <a class="mic-tile mic-tile--link mic-tile--voc${posClass}" href="${SMG_REPORTING_URL}" target="_blank" rel="noopener noreferrer" aria-label="VOC - open SMG reporting">
             <div class="mic-tile-body">
                 <div class="mic-tile-label">VOC</div>
                 <div class="mic-tile-main">${voc.count}</div>
-                <div class="mic-tile-sub">OSAT ${voc.osat == null ? '—' : `${voc.osat}%`} · Acc ${voc.acc == null ? '—' : `${voc.acc}%`}</div>
+                <div class="mic-tile-sub">OSAT ${voc.osat == null ? '-' : `${voc.osat}%`} · Acc ${voc.acc == null ? '-' : `${voc.acc}%`}</div>
                 <div class="mic-tile-sub mic-tile-sub--footnote">${footnote}</div>
             </div>
         </a>`;
@@ -522,7 +522,7 @@
             </div>`;
         if (href) {
             return `
-        <a class="mic-tile mic-tile--link mic-tile--dfsc${posClass}" href="${escapeHtml(href)}" aria-label="DFSC — open TacAudit summary">${body}</a>`;
+        <a class="mic-tile mic-tile--link mic-tile--dfsc${posClass}" href="${escapeHtml(href)}" aria-label="DFSC - open TacAudit summary">${body}</a>`;
         }
         return `<article class="mic-tile mic-tile--dfsc${posClass}">${body}</article>`;
     }
@@ -543,7 +543,7 @@
             </div>`;
         if (href) {
             return `
-        <a class="mic-tile mic-tile--link${gridPos}" href="${escapeHtml(href)}" aria-label="${escapeHtml(`${label} — ${sub}`)}">${body}</a>`;
+        <a class="mic-tile mic-tile--link${gridPos}" href="${escapeHtml(href)}" aria-label="${escapeHtml(`${label} - ${sub}`)}">${body}</a>`;
         }
         return `<article class="mic-tile${gridPos}">${body}</article>`;
     }
@@ -572,7 +572,7 @@
             message: 'Open daily count',
             sub:
                 subs.find((s) => /variance|Macromatix|completed/i.test(String(s))) ||
-                `${storeNumbers.length} stores — select store to count`,
+                `${storeNumbers.length} stores - select store to count`,
         };
     }
 
@@ -598,10 +598,10 @@
         const areas = overviewData?.areas || [];
         for (const area of areas) {
             const match = (area.storeSales || []).find((s) => String(s.storeNumber).trim() === num);
-            if (match?.storeName) return `${num} — ${match.storeName}`;
+            if (match?.storeName) return `${num} - ${match.storeName}`;
         }
         const order = (overviewData?.storesNeedingOrders || []).find((s) => String(s.storeNumber).trim() === num);
-        if (order?.storeName) return `${num} — ${order.storeName}`;
+        if (order?.storeName) return `${num} - ${order.storeName}`;
         return num;
     }
 
@@ -649,7 +649,7 @@
             hint: 'Choose a store to start stock count.',
             options: list.map((entry) => ({
                 id: String(entry.storeNumber).toLowerCase(),
-                label: entry.storeName ? `${entry.storeNumber} — ${entry.storeName}` : String(entry.storeNumber),
+                label: entry.storeName ? `${entry.storeNumber} - ${entry.storeName}` : String(entry.storeNumber),
                 sub: ordersStoreDetail(entry),
                 href: entry.href,
             })),
@@ -679,14 +679,14 @@
             type="button"
             class="mic-tile mic-tile--link mic-tile--daily-count${posClass}"
             data-store-picker="daily-count"
-            aria-label="${escapeHtml(`Daily count — ${sub}`)}"
+            aria-label="${escapeHtml(`Daily count - ${sub}`)}"
         >${body}</button>`;
             }
             return `
         <a
             class="mic-tile mic-tile--link mic-tile--daily-count${posClass}"
             href="${escapeHtml(href)}"
-            aria-label="${escapeHtml(`Daily count — ${sub}`)}"
+            aria-label="${escapeHtml(`Daily count - ${sub}`)}"
         >${body}</a>`;
         }
         return `<article class="mic-tile mic-tile--daily-count${posClass}">${body}</article>`;
@@ -863,14 +863,14 @@
             type="button"
             class="mic-tile mic-tile--link mic-tile--orders-to-place${stateClass}${posClass}"
             data-store-picker="stock-count"
-            aria-label="${escapeHtml(`Orders to place — ${sub}`)}"
+            aria-label="${escapeHtml(`Orders to place - ${sub}`)}"
         >${body}</button>`;
             }
             return `
         <a
             class="mic-tile mic-tile--link mic-tile--orders-to-place${stateClass}${posClass}"
             href="${escapeHtml(list[0].href)}"
-            aria-label="${escapeHtml(`Orders to place — ${sub}`)}"
+            aria-label="${escapeHtml(`Orders to place - ${sub}`)}"
         >${body}</a>`;
         }
         return `<article class="mic-tile mic-tile--orders-to-place${stateClass}${posClass}">${body}</article>`;
@@ -887,7 +887,7 @@
         const tag = tacauditHref ? 'a' : 'article';
         const hrefAttr = tacauditHref ? ` href="${escapeHtml(tacauditHref)}"` : '';
         const ariaAttr = tacauditHref
-            ? ` aria-label="${escapeHtml(`${plainLabel} — open TacAudit`)}"`
+            ? ` aria-label="${escapeHtml(`${plainLabel} - open TacAudit`)}"`
             : '';
 
         if (tileHasAuditStats(tile)) {

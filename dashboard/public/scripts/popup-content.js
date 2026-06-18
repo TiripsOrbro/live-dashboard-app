@@ -1,11 +1,11 @@
 /* ============================================================
-   POPUP CONTENT — names, instructions, icons
+   POPUP CONTENT - names, instructions, icons
 
    Each entry:
-   • key — short id used in popup-timing.js schedule (e.g. fryCheck)
-   • name — big heading on the card
-   • instruction — smaller text under it
-   • icon — must match a name in window.iconMap below
+   • key - short id used in popup-timing.js schedule (e.g. fryCheck)
+   • name - big heading on the card
+   • instruction - smaller text under it
+   • icon - must match a name in window.iconMap below
    ============================================================ */
 
 window.iconMap = window.iconMap || {

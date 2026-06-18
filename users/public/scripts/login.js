@@ -456,7 +456,7 @@ async function refreshLoginMeta() {
             window.DashboardMeta.markSynced(meta);
         }
     } catch {
-        /* ignore — version footer stays blank */
+        /* ignore - version footer stays blank */
     }
 }
 

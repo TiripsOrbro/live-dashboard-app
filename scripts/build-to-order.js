@@ -33,7 +33,7 @@ function parseArgs(argv) {
 }
 
 function printHuman(result, title) {
-    console.log(`\n=== ${title} — store ${result.storeNumber} (${result.dateKey}) ===`);
+    console.log(`\n=== ${title} - store ${result.storeNumber} (${result.dateKey}) ===`);
     console.log(`Reports: ${path.basename(result.files.inventorySpecialEvent || '')}`);
     console.log(`Manual count overrides: ${result.manualCountItems} item(s) with drafts today`);
     console.log(`Order lines with qty > 0: ${result.orderLines.length}\n`);
@@ -77,7 +77,7 @@ async function main() {
     const { storeNumber, vendor, json, all, noOrderRounding, debug, itemCode } = parseArgs(process.argv);
     const orderOpts = noOrderRounding ? { noOrderRounding: true } : {};
     if (noOrderRounding) {
-        console.log('[build-to-order] Order rounding OFF — raw shortage quantities');
+        console.log('[build-to-order] Order rounding OFF - raw shortage quantities');
     }
     let result = await calculateBuildToOrders(storeNumber, orderOpts);
 

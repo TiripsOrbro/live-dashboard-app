@@ -4,7 +4,7 @@ let holdCount = 0;
 const idleWaiters = [];
 const abortHandlers = new Set();
 let pauseTimer = null;
-/** Optional warning timer only — must never release the hold (stock count / orders can take 15+ min). */
+/** Optional warning timer only - must never release the hold (stock count / orders can take 15+ min). */
 const SCRAPE_PAUSE_MAX_MS = Number(process.env.MMX_SCRAPE_PAUSE_MAX_MS ?? 0);
 
 function registerMmxAbortHandler(handler) {
@@ -36,7 +36,7 @@ function schedulePauseTimeout() {
         pauseTimer = null;
         if (holdCount <= 0) return;
         console.warn(
-            `[MMX Resource] Stock count / orders still running after ${Math.round(SCRAPE_PAUSE_MAX_MS / 1000)}s — sales scrape remains paused until MMX work finishes`
+            `[MMX Resource] Stock count / orders still running after ${Math.round(SCRAPE_PAUSE_MAX_MS / 1000)}s - sales scrape remains paused until MMX work finishes`
         );
     }, SCRAPE_PAUSE_MAX_MS);
 }
@@ -51,7 +51,7 @@ function acquireMmxResource(reason) {
     const wasIdle = holdCount === 0;
     holdCount++;
     if (wasIdle && reason) {
-        console.log(`[MMX Resource] Pausing sales scrape — ${reason}`);
+        console.log(`[MMX Resource] Pausing sales scrape - ${reason}`);
     }
     if (holdCount === 1) {
         schedulePauseTimeout();

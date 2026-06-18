@@ -21,7 +21,7 @@
         if (statusEl) {
             statusEl.hidden = !busy;
             statusEl.textContent = busy
-                ? 'Testing Macromatix login — this may take up to a minute.'
+                ? 'Testing Macromatix login - this may take up to a minute.'
                 : '';
         }
     }
@@ -39,7 +39,7 @@
                 return;
             }
             if (data.welcomeName && introEl) {
-                introEl.textContent = `Hi ${data.welcomeName} — link your Macromatix login before continuing.`;
+                introEl.textContent = `Hi ${data.welcomeName} - link your Macromatix login before continuing.`;
             }
         } catch {
             showError('Could not load account details. Refresh and try again.');

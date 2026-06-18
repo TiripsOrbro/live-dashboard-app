@@ -14,11 +14,11 @@ process.env.SCRAPER_HEADLESS = 'true';
     console.log(
         `[Env] Store portal credentials: encryption key ${keyOk ? 'set' : 'MISSING (dev fallback in non-production)'}`
     );
-    console.log('[Env] Macromatix/LifeLenz/SMG/NSF logins are per-store — configure in Admin menu → Setup Store Logins');
+    console.log('[Env] Macromatix/LifeLenz/SMG/NSF logins are per-store - configure in Admin menu → Setup Store Logins');
     const nologinOn = /^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_NOLOGIN_ENABLED ?? '').trim());
     if (nologinOn && !String(process.env.DASHBOARD_NOLOGIN_SECRET || '').trim()) {
         console.warn(
-            '[Env] WARNING: DASHBOARD_NOLOGIN_ENABLED is on without DASHBOARD_NOLOGIN_SECRET — nologin links require no key. Set DASHBOARD_NOLOGIN_SECRET to lock them down.'
+            '[Env] WARNING: DASHBOARD_NOLOGIN_ENABLED is on without DASHBOARD_NOLOGIN_SECRET - nologin links require no key. Set DASHBOARD_NOLOGIN_SECRET to lock them down.'
         );
     }
 })();
@@ -449,7 +449,7 @@ const {
     addFallback,
     removeFallback,
     clearServiceCredentials,
-    listCredentialCandidates,
+    storeHasServiceCredentials,
 } = require('./services/storeCredentials');
 const { getSmgPeriodConfig, saveSmgPeriodConfig } = require('../smg/src/smgPeriodConfig');
 const { getNsfRoundConfig, saveNsfRoundConfig, defaultRoundsForYear } = require('../nsf/src/nsfRoundConfig');
@@ -492,7 +492,7 @@ onStoreOrdersComplete((storeNumber) => {
 });
 let salesInFlight = null;
 let auditStateCache = null;
-/** Last scrape phase per store — drives idle wipe and new-day order-check reset. */
+/** Last scrape phase per store - drives idle wipe and new-day order-check reset. */
 const lastScrapePhaseByStore = new Map();
 
 function normalizeIp(ip) {
@@ -527,7 +527,7 @@ function sendUnauthorized(req, res) {
     res.redirect('/login');
 }
 
-/** Wall displays bookmarking /3811 or /kiosk/3811 — send them to /nologin/3811 when that store is allowlisted. */
+/** Wall displays bookmarking /3811 or /kiosk/3811 - send them to /nologin/3811 when that store is allowlisted. */
 function tryRedirectUnauthenticatedToNologin(req, res) {
     if (isApiRequest(req)) return false;
     const match =
@@ -628,7 +628,7 @@ function logAuthLogin(req, user) {
     const profile = userProfileForClient(user);
     const label = profile.welcomeName || user.username;
     const access = user.stores === '*' ? 'all stores' : user.stores.join(', ');
-    console.log(`[Auth] Login: ${user.username} (${label}) — ${access} from ${ip}`);
+    console.log(`[Auth] Login: ${user.username} (${label}) - ${access} from ${ip}`);
     appendAuthEvent({
         username: user.username,
         success: true,
@@ -640,7 +640,7 @@ function logAuthLogin(req, user) {
 function logAuthLoginFailed(req, username, reason = 'invalid credentials') {
     const ip = getRequestIp(req);
     const who = String(username || '').trim() || '(no username)';
-    console.log(`[Auth] Login failed: ${who} — ${reason} from ${ip}`);
+    console.log(`[Auth] Login failed: ${who} - ${reason} from ${ip}`);
     if (who && who !== '(no username)') {
         appendAuthEvent({
             username: who,
@@ -1056,7 +1056,7 @@ app.get('/logout', (req, res) => {
     res.redirect('/login');
 });
 
-/** Kiosk link — sets a long-lived single-store cookie and serves the dashboard in-place (no redirect). */
+/** Kiosk link - sets a long-lived single-store cookie and serves the dashboard in-place (no redirect). */
 const DASHBOARD_HTML_PATH = path.join(paths.dashboard.public, 'index.html');
 
 function injectKioskToken(html, token) {
@@ -1103,7 +1103,7 @@ app.get(/^\/nologin\/(\d{3,6})\/?$/i, async (req, res) => {
     }
 });
 
-/** Login page assets — must be reachable before authentication (for sign-in screen animation). */
+/** Login page assets - must be reachable before authentication (for sign-in screen animation). */
 for (const loginAsset of ['scripts/brand-mark.js', 'styles/brand-mark.css', 'styles/page-scroll.css', 'styles/nav-back.css', 'scripts/nav-back.js']) {
     const handler = (_req, res) => {
         res.sendFile(path.join(paths.sharedPublic, loginAsset));
@@ -1158,7 +1158,7 @@ function logDashboardScrapeComplete(payload) {
         })
         .join(', ');
     console.log(
-        `[Dashboard] Scrape cycle complete — ${when} ${tz} | ${stores.length} store(s): ${summary || '(none)'}`
+        `[Dashboard] Scrape cycle complete - ${when} ${tz} | ${stores.length} store(s): ${summary || '(none)'}`
     );
 }
 
@@ -1578,11 +1578,11 @@ function logScrapeStart(options = {}) {
     const reason = options.scrapeReason || 'refresh';
     const nums = Array.isArray(options.storeNumbers) ? options.storeNumbers.map(String) : [];
     if (nums.length && nums.length <= 6) {
-        console.log(`[Dashboard] Sales scrape (${reason}) — ${nums.join(', ')}`);
+        console.log(`[Dashboard] Sales scrape (${reason}) - ${nums.join(', ')}`);
     } else if (nums.length) {
-        console.log(`[Dashboard] Sales scrape (${reason}) — ${nums.length} stores`);
+        console.log(`[Dashboard] Sales scrape (${reason}) - ${nums.length} stores`);
     } else {
-        console.log(`[Dashboard] Sales scrape (${reason}) — full market`);
+        console.log(`[Dashboard] Sales scrape (${reason}) - full market`);
     }
 }
 
@@ -1603,7 +1603,7 @@ function runScrapeIntoCache(options = {}) {
             }
 
             if (isMmxResourceBusy() || hasPendingHigherPriority(PRIORITY.SCRAPE)) {
-                console.log('[Dashboard] Sales scrape paused — higher-priority MMX work queued or in progress');
+                console.log('[Dashboard] Sales scrape paused - higher-priority MMX work queued or in progress');
                 if (!salesCache) {
                     salesCache = buildCacheShellFromStoreList();
                     salesCacheAt = Date.now();
@@ -1641,7 +1641,7 @@ function runScrapeIntoCache(options = {}) {
             return salesCache;
         } catch (error) {
             if (error?.aborted || error instanceof MmxWorkAbortedError) {
-                console.log('[Dashboard] Sales scrape aborted — stock count / orders in progress');
+                console.log('[Dashboard] Sales scrape aborted - stock count / orders in progress');
                 if (!salesCache) {
                     salesCache = buildCacheShellFromStoreList();
                     salesCacheAt = Date.now();
@@ -1657,6 +1657,21 @@ function runScrapeIntoCache(options = {}) {
         salesInFlight = null;
     });
     return salesInFlight;
+}
+
+/** After the first MMX login is saved for a store, scrape sales, SSSG, and pending orders. */
+function queueStoreLoginBootstrapScrape(storeNumber) {
+    const num = String(storeNumber || '').trim();
+    if (!num || isTestStore(num)) return;
+    console.log(`[Dashboard] First MMX login saved for store ${num}; starting bootstrap sales scrape`);
+    runScrapeIntoCache({
+        scrapeReason: 'store-login-setup',
+        storeNumber: num,
+        bypassScrapeSchedule: true,
+    }).catch((error) => {
+        console.error(`[Dashboard] Store ${num} bootstrap scrape failed:`, error.message);
+        notifyScrapeFailure(error, `store ${num} bootstrap scrape`).catch(() => {});
+    });
 }
 
 async function getSalesDataCached() {
@@ -2359,7 +2374,7 @@ app.get(/^\/admin\/teststore\/?$/i, requireMultiStoreScope, (_req, res) => {
     res.redirect(302, '/Admin/teststore');
 });
 
-// —— Unified overview (scope-aware tiles) + per-store sales dashboard ——
+// -- Unified overview (scope-aware tiles) + per-store sales dashboard --
 function sendOverviewPage(req, res) {
     if (dashboardEntryFromRequest(req) === 'kiosk') {
         const user = req.dashboardUser || getRequestUser(req);
@@ -2423,7 +2438,7 @@ app.get(/^\/(\d{3,6})\/MIC\/?$/i, (req, res) => {
     res.redirect(302, getMicOverviewPath());
 });
 
-// Kiosk wall dashboard — /kiosk/3811 (no back button; entry cookie kiosk).
+// Kiosk wall dashboard - /kiosk/3811 (no back button; entry cookie kiosk).
 app.get(/^\/kiosk\/teststore\/?$/i, (req, res) => {
     if (!assertStoreAccess(req, res, TEST_STORE_SLUG)) return;
     res.sendFile(path.join(paths.dashboard.public, 'index.html'));
@@ -2471,7 +2486,7 @@ app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
 app.get(/^\/(area\/[a-z0-9-]+|a\d+)\/?$/i, (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     if (!user || (!isSuperAdminUser(user) && !hasMultiStoreScope(user))) {
-        // Store-scoped users have no business on area dashboards — send them home.
+        // Store-scoped users have no business on area dashboards - send them home.
         res.redirect(302, '/');
         return;
     }
@@ -3569,6 +3584,8 @@ app.post('/api/admin/store-logins/:storeNumber/:service/verify', async (req, res
     const save = req.body?.save === true;
     const asFallback = req.body?.asFallback === true;
     const label = String(req.body?.label || (asFallback ? 'Fallback' : 'Primary')).trim();
+    const firstMmxPrimarySave =
+        save && !asFallback && service === 'mmx' && !storeHasServiceCredentials(store, service);
     const verifyResult = await verifyPortalLogin(service, req.body || {});
     if (!verifyResult.ok) {
         res.status(401).json({ success: false, error: verifyResult.error || 'Login verification failed.' });
@@ -3576,12 +3593,23 @@ app.post('/api/admin/store-logins/:storeNumber/:service/verify', async (req, res
     }
     let saved = null;
     if (save) {
-        saved = asFallback
-            ? addFallback(store, service, req.body, user.username, label)
-            : savePrimary(store, service, req.body, user.username, label);
+        try {
+            saved = asFallback
+                ? addFallback(store, service, req.body, user.username, label)
+                : savePrimary(store, service, req.body, user.username, label);
+        } catch (err) {
+            res.status(500).json({
+                success: false,
+                error: err?.message || 'Could not save credentials.',
+            });
+            return;
+        }
         if (!saved.ok) {
             res.status(500).json({ success: false, error: saved.error || 'Could not save credentials.' });
             return;
+        }
+        if (firstMmxPrimarySave) {
+            queueStoreLoginBootstrapScrape(store);
         }
     }
     res.json({
@@ -3589,6 +3617,7 @@ app.post('/api/admin/store-logins/:storeNumber/:service/verify', async (req, res
         verified: true,
         stub: Boolean(verifyResult.stub),
         saved: Boolean(save && saved?.ok),
+        bootstrapScrapeStarted: Boolean(firstMmxPrimarySave && saved?.ok),
         summary: getStoreCredentialsSummary(store).services[service],
         updatedAt: saved?.updatedAt || null,
         updatedBy: saved?.updatedBy || user.username,
@@ -3911,7 +3940,7 @@ app.get('/api/stock-count/draft', async (req, res) => {
         if (isCombinedStockCountSlug(vendorSlug)) {
             res.status(400).json({
                 success: false,
-                error: 'Combined count uses per-vendor drafts — load vendor=combined catalog only.',
+                error: 'Combined count uses per-vendor drafts - load vendor=combined catalog only.',
             });
             return;
         }
@@ -4085,7 +4114,7 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
         const pipeline = await getStockCountPipelineStatus(store);
         if (isStockCountPipelineBusy(pipeline.stage)) {
             console.log(
-                `[StockCount] Send to MMX already in progress — store ${store} stage ${pipeline.stage}`
+                `[StockCount] Send to MMX already in progress - store ${store} stage ${pipeline.stage}`
             );
             return res.json({
                 success: true,
@@ -4096,7 +4125,7 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
             });
         }
 
-        console.log(`[StockCount] Send to MMX (prepare) — store ${store} vendor ${vendorSlug}`);
+        console.log(`[StockCount] Send to MMX (prepare) - store ${store} vendor ${vendorSlug}`);
         const mmxOpts = mmxAutomationOptions(req, store, {
             pendingVendorLabels: pendingVendorLabelsForStockCount(req, store),
         });
@@ -4137,7 +4166,7 @@ app.post('/api/stock-count/send-to-mmx/apply', async (req, res) => {
         if (!store || !assertStoreAccess(req, res, store)) return;
 
         if (ordersOnly) {
-            console.log(`[StockCount] Scheduled orders only — store ${store}`);
+            console.log(`[StockCount] Scheduled orders only - store ${store}`);
             const skipReportDownload = /^(1|true|yes|on)$/i.test(
                 String(req.body?.skipReportDownload ?? req.query.skipReportDownload ?? 'false')
             );
@@ -4160,7 +4189,7 @@ app.post('/api/stock-count/send-to-mmx/apply', async (req, res) => {
             return;
         }
 
-        console.log(`[StockCount] Apply MMX count — store ${store} session ${sessionId}`);
+        console.log(`[StockCount] Apply MMX count - store ${store} session ${sessionId}`);
         const result = await applyStockCountSession(store, sessionId, mmxAutomationOptions(req, store));
         res.json({ success: true, ...result });
     } catch (error) {
@@ -4180,7 +4209,7 @@ app.post('/api/stock-count/fill-orders', async (req, res) => {
         const skipReportDownload = /^(1|true|yes|on)$/i.test(
             String(req.body?.skipReportDownload ?? req.query.skipReportDownload ?? 'false')
         );
-        console.log(`[StockCount] Fill scheduled orders — store ${store}`);
+        console.log(`[StockCount] Fill scheduled orders - store ${store}`);
         const result = await runScheduledOrdersOnly(
             store,
             mmxAutomationOptions(req, store, { skipReportDownload })
@@ -4226,12 +4255,12 @@ app.post('/api/stock-count/check-stock-levels', async (req, res) => {
         if (isStockCountPipelineBusy((await getStockCountPipelineStatus(store))?.stage)) {
             res.status(409).json({
                 success: false,
-                error: 'Stock count pipeline is running — try again when it finishes.',
+                error: 'Stock count pipeline is running - try again when it finishes.',
             });
             return;
         }
 
-        console.log(`[StockCount] Check stock levels — store ${store}`);
+        console.log(`[StockCount] Check stock levels - store ${store}`);
         const summary = await checkStockLevelsForStore(
             store,
             mmxAutomationOptions(req, store, {})
@@ -4295,7 +4324,7 @@ app.post('/api/stock-count/submit', async (req, res) => {
                 return;
             }
             console.log(
-                `[StockCount] Combined submit store ${store} — ${submitted.map((s) => s.vendorLabel).join(', ')}`
+                `[StockCount] Combined submit store ${store} - ${submitted.map((s) => s.vendorLabel).join(', ')}`
             );
             res.json({ success: true, submitted, vendorSlugs: slugs, macromatixPending: true });
             return;
@@ -4306,7 +4335,7 @@ app.post('/api/stock-count/submit', async (req, res) => {
             return;
         }
         console.log(
-            `[StockCount] Submitted store ${store} vendor ${vendorSlug} — ${summary.items?.length || 0} item(s)`
+            `[StockCount] Submitted store ${store} vendor ${vendorSlug} - ${summary.items?.length || 0} item(s)`
         );
         res.json({ success: true, ...summary, macromatixPending: true });
     } catch (error) {
@@ -4667,7 +4696,7 @@ async function handleOverviewApi(req, res) {
 
 app.get('/api/overview', handleOverviewApi);
 
-// MIC overview — store manager dashboard tiles (alias for /api/overview).
+// MIC overview - store manager dashboard tiles (alias for /api/overview).
 app.get('/api/mic', handleOverviewApi);
 
 app.post('/api/mic/daily-item-multiplier', (req, res) => {
@@ -6441,7 +6470,7 @@ app.get('/api/stores', async (req, res) => {
             closeHour: s.closeHour,
         }));
 
-        // Fallback: no .storelist configured — use whatever the last scrape discovered.
+        // Fallback: no .storelist configured - use whatever the last scrape discovered.
         if (!stores.length && salesCache) {
             stores = (Array.isArray(salesCache.stores) ? salesCache.stores : []).map((s) => ({
                 storeNumber: s.storeNumber,
@@ -6860,7 +6889,7 @@ let shuttingDown = false;
 function shutdown(signal) {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(`[Dashboard] ${signal} received — closing server…`);
+    console.log(`[Dashboard] ${signal} received - closing server…`);
     cancelSchedulerHandle(salesScrapeSchedulerTimer);
     const force = setTimeout(() => {
         console.warn('[Dashboard] Forced exit after shutdown timeout');
@@ -6869,7 +6898,7 @@ function shutdown(signal) {
     force.unref();
     server.close(() => {
         clearTimeout(force);
-        console.log('[Dashboard] Server closed — exiting');
+        console.log('[Dashboard] Server closed - exiting');
         process.exit(0);
     });
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Stock count test helpers — validate catalogs, print URLs, reset saved counts.
+ * Stock count test helpers - validate catalogs, print URLs, reset saved counts.
  *
  * Usage:
  *   node scripts/test-stock-count.js validate
@@ -65,7 +65,7 @@ function validateCatalogs() {
         const locSummary = catalog.locations.join(', ');
         console.log(
             `${entry.slug}: ${catalog.items.length} items, locations [${locSummary}]` +
-                (noLoc.length ? ` — WARN ${noLoc.length} item(s) without locations` : '')
+                (noLoc.length ? ` - WARN ${noLoc.length} item(s) without locations` : '')
         );
         if (noLoc.length) ok = false;
     }
@@ -74,7 +74,7 @@ function validateCatalogs() {
 
 function printUrls(store) {
     const vendors = listConfiguredVendors().filter((v) => v.configured);
-    console.log(`\nStore ${store} — stock count test URLs\n`);
+    console.log(`\nStore ${store} - stock count test URLs\n`);
     console.log(`Dashboard (test pending chips):`);
     console.log(`  ${BASE}/${store}?testStockCountPending=1`);
     console.log(`\nDirect stock-count pages:`);
@@ -91,7 +91,7 @@ function printGuide(store) {
     console.log(`Walkthrough:
   1. Start the server: npm run dev
   2. Log in (or set ENABLE_STOCK_COUNT_TEST=1 in .env)
-  3. Open the dashboard URL above — vendor chips appear under "Orders to place (test mode)"
+  3. Open the dashboard URL above - vendor chips appear under "Orders to place (test mode)"
   4. Click a vendor → enter counts per location → Send to MMX → Open MMX
   5. Re-test the same vendor: node scripts/test-stock-count.js reset ${store} --vendor <slug>
 `);

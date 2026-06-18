@@ -1,6 +1,6 @@
 @import url('/styles/app-tabs.css');
 
-/* Stock count entry — extends dashboard palette */
+/* Stock count entry - extends dashboard palette */
 html.page-scroll.stock-count-page {
     height: auto;
     overflow-x: hidden;
@@ -227,7 +227,7 @@ body.stock-count-page {
     vertical-align: top;
 }
 
-/* Connected entry grid — one table, shared borders, compact rows */
+/* Connected entry grid - one table, shared borders, compact rows */
 .stock-count-table--connected {
     --sc-slot-height: 2.5rem;
     --sc-input-height: 2.5rem;
@@ -393,7 +393,7 @@ body.stock-count-page {
     grid-row: 2;
 }
 
-/* Combined grid rows — explicit cell height (table 1px trick does not apply) */
+/* Combined grid rows - explicit cell height (table 1px trick does not apply) */
 .stock-count-table--combined.stock-count-table--connected .stock-count-grid-cell {
     width: 100%;
     height: var(--sc-slot-height);
@@ -1176,7 +1176,7 @@ body.stock-count-page #app {
     }
 }
 
-/* Wide / landscape entry layout — everything except phone portrait */
+/* Wide / landscape entry layout - everything except phone portrait */
 @media not ((max-width: 900px) and (orientation: portrait)) {
     body.stock-count-page .stock-count-entry-cell {
         --stock-count-gutter: 24px;
@@ -1214,7 +1214,7 @@ body.stock-count-page #app {
     }
 }
 
-/* Phone landscape — compact rows (short viewport height) */
+/* Phone landscape - compact rows (short viewport height) */
 @media (max-width: 900px) and (orientation: landscape) {
     body.stock-count-page .stock-count {
         padding-top: max(6px, env(safe-area-inset-top));

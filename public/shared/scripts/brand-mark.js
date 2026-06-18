@@ -5,7 +5,7 @@
 
     const EASE_HOLD = '0 0 1 1';
 
-    /** Sweep window — slow holds fixed; draw compressed into the middle. */
+    /** Sweep window - slow holds fixed; draw compressed into the middle. */
     const SWEEP_START = 0.05;
     const SWEEP_SLOW_IN_END = 0.11;
     const SWEEP_FAST_END = 0.29;

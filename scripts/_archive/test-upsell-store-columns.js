@@ -12,7 +12,7 @@ const grid = [
     ['2026-05-25', 'MAHSA HUSSAINI', '', '', '', '2', '', '', '', '', ''],
 ];
 
-/** In-column qty (no shift): MACY 3806, MAHSA 3808 — must not enable column shift. */
+/** In-column qty (no shift): MACY 3806, MAHSA 3808 - must not enable column shift. */
 const mixedGrid = [
     ['Fiscal YPWD', 'Cashier Name', 'Boss Burrito Box', '', '', '', '', '', ''],
     ['', '', '3806 Dandenong South', '3808 Berwick South', '3811 Chirnside Park', '3901 Midland', '3902 Ellenbrook North', '3903 Canning Vale', '3904 Butler'],
@@ -188,7 +188,7 @@ assert(
     'orphan reason should mention missing date'
 );
 
-console.log('OK — store columns match headers above each qty cell');
+console.log('OK - store columns match headers above each qty cell');
 console.log(
     'Sample:',
     parsed.cashiers

@@ -20,7 +20,7 @@ function escapeHtml(value) {
 }
 
 function formatReportDateTime(iso) {
-    if (!iso) return '—';
+    if (!iso) return '-';
     const parsed = Date.parse(iso);
     if (!Number.isFinite(parsed)) return iso;
     return new Date(parsed).toLocaleString('en-AU', {
@@ -36,7 +36,7 @@ function formatReportDateTime(iso) {
 function formatDurationMinutes(session) {
     const started = Date.parse(session.startedAt || '');
     const completed = Date.parse(session.completedAt || '');
-    if (!Number.isFinite(started) || !Number.isFinite(completed) || completed <= started) return '—';
+    if (!Number.isFinite(started) || !Number.isFinite(completed) || completed <= started) return '-';
     const mins = Math.round((completed - started) / 60000);
     if (mins < 60) return `${mins} min`;
     const h = Math.floor(mins / 60);
@@ -68,7 +68,7 @@ function formatAnswerValue(question, value) {
     if (raw === 'complete') return 'Completed to Standard';
     if (raw === 'not_complete') return 'Not Complete';
     if (raw === 'na') return 'N/A';
-    return value || '—';
+    return value || '-';
 }
 
 function buildSquareOneReportHtml(session) {
@@ -110,18 +110,18 @@ th { background: #f3f4f6; text-align: left; }
 .meta { margin: 12px 0 18px; }
 .signature { max-width: 220px; max-height: 72px; }
 </style></head><body>
-<h1>Square One — ${escapeHtml(session.areaTitle || '')}</h1>
+<h1>Square One - ${escapeHtml(session.areaTitle || '')}</h1>
 <p>${escapeHtml(session.storeName || '')} · Store ${escapeHtml(session.storeNumber || '')}</p>
 <div class="meta">
-<p><strong>Period:</strong> ${escapeHtml(session.periodKey || '—')}</p>
+<p><strong>Period:</strong> ${escapeHtml(session.periodKey || '-')}</p>
 <p><strong>Score:</strong> ${score}% · <strong>Flagged:</strong> ${nc.length}</p>
-<p><strong>Conducted by:</strong> ${escapeHtml(session.conductor?.name || '—')}</p>
-<p><strong>Signed off by:</strong> ${escapeHtml(session.signOff?.name || '—')}</p>
+<p><strong>Conducted by:</strong> ${escapeHtml(session.conductor?.name || '-')}</p>
+<p><strong>Signed off by:</strong> ${escapeHtml(session.signOff?.name || '-')}</p>
 <p><strong>Completed:</strong> ${escapeHtml(formatReportDateTime(session.completedAt))} · ${escapeHtml(formatDurationMinutes(session))}</p>
 </div>
 ${sectionHtml}
 <p><strong>Sign-off signature</strong></p>
-${session.signOff?.signatureDataUrl ? `<img class="signature" src="${session.signOff.signatureDataUrl}" alt="" />` : '<p>—</p>'}
+${session.signOff?.signatureDataUrl ? `<img class="signature" src="${session.signOff.signatureDataUrl}" alt="" />` : '<p>-</p>'}
 </body></html>`;
 }
 

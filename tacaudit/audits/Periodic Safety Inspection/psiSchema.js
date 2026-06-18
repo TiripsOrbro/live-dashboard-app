@@ -1,4 +1,4 @@
-﻿/** Taco Bell Periodic Safety Inspection — 4-week rotating schema. */
+﻿/** Taco Bell Periodic Safety Inspection - 4-week rotating schema. */
 
 const { PSI_WEEK_TITLES } = require('../../src/auditRecurrence');
 

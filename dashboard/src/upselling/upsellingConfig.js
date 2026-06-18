@@ -69,7 +69,7 @@ function isUpsellingStore(storeNumber) {
 
 const { isTestStore } = require('../../../stores/src/testStore');
 
-/** Test store uses local leaderboard JSON only — no Macromatix BI sync. */
+/** Test store uses local leaderboard JSON only - no Macromatix BI sync. */
 function isUpsellingMmxSyncStore(storeNumber) {
     return isUpsellingStore(storeNumber) && !isTestStore(storeNumber);
 }
@@ -191,7 +191,7 @@ function resolveUpsellSyncDayForRun(cfg = loadUpsellingConfig(), options = {}) {
 
     if (cfg.backfillOnFirstSync !== false && !isLeaderboardBackfillComplete()) {
         console.log(
-            '[Upselling] Leaderboard backfill pending — importing all fiscal days from this export (once)'
+            '[Upselling] Leaderboard backfill pending - importing all fiscal days from this export (once)'
         );
         return null;
     }
@@ -203,7 +203,7 @@ function maybeMarkBackfillComplete(syncDay, meta = {}) {
     if (syncDay) return;
     if (!meta.storesUpdated?.length) return;
     markLeaderboardBackfillComplete(meta);
-    console.log('[Upselling] Leaderboard backfill complete — future syncs use syncDayMode only');
+    console.log('[Upselling] Leaderboard backfill complete - future syncs use syncDayMode only');
 }
 
 module.exports = {

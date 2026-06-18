@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Headed LifeLenz login probe — verify credentials and print accessible stores.
+ * Headed LifeLenz login probe - verify credentials and print accessible stores.
  *
  * Usage:
  *   npm run probe-lifelenz-login
@@ -34,7 +34,7 @@ async function main() {
     }
     console.log('[probe-lifelenz-login] Accessible stores:');
     for (const store of result.stores) {
-        console.log(`  ${store.storeNumber} — ${store.label}`);
+        console.log(`  ${store.storeNumber} - ${store.label}`);
     }
 }
 

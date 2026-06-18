@@ -14,7 +14,7 @@
     ];
 
     function parseClosingValue(raw) {
-        if (raw == null || raw === '' || raw === '—' || raw === '-') return null;
+        if (raw == null || raw === '' || raw === '-' || raw === '-') return null;
         const n = Number(String(raw).replace(/,/g, '').trim());
         return Number.isFinite(n) ? n : null;
     }
@@ -28,12 +28,12 @@
 
     function formatVarianceQty(value) {
         const n = Number(value);
-        if (!Number.isFinite(n)) return '—';
+        if (!Number.isFinite(n)) return '-';
         return n.toLocaleString('en-AU', { maximumFractionDigits: 2 });
     }
 
     function formatVarianceMoney(value) {
-        if (value == null || !Number.isFinite(Number(value))) return '—';
+        if (value == null || !Number.isFinite(Number(value))) return '-';
         const n = Number(value);
         const abs = Math.abs(n).toLocaleString('en-AU', {
             minimumFractionDigits: 2,
@@ -162,7 +162,7 @@
         const slots = resolveUnitSlots(item).slice(0, 3);
         const closingCells = slots.map((slot) => buildClosingCellHtml(slot, counts, escapeHtml)).join('');
         const severity = varianceSeverityClass(row);
-        const unitLabel = String(row.unit || '').trim() || '—';
+        const unitLabel = String(row.unit || '').trim() || '-';
         const rowClass = row.isRed === false ? 'stock-count-variance-row--ok' : 'stock-count-variance-row--alert';
 
         const statCells = [
@@ -244,7 +244,7 @@
         if (!rect.width || !rect.height) throw new Error('Nothing to capture.');
         const render = global.html2canvas;
         if (typeof render !== 'function') {
-            throw new Error('Screenshot is unavailable — refresh the page and try again.');
+            throw new Error('Screenshot is unavailable - refresh the page and try again.');
         }
         const scale = options.scale ?? Math.min(3, Math.max(2, global.devicePixelRatio || 2));
         return render(element, {

@@ -1,5 +1,5 @@
 ﻿/**
- * Scheduled orders list — vendor table + list date (default tomorrow).
+ * Scheduled orders list - vendor table + list date (default tomorrow).
  * New orders: Create link. Existing orders: Process link (still updatable, never Submit).
  */
 const { GOTO_OPTS } = require('./mmx-browser');
@@ -64,7 +64,7 @@ async function setScheduledOrdersListDate(page, dateSpec) {
 
     await withPageContextRetry(page, 'scheduled orders list date', async () => {
         if (await isListDateAlready(page, display)) {
-            log.info(`List date already ${display} — skipping date change`);
+            log.info(`List date already ${display} - skipping date change`);
             await waitForScheduledOrdersTable(page, 6000);
             return;
         }
@@ -247,7 +247,7 @@ async function scrapeScheduledOrders(page) {
     const creatable = parsed.rows.filter((r) => r.hasCreate);
     const openable = parsed.rows.filter((r) => rowIsOpenable(r));
     log.info(
-        `Scheduled orders: ${parsed.rows.length} row(s), openable: ${openable.length} — ` +
+        `Scheduled orders: ${parsed.rows.length} row(s), openable: ${openable.length} - ` +
             openable
                 .map(
                     (r) =>
@@ -268,7 +268,7 @@ async function returnToScheduledOrders(page, vendorOrdersCfg, navTimeoutMs, stor
     log.info(`Returning to scheduled orders: ${target}`);
     await page.goto(target, { ...GOTO_OPTS, timeout: navTimeoutMs }).catch(async (err) => {
         if (!String(err.message || '').includes('ERR_ABORTED')) throw err;
-        log.warn('Navigation aborted — waiting for scheduled orders page to settle');
+        log.warn('Navigation aborted - waiting for scheduled orders page to settle');
     });
     await page.waitForFunction(() => document.readyState === 'complete', { timeout: 10000 }).catch(() => {});
     await waitForScheduledOrdersTableReady(page, 8000);

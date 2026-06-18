@@ -43,7 +43,7 @@ function formatVocDisplay(voc = {}) {
         };
     }
     return {
-        count: voc.count == null ? '—' : voc.count,
+        count: voc.count == null ? '-' : voc.count,
         osat: voc.osatPercent,
         acc: voc.accuracyPercent,
     };
@@ -77,7 +77,7 @@ function applyDashboardScale() {
 
 function formatSssgDisplay(value) {
     if (value == null || Number.isNaN(Number(value))) {
-        return { text: '—', toneClass: 'mic-sssg--na' };
+        return { text: '-', toneClass: 'mic-sssg--na' };
     }
     const n = Number(value);
     const sign = n > 0 ? '+' : '';
@@ -138,7 +138,7 @@ function renderShell() {
             <div class="mic-grid mic-grid--admin" id="mic-grid"></div>
         </div>
         ${window.MicSettings?.renderCog?.() || ''}
-        <!-- Daily item multiplier picker — disabled for now
+        <!-- Daily item multiplier picker - disabled for now
         <div id="mic-item-picker" class="mic-item-picker" hidden>
             <div class="mic-item-picker-panel">
                 <h2>Select item for 3× points today</h2>
@@ -182,7 +182,7 @@ function renderSalesStack(sales) {
 function renderSssgInlineBlock(sales = {}) {
     const today = formatSssgDisplay(sales.sssgPercent);
     const wtd = formatSssgDisplay(sales.sssgWtdPercent);
-    const hasData = today.text !== '—' || wtd.text !== '—';
+    const hasData = today.text !== '-' || wtd.text !== '-';
     return `
         <div class="mic-sssg-inline${hasData ? '' : ' mic-sssg-inline--future'}" aria-label="Same store sales growth">
             <div class="mic-sssg-inline-label">Today SSSG</div>
@@ -203,7 +203,7 @@ function renderMultiplierBlock(data) {
         : 0;
     const soldCount = rule?.soldCount;
     const soldHtml = hasRules
-        ? `<div class="mic-multiplier-pick-sold"><span class="mic-multiplier-pick-sold-num">${soldCount == null ? '—' : soldCount}</span><span class="mic-multiplier-pick-sold-label">sold today</span></div>`
+        ? `<div class="mic-multiplier-pick-sold"><span class="mic-multiplier-pick-sold-num">${soldCount == null ? '-' : soldCount}</span><span class="mic-multiplier-pick-sold-label">sold today</span></div>`
         : '';
 
     return `
@@ -326,7 +326,7 @@ function renderMicTabPanel(tabId, content) {
 function renderSssgTile(sales = {}, { tabbed = false } = {}) {
     const today = formatSssgDisplay(sales.sssgPercent);
     const wtd = formatSssgDisplay(sales.sssgWtdPercent);
-    const hasData = today.text !== '—' || wtd.text !== '—';
+    const hasData = today.text !== '-' || wtd.text !== '-';
     const futureClass = hasData ? '' : ' mic-tile--future';
     const posClass = tabbed ? '' : ' mic-tile--pos-sssg';
     return `
@@ -349,12 +349,12 @@ function renderVocTile(voc, { tabbed = false, wide = false, inRow = false } = {}
             href="${SMG_REPORTING_URL}"
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="VOC — open SMG reporting"
+            aria-label="VOC - open SMG reporting"
         >
             <div class="mic-tile-body">
                 <div class="mic-tile-label">VOC</div>
                 <div class="mic-tile-main">${voc.count}</div>
-                <div class="mic-tile-sub">OSAT ${voc.osat == null ? '—' : `${voc.osat}%`} · Acc ${voc.acc == null ? '—' : `${voc.acc}%`}</div>
+                <div class="mic-tile-sub">OSAT ${voc.osat == null ? '-' : `${voc.osat}%`} · Acc ${voc.acc == null ? '-' : `${voc.acc}%`}</div>
                 <div class="mic-tile-sub mic-tile-sub--footnote">Pipeline coming soon</div>
             </div>
         </a>
@@ -485,7 +485,7 @@ function renderAdminLabelTile({ label, posClass, sub = 'Coming soon', tabbed = f
             </div>`;
     if (href) {
         return `
-        <a class="mic-tile mic-tile--link${gridPosClass}" href="${escapeHtml(href)}" aria-label="${escapeHtml(`${label} — ${sub}`)}">${body}</a>`;
+        <a class="mic-tile mic-tile--link${gridPosClass}" href="${escapeHtml(href)}" aria-label="${escapeHtml(`${label} - ${sub}`)}">${body}</a>`;
     }
     return `<article class="mic-tile${gridPosClass}">${body}</article>`;
 }
@@ -539,7 +539,7 @@ function renderSquareOneTile(tile, { tabbed = false } = {}) {
         <a
             class="mic-tile mic-tile--link mic-tile--weekly-audit mic-tile--square-one${doneClass}"
             href="${escapeHtml(href)}"
-            aria-label="${escapeHtml(`${tile?.label || label} — ${sub}`)}"
+            aria-label="${escapeHtml(`${tile?.label || label} - ${sub}`)}"
         >${body}
         </a>`;
     }
@@ -647,7 +647,7 @@ function renderWeeklyAuditTile(audit, index, { tabbed = false } = {}) {
         <a
             class="mic-tile mic-tile--link mic-tile--weekly-audit${doneClass}"
             href="${escapeHtml(href)}"
-            aria-label="${escapeHtml(`${audit?.label || label} — ${sub}`)}"
+            aria-label="${escapeHtml(`${audit?.label || label} - ${sub}`)}"
         >${body}
         </a>`;
     }
@@ -685,7 +685,7 @@ function renderOrdersToPlaceTile(data, { tabbed = false, inRow = false } = {}) {
         <a
             class="mic-tile mic-tile--link mic-tile--orders-to-place${posClass}"
             href="${escapeHtml(href)}"
-            aria-label="${escapeHtml(`Orders to place — ${ordersSub}`)}"
+            aria-label="${escapeHtml(`Orders to place - ${ordersSub}`)}"
         >${body}
         </a>`;
     }
@@ -776,7 +776,7 @@ function renderDailyCountTile(data, { tabbed = false, inRow = false } = {}) {
         <a
             class="mic-tile mic-tile--link mic-tile--daily-count${posClass}"
             href="${escapeHtml(href)}"
-            aria-label="${escapeHtml(`Daily count — ${sub}`)}"
+            aria-label="${escapeHtml(`Daily count - ${sub}`)}"
         >${body}
         </a>`;
     }

@@ -50,7 +50,7 @@ function printBuildToLine(line) {
         [
             line.itemCode,
             String(line.description || '').slice(0, 28),
-            `days=${line.buildToDays ?? '—'}`,
+            `days=${line.buildToDays ?? '-'}`,
             `buildTo=${line.buildTo}`,
             `onHand=${line.onHandCartons} (${line.onHandSource})`,
             `onOrder=${line.onOrderCartons}`,
@@ -65,12 +65,12 @@ async function printDryRun(storeNumber, { vendorId, itemCode, noOrderRounding, d
     const orderOpts = orderOptionsFromArgs({ noOrderRounding });
     const reportFiles = resolveStoreReports(storeNumber, REPORTS_DIR);
     const reportNames = describeResolvedStoreReports(reportFiles);
-    console.log(`[fill-orders] DRY RUN — store ${storeNumber} (${dateKey})`);
+    console.log(`[fill-orders] DRY RUN - store ${storeNumber} (${dateKey})`);
     console.log(
         `[fill-orders] Reports: ISE=${reportNames.inventorySpecialEvent}, SOH=${reportNames.stockOnHand}, SOO=${reportNames.stockOnOrder}`
     );
     if (noOrderRounding) {
-        console.log('[fill-orders] Order rounding OFF — quantities are raw build-to − on-hand − on-order');
+        console.log('[fill-orders] Order rounding OFF - quantities are raw build-to − on-hand − on-order');
     }
 
     const buildTo = await calculateBuildToOrders(storeNumber, orderOpts);
@@ -159,29 +159,29 @@ async function main() {
             console.log(`[fill-orders] Downloading reports for store ${storeNumber} before dry-run…`);
             await ensureReportsForOrders(storeNumber, { forceDownload: true });
         } else {
-            console.log(`[fill-orders] Dry run — using existing Reports/${storeNumber}/ (--skip-report-download)`);
+            console.log(`[fill-orders] Dry run - using existing Reports/${storeNumber}/ (--skip-report-download)`);
         }
         await printDryRun(storeNumber, { vendorId, itemCode, noOrderRounding, debug });
         return;
     }
 
     console.log(
-        `[fill-orders] Store ${storeNumber} — ${skipReportDownload ? 'using existing reports' : 'will download reports first'}`
+        `[fill-orders] Store ${storeNumber} - ${skipReportDownload ? 'using existing reports' : 'will download reports first'}`
     );
     if (noOrderRounding) {
-        console.log('[fill-orders] Order rounding OFF — quantities are raw build-to − on-hand − on-order');
+        console.log('[fill-orders] Order rounding OFF - quantities are raw build-to − on-hand − on-order');
     }
-    console.log('[fill-orders] Skipping Key Item Count — scheduled orders only');
+    console.log('[fill-orders] Skipping Key Item Count - scheduled orders only');
     const result = await runScheduledOrdersOnly(storeNumber, { skipReportDownload, ...orderOpts });
     const processed = result.orders?.processed || [];
     const ok = processed.filter((p) => p.ok);
     const failed = processed.filter((p) => !p.ok);
-    console.log(`[fill-orders] Done — ${ok.length}/${processed.length} vendor order(s) updated`);
+    console.log(`[fill-orders] Done - ${ok.length}/${processed.length} vendor order(s) updated`);
     if (result.orderFailures) {
         console.warn(`[fill-orders] Partial failures: ${result.orderFailures}`);
     }
     if (failed.length) {
-        for (const f of failed) console.warn(`  failed: ${f.label} — ${f.error}`);
+        for (const f of failed) console.warn(`  failed: ${f.label} - ${f.error}`);
         process.exit(1);
     }
 }

@@ -1,5 +1,5 @@
 ﻿/**
- * ASP.NET / Macromatix postback helpers — prefer response + element waits over fixed sleeps.
+ * ASP.NET / Macromatix postback helpers - prefer response + element waits over fixed sleeps.
  */
 
 const DEFAULT_TIMEOUT_MS = Number(process.env.MMX_POSTBACK_TIMEOUT_MS || 15000);

@@ -294,7 +294,7 @@
             storeSelect.innerHTML = stores
                 .map(
                     (s) =>
-                        `<option value="${escapeHtml(s.storeNumber)}">${escapeHtml(s.storeNumber)} — ${escapeHtml(s.storeName || s.storeNumber)}</option>`
+                        `<option value="${escapeHtml(s.storeNumber)}">${escapeHtml(s.storeNumber)} - ${escapeHtml(s.storeName || s.storeNumber)}</option>`
                 )
                 .join('');
             if (!storeNumber && stores.length) storeNumber = String(stores[0].storeNumber);

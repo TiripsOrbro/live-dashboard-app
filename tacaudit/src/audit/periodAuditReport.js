@@ -9,7 +9,7 @@ function escapeHtml(value) {
 }
 
 function formatReportDateTime(iso) {
-    if (!iso) return '—';
+    if (!iso) return '-';
     const parsed = Date.parse(iso);
     if (!Number.isFinite(parsed)) return iso;
     return new Date(parsed).toLocaleString('en-AU', {
@@ -39,7 +39,7 @@ function buildReportFilename(session, label) {
 }
 
 function renderAnswerHtml(question, value) {
-    const raw = value === true || value === 'true' ? 'Yes' : String(value ?? '—');
+    const raw = value === true || value === 'true' ? 'Yes' : String(value ?? '-');
     const nc = question && typeof question === 'object' ? '' : '';
     return `<span class="answer">${escapeHtml(raw)}</span>`;
 }

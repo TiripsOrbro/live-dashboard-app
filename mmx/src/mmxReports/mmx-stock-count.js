@@ -239,7 +239,7 @@ async function waitForLocationTabSettled(page, tabLabel, options = {}) {
 
     const elapsed = Date.now() - start;
     if (ready) {
-        log.info(`Count grid ready — ${inputCount} input(s) in ${elapsed}ms (tab: ${want || tabLabel})`);
+        log.info(`Count grid ready - ${inputCount} input(s) in ${elapsed}ms (tab: ${want || tabLabel})`);
     } else {
         log.info(`Count grid not ready after ${elapsed}ms (tab: ${want || tabLabel}, saw ${inputCount} input(s))`);
     }
@@ -786,7 +786,7 @@ async function ensureCountEditable(page, cfg, { countKind = 'key-item', resoluti
             }
             const picked = openCounts[0];
             await selectInProgressCountOption(page, cfg, picked.value);
-            log.info(`Resuming open count batch ${picked.batch} — ${picked.countTitle}`);
+            log.info(`Resuming open count batch ${picked.batch} - ${picked.countTitle}`);
             if (onPipelineStep) {
                 const batch = picked.batch ? ` (batch ${picked.batch})` : '';
                 await onPipelineStep(`Resuming existing count${batch}`);
@@ -798,7 +798,7 @@ async function ensureCountEditable(page, cfg, { countKind = 'key-item', resoluti
         const status = await readCountStatus(page, cfg);
         const batch = await readBatchNumber(page, cfg);
         const countTitle = await readSelectedCountTitle(page, cfg);
-        log.info(`Resuming selected count batch ${batch} (${status}) — ${countTitle}`);
+        log.info(`Resuming selected count batch ${batch} (${status}) - ${countTitle}`);
         return { mode: 'in-progress', value: openBatchValue, batch, status, countTitle, countKind };
     }
 
@@ -820,7 +820,7 @@ async function ensureCountEditable(page, cfg, { countKind = 'key-item', resoluti
             const openCount = await findOpenKeyItemCount(page, cfg);
             if (openCount) {
                 log.info(
-                    `Using in-progress Key Item Count batch ${openCount.batch} (status: ${openCount.status}) — ${openCount.countTitle}`
+                    `Using in-progress Key Item Count batch ${openCount.batch} (status: ${openCount.status}) - ${openCount.countTitle}`
                 );
                 if (onPipelineStep) {
                     const batch = openCount.batch ? ` (batch ${openCount.batch})` : '';
@@ -828,18 +828,18 @@ async function ensureCountEditable(page, cfg, { countKind = 'key-item', resoluti
                 }
                 return { mode: 'in-progress', ...openCount, countKind: 'key-item' };
             }
-            log.info('Count in Progress tab — no open Key Item Count batch found');
+            log.info('Count in Progress tab - no open Key Item Count batch found');
         } else {
-            log.info('Count in Progress tab unavailable — will create a new Key Item Count');
+            log.info('Count in Progress tab unavailable - will create a new Key Item Count');
         }
     } else {
         const openCounts = await listOpenCounts(page, cfg);
         if (openCounts.length) {
-            throw new Error('An open count already exists — choose Overwrite or Delete old count.');
+            throw new Error('An open count already exists - choose Overwrite or Delete old count.');
         }
     }
 
-    log.info(`No open ${countKind} count found — starting new count`);
+    log.info(`No open ${countKind} count found - starting new count`);
     return createNewCountBatch(page, cfg, { countKind, onPipelineStep });
 }
 
@@ -996,7 +996,7 @@ const MMX_COUNT_SLOT_LABELS = {
 
 /**
  * Map each non–N/a dashboard unit column to the MMX slot index used when filling counts.
- * Same order as countsToSlotValues — slot 1/2/3 align with catalog columns left to right.
+ * Same order as countsToSlotValues - slot 1/2/3 align with catalog columns left to right.
  */
 function normalizeUnitKind(label) {
     const s = String(label || '').trim().toLowerCase();
@@ -1131,7 +1131,7 @@ function countsToSlotValues(catalogItem, counts, gridRow) {
 }
 
 function parseClosingNum(raw) {
-    if (raw == null || raw === '' || raw === '—' || raw === '-') return null;
+    if (raw == null || raw === '' || raw === '-' || raw === '-') return null;
     const n = Number(String(raw).replace(/,/g, '').trim());
     return Number.isFinite(n) ? n : null;
 }
@@ -1229,18 +1229,18 @@ async function openKeyItemCountForVerification(page, cfg, options = {}) {
     const open = (await isOnInProgressCountPanel(page, cfg)) ? await findOpenKeyItemCount(page, cfg) : null;
     if (open) {
         log.info(
-            `Verification using in-progress Key Item Count batch ${open.batch} (${open.status}) — ${open.countTitle}`
+            `Verification using in-progress Key Item Count batch ${open.batch} (${open.status}) - ${open.countTitle}`
         );
         return { mode: 'in-progress', ...open };
     }
 
     if (!options.allowCreate) {
         throw new Error(
-            'No open Key Item Count batch found. Open or start one in MMX first, or pass --allow-create (read-only — still no Save/Apply).'
+            'No open Key Item Count batch found. Open or start one in MMX first, or pass --allow-create (read-only - still no Save/Apply).'
         );
     }
 
-    log.info('No open Key Item Count — creating a new batch for verification only (will not save)');
+    log.info('No open Key Item Count - creating a new batch for verification only (will not save)');
     return ensureKeyItemCountEditable(page, cfg);
 }
 
@@ -1381,7 +1381,7 @@ async function fillLocationTab(page, cfg, catalog, locationName, itemsAtLocation
     }
     if (!grid.length) {
         throw new Error(
-            `Macromatix ${mmxTab} tab did not load — cannot enter ${locationName} counts. Try again or fill that tab in MMX manually.`
+            `Macromatix ${mmxTab} tab did not load - cannot enter ${locationName} counts. Try again or fill that tab in MMX manually.`
         );
     }
     const byCode = buildGridLookup(grid);
@@ -1575,7 +1575,7 @@ async function clickContinueFromFilledTab(page, cfg, filledTabs) {
     const tabsWithCounts = (filledTabs || []).filter((tab) => tab.filled > 0);
     if (!tabsWithCounts.length) {
         throw new Error(
-            'No Macromatix location tabs received counts — nothing to continue to confirm count.'
+            'No Macromatix location tabs received counts - nothing to continue to confirm count.'
         );
     }
 
@@ -1593,7 +1593,7 @@ async function clickContinueFromFilledTab(page, cfg, filledTabs) {
 
     if (!enabled) {
         throw new Error(
-            `Continue is still disabled on ${target.mmxTab} — save counts on a location tab first.`
+            `Continue is still disabled on ${target.mmxTab} - save counts on a location tab first.`
         );
     }
 
@@ -1614,7 +1614,7 @@ async function scrapeConfirmCountVariances(page) {
             const s = String(raw ?? '')
                 .replace(/[$,]/g, '')
                 .trim();
-            if (!s || s === '—' || s === '-') return null;
+            if (!s || s === '-' || s === '-') return null;
             const n = Number(s);
             return Number.isFinite(n) ? n : null;
         };
@@ -1726,9 +1726,9 @@ async function scrapeConfirmCountVariances(page) {
                 itemCode: itemCodeText,
                 itemName,
                 unit: getText(unitColIdx) || getText(unitIdx) || '',
-                closingBox: getText(boxIdx) || '—',
-                closingInner: getText(innerIdx) || '—',
-                closingUnit: getText(unitIdx) || '—',
+                closingBox: getText(boxIdx) || '-',
+                closingInner: getText(innerIdx) || '-',
+                closingUnit: getText(unitIdx) || '-',
                 stockCounted,
                 stockExpected,
                 varianceQty,
@@ -1779,7 +1779,7 @@ async function applyKeyItemCount(page, cfg) {
         }
 
         if (!(await isStockCountConfirmScreen(page, cfg))) {
-            log.info('Key Item Count already applied in Macromatix — nothing to apply on this screen');
+            log.info('Key Item Count already applied in Macromatix - nothing to apply on this screen');
             return { applied: false, alreadyApplied: true };
         }
 
@@ -1803,7 +1803,7 @@ async function applyKeyItemCountIfReady(page, cfg) {
     }, applyId);
 
     if (!enabled) {
-        log.info('Key Item Count apply button not enabled — count saved tab-by-tab only');
+        log.info('Key Item Count apply button not enabled - count saved tab-by-tab only');
         return false;
     }
 
@@ -1836,7 +1836,7 @@ async function enterCombinedStockCount(page, opts) {
     const locationsToFill = [...locationOrder.filter((loc) => byLocation.has(loc)), ...extraLocations];
 
     log.info(
-        `Opening stock count page for store ${opts.storeNumber} — ${vendorEntries.length} vendor(s), ${locationsToFill.length} location tab(s)`
+        `Opening stock count page for store ${opts.storeNumber} - ${vendorEntries.length} vendor(s), ${locationsToFill.length} location tab(s)`
     );
     if (opts.onPipelineStep) await opts.onPipelineStep('Opening stock count in Macromatix');
     await page.goto(cfg.url, { ...GOTO_OPTS, timeout: navTimeoutMs });
@@ -1931,7 +1931,7 @@ async function enterCombinedStockCount(page, opts) {
             catalogsBySlug,
             filledCountsToClosingArray
         );
-        log.info(`Confirm count loaded — ${variances.length} red variance row(s)`);
+        log.info(`Confirm count loaded - ${variances.length} red variance row(s)`);
         return {
             mode: 'key-item-count-combined',
             countMode,

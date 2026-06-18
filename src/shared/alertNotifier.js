@@ -1,6 +1,6 @@
 /**
  * Optional scrape-failure alerts via webhook and/or SMTP email.
- * Configure in `.env` — all vars optional; alerts are rate-limited.
+ * Configure in `.env` - all vars optional; alerts are rate-limited.
  */
 const ALERT_COOLDOWN_MS = Number(process.env.DASHBOARD_ALERT_COOLDOWN_MS || 30 * 60 * 1000);
 
@@ -49,7 +49,7 @@ async function sendEmail(message) {
     try {
         nodemailer = require('nodemailer');
     } catch {
-        console.warn('[Alert] nodemailer not installed — run npm install to enable email alerts');
+        console.warn('[Alert] nodemailer not installed - run npm install to enable email alerts');
         return;
     }
 
@@ -68,7 +68,7 @@ async function sendEmail(message) {
     await transporter.sendMail({
         from,
         to,
-        subject: 'TBA Dashboard — scrape failure',
+        subject: 'TBA Dashboard - scrape failure',
         text: message,
     });
 }

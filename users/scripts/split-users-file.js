@@ -69,7 +69,7 @@ function main() {
     if (!dryRun) {
         console.log(`Split complete from ${sourcePath}`);
     } else {
-        console.log('Dry run — no files written.');
+        console.log('Dry run - no files written.');
     }
 }
 

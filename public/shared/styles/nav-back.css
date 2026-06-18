@@ -82,7 +82,7 @@
     outline-color: var(--tb-purple-light, #7a3eb1);
 }
 
-/* Legacy class — hide if any old markup remains */
+/* Legacy class - hide if any old markup remains */
 .nav-back-btn {
     display: none;
 }

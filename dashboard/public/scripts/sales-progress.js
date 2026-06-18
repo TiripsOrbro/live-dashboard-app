@@ -1,5 +1,5 @@
 /**
- * Live sales progress layers — same palette and layout as dashboard hourly cells.
+ * Live sales progress layers - same palette and layout as dashboard hourly cells.
  */
 (function () {
     const DEFAULT_TIME_ZONE = 'Australia/Melbourne';

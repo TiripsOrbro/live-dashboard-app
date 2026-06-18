@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Migrate per-user MMX and LifeLenz credentials into per-store login files.
- * Does not delete legacy files — review output then remove manually.
+ * Does not delete legacy files - review output then remove manually.
  */
 const fs = require('fs');
 const path = require('path');

@@ -1,4 +1,4 @@
-/* Shared page scroll — vertical scroll with hidden scrollbar */
+/* Shared page scroll - vertical scroll with hidden scrollbar */
 html.page-scroll {
     overflow-x: hidden;
     overflow-y: auto;

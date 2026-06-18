@@ -128,7 +128,7 @@
             <div class="admin-modal admin-modal--wide admin-modal--history" role="dialog" aria-modal="true">
                 <h2 id="admin-forecast-history-title">Sales history</h2>
                 <p class="admin-accounts-meta" id="admin-forecast-history-meta"></p>
-                <div class="admin-tabs" id="admin-forecast-history-weekdays"></div>
+                <div class="admin-tabs admin-tabs--full" id="admin-forecast-history-weekdays"></div>
                 <div id="admin-forecast-history-body"></div>
                 <p id="admin-forecast-history-error" class="admin-modal-error" role="alert"></p>
                 <div class="admin-modal-actions">

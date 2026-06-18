@@ -1,3 +1,5 @@
+@import url('/styles/app-tabs.css');
+
 .mic-page {
     min-height: 100vh;
     box-sizing: border-box;
@@ -40,89 +42,25 @@
 }
 
 .admin-area-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 0;
     width: 100%;
     flex-shrink: 0;
     margin-bottom: calc(4px * var(--dashboard-scale));
 }
 
-.admin-area-tab-pipe {
-    flex: 0 0 auto;
-    color: color-mix(in srgb, var(--charcoal) 38%, white);
-    font-size: var(--font-size-6);
-    font-weight: var(--font-weight-ui-label);
-    line-height: 1.2;
-    user-select: none;
+.area-page-tabs {
+    margin-bottom: 0.75rem;
 }
 
 .area-page-tabs .admin-area-tab {
-    text-decoration: none;
-}
-
-.admin-area-tab {
-    border: none;
-    background: transparent;
-    font: inherit;
     font-size: var(--font-size-6);
-    font-weight: var(--font-weight-ui-label);
-    padding: calc(3px * var(--dashboard-scale)) calc(7px * var(--dashboard-scale));
-    cursor: pointer;
-    color: color-mix(in srgb, var(--charcoal) 52%, white);
-    border-radius: 3px;
-    line-height: 1.2;
-    white-space: nowrap;
-}
-
-.admin-area-tab.is-active {
-    color: var(--charcoal);
-    font-weight: var(--font-weight-semibold);
-    background: color-mix(in srgb, var(--tb-purple-light) 24%, white);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tb-purple) 32%, transparent);
-}
-
-.admin-area-tab:not(.is-active):hover,
-.admin-area-tab:not(.is-active):focus-visible {
-    color: var(--charcoal);
-    background: color-mix(in srgb, var(--grey) 55%, white);
+    padding: calc(8px * var(--dashboard-scale)) calc(10px * var(--dashboard-scale));
+    text-decoration: none;
 }
 
 .mic-overview-tabs {
     display: none;
     width: 100%;
     box-sizing: border-box;
-}
-
-.mic-overview-tab {
-    border: var(--cell-border) color-mix(in srgb, var(--charcoal) 18%, white);
-    border-radius: calc(6px * var(--dashboard-scale));
-    background: var(--white);
-    color: color-mix(in srgb, var(--charcoal) 72%, white);
-    font: inherit;
-    font-size: var(--font-size-6);
-    font-weight: var(--font-weight-ui-label);
-    padding: calc(8px * var(--dashboard-scale)) calc(4px * var(--dashboard-scale));
-    cursor: pointer;
-    text-align: center;
-    line-height: 1.15;
-    min-height: calc(36px * var(--dashboard-scale));
-}
-
-.mic-overview-tab.is-active {
-    color: var(--charcoal);
-    font-weight: var(--font-weight-semibold);
-    background: color-mix(in srgb, var(--tb-purple-light) 24%, white);
-    border-color: color-mix(in srgb, var(--tb-purple) 32%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tb-purple) 22%, transparent);
-}
-
-.mic-overview-tab:not(.is-active):hover,
-.mic-overview-tab:not(.is-active):focus-visible {
-    color: var(--charcoal);
-    background: color-mix(in srgb, var(--grey) 55%, white);
 }
 
 .mic-tile--area-header {
@@ -793,44 +731,6 @@ html.mic-dark-mode .mic-audit-stat--complete {
     margin-bottom: calc(4px * var(--dashboard-scale));
 }
 
-.admin-market-text-tab {
-    border: none;
-    background: transparent;
-    font: inherit;
-    font-size: var(--font-size-3);
-    font-weight: var(--font-weight-ui-label);
-    padding: calc(2px * var(--dashboard-scale)) calc(8px * var(--dashboard-scale));
-    cursor: pointer;
-    color: color-mix(in srgb, var(--tb-purple-light, #9b63d6) 52%, white 48%);
-    opacity: 0.55;
-    line-height: 1.2;
-    text-align: center;
-    white-space: nowrap;
-    transition:
-        color 0.5s ease,
-        opacity 0.5s ease,
-        font-weight 0.5s ease;
-}
-
-.admin-market-text-tab.is-active {
-    color: #fff;
-    opacity: 1;
-    font-weight: var(--font-weight-semibold);
-}
-
-.admin-market-text-tab:hover:not(.is-active),
-.admin-market-text-tab:focus-visible:not(.is-active) {
-    opacity: 0.72;
-}
-
-.admin-market-text-row.is-dimmed .admin-market-text-tab {
-    opacity: 0.35;
-}
-
-.admin-market-text-row.is-dimmed .admin-market-text-tab.is-active {
-    opacity: 1;
-}
-
 .admin-area-text-row.is-dimmed .admin-area-text-tab {
     opacity: 0.35;
 }
@@ -848,33 +748,7 @@ html.mic-dark-mode .mic-audit-stat--complete {
 .admin-area-text-tab {
     flex: 1 1 0;
     min-width: 0;
-    border: none;
-    background: transparent;
-    font: inherit;
-    font-size: var(--font-size-3);
-    font-weight: var(--font-weight-ui-label);
     padding: calc(2px * var(--dashboard-scale)) 0;
-    cursor: pointer;
-    color: color-mix(in srgb, var(--tb-purple-light, #9b63d6) 52%, white 48%);
-    opacity: 0.55;
-    line-height: 1.2;
-    text-align: center;
-    white-space: nowrap;
-    transition:
-        color 0.5s ease,
-        opacity 0.5s ease,
-        font-weight 0.5s ease;
-}
-
-.admin-area-text-tab.is-active {
-    color: #fff;
-    opacity: 1;
-    font-weight: var(--font-weight-semibold);
-}
-
-.admin-area-text-tab:hover:not(.is-active),
-.admin-area-text-tab:focus-visible:not(.is-active) {
-    opacity: 0.72;
 }
 
 .admin-area-text-pipe {
@@ -2930,51 +2804,13 @@ html.mic-dark-mode .mic-audit-stat--complete {
 }
 
 .mic-settings-panel--tabbed {
-    width: min(28rem, calc(100% - 2rem));
-    max-width: 28rem;
-}
-
-.mic-settings-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    margin: 0 0 0.85rem;
-    border-bottom: var(--cell-border) var(--charcoal);
-    padding-bottom: 0.5rem;
-}
-
-.mic-settings-tab {
-    flex: 1 1 auto;
-    min-width: 0;
-    border: var(--cell-border) transparent;
-    border-radius: 6px 6px 0 0;
-    background: transparent;
-    padding: 0.45rem 0.55rem;
-    font: inherit;
-    font-size: 0.82rem;
-    font-weight: var(--font-weight-semibold, 600);
-    cursor: pointer;
-    color: color-mix(in srgb, var(--charcoal) 72%, white);
-}
-
-.mic-settings-tab.is-active {
-    color: var(--charcoal);
-    border-color: var(--charcoal);
-    border-bottom-color: var(--white);
-    background: var(--white);
+    width: min(38rem, calc(100% - 2rem));
+    max-width: 38rem;
 }
 
 .mic-settings-tabpanels {
-    max-height: min(60vh, 28rem);
+    max-height: min(60vh, 32rem);
     overflow-y: auto;
-}
-
-.mic-settings-tabpanel {
-    display: none;
-}
-
-.mic-settings-tabpanel.is-active {
-    display: block;
 }
 
 .mic-settings-store-email {
@@ -3223,6 +3059,12 @@ html.mic-dark-mode .mic-audit-stat--complete {
     overflow: hidden;
     max-height: none;
     width: min(24rem, calc(100% - 2rem));
+}
+
+.mic-item-picker-panel.mic-settings-panel.mic-settings-panel--tabbed {
+    width: min(38rem, calc(100% - 2rem));
+    max-width: 38rem;
+    padding: 1.35rem 1.5rem 1.15rem;
 }
 
 .mic-item-picker h2 {
@@ -3575,11 +3417,17 @@ button.mic-tile.mic-tile--link {
     }
 
     .mic-overview--mobile .mic-overview-tabs {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: calc(6px * var(--dashboard-scale));
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 0;
         padding: calc(2px * var(--dashboard-scale)) 0 calc(8px * var(--dashboard-scale));
         flex-shrink: 0;
+    }
+
+    .mic-overview--mobile .mic-overview-tab {
+        font-size: var(--font-size-6);
+        min-height: calc(36px * var(--dashboard-scale));
+        padding: calc(8px * var(--dashboard-scale)) calc(4px * var(--dashboard-scale));
     }
 
     .mic-overview--mobile .mic-grid--tabbed {
@@ -4202,17 +4050,6 @@ html.mic-dark-mode .mic-item-option:hover {
 html.mic-dark-mode .mic-item-option,
 html.mic-dark-mode .mic-item-option--none {
     background: #2a2a2a;
-}
-
-html.mic-dark-mode .mic-settings-tab {
-    color: #b0b0b0;
-}
-
-html.mic-dark-mode .mic-settings-tab.is-active {
-    color: #f0f0f0;
-    background: #262626;
-    border-color: #5a5a5a;
-    border-bottom-color: #262626;
 }
 
 html.mic-dark-mode .mic-settings-tabs {

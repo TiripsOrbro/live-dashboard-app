@@ -1,3 +1,5 @@
+@import url('/styles/app-tabs.css');
+
 /* Stock count entry — extends dashboard palette */
 html.page-scroll.stock-count-page {
     height: auto;
@@ -138,60 +140,13 @@ body.stock-count-page {
     font-size: 0.85rem;
 }
 
-.stock-count-locations {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 0;
-    width: 100%;
-    margin-bottom: 0;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-}
-
-.stock-count-locations::-webkit-scrollbar {
-    display: none;
-}
-
 .stock-count-loc-btn {
-    flex: 1 1 0;
-    min-width: 0;
-    border: var(--cell-border, 2px solid) var(--dark-purple-border, #4b3a63);
-    border-bottom: none;
-    background: color-mix(in srgb, var(--blank) 12%, var(--dark-purple-border, #4b3a63));
-    color: var(--blank, #fff);
-    padding: 10px 8px;
-    font: inherit;
-    font-size: 0.78rem;
-    font-weight: 600;
-    cursor: pointer;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    line-height: 1.2;
-    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    transition: background 0.15s ease;
-}
-
-.stock-count-loc-btn + .stock-count-loc-btn {
-    border-left: none;
-}
-
-.stock-count-loc-btn:hover:not(.stock-count-loc-btn--active) {
-    background: color-mix(in srgb, var(--blank) 22%, var(--dark-purple-border, #4b3a63));
 }
 
 .stock-count-loc-btn--active {
-    background: var(--charcoal, #231e1f);
-    color: var(--white, #fff);
-    border-color: var(--charcoal, #231e1f);
     cursor: default;
-}
-
-.stock-count-loc-btn--done:not(.stock-count-loc-btn--active) {
-    background: color-mix(in srgb, var(--blank) 18%, var(--dark-purple-border, #4b3a63));
-    border-color: var(--dark-purple-border, #4b3a63);
 }
 
 .stock-count-credentials-wrap {

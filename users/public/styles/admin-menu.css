@@ -1,10 +1,12 @@
+@import url('/styles/app-tabs.css');
+
 .admin-menu-panel .admin-menu-actions {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
 }
 
-.admin-menu-panel .admin-menu-footer {
+.admin-menu-footer {
     margin-top: 1rem;
     padding-top: 0.75rem;
     border-top: 1px solid rgba(0, 0, 0, 0.08);
@@ -361,41 +363,6 @@ html.mic-rounded-corners .admin-modal--build-to {
 .admin-buildto-close-btn:hover {
     background: #f5f5f5;
     border-color: rgba(0, 0, 0, 0.22);
-}
-
-.admin-modal--build-to .admin-tabs--full {
-    display: flex;
-    width: 100%;
-    gap: 0;
-    margin: 0;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.admin-modal--build-to .admin-tabs--full .admin-tab {
-    flex: 1 1 0;
-    min-width: 0;
-    border: none;
-    border-radius: 0;
-    border-bottom: 3px solid transparent;
-    margin-bottom: -1px;
-    background: transparent;
-    padding: 0.75rem 1rem;
-    font-weight: 600;
-    font-size: 0.9rem;
-    text-align: center;
-    color: rgba(0, 0, 0, 0.55);
-    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
-}
-
-.admin-modal--build-to .admin-tabs--full .admin-tab:hover:not(.is-active) {
-    color: rgba(0, 0, 0, 0.75);
-    background: rgba(122, 62, 177, 0.04);
-}
-
-.admin-modal--build-to .admin-tabs--full .admin-tab.is-active {
-    background: transparent;
-    color: #7a3eb1;
-    border-bottom-color: #7a3eb1;
 }
 
 .admin-modal h2 {
@@ -853,23 +820,7 @@ html.mic-dark-mode .admin-accounts-meta {
 }
 
 .admin-tabs {
-    display: flex;
-    gap: 0.35rem;
     margin-bottom: 0.75rem;
-}
-
-.admin-tab {
-    border: 1px solid rgba(0, 0, 0, 0.12);
-    background: #f5f5f5;
-    border-radius: 999px;
-    padding: 0.35rem 0.85rem;
-    cursor: pointer;
-}
-
-.admin-tab.is-active {
-    background: #7a3eb1;
-    border-color: #7a3eb1;
-    color: #fff;
 }
 
 html.mic-dark-mode .admin-modal {
@@ -880,16 +831,6 @@ html.mic-dark-mode .admin-modal {
 html.mic-dark-mode .admin-table th,
 html.mic-dark-mode .admin-table td,
 html.mic-dark-mode .admin-accounts-list li {
-    border-bottom-color: rgba(255, 255, 255, 0.12);
-}
-
-html.mic-dark-mode .admin-tab {
-    background: #2a2a32;
-    border-color: rgba(255, 255, 255, 0.12);
-    color: #f2f2f2;
-}
-
-html.mic-dark-mode .admin-modal--build-to .admin-tabs--full {
     border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
@@ -1024,23 +965,6 @@ html.mic-dark-mode .admin-buildto-table tbody tr:nth-child(even):hover .admin-bu
 
 html.mic-dark-mode .admin-buildto-close-btn:hover {
     background: #35353f;
-}
-
-html.mic-dark-mode .admin-modal--build-to .admin-tabs--full .admin-tab {
-    background: transparent;
-    border-bottom-color: transparent;
-    color: rgba(255, 255, 255, 0.55);
-}
-
-html.mic-dark-mode .admin-modal--build-to .admin-tabs--full .admin-tab:hover:not(.is-active) {
-    color: rgba(255, 255, 255, 0.78);
-    background: rgba(155, 89, 208, 0.08);
-}
-
-html.mic-dark-mode .admin-modal--build-to .admin-tabs--full .admin-tab.is-active {
-    background: transparent;
-    color: #c9a8e8;
-    border-bottom-color: #c9a8e8;
 }
 
 .admin-modal-backdrop--stacked {
@@ -1929,44 +1853,6 @@ html.mic-dark-mode .admin-forecast-lifelenz-status--warn {
     padding: 1.15rem 1.5rem 0.85rem;
     background: #fff;
     border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.admin-modal--store-logins .admin-tabs--full {
-    display: flex;
-    width: 100%;
-    gap: 3px;
-    margin: 0;
-    padding: 0.45rem 0.45rem 0;
-    border-bottom: none;
-    background: #2a2a32;
-}
-
-.admin-modal--store-logins .admin-tabs--full .admin-tab {
-    flex: 1 1 0;
-    min-width: 0;
-    border: none;
-    border-radius: 8px 8px 0 0;
-    border-bottom: none;
-    margin-bottom: 0;
-    background: #3d3d48;
-    color: rgba(255, 255, 255, 0.72);
-    padding: 0.65rem 1rem;
-    font-weight: 600;
-    text-align: center;
-    cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
-}
-
-.admin-modal--store-logins .admin-tabs--full .admin-tab:hover:not(.is-active) {
-    background: #4a4a56;
-    color: rgba(255, 255, 255, 0.9);
-}
-
-.admin-modal--store-logins .admin-tabs--full .admin-tab.is-active {
-    background: #7a3eb1;
-    color: #fff;
-    border-bottom-color: transparent;
-    box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.08) inset;
 }
 
 .admin-modal--store-logins .admin-store-logins-scope-wrap,

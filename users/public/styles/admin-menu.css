@@ -46,6 +46,7 @@
 .admin-modal--build-to {
     --admin-buildto-pad-left: 2.25rem;
     --admin-buildto-pad-right: 1.5rem;
+    --admin-buildto-pad-top: 2.25rem;
     --admin-buildto-radius: 0;
     --admin-buildto-control-radius: 0;
     padding-left: 0;
@@ -64,7 +65,7 @@ html.mic-rounded-corners .admin-modal--build-to {
 }
 
 .admin-buildto-header {
-    padding: 1.35rem var(--admin-buildto-pad-right) 0.25rem var(--admin-buildto-pad-left);
+    padding: var(--admin-buildto-pad-top) var(--admin-buildto-pad-right) 0.75rem var(--admin-buildto-pad-left);
     background: linear-gradient(135deg, rgba(122, 62, 177, 0.08) 0%, rgba(122, 62, 177, 0.02) 100%);
     border-bottom: 1px solid rgba(122, 62, 177, 0.12);
 }

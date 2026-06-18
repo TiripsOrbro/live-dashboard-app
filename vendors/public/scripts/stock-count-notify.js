@@ -111,15 +111,56 @@
         return Boolean(watch?.notified?.includes(kind));
     }
 
-    function notifyVariancesReady(store, vendorSlug) {
-        if (wasNotified('variances')) return;
-        markNotified('variances');
-        notify(
-            `Store ${store} - review variances`,
-            'Stock count variances are ready to review in the stock count screen.',
-            { tag: `stock-count-variances-${store}`, url: stockCountUrl(store, vendorSlug) }
-        );
+function notifyVariancesReady(store, vendorSlug) {
+    if (wasNotified('variances')) return;
+    markNotified('variances');
+    const title = `Store ${store} - variances to review`;
+    const body = 'There are variances to review before scheduled orders can be placed.';
+    notify(title, body, { tag: `stock-count-variances-${store}`, url: stockCountUrl(store, vendorSlug) });
+    emitAttention({ kind: 'variances', title, body });
+}
+
+function notifyPrepareFailed(store, message) {
+    if (wasNotified('prepare-failed')) return;
+    markNotified('prepare-failed');
+    const body = String(message || 'Stock count could not be sent to Macromatix.').trim();
+    notify(`Store ${store} - send failed`, body, {
+        tag: `stock-count-prepare-failed-${store}`,
+        url: stockCountUrl(store, readWatch()?.vendorSlug),
+    });
+    emitAttention({ kind: 'error', title: 'Send to Macromatix failed', body });
+    clearWatch(store);
+}
+
+function notifyApplyFailed(store, message) {
+    if (wasNotified('apply-failed')) return;
+    markNotified('apply-failed');
+    const body = String(message || 'Could not apply the count or place orders.').trim();
+    notify(`Store ${store} - orders step failed`, body, {
+        tag: `stock-count-apply-failed-${store}`,
+        url: stockCountUrl(store, readWatch()?.vendorSlug),
+    });
+    emitAttention({ kind: 'error', title: 'Orders step failed', body });
+}
+
+function notifyReadyForReview(store, vendorSlug, { title, body, kind }) {
+    const notifyKey = `review-${kind || 'generic'}`;
+    if (wasNotified(notifyKey)) return;
+    markNotified(notifyKey);
+    const safeTitle = title || `Store ${store} - action needed`;
+    const safeBody = body || 'Return to the stock count screen to continue.';
+    notify(safeTitle, safeBody, { tag: `stock-count-${notifyKey}-${store}`, url: stockCountUrl(store, vendorSlug) });
+    emitAttention({ kind: kind || 'info', title: safeTitle, body: safeBody });
+}
+
+function emitAttention(detail) {
+    if (!document.hidden) return;
+    try {
+        window.dispatchEvent(new CustomEvent('stock-count-attention', { detail }));
+    } catch {
+        /* ignore */
     }
+}
 
     function notifyLowStock(store, alerts) {
         if (wasNotified('low-stock')) return;
@@ -168,6 +209,18 @@
         const varianceCount = Number(status.redVarianceCount) || (status.variances?.length ?? 0);
         if (status.stage === 'prepared' && status.sessionId && varianceCount > 0) {
             notifyVariancesReady(store, watch.vendorSlug);
+        } else if (status.stage === 'prepared' && status.sessionId && varianceCount === 0) {
+            notifyReadyForReview(store, watch.vendorSlug, {
+                kind: 'confirm',
+                title: `Store ${store} - ready to confirm`,
+                body: 'No red variances. Confirm on the stock count screen to place scheduled orders.',
+            });
+        }
+        if (status.stage === 'prepare-failed' && !status.inProgress) {
+            notifyPrepareFailed(store, status.lastError);
+        }
+        if (status.stage === 'apply-failed' && !status.inProgress) {
+            notifyApplyFailed(store, status.lastError);
         }
         const ordersDone =
             status.ordersComplete &&
@@ -226,6 +279,10 @@
         notifyVariancesReady,
         notifyOrdersReady,
         notifyLowStock,
+        notifyPrepareFailed,
+        notifyApplyFailed,
+        notifyReadyForReview,
+        emitAttention,
         initPipelineWatcher,
         startPolling,
         stopPolling,

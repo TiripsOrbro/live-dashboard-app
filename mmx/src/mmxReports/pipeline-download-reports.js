@@ -32,7 +32,7 @@ async function configureDownloadPath(page, downloadDir) {
     });
 }
 
-async function clickExportExcelDataOnly(page, report) {
+async function clickExportExcelDataOnly(page, report = {}) {
     if (report.exportButtonSelector) {
         await page.waitForSelector(report.exportButtonSelector, { timeout: 30000 });
         await page.click(report.exportButtonSelector);
@@ -66,6 +66,28 @@ async function clickExportExcelDataOnly(page, report) {
     }
 }
 
+async function scrapeReportPageDiagnostics(page) {
+    try {
+        return await page.evaluate(() => {
+            const chunks = [];
+            for (const el of document.querySelectorAll(
+                '.rgErr, .error, .ValidationSummary, [id*="ErrorLabel"], [id*="lblError"]'
+            )) {
+                const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+                if (t && t.length < 400) chunks.push(t);
+            }
+            const body = (document.body?.innerText || '').replace(/\s+/g, ' ');
+            const m = body.match(
+                /(?:error|failed|unable to|no data|timed out)[^.]{0,180}\./gi
+            );
+            if (m) chunks.push(...m.slice(0, 3));
+            return [...new Set(chunks)].slice(0, 4).join(' | ') || '';
+        });
+    } catch {
+        return '';
+    }
+}
+
 function buildDownloadDest(report, settings, downloaded) {
     const ext = path.extname(downloaded) || report.downloadExt || '.xls';
     const dir = getReportDownloadDir(settings);
@@ -74,23 +96,32 @@ function buildDownloadDest(report, settings, downloaded) {
     return path.join(dir, `${slug}-${base}${ext}`);
 }
 
-async function waitForReportDownload(downloadDir, timeoutMs, preferredExt) {
+async function waitForReportDownload(downloadDir, timeoutMs, preferredExt, pollHooks = {}) {
     const order = preferredExt
         ? [preferredExt, ...DOWNLOAD_EXTS.filter((e) => e !== preferredExt)]
         : DOWNLOAD_EXTS;
-    for (const ext of order) {
+    let lastError = null;
+    for (let i = 0; i < order.length; i++) {
+        const ext = order[i];
+        const attemptMs = i === 0 ? timeoutMs : Math.min(8000, Math.floor(timeoutMs / 8));
         try {
             return await waitForNewDownload(downloadDir, {
-                timeoutMs,
+                timeoutMs: attemptMs,
                 ext,
-                touchEveryMs: 60000,
-                onPoll: refreshScrapePauseTimeout,
+                touchEveryMs: Number(process.env.MMX_DOWNLOAD_EXPORT_RETRY_MS || 30000),
+                onPoll: async () => {
+                    refreshScrapePauseTimeout();
+                    if (typeof pollHooks.onPoll === 'function') {
+                        await pollHooks.onPoll();
+                    }
+                },
             });
         } catch (e) {
-            if (ext === order[order.length - 1]) throw e;
+            lastError = e;
+            if (i === order.length - 1) break;
         }
     }
-    throw new Error('No download received');
+    throw lastError || new Error('No download received');
 }
 
 async function downloadSupplyChainReport(page, report, settings) {
@@ -107,11 +138,45 @@ async function downloadSupplyChainReport(page, report, settings) {
         await settings.onReportStep(`${reportLabel}: waiting for file download…`);
     }
 
+    const downloadWaitMs = Number(report.downloadWaitMs || settings.downloadWaitMs);
+    let exportLinkAttempts = 0;
     const downloaded = await waitForReportDownload(
         getReportDownloadDir(settings),
-        settings.downloadWaitMs,
-        report.downloadExt
-    );
+        downloadWaitMs,
+        report.downloadExt,
+        {
+            onPoll: async () => {
+                exportLinkAttempts++;
+                if (exportLinkAttempts % 2 !== 0) return;
+                const clicked = await page.evaluate(() => {
+                    for (const el of document.querySelectorAll('a, button, input')) {
+                        const t = (el.textContent || el.value || '').trim().toLowerCase();
+                        if (
+                            (t.includes('excel') && (t.includes('data') || t.includes('only'))) ||
+                            t === 'export' ||
+                            t.includes('download')
+                        ) {
+                            el.click();
+                            return t;
+                        }
+                    }
+                    return null;
+                });
+                if (clicked) {
+                    log.info(`${report.label || report.id}: clicked export link "${clicked}" while waiting for download`);
+                }
+            },
+        }
+    ).catch(async (err) => {
+        const diag = await scrapeReportPageDiagnostics(page);
+        const url = page.url();
+        if (diag) {
+            log.warn(`${report.label || report.id}: page diagnostics after timeout: ${diag}`);
+        }
+        log.warn(`${report.label || report.id}: page URL at timeout: ${url}`);
+        const hint = diag ? ` Macromatix page: ${diag}` : '';
+        throw new Error(`${err.message}.${hint}`);
+    });
     const dest = buildDownloadDest(report, settings, downloaded);
     if (downloaded !== dest) {
         fs.renameSync(downloaded, dest);
@@ -132,6 +197,9 @@ async function downloadSupplyChainReport(page, report, settings) {
     if (typeof settings.onReportStep === 'function') {
         const reportLabel = report.label || report.reportName || report.id || 'report';
         await settings.onReportStep(`Downloaded ${reportLabel} → ${path.basename(dest)}`);
+    }
+    if (settings.chainSession) {
+        settings.chainSession.hubOpen = false;
     }
     refreshScrapePauseTimeout();
     return dest;

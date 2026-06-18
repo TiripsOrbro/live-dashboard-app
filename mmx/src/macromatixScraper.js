@@ -2326,19 +2326,42 @@ function resolveMacromatixCredentialsForStore(storeNumber, options = {}) {
 
 function resolveMacromatixCredentials(options = {}) {
     const storeNumber = String(options.storeNumber || '').trim();
+    const oneTimeUser = String(options.mmxUsername || options.username || '').trim();
+    const oneTimePass = String(options.mmxPassword ?? options.password ?? '');
+    if (oneTimeUser && oneTimePass) {
+        return {
+            username: oneTimeUser,
+            password: oneTimePass,
+            source: options.mmxUsername || options.mmxPassword ? 'one-time session' : 'explicit options',
+        };
+    }
+
+    if (options.useDashboardUserMmx && options.dashboardUsername) {
+        const { readMmxCredentialsForUser } = require('../../users/src/core/mmxUserCredentials');
+        const userCreds = readMmxCredentialsForUser(options.dashboardUsername);
+        if (userCreds?.username && userCreds?.password) {
+            console.log(
+                `[Macromatix] Store ${storeNumber || '-'}: using crew login for ${options.dashboardUsername} (${maskUsernameForLog(userCreds.username)})`
+            );
+            return {
+                username: userCreds.username,
+                password: userCreds.password,
+                source: `user-mmx/${options.dashboardUsername}`,
+            };
+        }
+        if (options.requireDashboardUserMmx) {
+            throw new Error(
+                'Your Macromatix login is not set up. Enter your MMX username and password when sending to Macromatix.'
+            );
+        }
+    }
+
     if (storeNumber) {
         const perStore = resolveMacromatixCredentialsForStore(storeNumber, options);
         return {
             username: perStore.username,
             password: perStore.password,
             source: perStore.source || 'store-logins/mmx',
-        };
-    }
-    if (options.username != null && options.password != null) {
-        return {
-            username: String(options.username || '').trim(),
-            password: String(options.password || ''),
-            source: 'explicit options',
         };
     }
     throw new Error(`Macromatix credentials require a store number. ${STORE_LOGIN_SETUP_HINT}`);

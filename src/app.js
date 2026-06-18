@@ -125,7 +125,7 @@ const {
     getDailyCountPipelineStatus,
     isDailyCountPipelineBusy,
 } = require('./services/dailyStockCountMmxPipeline');
-const { hasMmxCredentialsForUser } = require('./services/mmxUserCredentials');
+const { hasMmxCredentialsForUser, readMmxCredentialsForUser, saveMmxCredentialsForUser } = require('./services/mmxUserCredentials');
 const {
     getDismissalPeriodKey,
     getAuditSchedule,
@@ -269,6 +269,7 @@ const {
     appendAuthEvent,
     appendAccountAudit,
     isRealDashboardUser,
+    isPrimaryStoreLogin,
     canUserAccessDfsc,
     getAccountLevel,
     canUserCompleteAudits,
@@ -2324,14 +2325,73 @@ function pendingVendorLabelsForStockCount(req, storeNumber) {
     return labels;
 }
 
-/** Pass store + signed-in user so MMX automation prefers Create-account logins for that store. */
+/** Crew accounts use their own MMX login for stock count; store tablet logins use Admin store credentials. */
+function stockCountUsesPersonalMmx(user) {
+    return Boolean(isRealDashboardUser(user) && !isPrimaryStoreLogin(user));
+}
+
+function maskMmxLoginForStatus(username) {
+    const raw = String(username || '').trim();
+    if (!raw) return '';
+    if (raw.length <= 4) return `${raw.slice(0, 1)}***`;
+    return `${raw.slice(0, 3)}***${raw.slice(-2)}`;
+}
+
+function mmxUserLoginBody(req) {
+    return {
+        mmxUsername: String(req.body?.mmxUsername || '').trim(),
+        mmxPassword: String(req.body?.mmxPassword || ''),
+        remember: !/^(0|false|no|off)$/i.test(String(req.body?.remember ?? 'true')),
+    };
+}
+
+async function verifyAndOptionallySaveUserMmxLogin(req, dashboardUsername) {
+    const { mmxUsername, mmxPassword, remember } = mmxUserLoginBody(req);
+    if (!mmxUsername || !mmxPassword) {
+        return { ok: false, status: 400, error: 'Macromatix username and password are required.' };
+    }
+    const verified = await verifyMacromatixLogin(mmxUsername, mmxPassword);
+    if (!verified.ok) {
+        return { ok: false, status: 400, error: verified.error || 'Macromatix login failed.' };
+    }
+    if (remember) {
+        const saved = saveMmxCredentialsForUser(dashboardUsername, mmxUsername, mmxPassword);
+        if (!saved.ok) {
+            return { ok: false, status: 500, error: saved.error || 'Could not save Macromatix login.' };
+        }
+    }
+    return { ok: true, mmxUsername, mmxPassword, remembered: remember };
+}
+
+function assertStockCountUserMmxLogin(req, res) {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!stockCountUsesPersonalMmx(user)) return true;
+    const dashUser = String(user?.username || '').trim();
+    const body = mmxUserLoginBody(req);
+    if (body.mmxUsername && body.mmxPassword) return true;
+    if (hasMmxCredentialsForUser(dashUser)) return true;
+    res.status(403).json({
+        success: false,
+        needsMmxUserLogin: true,
+        error: 'Enter your personal Macromatix login to send counts. This is recorded under your user in Macromatix.',
+    });
+    return false;
+}
+
+/** Pass store + signed-in user so MMX automation uses crew personal login when applicable. */
 function mmxAutomationOptions(req, storeNumber, extra = {}) {
     const user = req.dashboardUser || getRequestUser(req);
+    const personalMmx = stockCountUsesPersonalMmx(user);
+    const body = mmxUserLoginBody(req);
     return {
         ...extra,
         storeNumber: String(storeNumber),
         dashboardUsername: String(user?.username || '').trim(),
-        preferDashboardMmxCredentials: hasMultiStoreScope(user) || isSuperAdminUser(user),
+        useDashboardUserMmx: personalMmx,
+        requireDashboardUserMmx: personalMmx,
+        ...(body.mmxUsername && body.mmxPassword
+            ? { mmxUsername: body.mmxUsername, mmxPassword: body.mmxPassword }
+            : {}),
     };
 }
 
@@ -3011,11 +3071,19 @@ app.post('/api/account/complete-password-setup', (req, res) => {
     });
 });
 
-app.post('/api/account/complete-mmx-setup', (req, res) => {
-    res.status(410).json({
-        success: false,
-        error: 'Per-user Macromatix setup is no longer used. Configure store logins in Admin menu → Setup Store Logins.',
-    });
+app.post('/api/account/complete-mmx-setup', async (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.status(403).json({ success: false, error: 'Sign in with your crew account to save Macromatix login.' });
+        return;
+    }
+    const dashUser = String(user.username || '').trim();
+    const result = await verifyAndOptionallySaveUserMmxLogin(req, dashUser);
+    if (!result.ok) {
+        res.status(result.status || 400).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({ success: true, remembered: result.remembered });
 });
 
 app.post('/api/account/change-password', (req, res) => {
@@ -4098,6 +4166,43 @@ app.post('/api/stock-count/reopen', async (req, res) => {
     }
 });
 
+app.get('/api/stock-count/mmx-user-login', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    const store = stockCountStoreFromQuery(req);
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    if (!stockCountUsesPersonalMmx(user)) {
+        res.json({ success: true, required: false, configured: true });
+        return;
+    }
+    const dashUser = String(user.username || '').trim();
+    const creds = readMmxCredentialsForUser(dashUser);
+    res.json({
+        success: true,
+        required: true,
+        configured: hasMmxCredentialsForUser(dashUser),
+        maskedUsername: creds ? maskMmxLoginForStatus(creds.username) : '',
+    });
+});
+
+app.post('/api/stock-count/mmx-user-login', async (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.status(403).json({ success: false, error: 'Sign in with your crew account.' });
+        return;
+    }
+    if (!stockCountUsesPersonalMmx(user)) {
+        res.status(400).json({ success: false, error: 'Store login accounts use the store Macromatix login from Admin.' });
+        return;
+    }
+    const dashUser = String(user.username || '').trim();
+    const result = await verifyAndOptionallySaveUserMmxLogin(req, dashUser);
+    if (!result.ok) {
+        res.status(result.status || 400).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({ success: true, remembered: result.remembered, maskedUsername: maskMmxLoginForStatus(result.mmxUsername) });
+});
+
 app.get('/api/stock-count/send-plan', async (req, res) => {
     try {
         const store = stockCountStoreFromQuery(req);
@@ -4118,6 +4223,7 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
         const store = stockCountStoreFromQuery(req);
         const vendorSlug = stockCountVendorFromQuery(req);
         if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertStockCountUserMmxLogin(req, res)) return;
 
         const pipeline = await getStockCountPipelineStatus(store);
         if (isStockCountPipelineBusy(pipeline.stage)) {
@@ -4172,6 +4278,7 @@ app.post('/api/stock-count/send-to-mmx/apply', async (req, res) => {
         let sessionId = String(req.body?.sessionId || req.query.sessionId || '').trim();
         const ordersOnly = /^(1|true|yes|on)$/i.test(String(req.body?.ordersOnly ?? req.query.ordersOnly ?? ''));
         if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertStockCountUserMmxLogin(req, res)) return;
 
         if (ordersOnly) {
             console.log(`[StockCount] Scheduled orders only - store ${store}`);

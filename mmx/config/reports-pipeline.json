@@ -25,6 +25,7 @@
       "reportName": "SCM - Items On Order (Flat)",
       "format": "Excel Data Only",
       "downloadExt": ".xls",
+      "downloadWaitMs": 300000,
       "startDate": "daysAgo:7",
       "endDate": "daysFromNow:14",
       "dateOnly": true,

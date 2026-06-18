@@ -37,6 +37,8 @@ let mmxPipelineManualOnly = false;
 let mmxActivityLog = [];
 let mmxLastKnownServerInProgress = false;
 let mmxPollInFlight = null;
+let mmxLoginSession = null;
+let stockCountToastTimer = null;
 let lowStockAlerts = [];
 let lowStockPanelOpen = false;
 let levelsSummary = null;
@@ -1553,9 +1555,145 @@ async function waitForPipelinePrepareComplete() {
     return pollStockCountPipelineUntilDone();
 }
 
+function mmxLoginRequestBody() {
+    if (!mmxLoginSession?.mmxUsername || !mmxLoginSession?.mmxPassword) return {};
+    return {
+        mmxUsername: mmxLoginSession.mmxUsername,
+        mmxPassword: mmxLoginSession.mmxPassword,
+        remember: false,
+    };
+}
+
+function showStockCountToast(title, body, kind = 'info') {
+    let host = document.getElementById('sc-attention-toast');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'sc-attention-toast';
+        host.className = 'stock-count-attention-toast';
+        host.setAttribute('role', 'alert');
+        document.body.appendChild(host);
+    }
+    host.className = `stock-count-attention-toast stock-count-attention-toast--${kind}`;
+    host.innerHTML = `<strong class="stock-count-attention-toast-title">${escapeHtml(title)}</strong><span class="stock-count-attention-toast-body">${escapeHtml(body)}</span>`;
+    host.hidden = false;
+    if (stockCountToastTimer) clearTimeout(stockCountToastTimer);
+    stockCountToastTimer = setTimeout(() => {
+        host.hidden = true;
+    }, 12000);
+}
+
+function showVarianceAttention(varianceCount) {
+    const count = Number(varianceCount) || 0;
+    const title = count > 0 ? 'Variances to review' : 'Ready to confirm';
+    const body =
+        count > 0
+            ? `There ${count === 1 ? 'is' : 'are'} ${count} variance${count === 1 ? '' : 's'} to review before placing orders.`
+            : 'No red variances. Confirm below to place scheduled orders.';
+    showStockCountToast(title, body, count > 0 ? 'warn' : 'ok');
+}
+
+function showMmxUserLoginModal(maskedUsername = '') {
+    return new Promise((resolve) => {
+        const backdrop = document.createElement('div');
+        backdrop.className = 'stock-count-processing stock-count-processing--fullscreen';
+        backdrop.setAttribute('role', 'dialog');
+        backdrop.setAttribute('aria-modal', 'true');
+        backdrop.innerHTML = `
+            <div class="stock-count-processing-card stock-count-processing-card--wait stock-count-processing-card--fullscreen stock-count-mmx-login-card">
+                <h2 class="stock-count-processing-label">Your Macromatix login</h2>
+                <p class="stock-count-mmx-wait-body">Counts are sent under <strong>your</strong> Macromatix user so Key Item Count shows who entered them.${maskedUsername ? ` Last saved: <strong>${escapeHtml(maskedUsername)}</strong>.` : ''}</p>
+                <label class="stock-count-mmx-login-field">MMX username
+                    <input type="text" id="sc-mmx-login-user" class="stock-count-input" autocomplete="username" />
+                </label>
+                <label class="stock-count-mmx-login-field">MMX password
+                    <input type="password" id="sc-mmx-login-pass" class="stock-count-input" autocomplete="current-password" />
+                </label>
+                <label class="stock-count-mmx-login-remember">
+                    <input type="checkbox" id="sc-mmx-login-remember" checked />
+                    Remember my Macromatix login on this account
+                </label>
+                <p id="sc-mmx-login-error" class="stock-count-mmx-login-error" hidden></p>
+                <div class="stock-count-mmx-login-actions">
+                    <button type="button" class="stock-count-btn stock-count-btn--secondary" id="sc-mmx-login-cancel">Cancel</button>
+                    <button type="button" class="stock-count-btn stock-count-btn--primary" id="sc-mmx-login-submit">Continue</button>
+                </div>
+            </div>`;
+        document.body.appendChild(backdrop);
+        const userInput = backdrop.querySelector('#sc-mmx-login-user');
+        const passInput = backdrop.querySelector('#sc-mmx-login-pass');
+        const errEl = backdrop.querySelector('#sc-mmx-login-error');
+        const finish = (value) => {
+            backdrop.remove();
+            resolve(value);
+        };
+        backdrop.querySelector('#sc-mmx-login-cancel')?.addEventListener('click', () => finish(null));
+        backdrop.querySelector('#sc-mmx-login-submit')?.addEventListener('click', async () => {
+            const mmxUsername = String(userInput?.value || '').trim();
+            const mmxPassword = String(passInput?.value || '');
+            const remember = Boolean(backdrop.querySelector('#sc-mmx-login-remember')?.checked);
+            if (!mmxUsername || !mmxPassword) {
+                if (errEl) {
+                    errEl.textContent = 'Enter your Macromatix username and password.';
+                    errEl.hidden = false;
+                }
+                return;
+            }
+            if (remember) {
+                const { res, data } = await fetchJson(apiQuery('/api/stock-count/mmx-user-login'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ mmxUsername, mmxPassword, remember: true }),
+                });
+                if (!res.ok || !data.success) {
+                    if (errEl) {
+                        errEl.textContent = data.error || 'Macromatix login failed.';
+                        errEl.hidden = false;
+                    }
+                    return;
+                }
+                finish({ mmxUsername, mmxPassword, remember: true });
+                return;
+            }
+            finish({ mmxUsername, mmxPassword, remember: false });
+        });
+        userInput?.focus();
+    });
+}
+
+async function ensureMmxUserLoginBeforeSend() {
+    const { res, data } = await fetchJson(apiQuery('/api/stock-count/mmx-user-login'));
+    if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Could not check Macromatix login status.');
+    }
+    if (!data.required || data.configured) {
+        mmxLoginSession = null;
+        return;
+    }
+    const creds = await showMmxUserLoginModal(data.maskedUsername || '');
+    if (!creds) {
+        throw new Error('Macromatix login is required to send counts.');
+    }
+    if (!creds.remember) {
+        mmxLoginSession = creds;
+    } else {
+        mmxLoginSession = null;
+    }
+}
+
 async function acceptSendToMmx() {
+    const postSend = () =>
+        fetchJson(apiQuery('/api/stock-count/send-to-mmx'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(mmxLoginRequestBody()),
+        });
+
     try {
-        const { res, data } = await fetchJson(apiQuery('/api/stock-count/send-to-mmx'), { method: 'POST' });
+        let { res, data } = await postSend();
+        if (res.status === 403 && data?.needsMmxUserLogin) {
+            await ensureMmxUserLoginBeforeSend();
+            ({ res, data } = await postSend());
+        }
         if (!res.ok || !data.success) {
             const detail = String(data.error || '').trim();
             throw new Error(detail || `Send to Macromatix failed (HTTP ${res.status}).`);
@@ -1583,7 +1721,8 @@ async function handlePipelinePollOutcome(outcome) {
     if (outcome?.autoApplied || outcome?.reset) return;
     if (outcome?.prepared && (await showPreparedVariancesFromStatus(outcome.status))) {
         endMmxProcessing();
-        window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
+        const varianceCount = Number(outcome.status?.redVarianceCount) || (outcome.status?.variances?.length ?? 0);
+        showVarianceAttention(varianceCount);
         setStatus('Review variances below, then confirm to place scheduled orders.', '');
         render();
     }
@@ -1645,7 +1784,8 @@ async function refreshMmxPipelineUi() {
     if (pipelineNeedsVarianceReview(status)) {
         if (await showPreparedVariancesFromStatus(status)) {
             endMmxProcessing();
-            window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
+            const varianceCount = Number(status.redVarianceCount) || (status.variances?.length ?? 0);
+            showVarianceAttention(varianceCount);
             setStatus('Review variances below, then confirm to place scheduled orders.', '');
             render();
         }
@@ -1680,6 +1820,8 @@ async function tryResumePipelineOnLoad() {
 
     if (status && pipelineNeedsVarianceReview(status)) {
         if (await showPreparedVariancesFromStatus(status)) {
+            const varianceCount = Number(status.redVarianceCount) || (status.variances?.length ?? 0);
+            showVarianceAttention(varianceCount);
             setStatus('Review variances below, then confirm to place scheduled orders.', '');
             return true;
         }
@@ -1748,6 +1890,14 @@ async function sendToMmx() {
     }
 
     try {
+        await ensureMmxUserLoginBeforeSend();
+    } catch (error) {
+        setStatus(error.message, 'error');
+        render();
+        return;
+    }
+
+    try {
         if (viewMode === 'recount') {
             const saved = await saveAllRecountLocations();
             if (!saved) {
@@ -1811,7 +1961,9 @@ async function sendToMmx() {
             }
             if (outcome?.prepared && (await showPreparedVariancesFromStatus(outcome.status))) {
                 endMmxProcessing();
-                window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
+                const varianceCount =
+                    Number(outcome.status?.redVarianceCount) || (outcome.status?.variances?.length ?? 0);
+                showVarianceAttention(varianceCount);
                 setStatus('Review variances below, then confirm to place scheduled orders.', '');
                 return;
             }
@@ -1826,7 +1978,8 @@ async function sendToMmx() {
         if (accepted.sessionId && pipelineNeedsVarianceReview(accepted)) {
             if (await showPreparedVariancesFromStatus(accepted)) {
                 endMmxProcessing();
-                window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
+                const varianceCount = Number(accepted.redVarianceCount) || (accepted.variances?.length ?? 0);
+                showVarianceAttention(varianceCount);
                 setStatus('Review variances below, then confirm to place scheduled orders.', '');
                 return;
             }
@@ -1842,7 +1995,9 @@ async function sendToMmx() {
                 }
                 if (outcome?.prepared && (await showPreparedVariancesFromStatus(outcome.status))) {
                     endMmxProcessing();
-                    window.StockCountNotify?.notifyVariancesReady?.(STORE_NUMBER, VENDOR_SLUG);
+                    const varianceCount =
+                        Number(outcome.status?.redVarianceCount) || (outcome.status?.variances?.length ?? 0);
+                    showVarianceAttention(varianceCount);
                     setStatus('Review variances below, then confirm to place scheduled orders.', '');
                     return;
                 }
@@ -1901,17 +2056,33 @@ async function sendToMmx() {
 
 async function applyMmxCount() {
     if (!mmxSessionId || saving) return;
+
+    try {
+        await ensureMmxUserLoginBeforeSend();
+    } catch (error) {
+        setStatus(error.message, 'error');
+        render();
+        return;
+    }
+
     saving = true;
     beginMmxProcessing('Placing scheduled orders…');
     mmxProcessingStepId = 'orders';
     setStatus('', '');
     render();
     try {
-        const { res, data } = await fetchJson(apiQuery('/api/stock-count/send-to-mmx/apply'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId: mmxSessionId }),
-        });
+        const postApply = () =>
+            fetchJson(apiQuery('/api/stock-count/send-to-mmx/apply'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: mmxSessionId, ...mmxLoginRequestBody() }),
+            });
+
+        let { res, data } = await postApply();
+        if (res.status === 403 && data?.needsMmxUserLogin) {
+            await ensureMmxUserLoginBeforeSend();
+            ({ res, data } = await postApply());
+        }
         if (!res.ok || !data.success) {
             const msg = data.error || 'Apply failed.';
             if (/already applied|nothing to apply/i.test(msg)) {
@@ -2257,11 +2428,13 @@ function endMmxProcessing() {
 function showMmxProcessingError(message, failedAtStep, options = {}) {
     clearMmxUiWatch();
     mmxLastKnownServerInProgress = false;
+    const safeMessage = String(message || 'Something went wrong').trim();
+    const safeStep = String(
+        failedAtStep || mmxLastPipelineStep || processingStageLabel || 'Unknown step'
+    ).trim();
     mmxProcessingError = {
-        message: String(message || 'Something went wrong').trim(),
-        failedAtStep: String(
-            failedAtStep || mmxLastPipelineStep || processingStageLabel || 'Unknown step'
-        ).trim(),
+        message: safeMessage,
+        failedAtStep: safeStep,
         recoverable:
             options.recoverable !== undefined
                 ? Boolean(options.recoverable)
@@ -2269,6 +2442,14 @@ function showMmxProcessingError(message, failedAtStep, options = {}) {
     };
     processing = false;
     document.body.classList.add('stock-count-mmx-wait-active');
+    if (!options.silentToast) {
+        const isApply = /apply|order|filling/i.test(safeStep);
+        showStockCountToast(
+            isApply ? 'Orders step failed' : 'Send to Macromatix failed',
+            safeMessage,
+            'error'
+        );
+    }
 }
 
 function dismissMmxProcessingError() {
@@ -2767,6 +2948,19 @@ async function init() {
     document.documentElement.classList.add('stock-count-page');
     document.body.classList.add('stock-count-page');
     setupMmxPipelineVisibilityRecovery();
+    window.addEventListener('stock-count-attention', (event) => {
+        const { title, body, kind } = event.detail || {};
+        if (!title || !body) return;
+        const toastKind =
+            kind === 'error'
+                ? 'error'
+                : kind === 'variances' || kind === 'warn'
+                  ? 'warn'
+                  : kind === 'confirm' || kind === 'ok'
+                    ? 'ok'
+                    : 'info';
+        showStockCountToast(title, body, toastKind);
+    });
     if (!STORE_NUMBER || !VENDOR_SLUG) {
         app.textContent = 'Invalid stock count URL.';
         return;

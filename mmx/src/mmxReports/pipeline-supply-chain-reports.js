@@ -9,6 +9,7 @@ const {
     waitForReportFormatControls,
     waitForReportSelectionPage,
     waitForScmReportList,
+    clickAndWaitForPostback,
 } = require('./mmx-postback');
 const { refreshScrapePauseTimeout } = require('../mmxResourceGate');
 const log = require('./util-logging');
@@ -1548,6 +1549,7 @@ async function selectStore(page, storeName, opts = {}) {
 }
 
 async function clickGenerate(page, buttonText = 'Generate') {
+    const postbackMs = Number(process.env.MMX_REPORT_GENERATE_POSTBACK_MS || 180000);
     const clicked = await page.evaluate((label) => {
         const want = label.toLowerCase();
         for (const el of document.querySelectorAll('input, button, a')) {
@@ -1562,7 +1564,29 @@ async function clickGenerate(page, buttonText = 'Generate') {
 
     if (!clicked) throw new Error(`Generate button not found`);
     log.info('Clicked Generate - waiting for report export');
+
+    await clickAndWaitForPostback(page, () => Promise.resolve(), {
+        timeoutMs: postbackMs,
+        skipNavigationWait: true,
+    }).catch(() => {});
+
+    await page
+        .waitForFunction(
+            () => {
+                const loading = document.querySelector(
+                    '[id*="Loading"], .raLoading, .RadAjaxLoadingPanel, .RadAjaxLoading'
+                );
+                if (!loading) return true;
+                const style = window.getComputedStyle(loading);
+                if (style.display === 'none' || style.visibility === 'hidden') return true;
+                return loading.offsetParent === null;
+            },
+            { timeout: postbackMs, polling: 500 }
+        )
+        .catch(() => {});
+
     await page.waitForTimeout(Number(process.env.MMX_REPORT_GENERATE_SETTLE_MS || 350));
+    refreshScrapePauseTimeout();
 }
 
 function dateOpts(report) {
@@ -1587,7 +1611,16 @@ async function configureAndGenerateReport(page, report, reportNav, hooks = {}) {
         await openReportSelectionPage(page, reportNav, report.navTimeoutMs || 45000);
         if (chain) chain.hubOpen = true;
     } else {
-        await emit('reusing Report Selection…');
+        const hubReady = await reportSelectionPageReady(page);
+        if (!hubReady) {
+            log.warn('Report Selection left the hub page - reopening before next report');
+            chain.hubOpen = false;
+            await emit('opening Report Selection…');
+            await openReportSelectionPage(page, reportNav, report.navTimeoutMs || 45000);
+            chain.hubOpen = true;
+        } else {
+            await emit('reusing Report Selection…');
+        }
     }
 
     const group = report.group || 'Supply Chain';
@@ -1631,6 +1664,7 @@ async function configureAndGenerateReport(page, report, reportNav, hooks = {}) {
         } else {
             await emit(`keeping end date (${endDate})…`);
         }
+        await waitForScmStoreTreeAfterDates(page);
     } else if (chain) {
         chain.lastEndDate = null;
     }
@@ -1639,7 +1673,7 @@ async function configureAndGenerateReport(page, report, reportNav, hooks = {}) {
         log.info(`SCM store tree: loading store picker for ${report.scmTreeStoreNumber}`);
         await emit(`selecting store ${report.scmTreeStoreNumber} in tree…`);
         await selectScmStoreCheckboxInTree(page, report.scmTreeStoreNumber, report.storeName, {
-            skipDateWait: true,
+            skipDateWait: !report.endDate,
         });
     } else if (!report.skipStoreSelection && report.storeName) {
         await emit('selecting store…');

@@ -177,6 +177,19 @@ function isCombinedMode() {
     return IS_COMBINED;
 }
 
+/** Per-vendor slugs for draft/catalog APIs (never `combined`). */
+function perVendorSlugs(preferredSlugs = []) {
+    const fromPreferred = preferredSlugs.filter((slug) => slug && slug !== 'combined');
+    if (fromPreferred.length) return [...new Set(fromPreferred)];
+    const fromMmx = mmxVendorSlugs.filter((slug) => slug && slug !== 'combined');
+    if (fromMmx.length) return [...new Set(fromMmx)];
+    if (isCombinedMode() && combinedVendorSlugs.length) {
+        return [...new Set(combinedVendorSlugs)];
+    }
+    if (VENDOR_SLUG && VENDOR_SLUG !== 'combined') return [VENDOR_SLUG];
+    return [];
+}
+
 function itemSourceSlug(item) {
     return item?.sourceVendorSlug || VENDOR_SLUG;
 }
@@ -186,9 +199,17 @@ function itemCatalogKey(item) {
 }
 
 function draftForVendor(slug) {
+    if (viewMode === 'recount') {
+        return (
+            recountDrafts[slug] ||
+            varianceDrafts[slug] ||
+            (isCombinedMode() ? vendorDrafts[slug] : null) ||
+            (slug === VENDOR_SLUG ? draft : null)
+        );
+    }
     if (isCombinedMode()) return vendorDrafts[slug] || null;
     if (slug === VENDOR_SLUG) return draft;
-    return recountDrafts[slug] || varianceDrafts[slug] || null;
+    return varianceDrafts[slug] || null;
 }
 
 function vendorHasCountableData() {
@@ -335,10 +356,11 @@ function productNameWithoutSize(name) {
 
 function getDraftsBySlugForMatching() {
     const out = {};
-    for (const slug of [...new Set([VENDOR_SLUG, ...mmxVendorSlugs])]) {
-        if (slug === VENDOR_SLUG && draft?.locations) out[slug] = draft;
-        else if (varianceDrafts[slug]?.locations) out[slug] = varianceDrafts[slug];
+    for (const slug of perVendorSlugs(mmxVendorSlugs)) {
+        if (varianceDrafts[slug]?.locations) out[slug] = varianceDrafts[slug];
         else if (recountDrafts[slug]?.locations) out[slug] = recountDrafts[slug];
+        else if (isCombinedMode() && vendorDrafts[slug]?.locations) out[slug] = vendorDrafts[slug];
+        else if (!isCombinedMode() && slug === VENDOR_SLUG && draft?.locations) out[slug] = draft;
     }
     return out;
 }
@@ -420,12 +442,13 @@ function findBestCatalogMatchByClosingValues(variance, catalogsBySlug, draftsByS
 }
 
 function buildCatalogsBySlugForVarianceMatch() {
-    const slugs = mmxVendorSlugs.length ? mmxVendorSlugs : [VENDOR_SLUG];
     const catalogsBySlug = new Map();
-    for (const slug of [...new Set([VENDOR_SLUG, ...slugs])]) {
-        const vendorCatalog = vendorCatalogsCache.get(slug) || (slug === VENDOR_SLUG ? catalog : null);
+    for (const slug of perVendorSlugs(mmxVendorSlugs)) {
+        const vendorCatalog = vendorCatalogsCache.get(slug);
         if (vendorCatalog) catalogsBySlug.set(slug, vendorCatalog);
     }
+    if (isCombinedMode() && catalog) catalogsBySlug.set('combined', catalog);
+    else if (!isCombinedMode() && catalog) catalogsBySlug.set(VENDOR_SLUG, catalog);
     return catalogsBySlug;
 }
 
@@ -609,7 +632,7 @@ function recountLocationOrder() {
     };
 
     addCatalog(catalog);
-    for (const slug of mmxVendorSlugs.length ? mmxVendorSlugs : [VENDOR_SLUG]) {
+    for (const slug of perVendorSlugs(mmxVendorSlugs)) {
         addCatalog(vendorCatalogsCache.get(slug));
     }
     const active = getActiveCatalog();
@@ -716,7 +739,7 @@ async function loadVendorCatalogAndDraft(slug) {
 }
 
 async function loadAllVendorCatalogsForRecount(slugs) {
-    const unique = [...new Set([VENDOR_SLUG, ...slugs.filter(Boolean)])];
+    const unique = perVendorSlugs(slugs);
     const catalogsBySlug = new Map();
     recountDrafts = {};
 
@@ -731,7 +754,7 @@ async function loadAllVendorCatalogsForRecount(slugs) {
 }
 
 async function buildRecountCatalog() {
-    const slugs = mmxVendorSlugs.length ? mmxVendorSlugs : [VENDOR_SLUG];
+    const slugs = perVendorSlugs(mmxVendorSlugs);
     const catalogsBySlug = await loadAllVendorCatalogsForRecount(slugs);
     const matchedItems = [];
     const seenVarianceKeys = new Set();
@@ -764,7 +787,7 @@ async function buildRecountCatalog() {
             unitSlots,
             locations: [fallbackLocation],
             variance,
-            sourceVendorSlug: VENDOR_SLUG,
+            sourceVendorSlug: perVendorSlugs(mmxVendorSlugs)[0] || VENDOR_SLUG,
             unmatched: true,
         });
     }
@@ -905,9 +928,9 @@ async function saveCurrentLocation(showFeedback = true, options = {}) {
                 if (!res.ok || !data.success) {
                     throw new Error(data.error || `Failed to save counts for ${slug}.`);
                 }
+                if (viewMode === 'recount') recountDrafts[slug] = data;
                 if (isCombinedMode()) vendorDrafts[slug] = data;
-                else recountDrafts[slug] = data;
-                if (slug === VENDOR_SLUG) draft = data;
+                else if (slug === VENDOR_SLUG) draft = data;
             }
             if (showFeedback) setStatus(`Saved ${locationName}.`, 'success');
             return true;
@@ -1050,7 +1073,7 @@ async function saveAllRecountLocations() {
 }
 
 async function resubmitAllVendorsForMmx() {
-    const slugs = mmxVendorSlugs.length ? [...new Set(mmxVendorSlugs)] : [VENDOR_SLUG];
+    const slugs = perVendorSlugs(mmxVendorSlugs);
     for (const slug of slugs) {
         const { res, data } = await fetchJson(apiQuery('/api/stock-count/submit', slug), { method: 'POST' });
         if (!res.ok || !data.success) {
@@ -1244,12 +1267,15 @@ async function showPreparedVariancesFromStatus(status) {
     if (!mmxVariances.length) {
         return false;
     }
-    mmxVendorSlugs =
-        Array.isArray(status.vendorsSent) && status.vendorsSent.length ? status.vendorsSent : [VENDOR_SLUG];
+    mmxVendorSlugs = perVendorSlugs(
+        Array.isArray(status.vendorsSent) && status.vendorsSent.length ? status.vendorsSent : []
+    );
     await loadVendorCatalogsForSlugs(mmxVendorSlugs, { fullCatalog: true });
-    varianceDrafts = { ...recountDrafts, [VENDOR_SLUG]: draft };
+    varianceDrafts = isCombinedMode()
+        ? { ...recountDrafts, ...vendorDrafts }
+        : { ...recountDrafts, [VENDOR_SLUG]: draft };
     for (const slug of mmxVendorSlugs) {
-        if (slug === VENDOR_SLUG || varianceDrafts[slug]?.locations) continue;
+        if (varianceDrafts[slug]?.locations) continue;
         const { res, data: draftData } = await fetchJson(apiQuery('/api/stock-count/draft', slug));
         if (res.ok && draftData?.locations) varianceDrafts[slug] = draftData;
     }
@@ -2121,20 +2147,33 @@ function buildMmxProgressHtml({ showHeading = true } = {}) {
         </div>`;
 }
 
+function buildMmxWaitBody() {
+    const notify = window.StockCountNotify;
+    const notificationsOn =
+        mmxNotifyEnabled || notify?.permissionState?.() === 'granted';
+    if (notificationsOn) {
+        return `This usually takes several minutes. You can leave this page — we'll notify you when it's ready to review. Return when you see <strong>Complete</strong> or get the alert.`;
+    }
+    if (notify?.permissionState?.() === 'denied' || notify?.permissionState?.() === 'unsupported') {
+        return `This usually takes several minutes. Stay on this screen until you see <strong>Complete</strong>.`;
+    }
+    return `This usually takes several minutes. Stay on this screen until you see <strong>Complete</strong>, or tap <strong>Notify me when ready</strong> below if you need to leave.`;
+}
+
 function buildMmxNotifySection() {
     if (mmxProcessingError || mmxProcessingSuccess) return '';
     const notify = window.StockCountNotify;
     if (mmxNotifyEnabled || notify?.permissionState?.() === 'granted') {
-        return `<p class="stock-count-mmx-notify-hint stock-count-mmx-notify-hint--ok">Notifications on - we'll alert you when it's ready to review.</p>`;
+        return `<p class="stock-count-mmx-notify-hint stock-count-mmx-notify-hint--ok">Notifications on — safe to leave this page. We'll alert you when it's ready to review.</p>`;
     }
     if (mmxNotifyDenied || notify?.permissionState?.() === 'denied') {
-        return `<p class="stock-count-mmx-notify-hint stock-count-mmx-notify-hint--denied">Notifications are blocked in your browser. Keep this page open, or enable alerts in site settings.</p>`;
+        return `<p class="stock-count-mmx-notify-hint stock-count-mmx-notify-hint--denied">Notifications are blocked. Stay on this screen, or enable alerts in your browser's site settings.</p>`;
     }
     if (notify?.permissionState?.() === 'unsupported') {
-        return `<p class="stock-count-mmx-notify-hint">Keep this page open - your browser can't show background alerts.</p>`;
+        return `<p class="stock-count-mmx-notify-hint">Your browser can't show background alerts — stay on this screen until you see <strong>Complete</strong>.</p>`;
     }
     return `
-        <p class="stock-count-mmx-notify-hint">Leaving? Tap below and allow notifications when prompted - we'll tell you when it's ready to review.</p>
+        <p class="stock-count-mmx-notify-hint">Need to leave? Tap below and allow notifications — we'll tell you when it's ready to review.</p>
         <button type="button" class="stock-count-btn stock-count-btn--notify" id="sc-mmx-notify-btn">Notify me when ready</button>`;
 }
 
@@ -2177,7 +2216,7 @@ function buildMmxProcessingOverlay() {
             <div class="stock-count-processing-card stock-count-processing-card--wait stock-count-processing-card--fullscreen">
                 ${markSvg ? `<div class="stock-count-processing-mark" aria-hidden="true">${markSvg}</div>` : ''}
                 <h2 id="sc-mmx-wait-title" class="stock-count-processing-label">${escapeHtml(mmxProcessingTitle())}</h2>
-                <p class="stock-count-mmx-wait-body">This usually takes several minutes. Stay on this screen until you see <strong>Complete</strong>.</p>
+                <p class="stock-count-mmx-wait-body">${buildMmxWaitBody()}</p>
                 ${buildMmxProgressHtml()}
                 <div class="stock-count-progress-shell" aria-hidden="true">
                     <div class="stock-count-progress-bar"></div>

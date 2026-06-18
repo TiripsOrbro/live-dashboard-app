@@ -1531,6 +1531,19 @@ async function selectStore(page, storeName, opts = {}) {
         return;
     }
 
+    if (storeNumber) {
+        const { resolveStoreOnCurrentPage, useSingleStoreLoginMode } = require('../macromatixScraper');
+        const implicit = await resolveStoreOnCurrentPage(page, storeNumber, { optional: true });
+        if (implicit) {
+            log.info(`Store ${storeNumber} already in session (${implicit})`);
+            return;
+        }
+        if (useSingleStoreLoginMode()) {
+            log.info(`Store ${storeNumber}: single-store login - continuing without report store picker`);
+            return;
+        }
+    }
+
     throw new Error(`Store: could not select "${storeName}" (tried: ${needles.join(', ')})`);
 }
 

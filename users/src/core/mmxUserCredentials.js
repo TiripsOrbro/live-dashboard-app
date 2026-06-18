@@ -106,6 +106,8 @@ function writeUserAccountSecrets(dashboardUsername, secrets) {
     }
 }
 
+const decryptWarnedUsers = new Set();
+
 function readUserAccountSecrets(dashboardUsername) {
     const dashUser = String(dashboardUsername || '').trim();
     if (!dashUser) return null;
@@ -122,9 +124,12 @@ function readUserAccountSecrets(dashboardUsername) {
                 mmxPassword: String(decrypted.mmxPassword || ''),
             };
         } catch (error) {
-            console.warn(
-                `[MMX credentials] Could not decrypt saved login for "${dashUser}" - check MMX_USER_CREDENTIALS_KEY: ${error.message}`
-            );
+            if (!decryptWarnedUsers.has(dashUser)) {
+                decryptWarnedUsers.add(dashUser);
+                console.warn(
+                    `[MMX credentials] Could not decrypt saved login for "${dashUser}" - check MMX_USER_CREDENTIALS_KEY: ${error.message}`
+                );
+            }
             return null;
         }
     }

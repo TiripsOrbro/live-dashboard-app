@@ -32,7 +32,7 @@ const {
     releasePrioritySlot,
     getLocalHoldCount,
 } = require('../../mmx/src/mmxTaskQueue');
-const { refreshScrapePauseTimeout } = require('../../mmx/src/mmxResourceGate');
+const { refreshScrapePauseTimeout, isMmxResourceBusy } = require('../../mmx/src/mmxResourceGate');
 const { setCheckpoint, getCheckpoint, clearCheckpoint, listAllCheckpoints } = require('../../mmx/src/mmxPipelineCheckpoint');
 
 function touchStockCountWork() {
@@ -101,11 +101,15 @@ function withStoreMmxOptions(storeNumber, options = {}) {
     return { ...options, storeNumber: String(storeNumber).replace(/\D/g, '') };
 }
 
-/** Select the target store on the current MMX page (combo, report picker, or existing session). */
+/** Select the target store on the current MMX page (combo, report picker, or single-store session). */
 async function selectStoreInMacromatix(page, storeNumber) {
-    const picked = await resolveStoreOnCurrentPage(page, storeNumber, { requireComboSelection: true });
-    log.info(`Store selected: ${picked}`);
-    return picked;
+    const picked = await resolveStoreOnCurrentPage(page, storeNumber, { optional: true });
+    if (picked) {
+        log.info(`Store selected: ${picked}`);
+        return picked;
+    }
+    log.info(`Store ${storeNumber}: no store picker on this page - using current single-store session`);
+    return String(storeNumber).replace(/\D/g, '');
 }
 
 async function withStoreLock(storeNumber, fn) {

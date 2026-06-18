@@ -57,7 +57,7 @@ async function main() {
     let browser;
     let page;
     try {
-        ({ browser, page } = await openMacromatixBrowser({}));
+        ({ browser, page } = await openMacromatixBrowser({ storeNumber }));
         const result = await runStoreBuildToCycle(storeNumber, {
             page,
             browser,

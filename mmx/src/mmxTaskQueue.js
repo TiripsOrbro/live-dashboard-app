@@ -142,6 +142,39 @@ function clearStaleActiveIfNeeded() {
     return null;
 }
 
+/** Drop pending rows whose owner process exited without acquiring or releasing the slot. */
+function purgeStalePendingTasks() {
+    const doc = readQueueDoc();
+    const before = doc.pending.length;
+    if (!before) return 0;
+    doc.pending = doc.pending.filter((row) => isPidAlive(row.pid));
+    const removed = before - doc.pending.length;
+    if (removed > 0) {
+        console.warn(`[MMX Queue] Removed ${removed} stale pending task(s) from dead process(es)`);
+        writeQueueDoc(doc);
+    }
+    return removed;
+}
+
+function describeQueueWaitBlockers(taskId) {
+    const doc = readQueueDoc();
+    const pending = sortPending(doc.pending);
+    const idx = pending.findIndex((row) => row.id === taskId);
+    const ahead = idx > 0 ? pending.slice(0, idx) : [];
+    const active = readActiveTask();
+    const parts = [];
+    if (active && isPidAlive(active.pid) && !isActiveStale(active)) {
+        parts.push(`active: ${active.label || active.type} (pid ${active.pid})`);
+    }
+    for (const row of ahead) {
+        const alive = isPidAlive(row.pid);
+        parts.push(
+            `ahead: ${row.label || row.type} (pid ${row.pid}${alive ? '' : ', dead'})`
+        );
+    }
+    return parts.length ? parts.join('; ') : '';
+}
+
 function sortPending(pending) {
     return [...pending].sort((a, b) => {
         if (a.priority !== b.priority) return a.priority - b.priority;
@@ -189,6 +222,7 @@ function releaseLockFile() {
 }
 
 function enqueueTask(meta) {
+    purgeStalePendingTasks();
     const doc = readQueueDoc();
     doc.pending.push(meta);
     doc.pending = sortPending(doc.pending);
@@ -204,6 +238,7 @@ function removeTaskFromQueue(taskId) {
 
 function getQueueSnapshot() {
     clearStaleActiveIfNeeded();
+    purgeStalePendingTasks();
     return {
         active: readActiveTask(),
         pending: sortPending(readQueueDoc().pending),
@@ -270,6 +305,7 @@ function getLocalSlotPriority() {
 
 async function waitForQueueTurn(taskId, priority) {
     const started = Date.now();
+    let lastWaitLogAt = 0;
     while (true) {
         if (Date.now() - started > WAIT_TIMEOUT_MS) {
             removeTaskFromQueue(taskId);
@@ -281,12 +317,20 @@ async function waitForQueueTurn(taskId, priority) {
         }
 
         clearStaleActiveIfNeeded();
+        purgeStalePendingTasks();
         const doc = readQueueDoc();
         const pending = sortPending(doc.pending);
         const head = pending[0];
         const active = readActiveTask();
 
         if (head?.id !== taskId) {
+            if (Date.now() - lastWaitLogAt > 15000) {
+                const blockers = describeQueueWaitBlockers(taskId);
+                if (blockers) {
+                    console.log(`[MMX Queue] Still waiting (P${priority}) - ${blockers}`);
+                }
+                lastWaitLogAt = Date.now();
+            }
             await sleep(POLL_MS);
             continue;
         }
@@ -400,6 +444,8 @@ module.exports = {
     hasBlockingWorkForPriority,
     requestPreemptLowerPriority,
     getQueueSnapshot,
+    purgeStalePendingTasks,
+    clearStaleActiveIfNeeded,
     getLocalSlotPriority,
     shouldAbortForPreempt,
     markPreemptHandled,

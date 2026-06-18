@@ -58,9 +58,13 @@ function withStoreMmxOptions(storeNumber, options = {}) {
 }
 
 async function selectStoreInMacromatix(page, storeNumber) {
-    const picked = await resolveStoreOnCurrentPage(page, storeNumber, { requireComboSelection: true });
-    log.info(`Store selected: ${picked}`);
-    return picked;
+    const picked = await resolveStoreOnCurrentPage(page, storeNumber, { optional: true });
+    if (picked) {
+        log.info(`Store selected: ${picked}`);
+        return picked;
+    }
+    log.info(`Store ${storeNumber}: no store picker on this page - using current single-store session`);
+    return String(storeNumber).replace(/\D/g, '');
 }
 
 async function withStoreLock(storeNumber, fn) {

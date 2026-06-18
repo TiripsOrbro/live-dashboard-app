@@ -24,9 +24,22 @@ function listFiles(dir, ext = '.xlsx') {
         .map((f) => path.join(dir, f));
 }
 
+/** Macromatix SCM exports use fixed MMS_Report_* names in addition to browser default names. */
+function listDownloadCandidates(dir, ext = '.xlsx') {
+    const want = String(ext || '').toLowerCase();
+    const out = new Set(listFiles(dir, want));
+    if (!fs.existsSync(dir)) return [];
+    for (const name of fs.readdirSync(dir)) {
+        if (!/^MMS_Report_/i.test(name)) continue;
+        if (!name.toLowerCase().endsWith(want)) continue;
+        out.add(path.join(dir, name));
+    }
+    return [...out];
+}
+
 function fileSnapshots(dir, ext) {
     const map = new Map();
-    for (const f of listFiles(dir, ext)) {
+    for (const f of listDownloadCandidates(dir, ext)) {
         try {
             const st = fs.statSync(f);
             map.set(f, { size: st.size, mtimeMs: st.mtimeMs });
@@ -83,7 +96,7 @@ async function waitForNewDownload(dir, opts = {}) {
             continue;
         }
 
-        const now = listFiles(dir, ext);
+        const now = listDownloadCandidates(dir, ext);
         for (const f of now) {
             let stat1;
             try {
@@ -195,6 +208,7 @@ module.exports = {
     copyFileSafe,
     timestampSlug,
     listFiles,
+    listDownloadCandidates,
     fileSnapshots,
     waitForNewDownload,
     clearMacromatixDefaultExports,

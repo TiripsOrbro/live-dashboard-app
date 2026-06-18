@@ -443,6 +443,17 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         }
     }
 
+    const { normalizeMacromatixExportsForStore } = require('../../mmx/src/mmxReports/pipeline-download-reports');
+    const storeReportDir = path.join(reportsDir, String(storeNumber));
+    const adopted = normalizeMacromatixExportsForStore(storeReportDir, idsToDownload, { storeNumber });
+    if (Object.keys(adopted).length) {
+        log.info(
+            `Store ${storeNumber}: adopted Macromatix default export(s) → ${Object.entries(adopted)
+                .map(([id, filePath]) => `${id}=${path.basename(filePath)}`)
+                .join(', ')}`
+        );
+    }
+
     const after = reportsReadyForReportIds(storeNumber, targetReportIds, reportsDir);
     if (!after.ready) {
         const detail = after.issues?.length

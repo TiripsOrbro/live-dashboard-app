@@ -12,6 +12,92 @@ const { filterSpreadsheetByStoreColumn, logIseSpotCheck } = require('../../../ve
 
 const DOWNLOAD_EXTS = ['.xls', '.xlsx', '.csv'];
 
+const MMX_DEFAULT_EXPORT_HINTS = {
+    report1: { needle: /2_All|On.?Hand/i, ext: '.xls' },
+    report2: { needle: /OnOrder/i, ext: '.xls' },
+};
+
+function findFreshMacromatixExport(downloadDir, report, sinceMs) {
+    const hint = MMX_DEFAULT_EXPORT_HINTS[report?.id];
+    if (!hint || !fs.existsSync(downloadDir)) return null;
+    let best = null;
+    for (const name of fs.readdirSync(downloadDir)) {
+        if (!/^MMS_Report_/i.test(name)) continue;
+        if (!hint.needle.test(name)) continue;
+        const ext = path.extname(name).toLowerCase();
+        if (ext !== hint.ext) continue;
+        const filePath = path.join(downloadDir, name);
+        let stat;
+        try {
+            stat = fs.statSync(filePath);
+        } catch {
+            continue;
+        }
+        if (!stat.isFile() || stat.size <= 0) continue;
+        if (stat.mtimeMs < sinceMs - 5000) continue;
+        if (!best || stat.mtimeMs > best.mtimeMs) best = { filePath, mtimeMs: stat.mtimeMs };
+    }
+    return best?.filePath || null;
+}
+
+function findWrongFormatMacromatixExport(downloadDir, report, sinceMs) {
+    const hint = MMX_DEFAULT_EXPORT_HINTS[report?.id];
+    if (!hint || !fs.existsSync(downloadDir)) return null;
+    for (const name of fs.readdirSync(downloadDir)) {
+        if (!/^MMS_Report_/i.test(name)) continue;
+        if (!hint.needle.test(name)) continue;
+        const ext = path.extname(name).toLowerCase();
+        if (ext === hint.ext) continue;
+        const filePath = path.join(downloadDir, name);
+        try {
+            const stat = fs.statSync(filePath);
+            if (stat.isFile() && stat.size > 0 && stat.mtimeMs >= sinceMs - 5000) {
+                return filePath;
+            }
+        } catch {
+            /* ignore */
+        }
+    }
+    return null;
+}
+
+/**
+ * Rename any fresh MMS_Report_* exports to timestamped stock-on-hand / stock-on-order files.
+ */
+function normalizeMacromatixExportsForStore(storeDir, reportIds = [], options = {}) {
+    const wantIds = new Set(reportIds.length ? reportIds : Object.keys(MMX_DEFAULT_EXPORT_HINTS));
+    const adopted = {};
+    const maxAgeMs = Number(options.maxAgeMs || 6 * 60 * 60 * 1000);
+    const sinceMs = Date.now() - maxAgeMs;
+    const storeNumber = String(options.storeNumber || '').trim();
+    for (const reportId of wantIds) {
+        const hint = MMX_DEFAULT_EXPORT_HINTS[reportId];
+        if (!hint) continue;
+        const basename =
+            reportId === 'report1' ? 'stock-on-hand' : reportId === 'report2' ? 'stock-on-order' : null;
+        if (!basename) continue;
+        const source = findFreshMacromatixExport(storeDir, { id: reportId }, sinceMs);
+        if (!source) continue;
+        const dest = path.join(storeDir, `${timestampSlug()}-${basename}${hint.ext}`);
+        if (path.basename(source) !== path.basename(dest)) {
+            if (fs.existsSync(dest)) fs.unlinkSync(dest);
+            fs.renameSync(source, dest);
+        } else {
+            continue;
+        }
+        if (storeNumber && (reportId === 'report1' || reportId === 'report2')) {
+            const filterResult = filterSpreadsheetByStoreColumn(dest, storeNumber, 2);
+            if (filterResult.removed) {
+                log.info(
+                    `${reportId} filtered to store ${storeNumber}: ${filterResult.kept} row(s) kept, ${filterResult.removed} removed`
+                );
+            }
+        }
+        adopted[reportId] = dest;
+    }
+    return adopted;
+}
+
 function reportsConfigured(reports) {
     return (reports || []).every((r) => {
         if (isSupplyChainReport(r) || isStoreReport(r)) return Boolean(r.reportName);
@@ -157,6 +243,7 @@ async function downloadSupplyChainReport(page, report, settings) {
     }
     await configureDownloadPath(page, downloadDir);
 
+    const downloadStartedAt = Date.now();
     log.info(`Downloading: ${report.label || report.id} (${report.reportName})${scope}`);
     await runSupplyChainReport(page, report, settings);
 
@@ -166,26 +253,39 @@ async function downloadSupplyChainReport(page, report, settings) {
     }
 
     const downloadWaitMs = Number(report.downloadWaitMs || settings.downloadWaitMs);
-    const downloaded = await waitForReportDownload(
-        downloadDir,
-        downloadWaitMs,
-        report.downloadExt
-    ).catch(async (err) => {
-        const diag = await scrapeReportPageDiagnostics(page);
-        const url = page.url();
-        if (diag) {
-            log.warn(`${report.label || report.id}: page diagnostics after timeout: ${diag}`);
-        }
-        log.warn(`${report.label || report.id}: page URL at timeout: ${url}`);
-        const stray = listStrayMmxExports(downloadDir, report);
-        if (stray.length) {
-            log.warn(
-                `${report.label || report.id}: files in download dir: ${stray.map((f) => path.basename(f)).join(', ')}`
+    let downloaded;
+    try {
+        downloaded = await waitForReportDownload(downloadDir, downloadWaitMs, report.downloadExt);
+    } catch (err) {
+        const wrongFormat = findWrongFormatMacromatixExport(downloadDir, report, downloadStartedAt);
+        if (wrongFormat) {
+            throw new Error(
+                `Macromatix saved ${path.basename(wrongFormat)} but ${report.downloadExt || '.xls'} was required - confirm "Excel Data Only" is selected before Generate`
             );
         }
-        const hint = diag ? ` Macromatix page: ${diag}` : '';
-        throw new Error(`${err.message}.${hint}`);
-    });
+        const fallback = findFreshMacromatixExport(downloadDir, report, downloadStartedAt);
+        if (fallback) {
+            log.info(
+                `${report.label || report.id}: adopting Macromatix default export ${path.basename(fallback)}`
+            );
+            downloaded = fallback;
+        } else {
+            const diag = await scrapeReportPageDiagnostics(page);
+            const url = page.url();
+            if (diag) {
+                log.warn(`${report.label || report.id}: page diagnostics after timeout: ${diag}`);
+            }
+            log.warn(`${report.label || report.id}: page URL at timeout: ${url}`);
+            const stray = listStrayMmxExports(downloadDir, report);
+            if (stray.length) {
+                log.warn(
+                    `${report.label || report.id}: files in download dir: ${stray.map((f) => path.basename(f)).join(', ')}`
+                );
+            }
+            const hint = diag ? ` Macromatix page: ${diag}` : '';
+            throw new Error(`${err.message}.${hint}`);
+        }
+    }
     const wantExt = String(report.downloadExt || path.extname(downloaded) || '.xls').toLowerCase();
     const gotExt = path.extname(downloaded).toLowerCase();
     if (wantExt && gotExt && gotExt !== wantExt) {
@@ -340,6 +440,17 @@ async function downloadReports(page, settings) {
     if (failures.length) {
         const summary = failures.map((f) => `${f.id}: ${f.error}`).join('; ');
         log.warn(`Reports incomplete (${Object.keys(paths).length} saved): ${summary}`);
+        const adopted = normalizeMacromatixExportsForStore(
+            getReportDownloadDir(settings),
+            failures.map((f) => f.id),
+            { storeNumber: settings.pipeline?.reports?.[0]?.storeNumber }
+        );
+        for (const [reportId, dest] of Object.entries(adopted)) {
+            if (!paths[reportId]) {
+                paths[reportId] = dest;
+                log.info(`Recovered ${reportId} from Macromatix default export → ${path.basename(dest)}`);
+            }
+        }
     }
 
     return paths;
@@ -352,4 +463,5 @@ module.exports = {
     configureDownloadPath,
     clickExportExcelDataOnly,
     waitForReportDownload,
+    normalizeMacromatixExportsForStore,
 };

@@ -21,7 +21,7 @@ const {
     applyKeyItemCount,
     mergeVendorEntriesByLocation,
 } = require('../../mmx/src/mmxReports/mmx-stock-count');
-const { downloadReportsForStores } = require('../../mmx/src/mmxReportDownloader');
+const { downloadReportsForStores, downloadBuildToReportsParallel, parallelReportDownloadEnabled } = require('../../mmx/src/mmxReportDownloader');
 const { buildOrderLinesByVendorId } = require('./buildToOrderLines');
 const { runVendorOrderEntry } = require('../../mmx/src/mmxReports/pipeline-enter-vendor-orders');
 const { createSession, getSession, destroySession, destroySessionsForStore } = require('../../mmx/src/mmxCountSession');
@@ -409,8 +409,26 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         storeNumber,
         reportsDir: options.reportsDir,
         onlyReportIds: idsToDownload,
+        afterCountApply: Boolean(options.afterCountApply),
+        parallelReportDownload: options.parallelReportDownload,
     };
-    if (options.page) {
+    const mmxOpts = withStoreMmxOptions(storeNumber, options);
+    const useParallel =
+        parallelReportDownloadEnabled(downloadOpts) && idsToDownload.length >= 2;
+
+    if (useParallel) {
+        log.info(
+            options.forceDownload
+                ? `Re-downloading ${idsToDownload.join(', ')} for store ${storeNumber} (${idsToDownload.length} parallel browsers)`
+                : `Reports missing for store ${storeNumber} - downloading ${idsToDownload.join(', ')} in ${idsToDownload.length} parallel browsers`
+        );
+        await downloadBuildToReportsParallel(storeNumber, {
+            ...mmxOpts,
+            ...downloadOpts,
+            onReportStep: (reportId, label) =>
+                touchPipelineStep(storeNumber, `${labelForIds[reportId] || reportId}: ${label}`),
+        });
+    } else if (options.page) {
         log.info(
             options.forceDownload
                 ? `Re-downloading ${idsToDownload.join(', ')} for store ${storeNumber} (current MMX session)`
@@ -418,6 +436,7 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         );
         await downloadReportsForStores({
             ...downloadOpts,
+            ...mmxOpts,
             page: options.page,
             browser: options.browser || null,
             onReportStep: (label) => touchPipelineStep(storeNumber, label),
@@ -431,9 +450,10 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         let browser;
         let page;
         try {
-            ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
+            ({ browser, page } = await openMacromatixBrowser(mmxOpts));
             await downloadReportsForStores({
                 ...downloadOpts,
+                ...mmxOpts,
                 page,
                 browser,
                 onReportStep: (label) => touchPipelineStep(storeNumber, label),
@@ -571,6 +591,7 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
                 onlyReportIds: refreshReportIds,
                 forceDownload: Boolean(options.forceReportDownload),
                 dateKey,
+                afterCountApply,
             });
             await touchPipelineStep(
                 storeNumber,

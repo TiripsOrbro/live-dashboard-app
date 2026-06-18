@@ -15,6 +15,7 @@
     "debug-scm-tree": "node scripts/debug-scm-store-tree.js",
     "probe-soh-download": "node scripts/probe-soh-download-timing.js",
     "probe-soh-benchmark": "node scripts/probe-soh-benchmark.js",
+    "simulate-report-download": "node scripts/simulate-report-download-detect.js",
     "recover-store-reports": "node scripts/recover-store-reports-from-bulk.js",
     "download-reports-order-day": "node scripts/download-reports.js --order-day",
     "report-download-scheduler": "node scripts/run-report-download-scheduler.js",

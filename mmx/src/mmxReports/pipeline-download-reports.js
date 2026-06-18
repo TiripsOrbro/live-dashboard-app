@@ -13,16 +13,18 @@ const { filterSpreadsheetByStoreColumn, logIseSpotCheck } = require('../../../ve
 const DOWNLOAD_EXTS = ['.xls', '.xlsx', '.csv'];
 
 const MMX_DEFAULT_EXPORT_HINTS = {
-    report1: { needle: /2_All|On.?Hand/i, ext: '.xls' },
-    report2: { needle: /OnOrder/i, ext: '.xls' },
+    report1: { needle: /2_All|On.?Hand/i, ext: '.xls', nameRe: /^MMS_Report_/i },
+    report2: { needle: /OnOrder/i, ext: '.xls', nameRe: /^MMS_Report_/i },
+    report3: { needle: /InventorySpecialEvent|SpecialEvent/i, ext: '.csv', nameRe: /^InventorySpecialEvent/i },
 };
 
 function findFreshMacromatixExport(downloadDir, report, sinceMs) {
     const hint = MMX_DEFAULT_EXPORT_HINTS[report?.id];
     if (!hint || !fs.existsSync(downloadDir)) return null;
+    const nameRe = hint.nameRe || /^MMS_Report_/i;
     let best = null;
     for (const name of fs.readdirSync(downloadDir)) {
-        if (!/^MMS_Report_/i.test(name)) continue;
+        if (!nameRe.test(name)) continue;
         if (!hint.needle.test(name)) continue;
         const ext = path.extname(name).toLowerCase();
         if (ext !== hint.ext) continue;
@@ -74,7 +76,13 @@ function normalizeMacromatixExportsForStore(storeDir, reportIds = [], options = 
         const hint = MMX_DEFAULT_EXPORT_HINTS[reportId];
         if (!hint) continue;
         const basename =
-            reportId === 'report1' ? 'stock-on-hand' : reportId === 'report2' ? 'stock-on-order' : null;
+            reportId === 'report1'
+                ? 'stock-on-hand'
+                : reportId === 'report2'
+                  ? 'stock-on-order'
+                  : reportId === 'report3'
+                    ? 'inventory-special-event'
+                    : null;
         if (!basename) continue;
         const source = findFreshMacromatixExport(storeDir, { id: reportId }, sinceMs);
         if (!source) continue;
@@ -196,6 +204,7 @@ function buildDownloadDest(report, settings, downloaded) {
 }
 
 async function waitForReportDownload(downloadDir, timeoutMs, preferredExt, pollHooks = {}) {
+    const acceptSinceMs = Number(pollHooks.acceptSinceMs || 0);
     const order = preferredExt
         ? [preferredExt, ...DOWNLOAD_EXTS.filter((e) => e !== preferredExt)]
         : DOWNLOAD_EXTS;
@@ -207,6 +216,7 @@ async function waitForReportDownload(downloadDir, timeoutMs, preferredExt, pollH
             return await waitForNewDownload(downloadDir, {
                 timeoutMs: attemptMs,
                 ext,
+                acceptSinceMs,
                 touchEveryMs: Number(process.env.MMX_DOWNLOAD_EXPORT_RETRY_MS || 0) || 0,
                 onPoll: async () => {
                     refreshScrapePauseTimeout();
@@ -255,7 +265,9 @@ async function downloadSupplyChainReport(page, report, settings) {
     const downloadWaitMs = Number(report.downloadWaitMs || settings.downloadWaitMs);
     let downloaded;
     try {
-        downloaded = await waitForReportDownload(downloadDir, downloadWaitMs, report.downloadExt);
+        downloaded = await waitForReportDownload(downloadDir, downloadWaitMs, report.downloadExt, {
+            acceptSinceMs: downloadStartedAt,
+        });
     } catch (err) {
         const wrongFormat = findWrongFormatMacromatixExport(downloadDir, report, downloadStartedAt);
         if (wrongFormat) {
@@ -324,14 +336,41 @@ async function downloadSupplyChainReport(page, report, settings) {
 }
 
 async function downloadStoreReport(page, report, settings) {
+    const downloadDir = getReportDownloadDir(settings);
+    const cleared = clearMacromatixDefaultExports(downloadDir);
+    if (cleared.length) {
+        log.info(
+            `${report.label || report.id}: cleared ${cleared.length} stale Macromatix export file(s) before download`
+        );
+    }
+    await configureDownloadPath(page, downloadDir);
+
+    const downloadStartedAt = Date.now();
     log.info(`Downloading: ${report.label || report.id} (${report.reportName})`);
     await runStoreReport(page, report, settings);
 
-    const downloaded = await waitForReportDownload(
-        getReportDownloadDir(settings),
-        settings.downloadWaitMs,
-        report.downloadExt || '.csv'
-    );
+    if (typeof settings.onReportStep === 'function') {
+        const reportLabel = report.label || report.reportName || report.id || 'report';
+        await settings.onReportStep(`${reportLabel}: waiting for file download…`);
+    }
+
+    const downloadWaitMs = Number(report.downloadWaitMs || settings.downloadWaitMs);
+    let downloaded;
+    try {
+        downloaded = await waitForReportDownload(downloadDir, downloadWaitMs, report.downloadExt || '.csv', {
+            acceptSinceMs: downloadStartedAt,
+        });
+    } catch (err) {
+        const fallback = findFreshMacromatixExport(downloadDir, report, downloadStartedAt);
+        if (fallback) {
+            log.info(
+                `${report.label || report.id}: adopting Macromatix default export ${path.basename(fallback)}`
+            );
+            downloaded = fallback;
+        } else {
+            throw err;
+        }
+    }
     const dest = buildDownloadDest(report, settings, downloaded);
     if (downloaded !== dest) {
         fs.renameSync(downloaded, dest);
@@ -463,5 +502,6 @@ module.exports = {
     configureDownloadPath,
     clickExportExcelDataOnly,
     waitForReportDownload,
+    findFreshMacromatixExport,
     normalizeMacromatixExportsForStore,
 };

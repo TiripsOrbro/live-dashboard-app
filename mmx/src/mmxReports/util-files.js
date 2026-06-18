@@ -30,9 +30,11 @@ function listDownloadCandidates(dir, ext = '.xlsx') {
     const out = new Set(listFiles(dir, want));
     if (!fs.existsSync(dir)) return [];
     for (const name of fs.readdirSync(dir)) {
-        if (!/^MMS_Report_/i.test(name)) continue;
-        if (!name.toLowerCase().endsWith(want)) continue;
-        out.add(path.join(dir, name));
+        const lower = name.toLowerCase();
+        if (!lower.endsWith(want)) continue;
+        if (/^MMS_Report_/i.test(name) || /^InventorySpecialEvent/i.test(name)) {
+            out.add(path.join(dir, name));
+        }
     }
     return [...out];
 }
@@ -78,6 +80,7 @@ async function waitForNewDownload(dir, opts = {}) {
     const pollMs = opts.pollMs || 500;
     const before = fileSnapshots(dir, ext);
     const start = Date.now();
+    const acceptSinceMs = Number(opts.acceptSinceMs || 0);
     const touchEveryMs = Number(opts.touchEveryMs || 0);
     let lastTouch = start;
 
@@ -105,7 +108,9 @@ async function waitForNewDownload(dir, opts = {}) {
                 continue;
             }
             if (stat1.size === 0) continue;
-            if (!fileChangedSince(before, f, stat1)) continue;
+            const freshSinceGenerate =
+                acceptSinceMs > 0 && stat1.mtimeMs >= acceptSinceMs - 5000;
+            if (!fileChangedSince(before, f, stat1) && !freshSinceGenerate) continue;
 
             await sleep(pollMs);
             let stat2;
@@ -128,7 +133,7 @@ function clearMacromatixDefaultExports(dir) {
     if (!fs.existsSync(dir)) return [];
     const removed = [];
     for (const name of fs.readdirSync(dir)) {
-        if (!/^MMS_Report_/i.test(name)) continue;
+        if (!/^MMS_Report_/i.test(name) && !/^InventorySpecialEvent/i.test(name)) continue;
         const filePath = path.join(dir, name);
         try {
             if (!fs.statSync(filePath).isFile()) continue;

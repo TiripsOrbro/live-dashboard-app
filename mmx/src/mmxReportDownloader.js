@@ -347,9 +347,121 @@ async function downloadReportsForStores(options = {}) {
     return results;
 }
 
+function parallelReportDownloadEnabled(options = {}) {
+    if (options.parallelReportDownload === false) return false;
+    if (process.env.MMX_PARALLEL_BUILD_TO_REPORTS === '0') return false;
+    if (options.afterCountApply) return true;
+    if (options.parallelReportDownload === true) return true;
+    if (Array.isArray(options.onlyReportIds) && options.onlyReportIds.length >= 2) return true;
+    return process.env.MMX_PARALLEL_BUILD_TO_REPORTS === '1';
+}
+
+async function downloadOneBuildToReportForStore(store, reportId, options = {}) {
+    const pipeline = loadPipelineConfig();
+    const reports = reportsForStore(pipeline, store).filter((r) => r.id === reportId);
+    if (!reports.length) {
+        throw new Error(`Report ${reportId} is not configured in reports-pipeline.json`);
+    }
+
+    const report = reports[0];
+    const storeDir =
+        options.reportDownloadDir || path.join(REPORTS_DIR, store.storeNumber, '_parallel', reportId);
+    ensureDir(storeDir);
+
+    let browser;
+    let page;
+    const label = report.label || reportId;
+    try {
+        log.info(`[parallel] Store ${store.storeNumber}: opening browser for ${label}`);
+        ({ browser, page } = await openMacromatixBrowser({ ...options, storeNumber: store.storeNumber }));
+        const storePipeline = {
+            reportNavigation: pipeline.reportNavigation,
+            reports,
+        };
+        const settings = buildSettings(storePipeline, storeDir);
+        settings.downloadWaitMs = Number(report.downloadWaitMs || settings.downloadWaitMs);
+        settings.chainReports = false;
+        if (typeof options.onReportStep === 'function') {
+            settings.onReportStep = (step) => options.onReportStep(reportId, step);
+        }
+        await configureDownloadPath(page, storeDir);
+        const paths = await downloadReports(page, settings);
+        const filePath = paths[reportId];
+        if (!filePath || !fs.existsSync(filePath)) {
+            throw new Error(`${label} did not produce a file in ${storeDir}`);
+        }
+        log.info(`[parallel] Store ${store.storeNumber}: ${label} → ${path.basename(filePath)}`);
+        return { reportId, filePath, storeDir };
+    } finally {
+        await closeBrowserQuietly(browser, `parallel ${reportId}`);
+    }
+}
+
+function promoteParallelFile(mainDir, filePath) {
+    if (!filePath || !fs.existsSync(filePath)) return null;
+    ensureDir(mainDir);
+    const dest = path.join(mainDir, path.basename(filePath));
+    if (path.resolve(filePath) === path.resolve(dest)) return dest;
+    if (fs.existsSync(dest)) fs.unlinkSync(dest);
+    fs.copyFileSync(filePath, dest);
+    return dest;
+}
+
+/**
+ * Download ISE / SOH / SOO in parallel — one browser per report, isolated download folders.
+ * Parent stock-count work should already hold the MMX MIC slot; each worker only opens a browser.
+ */
+async function downloadBuildToReportsParallel(storeNumber, options = {}) {
+    const num = String(storeNumber).replace(/\D/g, '');
+    const cfg = getStoreConfig(num);
+    const store = cfg || { storeNumber: num, storeName: num };
+    const onlyReportIds = Array.isArray(options.onlyReportIds) && options.onlyReportIds.length
+        ? options.onlyReportIds
+        : ['report1', 'report2', 'report3'];
+
+    const mainDir = path.join(REPORTS_DIR, num);
+    ensureDir(mainDir);
+
+    log.info(
+        `Store ${num}: parallel build-to download — ${onlyReportIds.length} browser(s) for ${onlyReportIds.join(', ')}`
+    );
+
+    const tasks = onlyReportIds.map((reportId) => {
+        const workDir = path.join(mainDir, '_parallel', reportId);
+        ensureDir(workDir);
+        return downloadOneBuildToReportForStore(store, reportId, {
+            ...options,
+            reportDownloadDir: workDir,
+        });
+    });
+
+    const settled = await Promise.allSettled(tasks);
+    const files = {};
+    const errors = [];
+    for (let i = 0; i < settled.length; i++) {
+        const reportId = onlyReportIds[i];
+        const outcome = settled[i];
+        if (outcome.status === 'fulfilled') {
+            const promoted = promoteParallelFile(mainDir, outcome.value.filePath);
+            if (promoted) files[reportId] = promoted;
+        } else {
+            errors.push(`${reportId}: ${outcome.reason?.message || outcome.reason}`);
+        }
+    }
+
+    if (errors.length) {
+        throw new Error(`Parallel report download failed for store ${num}: ${errors.join('; ')}`);
+    }
+
+    return { storeNumber: num, files, reportsDir: mainDir, parallel: true };
+}
+
 module.exports = {
     downloadReportsForStores,
+    downloadBuildToReportsParallel,
+    downloadOneBuildToReportForStore,
     loadPipelineConfig,
     REPORTS_DIR,
     DEFAULT_OUTPUT_BASENAMES,
+    parallelReportDownloadEnabled,
 };

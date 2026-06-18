@@ -2591,6 +2591,28 @@ async function scrapeMacromatix(options = {}) {
             );
         }
 
+        if (useSingleStoreLoginMode()) {
+            const withCreds = stores.filter((s) => storeHasMmxCredentials(s.storeNumber));
+            const missing = stores.length - withCreds.length;
+            if (missing > 0) {
+                console.log(
+                    `[Macromatix] Skipping ${missing} store(s) with no Macromatix login (Admin → Setup Store Logins)`
+                );
+            }
+            stores = withCreds;
+            if (!stores.length) {
+                console.log('[Macromatix] No stores with Macromatix logins - skipping scrape');
+                await closeBrowserQuietly(browser, 'no mmx logins');
+                browser = null;
+                return {
+                    success: true,
+                    timestamp: new Date().toISOString(),
+                    stores: [],
+                    scrapeSkipped: true,
+                };
+            }
+        }
+
         const ctx = { todayKey, testScheduledOrdersPick, pickYmd, skipScheduledPersistence };
         const results = new Array(stores.length);
         let nextIndex = 0;

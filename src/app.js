@@ -1586,6 +1586,14 @@ function logScrapeStart(options = {}) {
     }
 }
 
+function salesScrapeShouldDefer() {
+    return (
+        isMmxResourceBusy() ||
+        hasPendingHigherPriority(PRIORITY.SCRAPE) ||
+        hasBlockingWorkForPriority(PRIORITY.SCRAPE)
+    );
+}
+
 /** Run a scrape and merge it into the cache (per-store retention). De-duped via salesInFlight. */
 function runScrapeIntoCache(options = {}) {
     if (salesInFlight) return salesInFlight;
@@ -1602,7 +1610,7 @@ function runScrapeIntoCache(options = {}) {
                 return salesCache;
             }
 
-            if (isMmxResourceBusy() || hasPendingHigherPriority(PRIORITY.SCRAPE)) {
+            if (salesScrapeShouldDefer()) {
                 console.log('[Dashboard] Sales scrape paused - higher-priority MMX work queued or in progress');
                 if (!salesCache) {
                     salesCache = buildCacheShellFromStoreList();
@@ -1677,7 +1685,7 @@ function queueStoreLoginBootstrapScrape(storeNumber) {
 async function getSalesDataCached() {
     applyScrapeScheduleToCache(salesCache);
 
-    if (isMmxResourceBusy() || hasPendingHigherPriority(PRIORITY.SCRAPE)) {
+    if (salesScrapeShouldDefer()) {
         if (!salesCache) {
             salesCache = buildCacheShellFromStoreList();
             salesCacheAt = Date.now();

@@ -80,10 +80,12 @@ async function endStockCountMmxWork(storeNumber, reason) {
     await releasePrioritySlot(PRIORITY.MIC, reason);
 }
 
-async function discardStockCountMmxWork(storeNumber, reason = 'discarded') {
+async function discardStockCountMmxWork(storeNumber, reason = 'discarded', options = {}) {
     await destroySessionsForStore(storeNumber, reason);
     await clearCheckpoint(storeNumber);
-    await endStockCountMmxWork(storeNumber, `prior MMX work ${reason} (store ${storeNumber})`);
+    if (options.releaseMicSlot !== false) {
+        await endStockCountMmxWork(storeNumber, `prior MMX work ${reason} (store ${storeNumber})`);
+    }
 }
 
 const { runStoreOrdersCompleteCleanup } = require('./storeOrdersCompleteCleanup');
@@ -736,7 +738,8 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
         const vendorEntries = await buildVendorEntries(storeNumber, toSend, dateKey);
         logStockCountMmxPlan(storeNumber, vendorEntries);
 
-        await discardStockCountMmxWork(storeNumber, 'replaced');
+        await beginStockCountMmxWork(`stock count prepare (store ${storeNumber})`, storeNumber);
+        await discardStockCountMmxWork(storeNumber, 'replaced', { releaseMicSlot: false });
 
         if (!vendorEntriesNeedKeyItemCount(vendorEntries)) {
             return runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options);
@@ -750,7 +753,6 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
             sessionId: null,
         });
 
-        await beginStockCountMmxWork(`stock count prepare (store ${storeNumber})`, storeNumber);
         let sessionStarted = false;
 
         let browser;

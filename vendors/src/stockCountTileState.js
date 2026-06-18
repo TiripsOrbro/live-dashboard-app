@@ -142,9 +142,10 @@ function stockLevelsSubFromSummary(summary) {
 
 async function enrichStockCountTileState(base, storeNumber) {
     if (!base) return base;
+    const store = String(storeNumber || '').trim();
     try {
         const { getLowStockSummary } = require('./lowStockAlerts');
-        const summary = await getLowStockSummary(storeNumber);
+        const summary = await getLowStockSummary(store);
         const stockLevelsSub = stockLevelsSubFromSummary(summary);
         const stockLevelsCheckLabel =
             summary.count > 0 ? 'Check again' : summary.checked ? 'Check again' : 'Check stock levels';

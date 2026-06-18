@@ -51,6 +51,7 @@
     display: flex;
     flex-direction: column;
     max-height: min(90vh, 820px);
+    border-radius: 0 12px 12px 0;
 }
 
 .admin-buildto-header {
@@ -242,10 +243,45 @@
     box-shadow: 0 0 0 2px rgba(122, 62, 177, 0.15);
 }
 
+.admin-buildto-warn-cell {
+    min-width: 4rem;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.admin-buildto-table thead th:last-child,
+.admin-buildto-warn-cell {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    background: #fff;
+    box-shadow: -6px 0 10px rgba(0, 0, 0, 0.06);
+}
+
+.admin-buildto-table thead th:last-child {
+    z-index: 3;
+    background: #f3f0f7;
+}
+
 .admin-buildto-warn-input {
-    width: 3rem;
+    width: 3.25rem;
+    min-width: 3.25rem;
     font-weight: 600;
-    color: #7a3eb1;
+    color: #5c2d91;
+    border-color: rgba(122, 62, 177, 0.35);
+    background: #faf7fd;
+}
+
+.admin-buildto-table tbody tr:nth-child(even) .admin-buildto-warn-cell {
+    background: #fafafa;
+}
+
+.admin-buildto-table tbody tr:hover .admin-buildto-warn-cell {
+    background: rgba(122, 62, 177, 0.04);
+}
+
+.admin-buildto-table tbody tr:nth-child(even):hover .admin-buildto-warn-cell {
+    background: rgba(122, 62, 177, 0.05);
 }
 
 .admin-buildto-actions {
@@ -404,8 +440,13 @@ html.mic-dark-mode .admin-btn-primary {
     box-shadow: 0 0 0 2px rgba(122, 62, 177, 0.15);
 }
 
-.admin-table td[data-buildto-group][hidden] {
-    display: none;
+.admin-table td[data-buildto-group].admin-buildto-group--off {
+    pointer-events: none;
+}
+
+.admin-table td[data-buildto-group].admin-buildto-group--off input,
+.admin-table td[data-buildto-group].admin-buildto-group--off select {
+    visibility: hidden;
 }
 
 .admin-status-dot {
@@ -866,8 +907,32 @@ html.mic-dark-mode .admin-buildto-vendor-cell {
     color: rgba(255, 255, 255, 0.65);
 }
 
+html.mic-dark-mode .admin-buildto-table thead th:last-child,
+html.mic-dark-mode .admin-buildto-warn-cell {
+    background: #1e1e24;
+    box-shadow: -6px 0 10px rgba(0, 0, 0, 0.35);
+}
+
+html.mic-dark-mode .admin-buildto-table thead th:last-child {
+    background: #2a2433;
+}
+
 html.mic-dark-mode .admin-buildto-warn-input {
-    color: #c9a8e8;
+    color: #e8d4ff;
+    border-color: rgba(201, 168, 232, 0.45);
+    background: #2a2433;
+}
+
+html.mic-dark-mode .admin-buildto-table tbody tr:nth-child(even) .admin-buildto-warn-cell {
+    background: #202028;
+}
+
+html.mic-dark-mode .admin-buildto-table tbody tr:hover .admin-buildto-warn-cell {
+    background: rgba(155, 89, 208, 0.08);
+}
+
+html.mic-dark-mode .admin-buildto-table tbody tr:nth-child(even):hover .admin-buildto-warn-cell {
+    background: rgba(155, 89, 208, 0.1);
 }
 
 html.mic-dark-mode .admin-buildto-close-btn:hover {

@@ -34,10 +34,10 @@
         const type = row.querySelector('[data-field="ruleType"]')?.value || 'days';
         const showDays = type === 'days';
         row.querySelectorAll('[data-buildto-group="days"]').forEach((cell) => {
-            cell.hidden = !showDays;
+            cell.classList.toggle('admin-buildto-group--off', !showDays);
         });
         row.querySelectorAll('[data-buildto-group="fixed"]').forEach((cell) => {
-            cell.hidden = showDays;
+            cell.classList.toggle('admin-buildto-group--off', showDays);
         });
     }
 
@@ -224,7 +224,7 @@
                             <td data-buildto-group="days"><input type="number" min="0" max="31" data-field="buildToDays" class="admin-buildto-num-input" value="${item.buildToDays != null ? escapeHtml(item.buildToDays) : ''}" /></td>
                             <td data-buildto-group="days"><input type="number" min="0" max="99" data-field="buildToAdd" class="admin-buildto-num-input" value="${escapeHtml(item.buildToAdd || 0)}" /></td>
                             <td data-buildto-group="fixed"><input type="number" min="0" max="999" data-field="buildToFixed" class="admin-buildto-num-input" value="${fixedValue !== '' ? escapeHtml(fixedValue) : ''}" /></td>
-                            <td><input type="number" min="1" max="31" data-field="stockWarningDays" class="admin-buildto-num-input admin-buildto-warn-input" value="${escapeHtml(warnValue)}" title="Low stock warning threshold (days)" /></td>
+                            <td class="admin-buildto-warn-cell"><input type="number" min="1" max="31" data-field="stockWarningDays" class="admin-buildto-num-input admin-buildto-warn-input" value="${escapeHtml(warnValue)}" title="Low stock warning threshold (days)" /></td>
                         </tr>`;
                         })
                         .join('')}

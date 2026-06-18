@@ -24,14 +24,46 @@ function listFiles(dir, ext = '.xlsx') {
         .map((f) => path.join(dir, f));
 }
 
+function fileSnapshots(dir, ext) {
+    const map = new Map();
+    for (const f of listFiles(dir, ext)) {
+        try {
+            const st = fs.statSync(f);
+            map.set(f, { size: st.size, mtimeMs: st.mtimeMs });
+        } catch {
+            /* ignore */
+        }
+    }
+    return map;
+}
+
+function hasActivePartialDownload(dir, ext) {
+    if (!fs.existsSync(dir)) return false;
+    const stem = String(ext || '').toLowerCase().replace(/^\./, '');
+    for (const name of fs.readdirSync(dir)) {
+        const lower = name.toLowerCase();
+        if (!lower.endsWith('.crdownload')) continue;
+        if (!stem || lower.includes(stem)) return true;
+    }
+    return false;
+}
+
+function fileChangedSince(before, filePath, stat) {
+    const prev = before.get(filePath);
+    if (!prev) return true;
+    if (stat.size !== prev.size) return true;
+    return stat.mtimeMs > prev.mtimeMs + 200;
+}
+
 /**
- * Wait until a new file matching ext appears in dir (or size stabilizes).
+ * Wait until a new or updated file matching ext appears in dir (size stabilizes).
+ * Macromatix often reuses the same export filename (e.g. MMS_Report_*.xls).
  */
 async function waitForNewDownload(dir, opts = {}) {
     const ext = opts.ext || '.xlsx';
     const timeoutMs = opts.timeoutMs || 120000;
     const pollMs = opts.pollMs || 500;
-    const before = new Set(listFiles(dir, ext));
+    const before = fileSnapshots(dir, ext);
     const start = Date.now();
     const touchEveryMs = Number(opts.touchEveryMs || 0);
     let lastTouch = start;
@@ -39,30 +71,61 @@ async function waitForNewDownload(dir, opts = {}) {
     while (Date.now() - start < timeoutMs) {
         if (touchEveryMs > 0 && typeof opts.onPoll === 'function' && Date.now() - lastTouch >= touchEveryMs) {
             try {
-                opts.onPoll();
+                await opts.onPoll();
             } catch {
                 /* ignore */
             }
             lastTouch = Date.now();
         }
+
+        if (hasActivePartialDownload(dir, ext)) {
+            await sleep(pollMs);
+            continue;
+        }
+
         const now = listFiles(dir, ext);
         for (const f of now) {
-            if (!before.has(f)) {
-                const stat1 = fs.statSync(f);
-                if (stat1.size === 0) {
-                    await sleep(pollMs);
-                    continue;
-                }
-                await sleep(pollMs);
-                const stat2 = fs.statSync(f);
-                if (stat2.size === stat1.size && stat2.size > 0) {
-                    return f;
-                }
+            let stat1;
+            try {
+                stat1 = fs.statSync(f);
+            } catch {
+                continue;
+            }
+            if (stat1.size === 0) continue;
+            if (!fileChangedSince(before, f, stat1)) continue;
+
+            await sleep(pollMs);
+            let stat2;
+            try {
+                stat2 = fs.statSync(f);
+            } catch {
+                continue;
+            }
+            if (stat2.size === stat1.size && stat2.size > 0 && !hasActivePartialDownload(dir, ext)) {
+                return f;
             }
         }
         await sleep(pollMs);
     }
     throw new Error(`Timed out waiting for download in ${dir} (${timeoutMs}ms)`);
+}
+
+/** Remove Macromatix default export names so overwrite detection stays reliable. */
+function clearMacromatixDefaultExports(dir) {
+    if (!fs.existsSync(dir)) return [];
+    const removed = [];
+    for (const name of fs.readdirSync(dir)) {
+        if (!/^MMS_Report_/i.test(name)) continue;
+        const filePath = path.join(dir, name);
+        try {
+            if (!fs.statSync(filePath).isFile()) continue;
+            fs.unlinkSync(filePath);
+            removed.push(name);
+        } catch {
+            /* ignore */
+        }
+    }
+    return removed;
 }
 
 function sleep(ms) {
@@ -132,7 +195,9 @@ module.exports = {
     copyFileSafe,
     timestampSlug,
     listFiles,
+    fileSnapshots,
     waitForNewDownload,
+    clearMacromatixDefaultExports,
     sleep,
     archiveFile,
     clearChromeProfileSingletonLocks,

@@ -451,7 +451,9 @@ function clearStoreReportFilesByBasenames(storeNumber, reportsRoot, basenames) {
         const filePath = path.join(storeDir, name);
         if (!fs.statSync(filePath).isFile()) continue;
         const base = path.basename(name);
-        const matched = [...want].some((slug) => base.includes(`-${slug}.`) || base.includes(`-${slug}-`));
+        const matched =
+            [...want].some((slug) => base.includes(`-${slug}.`) || base.includes(`-${slug}-`)) ||
+            /^MMS_Report_/i.test(base);
         if (!matched) continue;
         fs.unlinkSync(filePath);
         removed.push(name);

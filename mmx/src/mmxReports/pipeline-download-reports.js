@@ -2,7 +2,7 @@
 const fs = require('fs');
 const { GOTO_OPTS } = require('./mmx-browser');
 const { withPageContextRetry } = require('./mmx-context-retry');
-const { ensureDir, waitForNewDownload, timestampSlug } = require('./util-files');
+const { ensureDir, waitForNewDownload, timestampSlug, clearMacromatixDefaultExports } = require('./util-files');
 const log = require('./util-logging');
 const { navigateToSupplyChainReports } = require('./mmx-navigation');
 const { refreshScrapePauseTimeout } = require('../mmxResourceGate');
@@ -66,6 +66,19 @@ async function clickExportExcelDataOnly(page, report = {}) {
     }
 }
 
+function listStrayMmxExports(downloadDir, report) {
+    if (!fs.existsSync(downloadDir)) return [];
+    const wantExt = String(report?.downloadExt || '.xls').toLowerCase();
+    return fs
+        .readdirSync(downloadDir)
+        .filter((name) => /^MMS_Report_/i.test(name))
+        .map((name) => path.join(downloadDir, name))
+        .filter((filePath) => {
+            const ext = path.extname(filePath).toLowerCase();
+            return ext !== wantExt;
+        });
+}
+
 async function scrapeReportPageDiagnostics(page) {
     try {
         return await page.evaluate(() => {
@@ -103,12 +116,12 @@ async function waitForReportDownload(downloadDir, timeoutMs, preferredExt, pollH
     let lastError = null;
     for (let i = 0; i < order.length; i++) {
         const ext = order[i];
-        const attemptMs = i === 0 ? timeoutMs : Math.min(8000, Math.floor(timeoutMs / 8));
+        const attemptMs = i === 0 ? timeoutMs : Math.min(15000, Math.floor(timeoutMs / 4));
         try {
             return await waitForNewDownload(downloadDir, {
                 timeoutMs: attemptMs,
                 ext,
-                touchEveryMs: Number(process.env.MMX_DOWNLOAD_EXPORT_RETRY_MS || 30000),
+                touchEveryMs: Number(process.env.MMX_DOWNLOAD_EXPORT_RETRY_MS || 0) || 0,
                 onPoll: async () => {
                     refreshScrapePauseTimeout();
                     if (typeof pollHooks.onPoll === 'function') {
@@ -121,6 +134,11 @@ async function waitForReportDownload(downloadDir, timeoutMs, preferredExt, pollH
             if (i === order.length - 1) break;
         }
     }
+    if (lastError && timeoutMs > 15000) {
+        throw new Error(
+            `${String(lastError.message || lastError).replace(/\(\d+ms\)\.?$/i, '')} (waited ${timeoutMs}ms for ${preferredExt || order[0]})`
+        );
+    }
     throw lastError || new Error('No download received');
 }
 
@@ -130,6 +148,15 @@ async function downloadSupplyChainReport(page, report, settings) {
         : report.skipStoreSelection
           ? ' (no store tree; split/filter after download)'
           : '';
+    const downloadDir = getReportDownloadDir(settings);
+    const cleared = clearMacromatixDefaultExports(downloadDir);
+    if (cleared.length) {
+        log.info(
+            `${report.label || report.id}: cleared ${cleared.length} stale Macromatix export file(s) before download`
+        );
+    }
+    await configureDownloadPath(page, downloadDir);
+
     log.info(`Downloading: ${report.label || report.id} (${report.reportName})${scope}`);
     await runSupplyChainReport(page, report, settings);
 
@@ -139,34 +166,10 @@ async function downloadSupplyChainReport(page, report, settings) {
     }
 
     const downloadWaitMs = Number(report.downloadWaitMs || settings.downloadWaitMs);
-    let exportLinkAttempts = 0;
     const downloaded = await waitForReportDownload(
-        getReportDownloadDir(settings),
+        downloadDir,
         downloadWaitMs,
-        report.downloadExt,
-        {
-            onPoll: async () => {
-                exportLinkAttempts++;
-                if (exportLinkAttempts % 2 !== 0) return;
-                const clicked = await page.evaluate(() => {
-                    for (const el of document.querySelectorAll('a, button, input')) {
-                        const t = (el.textContent || el.value || '').trim().toLowerCase();
-                        if (
-                            (t.includes('excel') && (t.includes('data') || t.includes('only'))) ||
-                            t === 'export' ||
-                            t.includes('download')
-                        ) {
-                            el.click();
-                            return t;
-                        }
-                    }
-                    return null;
-                });
-                if (clicked) {
-                    log.info(`${report.label || report.id}: clicked export link "${clicked}" while waiting for download`);
-                }
-            },
-        }
+        report.downloadExt
     ).catch(async (err) => {
         const diag = await scrapeReportPageDiagnostics(page);
         const url = page.url();
@@ -174,9 +177,24 @@ async function downloadSupplyChainReport(page, report, settings) {
             log.warn(`${report.label || report.id}: page diagnostics after timeout: ${diag}`);
         }
         log.warn(`${report.label || report.id}: page URL at timeout: ${url}`);
+        const stray = listStrayMmxExports(downloadDir, report);
+        if (stray.length) {
+            log.warn(
+                `${report.label || report.id}: files in download dir: ${stray.map((f) => path.basename(f)).join(', ')}`
+            );
+        }
         const hint = diag ? ` Macromatix page: ${diag}` : '';
         throw new Error(`${err.message}.${hint}`);
     });
+    const wantExt = String(report.downloadExt || path.extname(downloaded) || '.xls').toLowerCase();
+    const gotExt = path.extname(downloaded).toLowerCase();
+    if (wantExt && gotExt && gotExt !== wantExt) {
+        const stray = listStrayMmxExports(downloadDir, report);
+        throw new Error(
+            `Macromatix saved ${path.basename(downloaded)} (${gotExt}) but ${wantExt} was required` +
+                (stray.length ? `; also saw ${stray.map((f) => path.basename(f)).join(', ')}` : '')
+        );
+    }
     const dest = buildDownloadDest(report, settings, downloaded);
     if (downloaded !== dest) {
         fs.renameSync(downloaded, dest);

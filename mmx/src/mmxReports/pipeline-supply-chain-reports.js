@@ -1549,7 +1549,6 @@ async function selectStore(page, storeName, opts = {}) {
 }
 
 async function clickGenerate(page, buttonText = 'Generate') {
-    const postbackMs = Number(process.env.MMX_REPORT_GENERATE_POSTBACK_MS || 180000);
     const clicked = await page.evaluate((label) => {
         const want = label.toLowerCase();
         for (const el of document.querySelectorAll('input, button, a')) {
@@ -1564,28 +1563,12 @@ async function clickGenerate(page, buttonText = 'Generate') {
 
     if (!clicked) throw new Error(`Generate button not found`);
     log.info('Clicked Generate - waiting for report export');
-
+    const postbackMs = Number(process.env.MMX_REPORT_GENERATE_POSTBACK_MS || 45000);
     await clickAndWaitForPostback(page, () => Promise.resolve(), {
         timeoutMs: postbackMs,
         skipNavigationWait: true,
     }).catch(() => {});
-
-    await page
-        .waitForFunction(
-            () => {
-                const loading = document.querySelector(
-                    '[id*="Loading"], .raLoading, .RadAjaxLoadingPanel, .RadAjaxLoading'
-                );
-                if (!loading) return true;
-                const style = window.getComputedStyle(loading);
-                if (style.display === 'none' || style.visibility === 'hidden') return true;
-                return loading.offsetParent === null;
-            },
-            { timeout: postbackMs, polling: 500 }
-        )
-        .catch(() => {});
-
-    await page.waitForTimeout(Number(process.env.MMX_REPORT_GENERATE_SETTLE_MS || 350));
+    await page.waitForTimeout(Number(process.env.MMX_REPORT_GENERATE_SETTLE_MS || 500));
     refreshScrapePauseTimeout();
 }
 
@@ -1644,7 +1627,8 @@ async function configureAndGenerateReport(page, report, reportNav, hooks = {}) {
         await setReportFormat(page, formatText);
         if (chain) chain.lastFormat = formatText;
     } else {
-        await emit('keeping export format…');
+        await emit(`confirming export format (${formatText})…`);
+        await setReportFormat(page, formatText);
     }
 
     if (!useChain || chain.lastStartDate !== startDate) {

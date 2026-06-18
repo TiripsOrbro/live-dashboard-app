@@ -2738,7 +2738,7 @@ app.get('/api/me', (req, res) => {
 
 app.get('/api/admin/store-scope', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
-    if (!isRealDashboardUser(user) || !hasMultiStoreScope(user)) {
+    if (!isRealDashboardUser(user)) {
         res.status(403).json({ success: false, error: 'You do not have permission to browse stores.' });
         return;
     }

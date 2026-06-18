@@ -2299,8 +2299,11 @@ function userProfileForClient(user) {
 }
 
 function getStoreScopeTreeForUser(user) {
-    if (!user || !hasMultiStoreScope(user)) return null;
-    return buildCreateAccountScopeTree(user);
+    if (!user) return null;
+    if (hasMultiStoreScope(user) || canUserManageStoreLogins(user)) {
+        return buildCreateAccountScopeTree(user);
+    }
+    return null;
 }
 
 module.exports = {

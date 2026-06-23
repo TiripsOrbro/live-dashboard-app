@@ -34,6 +34,30 @@ const {
 } = require('../../mmx/src/mmxTaskQueue');
 const { refreshScrapePauseTimeout, isMmxResourceBusy } = require('../../mmx/src/mmxResourceGate');
 const { setCheckpoint, getCheckpoint, clearCheckpoint, listAllCheckpoints } = require('../../mmx/src/mmxPipelineCheckpoint');
+const { timeStage, formatTimings } = require('../../mmx/src/mmxStageTimer');
+
+// Per-store stage timings for the current run (diagnostic; surfaced in logs + checkpoint).
+const stageTimingsByStore = new Map();
+
+function recordStageTiming(storeNumber, timing) {
+    const key = String(storeNumber);
+    const arr = stageTimingsByStore.get(key) || [];
+    arr.push({ ...timing, at: new Date().toISOString() });
+    stageTimingsByStore.set(key, arr);
+}
+
+function getStageTimings(storeNumber) {
+    return (stageTimingsByStore.get(String(storeNumber)) || []).slice();
+}
+
+function resetStageTimings(storeNumber) {
+    stageTimingsByStore.delete(String(storeNumber));
+}
+
+/** Wrap a pipeline stage with timing that is logged and recorded against the store. */
+function timeStoreStage(storeNumber, label, fn) {
+    return timeStage(label, fn, (timing) => recordStageTiming(storeNumber, timing));
+}
 
 function touchStockCountWork() {
     refreshScrapePauseTimeout();
@@ -587,15 +611,17 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
                     `Store ${storeNumber}: downloading build-to reports (ISE, stock-on-hand, stock-on-order)`
                 );
             }
-            await ensureReportsForOrders(storeNumber, {
-                page: options.page,
-                browser: options.browser,
-                reportsDir,
-                onlyReportIds: refreshReportIds,
-                forceDownload: Boolean(options.forceReportDownload),
-                dateKey,
-                afterCountApply,
-            });
+            await timeStoreStage(storeNumber, 'download-reports', () =>
+                ensureReportsForOrders(storeNumber, {
+                    page: options.page,
+                    browser: options.browser,
+                    reportsDir,
+                    onlyReportIds: refreshReportIds,
+                    forceDownload: Boolean(options.forceReportDownload),
+                    dateKey,
+                    afterCountApply,
+                })
+            );
             await touchPipelineStep(
                 storeNumber,
                 'All build-to reports downloaded - calculating order quantities'
@@ -620,7 +646,9 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
             noOrderRounding: options.noOrderRounding,
             preferReportOnHand: true,
         };
-        const buildTo = await calculateBuildToOrders(storeNumber, buildToOpts);
+        const buildTo = await timeStoreStage(storeNumber, 'build-to-calc', () =>
+            calculateBuildToOrders(storeNumber, buildToOpts)
+        );
         const lowStockAlerts = computeLowStockAlerts(buildTo.lines || [], { storeNumber });
         if (lowStockAlerts.length) {
             await updateCheckpoint(storeNumber, {
@@ -681,8 +709,11 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
             stage: 'filling-orders',
             stepLabel: 'Placing scheduled orders in Macromatix',
         });
-        const orders = await runVendorOrdersForStore(page, storeNumber, dateKey, orderPack);
+        const orders = await timeStoreStage(storeNumber, 'fill-scheduled-orders', () =>
+            runVendorOrdersForStore(page, storeNumber, dateKey, orderPack)
+        );
         cycleSucceeded = true;
+        log.info(`Store ${storeNumber} stage timings - ${formatTimings(getStageTimings(storeNumber))}`);
         return { dateKey, buildTo, orderPack, orders, lowStockAlerts };
     } finally {
         if (cleanup && cycleSucceeded) {
@@ -786,10 +817,17 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
         const { dateKey, toSend } = await resolveToSend(storeNumber, vendorSlug, options);
         const vendorEntries = await buildVendorEntries(storeNumber, toSend, dateKey);
         logStockCountMmxPlan(storeNumber, vendorEntries);
+        resetStageTimings(storeNumber);
 
         await beginStockCountMmxWork(`stock count prepare (store ${storeNumber})`, storeNumber);
         await discardStockCountMmxWork(storeNumber, 'replaced', { releaseMicSlot: false });
 
+        if (options.skipKeyItemCount) {
+            log.info(
+                `Store ${storeNumber}: Key Item Count skipped by request (Area Manager+) - ordering from counts and reports`
+            );
+            return runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options);
+        }
         if (!vendorEntriesNeedKeyItemCount(vendorEntries)) {
             return runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options);
         }
@@ -817,14 +855,16 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
             log.info(`Preparing combined Key Item Count for store ${storeNumber}: ${vendorLabels}`);
 
             const onPipelineStep = (label) => touchPipelineStep(storeNumber, label);
-            const stockCountResult = await enterCombinedStockCount(page, {
-                storeNumber,
-                vendorEntries,
-                navTimeoutMs: Number(process.env.MMX_NAV_TIMEOUT_MS || 45000),
-                selectStore,
-                stopAtConfirm: true,
-                onPipelineStep,
-            });
+            const stockCountResult = await timeStoreStage(storeNumber, 'prepare-key-item-count', () =>
+                enterCombinedStockCount(page, {
+                    storeNumber,
+                    vendorEntries,
+                    navTimeoutMs: Number(process.env.MMX_NAV_TIMEOUT_MS || 45000),
+                    selectStore,
+                    stopAtConfirm: true,
+                    onPipelineStep,
+                })
+            );
 
             const redVariances = stockCountResult.variances || [];
             const session = await createSession({
@@ -1161,7 +1201,9 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
             });
             await touchPipelineStep(storeNumber, 'Applying count in Macromatix');
             const { loadMmxStockCountConfig } = require('../../mmx/src/mmxReports/mmx-stock-count');
-            const applyResult = await applyKeyItemCount(page, loadMmxStockCountConfig());
+            const applyResult = await timeStoreStage(storeNumber, 'apply-key-item-count', () =>
+                applyKeyItemCount(page, loadMmxStockCountConfig())
+            );
             appliedInMmx = applyResult.applied || applyResult.alreadyApplied;
             countAlreadyApplied = Boolean(applyResult.alreadyApplied);
 
@@ -1195,6 +1237,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
                     vendorSlugs,
                     ordersCompletedAt: new Date().toISOString(),
                     lastError: orderFailures,
+                    timings: getStageTimings(storeNumber),
                 });
             }
             await clearCheckpoint(storeNumber);

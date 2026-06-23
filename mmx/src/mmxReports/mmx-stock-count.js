@@ -729,7 +729,7 @@ async function deleteInProgressCount(page, cfg, optionValue) {
     }
     log.info(`Deleting in-progress stock count via #${deleteId}`);
     await clickButtonById(page, deleteId);
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(Number(process.env.MMX_STOCK_COUNT_DELETE_SETTLE_MS || 600));
 }
 
 async function createNewCountBatch(page, cfg, { countKind = 'key-item', onPipelineStep } = {}) {
@@ -1167,7 +1167,7 @@ async function typeIntoInput(page, inputId, value) {
         text
     );
     if (setViaDom?.ok && setViaDom.readBack === text) {
-        await page.waitForTimeout(80);
+        await page.waitForTimeout(Number(process.env.MMX_STOCK_COUNT_INPUT_SETTLE_MS || 30));
         return true;
     }
 
@@ -1192,15 +1192,15 @@ async function typeIntoInput(page, inputId, value) {
 
     try {
         await handle.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'nearest' }));
-        await page.waitForTimeout(120);
+        await page.waitForTimeout(Number(process.env.MMX_STOCK_COUNT_INPUT_SCROLL_SETTLE_MS || 60));
         await handle.focus();
         await page.keyboard.down('Control');
         await page.keyboard.press('KeyA');
         await page.keyboard.up('Control');
         await page.keyboard.press('Backspace');
-        await page.keyboard.type(text, { delay: 15 });
+        await page.keyboard.type(text, { delay: Number(process.env.MMX_STOCK_COUNT_TYPE_DELAY_MS || 5) });
         await page.keyboard.press('Tab');
-        await page.waitForTimeout(80);
+        await page.waitForTimeout(Number(process.env.MMX_STOCK_COUNT_INPUT_SETTLE_MS || 30));
         return true;
     } catch (error) {
         const forced = await page.evaluate(

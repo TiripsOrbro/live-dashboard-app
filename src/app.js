@@ -4637,9 +4637,26 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
             });
         }
 
+        const skipKeyItemCount = /^(1|true|yes|on)$/i.test(
+            String(req.body?.skipKeyItemCount ?? req.query.skipKeyItemCount ?? '')
+        );
+        if (skipKeyItemCount) {
+            const user = req.dashboardUser || getRequestUser(req);
+            if (!canUserEditGlobalBuildTo(user)) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Area Manager access or above required to skip Key Item Count.',
+                });
+            }
+            console.log(
+                `[StockCount] Skip Key Item Count requested by ${user?.username || 'unknown'} - store ${store}`
+            );
+        }
+
         console.log(`[StockCount] Send to MMX (prepare) - store ${store} vendor ${vendorSlug}`);
         const mmxOpts = mmxAutomationOptions(req, store, {
             pendingVendorLabels: pendingVendorLabelsForStockCount(req, store),
+            skipKeyItemCount,
         });
         res.json({ success: true, accepted: true });
 

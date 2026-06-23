@@ -130,7 +130,7 @@ async function clickExportExcelDataOnly(page, report = {}) {
     if (report.exportButtonSelector) {
         await page.waitForSelector(report.exportButtonSelector, { timeout: 30000 });
         await page.click(report.exportButtonSelector);
-        await page.waitForTimeout(400);
+        await page.waitForTimeout(Number(process.env.MMX_EXPORT_MENU_SETTLE_MS || 200));
     }
 
     if (report.exportLinkText) {

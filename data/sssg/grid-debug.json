@@ -1,0 +1,2035 @@
+{
+  "storeNumber": "3903",
+  "probedAt": "2026-06-13T11:14:06.330Z",
+  "rawRowCount": 123,
+  "slotCount": 96,
+  "rawRows": [
+    {
+      "rowIndex": 1,
+      "labelText": "2:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-1",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 2,
+      "labelText": "2:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-2",
+      "classification": {
+        "include": true,
+        "startMinutes": 120,
+        "endMinutes": 135
+      }
+    },
+    {
+      "rowIndex": 3,
+      "labelText": "2:15 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-3",
+      "classification": {
+        "include": true,
+        "startMinutes": 135,
+        "endMinutes": 150
+      }
+    },
+    {
+      "rowIndex": 4,
+      "labelText": "2:30 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-4",
+      "classification": {
+        "include": true,
+        "startMinutes": 150,
+        "endMinutes": 165
+      }
+    },
+    {
+      "rowIndex": 5,
+      "labelText": "2:45 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-5",
+      "classification": {
+        "include": true,
+        "startMinutes": 165,
+        "endMinutes": 180
+      }
+    },
+    {
+      "rowIndex": 6,
+      "labelText": "3:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-6",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 7,
+      "labelText": "3:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-7",
+      "classification": {
+        "include": true,
+        "startMinutes": 180,
+        "endMinutes": 195
+      }
+    },
+    {
+      "rowIndex": 8,
+      "labelText": "3:15 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-8",
+      "classification": {
+        "include": true,
+        "startMinutes": 195,
+        "endMinutes": 210
+      }
+    },
+    {
+      "rowIndex": 9,
+      "labelText": "3:30 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-9",
+      "classification": {
+        "include": true,
+        "startMinutes": 210,
+        "endMinutes": 225
+      }
+    },
+    {
+      "rowIndex": 10,
+      "labelText": "3:45 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-10",
+      "classification": {
+        "include": true,
+        "startMinutes": 225,
+        "endMinutes": 240
+      }
+    },
+    {
+      "rowIndex": 11,
+      "labelText": "4:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-11",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 12,
+      "labelText": "4:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-12",
+      "classification": {
+        "include": true,
+        "startMinutes": 240,
+        "endMinutes": 255
+      }
+    },
+    {
+      "rowIndex": 13,
+      "labelText": "4:15 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-13",
+      "classification": {
+        "include": true,
+        "startMinutes": 255,
+        "endMinutes": 270
+      }
+    },
+    {
+      "rowIndex": 14,
+      "labelText": "4:30 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-14",
+      "classification": {
+        "include": true,
+        "startMinutes": 270,
+        "endMinutes": 285
+      }
+    },
+    {
+      "rowIndex": 15,
+      "labelText": "4:45 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-15",
+      "classification": {
+        "include": true,
+        "startMinutes": 285,
+        "endMinutes": 300
+      }
+    },
+    {
+      "rowIndex": 16,
+      "labelText": "5:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-16",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 17,
+      "labelText": "5:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-17",
+      "classification": {
+        "include": true,
+        "startMinutes": 300,
+        "endMinutes": 315
+      }
+    },
+    {
+      "rowIndex": 18,
+      "labelText": "5:15 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-18",
+      "classification": {
+        "include": true,
+        "startMinutes": 315,
+        "endMinutes": 330
+      }
+    },
+    {
+      "rowIndex": 19,
+      "labelText": "5:30 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-19",
+      "classification": {
+        "include": true,
+        "startMinutes": 330,
+        "endMinutes": 345
+      }
+    },
+    {
+      "rowIndex": 20,
+      "labelText": "5:45 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-20",
+      "classification": {
+        "include": true,
+        "startMinutes": 345,
+        "endMinutes": 360
+      }
+    },
+    {
+      "rowIndex": 21,
+      "labelText": "",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-21",
+      "classification": {
+        "include": false,
+        "reason": "empty-label"
+      }
+    },
+    {
+      "rowIndex": 22,
+      "labelText": "6:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-22",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 23,
+      "labelText": "6:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-23",
+      "classification": {
+        "include": true,
+        "startMinutes": 360,
+        "endMinutes": 375
+      }
+    },
+    {
+      "rowIndex": 24,
+      "labelText": "6:15 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-24",
+      "classification": {
+        "include": true,
+        "startMinutes": 375,
+        "endMinutes": 390
+      }
+    },
+    {
+      "rowIndex": 25,
+      "labelText": "6:30 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-25",
+      "classification": {
+        "include": true,
+        "startMinutes": 390,
+        "endMinutes": 405
+      }
+    },
+    {
+      "rowIndex": 26,
+      "labelText": "6:45 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-26",
+      "classification": {
+        "include": true,
+        "startMinutes": 405,
+        "endMinutes": 420
+      }
+    },
+    {
+      "rowIndex": 27,
+      "labelText": "7:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-27",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 28,
+      "labelText": "7:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-28",
+      "classification": {
+        "include": true,
+        "startMinutes": 420,
+        "endMinutes": 435
+      }
+    },
+    {
+      "rowIndex": 29,
+      "labelText": "7:15 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-29",
+      "classification": {
+        "include": true,
+        "startMinutes": 435,
+        "endMinutes": 450
+      }
+    },
+    {
+      "rowIndex": 30,
+      "labelText": "7:30 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-30",
+      "classification": {
+        "include": true,
+        "startMinutes": 450,
+        "endMinutes": 465
+      }
+    },
+    {
+      "rowIndex": 31,
+      "labelText": "7:45 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-31",
+      "classification": {
+        "include": true,
+        "startMinutes": 465,
+        "endMinutes": 480
+      }
+    },
+    {
+      "rowIndex": 32,
+      "labelText": "8:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-32",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 33,
+      "labelText": "8:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-33",
+      "classification": {
+        "include": true,
+        "startMinutes": 480,
+        "endMinutes": 495
+      }
+    },
+    {
+      "rowIndex": 34,
+      "labelText": "8:15 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-34",
+      "classification": {
+        "include": true,
+        "startMinutes": 495,
+        "endMinutes": 510
+      }
+    },
+    {
+      "rowIndex": 35,
+      "labelText": "8:30 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-35",
+      "classification": {
+        "include": true,
+        "startMinutes": 510,
+        "endMinutes": 525
+      }
+    },
+    {
+      "rowIndex": 36,
+      "labelText": "8:45 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-36",
+      "classification": {
+        "include": true,
+        "startMinutes": 525,
+        "endMinutes": 540
+      }
+    },
+    {
+      "rowIndex": 37,
+      "labelText": "9:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-37",
+      "classification": {
+        "include": false,
+        "reason": "excluded-index"
+      }
+    },
+    {
+      "rowIndex": 38,
+      "labelText": "9:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-38",
+      "classification": {
+        "include": true,
+        "startMinutes": 540,
+        "endMinutes": 555
+      }
+    },
+    {
+      "rowIndex": 39,
+      "labelText": "9:15 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-39",
+      "classification": {
+        "include": true,
+        "startMinutes": 555,
+        "endMinutes": 570
+      }
+    },
+    {
+      "rowIndex": 40,
+      "labelText": "9:30 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-40",
+      "classification": {
+        "include": true,
+        "startMinutes": 570,
+        "endMinutes": 585
+      }
+    },
+    {
+      "rowIndex": 41,
+      "labelText": "9:45 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-41",
+      "classification": {
+        "include": true,
+        "startMinutes": 585,
+        "endMinutes": 600
+      }
+    },
+    {
+      "rowIndex": 42,
+      "labelText": "",
+      "valueText": "$3,533.69",
+      "value": 3533.69,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-42",
+      "classification": {
+        "include": false,
+        "reason": "empty-label"
+      }
+    },
+    {
+      "rowIndex": 43,
+      "labelText": "10:00 AM",
+      "valueText": "$166.05",
+      "value": 166.05,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-43",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 44,
+      "labelText": "10:00 AM",
+      "valueText": "$39.82",
+      "value": 39.82,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-44",
+      "classification": {
+        "include": true,
+        "startMinutes": 600,
+        "endMinutes": 615
+      }
+    },
+    {
+      "rowIndex": 45,
+      "labelText": "10:15 AM",
+      "valueText": "$41.55",
+      "value": 41.55,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-45",
+      "classification": {
+        "include": true,
+        "startMinutes": 615,
+        "endMinutes": 630
+      }
+    },
+    {
+      "rowIndex": 46,
+      "labelText": "10:30 AM",
+      "valueText": "$66.13",
+      "value": 66.13,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-46",
+      "classification": {
+        "include": true,
+        "startMinutes": 630,
+        "endMinutes": 645
+      }
+    },
+    {
+      "rowIndex": 47,
+      "labelText": "10:45 AM",
+      "valueText": "$18.55",
+      "value": 18.55,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-47",
+      "classification": {
+        "include": true,
+        "startMinutes": 645,
+        "endMinutes": 660
+      }
+    },
+    {
+      "rowIndex": 48,
+      "labelText": "11:00 AM",
+      "valueText": "$625.21",
+      "value": 625.21,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-48",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 49,
+      "labelText": "11:00 AM",
+      "valueText": "$123.09",
+      "value": 123.09,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-49",
+      "classification": {
+        "include": true,
+        "startMinutes": 660,
+        "endMinutes": 675
+      }
+    },
+    {
+      "rowIndex": 50,
+      "labelText": "11:15 AM",
+      "valueText": "$96.38",
+      "value": 96.38,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-50",
+      "classification": {
+        "include": true,
+        "startMinutes": 675,
+        "endMinutes": 690
+      }
+    },
+    {
+      "rowIndex": 51,
+      "labelText": "11:30 AM",
+      "valueText": "$267.06",
+      "value": 267.06,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-51",
+      "classification": {
+        "include": true,
+        "startMinutes": 690,
+        "endMinutes": 705
+      }
+    },
+    {
+      "rowIndex": 52,
+      "labelText": "11:45 AM",
+      "valueText": "$138.68",
+      "value": 138.68,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-52",
+      "classification": {
+        "include": true,
+        "startMinutes": 705,
+        "endMinutes": 720
+      }
+    },
+    {
+      "rowIndex": 53,
+      "labelText": "12:00 PM",
+      "valueText": "$848.19",
+      "value": 848.19,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-53",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 54,
+      "labelText": "12:00 PM",
+      "valueText": "$230.87",
+      "value": 230.87,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-54",
+      "classification": {
+        "include": true,
+        "startMinutes": 720,
+        "endMinutes": 735
+      }
+    },
+    {
+      "rowIndex": 55,
+      "labelText": "12:15 PM",
+      "valueText": "$277.60",
+      "value": 277.6,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-55",
+      "classification": {
+        "include": true,
+        "startMinutes": 735,
+        "endMinutes": 750
+      }
+    },
+    {
+      "rowIndex": 56,
+      "labelText": "12:30 PM",
+      "valueText": "$174.99",
+      "value": 174.99,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-56",
+      "classification": {
+        "include": true,
+        "startMinutes": 750,
+        "endMinutes": 765
+      }
+    },
+    {
+      "rowIndex": 57,
+      "labelText": "12:45 PM",
+      "valueText": "$164.73",
+      "value": 164.73,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-57",
+      "classification": {
+        "include": true,
+        "startMinutes": 765,
+        "endMinutes": 780
+      }
+    },
+    {
+      "rowIndex": 58,
+      "labelText": "1:00 PM",
+      "valueText": "$1,212.50",
+      "value": 1212.5,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-58",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 59,
+      "labelText": "1:00 PM",
+      "valueText": "$366.92",
+      "value": 366.92,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-59",
+      "classification": {
+        "include": true,
+        "startMinutes": 780,
+        "endMinutes": 795
+      }
+    },
+    {
+      "rowIndex": 60,
+      "labelText": "1:15 PM",
+      "valueText": "$432.81",
+      "value": 432.81,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-60",
+      "classification": {
+        "include": true,
+        "startMinutes": 795,
+        "endMinutes": 810
+      }
+    },
+    {
+      "rowIndex": 61,
+      "labelText": "1:30 PM",
+      "valueText": "$127.68",
+      "value": 127.68,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-61",
+      "classification": {
+        "include": true,
+        "startMinutes": 810,
+        "endMinutes": 825
+      }
+    },
+    {
+      "rowIndex": 62,
+      "labelText": "1:45 PM",
+      "valueText": "$285.09",
+      "value": 285.09,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-62",
+      "classification": {
+        "include": true,
+        "startMinutes": 825,
+        "endMinutes": 840
+      }
+    },
+    {
+      "rowIndex": 63,
+      "labelText": "2:00 PM",
+      "valueText": "$681.74",
+      "value": 681.74,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-63",
+      "classification": {
+        "include": false,
+        "reason": "excluded-index"
+      }
+    },
+    {
+      "rowIndex": 64,
+      "labelText": "2:00 PM",
+      "valueText": "$123.99",
+      "value": 123.99,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-64",
+      "classification": {
+        "include": true,
+        "startMinutes": 840,
+        "endMinutes": 855
+      }
+    },
+    {
+      "rowIndex": 65,
+      "labelText": "2:15 PM",
+      "valueText": "$87.81",
+      "value": 87.81,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-65",
+      "classification": {
+        "include": true,
+        "startMinutes": 855,
+        "endMinutes": 870
+      }
+    },
+    {
+      "rowIndex": 66,
+      "labelText": "2:30 PM",
+      "valueText": "$243.51",
+      "value": 243.51,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-66",
+      "classification": {
+        "include": true,
+        "startMinutes": 870,
+        "endMinutes": 885
+      }
+    },
+    {
+      "rowIndex": 67,
+      "labelText": "2:45 PM",
+      "valueText": "$226.43",
+      "value": 226.43,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-67",
+      "classification": {
+        "include": true,
+        "startMinutes": 885,
+        "endMinutes": 900
+      }
+    },
+    {
+      "rowIndex": 68,
+      "labelText": "",
+      "valueText": "$5,409.56",
+      "value": 5409.56,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-68",
+      "classification": {
+        "include": false,
+        "reason": "empty-label"
+      }
+    },
+    {
+      "rowIndex": 69,
+      "labelText": "3:00 PM",
+      "valueText": "$558.89",
+      "value": 558.89,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-69",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 70,
+      "labelText": "3:00 PM",
+      "valueText": "$148.88",
+      "value": 148.88,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-70",
+      "classification": {
+        "include": true,
+        "startMinutes": 900,
+        "endMinutes": 915
+      }
+    },
+    {
+      "rowIndex": 71,
+      "labelText": "3:15 PM",
+      "valueText": "$107.23",
+      "value": 107.23,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-71",
+      "classification": {
+        "include": true,
+        "startMinutes": 915,
+        "endMinutes": 930
+      }
+    },
+    {
+      "rowIndex": 72,
+      "labelText": "3:30 PM",
+      "valueText": "$206.34",
+      "value": 206.34,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-72",
+      "classification": {
+        "include": true,
+        "startMinutes": 930,
+        "endMinutes": 945
+      }
+    },
+    {
+      "rowIndex": 73,
+      "labelText": "3:45 PM",
+      "valueText": "$96.44",
+      "value": 96.44,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-73",
+      "classification": {
+        "include": true,
+        "startMinutes": 945,
+        "endMinutes": 960
+      }
+    },
+    {
+      "rowIndex": 74,
+      "labelText": "4:00 PM",
+      "valueText": "$323.93",
+      "value": 323.93,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-74",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 75,
+      "labelText": "4:00 PM",
+      "valueText": "$126.51",
+      "value": 126.51,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-75",
+      "classification": {
+        "include": true,
+        "startMinutes": 960,
+        "endMinutes": 975
+      }
+    },
+    {
+      "rowIndex": 76,
+      "labelText": "4:15 PM",
+      "valueText": "$3.14",
+      "value": 3.14,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-76",
+      "classification": {
+        "include": true,
+        "startMinutes": 975,
+        "endMinutes": 990
+      }
+    },
+    {
+      "rowIndex": 77,
+      "labelText": "4:30 PM",
+      "valueText": "$80.38",
+      "value": 80.38,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-77",
+      "classification": {
+        "include": true,
+        "startMinutes": 990,
+        "endMinutes": 1005
+      }
+    },
+    {
+      "rowIndex": 78,
+      "labelText": "4:45 PM",
+      "valueText": "$113.90",
+      "value": 113.9,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-78",
+      "classification": {
+        "include": true,
+        "startMinutes": 1005,
+        "endMinutes": 1020
+      }
+    },
+    {
+      "rowIndex": 79,
+      "labelText": "5:00 PM",
+      "valueText": "$630.09",
+      "value": 630.09,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-79",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 80,
+      "labelText": "5:00 PM",
+      "valueText": "$115.04",
+      "value": 115.04,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-80",
+      "classification": {
+        "include": true,
+        "startMinutes": 1020,
+        "endMinutes": 1035
+      }
+    },
+    {
+      "rowIndex": 81,
+      "labelText": "5:15 PM",
+      "valueText": "$178.51",
+      "value": 178.51,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-81",
+      "classification": {
+        "include": true,
+        "startMinutes": 1035,
+        "endMinutes": 1050
+      }
+    },
+    {
+      "rowIndex": 82,
+      "labelText": "5:30 PM",
+      "valueText": "$117.37",
+      "value": 117.37,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-82",
+      "classification": {
+        "include": true,
+        "startMinutes": 1050,
+        "endMinutes": 1065
+      }
+    },
+    {
+      "rowIndex": 83,
+      "labelText": "5:45 PM",
+      "valueText": "$219.17",
+      "value": 219.17,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-83",
+      "classification": {
+        "include": true,
+        "startMinutes": 1065,
+        "endMinutes": 1080
+      }
+    },
+    {
+      "rowIndex": 84,
+      "labelText": "6:00 PM",
+      "valueText": "$1,090.76",
+      "value": 1090.76,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-84",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 85,
+      "labelText": "6:00 PM",
+      "valueText": "$191.88",
+      "value": 191.88,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-85",
+      "classification": {
+        "include": true,
+        "startMinutes": 1080,
+        "endMinutes": 1095
+      }
+    },
+    {
+      "rowIndex": 86,
+      "labelText": "6:15 PM",
+      "valueText": "$233.02",
+      "value": 233.02,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-86",
+      "classification": {
+        "include": true,
+        "startMinutes": 1095,
+        "endMinutes": 1110
+      }
+    },
+    {
+      "rowIndex": 87,
+      "labelText": "6:30 PM",
+      "valueText": "$465.26",
+      "value": 465.26,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-87",
+      "classification": {
+        "include": true,
+        "startMinutes": 1110,
+        "endMinutes": 1125
+      }
+    },
+    {
+      "rowIndex": 88,
+      "labelText": "6:45 PM",
+      "valueText": "$200.60",
+      "value": 200.6,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-88",
+      "classification": {
+        "include": true,
+        "startMinutes": 1125,
+        "endMinutes": 1140
+      }
+    },
+    {
+      "rowIndex": 89,
+      "labelText": "7:00 PM",
+      "valueText": "$1,184.40",
+      "value": 1184.4,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-89",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 90,
+      "labelText": "7:00 PM",
+      "valueText": "$375.40",
+      "value": 375.4,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-90",
+      "classification": {
+        "include": true,
+        "startMinutes": 1140,
+        "endMinutes": 1155
+      }
+    },
+    {
+      "rowIndex": 91,
+      "labelText": "7:15 PM",
+      "valueText": "$378.78",
+      "value": 378.78,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-91",
+      "classification": {
+        "include": true,
+        "startMinutes": 1155,
+        "endMinutes": 1170
+      }
+    },
+    {
+      "rowIndex": 92,
+      "labelText": "7:30 PM",
+      "valueText": "$210.23",
+      "value": 210.23,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-92",
+      "classification": {
+        "include": true,
+        "startMinutes": 1170,
+        "endMinutes": 1185
+      }
+    },
+    {
+      "rowIndex": 93,
+      "labelText": "7:45 PM",
+      "valueText": "$219.99",
+      "value": 219.99,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-93",
+      "classification": {
+        "include": true,
+        "startMinutes": 1185,
+        "endMinutes": 1200
+      }
+    },
+    {
+      "rowIndex": 94,
+      "labelText": "8:00 PM",
+      "valueText": "$713.93",
+      "value": 713.93,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-94",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 95,
+      "labelText": "8:00 PM",
+      "valueText": "$245.92",
+      "value": 245.92,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-95",
+      "classification": {
+        "include": true,
+        "startMinutes": 1200,
+        "endMinutes": 1215
+      }
+    },
+    {
+      "rowIndex": 96,
+      "labelText": "8:15 PM",
+      "valueText": "$202.23",
+      "value": 202.23,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-96",
+      "classification": {
+        "include": true,
+        "startMinutes": 1215,
+        "endMinutes": 1230
+      }
+    },
+    {
+      "rowIndex": 97,
+      "labelText": "8:30 PM",
+      "valueText": "$93.45",
+      "value": 93.45,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-97",
+      "classification": {
+        "include": true,
+        "startMinutes": 1230,
+        "endMinutes": 1245
+      }
+    },
+    {
+      "rowIndex": 98,
+      "labelText": "8:45 PM",
+      "valueText": "$172.33",
+      "value": 172.33,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-98",
+      "classification": {
+        "include": true,
+        "startMinutes": 1245,
+        "endMinutes": 1260
+      }
+    },
+    {
+      "rowIndex": 99,
+      "labelText": "9:00 PM",
+      "valueText": "$644.41",
+      "value": 644.41,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-99",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 100,
+      "labelText": "9:00 PM",
+      "valueText": "$189.08",
+      "value": 189.08,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-100",
+      "classification": {
+        "include": true,
+        "startMinutes": 1260,
+        "endMinutes": 1275
+      }
+    },
+    {
+      "rowIndex": 101,
+      "labelText": "9:15 PM",
+      "valueText": "$83.36",
+      "value": 83.36,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-101",
+      "classification": {
+        "include": true,
+        "startMinutes": 1275,
+        "endMinutes": 1290
+      }
+    },
+    {
+      "rowIndex": 102,
+      "labelText": "9:30 PM",
+      "valueText": "$232.99",
+      "value": 232.99,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-102",
+      "classification": {
+        "include": true,
+        "startMinutes": 1290,
+        "endMinutes": 1305
+      }
+    },
+    {
+      "rowIndex": 103,
+      "labelText": "9:45 PM",
+      "valueText": "$138.98",
+      "value": 138.98,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-103",
+      "classification": {
+        "include": true,
+        "startMinutes": 1305,
+        "endMinutes": 1320
+      }
+    },
+    {
+      "rowIndex": 104,
+      "labelText": "10:00 PM",
+      "valueText": "$263.15",
+      "value": 263.15,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-104",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 105,
+      "labelText": "10:00 PM",
+      "valueText": "$13.59",
+      "value": 13.59,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-105",
+      "classification": {
+        "include": true,
+        "startMinutes": 1320,
+        "endMinutes": 1335
+      }
+    },
+    {
+      "rowIndex": 106,
+      "labelText": "10:15 PM",
+      "valueText": "$159.69",
+      "value": 159.69,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-106",
+      "classification": {
+        "include": true,
+        "startMinutes": 1335,
+        "endMinutes": 1350
+      }
+    },
+    {
+      "rowIndex": 107,
+      "labelText": "10:30 PM",
+      "valueText": "$89.87",
+      "value": 89.87,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-107",
+      "classification": {
+        "include": true,
+        "startMinutes": 1350,
+        "endMinutes": 1365
+      }
+    },
+    {
+      "rowIndex": 108,
+      "labelText": "10:45 PM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-108",
+      "classification": {
+        "include": true,
+        "startMinutes": 1365,
+        "endMinutes": 1380
+      }
+    },
+    {
+      "rowIndex": 109,
+      "labelText": "11:00 PM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-109",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 110,
+      "labelText": "11:00 PM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-110",
+      "classification": {
+        "include": true,
+        "startMinutes": 1380,
+        "endMinutes": 1395
+      }
+    },
+    {
+      "rowIndex": 111,
+      "labelText": "11:15 PM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-111",
+      "classification": {
+        "include": true,
+        "startMinutes": 1395,
+        "endMinutes": 1410
+      }
+    },
+    {
+      "rowIndex": 112,
+      "labelText": "11:30 PM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-112",
+      "classification": {
+        "include": true,
+        "startMinutes": 1410,
+        "endMinutes": 1425
+      }
+    },
+    {
+      "rowIndex": 113,
+      "labelText": "11:45 PM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-113",
+      "classification": {
+        "include": true,
+        "startMinutes": 1425,
+        "endMinutes": 1440
+      }
+    },
+    {
+      "rowIndex": 114,
+      "labelText": "12:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-114",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 115,
+      "labelText": "12:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-115",
+      "classification": {
+        "include": true,
+        "startMinutes": 0,
+        "endMinutes": 15
+      }
+    },
+    {
+      "rowIndex": 116,
+      "labelText": "12:15 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-116",
+      "classification": {
+        "include": true,
+        "startMinutes": 15,
+        "endMinutes": 30
+      }
+    },
+    {
+      "rowIndex": 117,
+      "labelText": "12:30 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-117",
+      "classification": {
+        "include": true,
+        "startMinutes": 30,
+        "endMinutes": 45
+      }
+    },
+    {
+      "rowIndex": 118,
+      "labelText": "12:45 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-118",
+      "classification": {
+        "include": true,
+        "startMinutes": 45,
+        "endMinutes": 60
+      }
+    },
+    {
+      "rowIndex": 119,
+      "labelText": "1:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-119",
+      "classification": {
+        "include": false,
+        "reason": "hourly-aggregate"
+      }
+    },
+    {
+      "rowIndex": 120,
+      "labelText": "1:00 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-120",
+      "classification": {
+        "include": true,
+        "startMinutes": 60,
+        "endMinutes": 75
+      }
+    },
+    {
+      "rowIndex": 121,
+      "labelText": "1:15 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-121",
+      "classification": {
+        "include": true,
+        "startMinutes": 75,
+        "endMinutes": 90
+      }
+    },
+    {
+      "rowIndex": 122,
+      "labelText": "1:30 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-122",
+      "classification": {
+        "include": true,
+        "startMinutes": 90,
+        "endMinutes": 105
+      }
+    },
+    {
+      "rowIndex": 123,
+      "labelText": "1:45 AM",
+      "valueText": "$0.00",
+      "value": 0,
+      "id": "mx-forecast-grid-Sales-directive-list-lastyear-123",
+      "classification": {
+        "include": true,
+        "startMinutes": 105,
+        "endMinutes": 120
+      }
+    }
+  ],
+  "slots": [
+    {
+      "startMinutes": 0,
+      "endMinutes": 15,
+      "value": 0,
+      "rowIndex": 115
+    },
+    {
+      "startMinutes": 15,
+      "endMinutes": 30,
+      "value": 0,
+      "rowIndex": 116
+    },
+    {
+      "startMinutes": 30,
+      "endMinutes": 45,
+      "value": 0,
+      "rowIndex": 117
+    },
+    {
+      "startMinutes": 45,
+      "endMinutes": 60,
+      "value": 0,
+      "rowIndex": 118
+    },
+    {
+      "startMinutes": 60,
+      "endMinutes": 75,
+      "value": 0,
+      "rowIndex": 120
+    },
+    {
+      "startMinutes": 75,
+      "endMinutes": 90,
+      "value": 0,
+      "rowIndex": 121
+    },
+    {
+      "startMinutes": 90,
+      "endMinutes": 105,
+      "value": 0,
+      "rowIndex": 122
+    },
+    {
+      "startMinutes": 105,
+      "endMinutes": 120,
+      "value": 0,
+      "rowIndex": 123
+    },
+    {
+      "startMinutes": 120,
+      "endMinutes": 135,
+      "value": 0,
+      "rowIndex": 2
+    },
+    {
+      "startMinutes": 135,
+      "endMinutes": 150,
+      "value": 0,
+      "rowIndex": 3
+    },
+    {
+      "startMinutes": 150,
+      "endMinutes": 165,
+      "value": 0,
+      "rowIndex": 4
+    },
+    {
+      "startMinutes": 165,
+      "endMinutes": 180,
+      "value": 0,
+      "rowIndex": 5
+    },
+    {
+      "startMinutes": 180,
+      "endMinutes": 195,
+      "value": 0,
+      "rowIndex": 7
+    },
+    {
+      "startMinutes": 195,
+      "endMinutes": 210,
+      "value": 0,
+      "rowIndex": 8
+    },
+    {
+      "startMinutes": 210,
+      "endMinutes": 225,
+      "value": 0,
+      "rowIndex": 9
+    },
+    {
+      "startMinutes": 225,
+      "endMinutes": 240,
+      "value": 0,
+      "rowIndex": 10
+    },
+    {
+      "startMinutes": 240,
+      "endMinutes": 255,
+      "value": 0,
+      "rowIndex": 12
+    },
+    {
+      "startMinutes": 255,
+      "endMinutes": 270,
+      "value": 0,
+      "rowIndex": 13
+    },
+    {
+      "startMinutes": 270,
+      "endMinutes": 285,
+      "value": 0,
+      "rowIndex": 14
+    },
+    {
+      "startMinutes": 285,
+      "endMinutes": 300,
+      "value": 0,
+      "rowIndex": 15
+    },
+    {
+      "startMinutes": 300,
+      "endMinutes": 315,
+      "value": 0,
+      "rowIndex": 17
+    },
+    {
+      "startMinutes": 315,
+      "endMinutes": 330,
+      "value": 0,
+      "rowIndex": 18
+    },
+    {
+      "startMinutes": 330,
+      "endMinutes": 345,
+      "value": 0,
+      "rowIndex": 19
+    },
+    {
+      "startMinutes": 345,
+      "endMinutes": 360,
+      "value": 0,
+      "rowIndex": 20
+    },
+    {
+      "startMinutes": 360,
+      "endMinutes": 375,
+      "value": 0,
+      "rowIndex": 23
+    },
+    {
+      "startMinutes": 375,
+      "endMinutes": 390,
+      "value": 0,
+      "rowIndex": 24
+    },
+    {
+      "startMinutes": 390,
+      "endMinutes": 405,
+      "value": 0,
+      "rowIndex": 25
+    },
+    {
+      "startMinutes": 405,
+      "endMinutes": 420,
+      "value": 0,
+      "rowIndex": 26
+    },
+    {
+      "startMinutes": 420,
+      "endMinutes": 435,
+      "value": 0,
+      "rowIndex": 28
+    },
+    {
+      "startMinutes": 435,
+      "endMinutes": 450,
+      "value": 0,
+      "rowIndex": 29
+    },
+    {
+      "startMinutes": 450,
+      "endMinutes": 465,
+      "value": 0,
+      "rowIndex": 30
+    },
+    {
+      "startMinutes": 465,
+      "endMinutes": 480,
+      "value": 0,
+      "rowIndex": 31
+    },
+    {
+      "startMinutes": 480,
+      "endMinutes": 495,
+      "value": 0,
+      "rowIndex": 33
+    },
+    {
+      "startMinutes": 495,
+      "endMinutes": 510,
+      "value": 0,
+      "rowIndex": 34
+    },
+    {
+      "startMinutes": 510,
+      "endMinutes": 525,
+      "value": 0,
+      "rowIndex": 35
+    },
+    {
+      "startMinutes": 525,
+      "endMinutes": 540,
+      "value": 0,
+      "rowIndex": 36
+    },
+    {
+      "startMinutes": 540,
+      "endMinutes": 555,
+      "value": 0,
+      "rowIndex": 38
+    },
+    {
+      "startMinutes": 555,
+      "endMinutes": 570,
+      "value": 0,
+      "rowIndex": 39
+    },
+    {
+      "startMinutes": 570,
+      "endMinutes": 585,
+      "value": 0,
+      "rowIndex": 40
+    },
+    {
+      "startMinutes": 585,
+      "endMinutes": 600,
+      "value": 0,
+      "rowIndex": 41
+    },
+    {
+      "startMinutes": 600,
+      "endMinutes": 615,
+      "value": 39.82,
+      "rowIndex": 44
+    },
+    {
+      "startMinutes": 615,
+      "endMinutes": 630,
+      "value": 41.55,
+      "rowIndex": 45
+    },
+    {
+      "startMinutes": 630,
+      "endMinutes": 645,
+      "value": 66.13,
+      "rowIndex": 46
+    },
+    {
+      "startMinutes": 645,
+      "endMinutes": 660,
+      "value": 18.55,
+      "rowIndex": 47
+    },
+    {
+      "startMinutes": 660,
+      "endMinutes": 675,
+      "value": 123.09,
+      "rowIndex": 49
+    },
+    {
+      "startMinutes": 675,
+      "endMinutes": 690,
+      "value": 96.38,
+      "rowIndex": 50
+    },
+    {
+      "startMinutes": 690,
+      "endMinutes": 705,
+      "value": 267.06,
+      "rowIndex": 51
+    },
+    {
+      "startMinutes": 705,
+      "endMinutes": 720,
+      "value": 138.68,
+      "rowIndex": 52
+    },
+    {
+      "startMinutes": 720,
+      "endMinutes": 735,
+      "value": 230.87,
+      "rowIndex": 54
+    },
+    {
+      "startMinutes": 735,
+      "endMinutes": 750,
+      "value": 277.6,
+      "rowIndex": 55
+    },
+    {
+      "startMinutes": 750,
+      "endMinutes": 765,
+      "value": 174.99,
+      "rowIndex": 56
+    },
+    {
+      "startMinutes": 765,
+      "endMinutes": 780,
+      "value": 164.73,
+      "rowIndex": 57
+    },
+    {
+      "startMinutes": 780,
+      "endMinutes": 795,
+      "value": 366.92,
+      "rowIndex": 59
+    },
+    {
+      "startMinutes": 795,
+      "endMinutes": 810,
+      "value": 432.81,
+      "rowIndex": 60
+    },
+    {
+      "startMinutes": 810,
+      "endMinutes": 825,
+      "value": 127.68,
+      "rowIndex": 61
+    },
+    {
+      "startMinutes": 825,
+      "endMinutes": 840,
+      "value": 285.09,
+      "rowIndex": 62
+    },
+    {
+      "startMinutes": 840,
+      "endMinutes": 855,
+      "value": 123.99,
+      "rowIndex": 64
+    },
+    {
+      "startMinutes": 855,
+      "endMinutes": 870,
+      "value": 87.81,
+      "rowIndex": 65
+    },
+    {
+      "startMinutes": 870,
+      "endMinutes": 885,
+      "value": 243.51,
+      "rowIndex": 66
+    },
+    {
+      "startMinutes": 885,
+      "endMinutes": 900,
+      "value": 226.43,
+      "rowIndex": 67
+    },
+    {
+      "startMinutes": 900,
+      "endMinutes": 915,
+      "value": 148.88,
+      "rowIndex": 70
+    },
+    {
+      "startMinutes": 915,
+      "endMinutes": 930,
+      "value": 107.23,
+      "rowIndex": 71
+    },
+    {
+      "startMinutes": 930,
+      "endMinutes": 945,
+      "value": 206.34,
+      "rowIndex": 72
+    },
+    {
+      "startMinutes": 945,
+      "endMinutes": 960,
+      "value": 96.44,
+      "rowIndex": 73
+    },
+    {
+      "startMinutes": 960,
+      "endMinutes": 975,
+      "value": 126.51,
+      "rowIndex": 75
+    },
+    {
+      "startMinutes": 975,
+      "endMinutes": 990,
+      "value": 3.14,
+      "rowIndex": 76
+    },
+    {
+      "startMinutes": 990,
+      "endMinutes": 1005,
+      "value": 80.38,
+      "rowIndex": 77
+    },
+    {
+      "startMinutes": 1005,
+      "endMinutes": 1020,
+      "value": 113.9,
+      "rowIndex": 78
+    },
+    {
+      "startMinutes": 1020,
+      "endMinutes": 1035,
+      "value": 115.04,
+      "rowIndex": 80
+    },
+    {
+      "startMinutes": 1035,
+      "endMinutes": 1050,
+      "value": 178.51,
+      "rowIndex": 81
+    },
+    {
+      "startMinutes": 1050,
+      "endMinutes": 1065,
+      "value": 117.37,
+      "rowIndex": 82
+    },
+    {
+      "startMinutes": 1065,
+      "endMinutes": 1080,
+      "value": 219.17,
+      "rowIndex": 83
+    },
+    {
+      "startMinutes": 1080,
+      "endMinutes": 1095,
+      "value": 191.88,
+      "rowIndex": 85
+    },
+    {
+      "startMinutes": 1095,
+      "endMinutes": 1110,
+      "value": 233.02,
+      "rowIndex": 86
+    },
+    {
+      "startMinutes": 1110,
+      "endMinutes": 1125,
+      "value": 465.26,
+      "rowIndex": 87
+    },
+    {
+      "startMinutes": 1125,
+      "endMinutes": 1140,
+      "value": 200.6,
+      "rowIndex": 88
+    },
+    {
+      "startMinutes": 1140,
+      "endMinutes": 1155,
+      "value": 375.4,
+      "rowIndex": 90
+    },
+    {
+      "startMinutes": 1155,
+      "endMinutes": 1170,
+      "value": 378.78,
+      "rowIndex": 91
+    },
+    {
+      "startMinutes": 1170,
+      "endMinutes": 1185,
+      "value": 210.23,
+      "rowIndex": 92
+    },
+    {
+      "startMinutes": 1185,
+      "endMinutes": 1200,
+      "value": 219.99,
+      "rowIndex": 93
+    },
+    {
+      "startMinutes": 1200,
+      "endMinutes": 1215,
+      "value": 245.92,
+      "rowIndex": 95
+    },
+    {
+      "startMinutes": 1215,
+      "endMinutes": 1230,
+      "value": 202.23,
+      "rowIndex": 96
+    },
+    {
+      "startMinutes": 1230,
+      "endMinutes": 1245,
+      "value": 93.45,
+      "rowIndex": 97
+    },
+    {
+      "startMinutes": 1245,
+      "endMinutes": 1260,
+      "value": 172.33,
+      "rowIndex": 98
+    },
+    {
+      "startMinutes": 1260,
+      "endMinutes": 1275,
+      "value": 189.08,
+      "rowIndex": 100
+    },
+    {
+      "startMinutes": 1275,
+      "endMinutes": 1290,
+      "value": 83.36,
+      "rowIndex": 101
+    },
+    {
+      "startMinutes": 1290,
+      "endMinutes": 1305,
+      "value": 232.99,
+      "rowIndex": 102
+    },
+    {
+      "startMinutes": 1305,
+      "endMinutes": 1320,
+      "value": 138.98,
+      "rowIndex": 103
+    },
+    {
+      "startMinutes": 1320,
+      "endMinutes": 1335,
+      "value": 13.59,
+      "rowIndex": 105
+    },
+    {
+      "startMinutes": 1335,
+      "endMinutes": 1350,
+      "value": 159.69,
+      "rowIndex": 106
+    },
+    {
+      "startMinutes": 1350,
+      "endMinutes": 1365,
+      "value": 89.87,
+      "rowIndex": 107
+    },
+    {
+      "startMinutes": 1365,
+      "endMinutes": 1380,
+      "value": 0,
+      "rowIndex": 108
+    },
+    {
+      "startMinutes": 1380,
+      "endMinutes": 1395,
+      "value": 0,
+      "rowIndex": 110
+    },
+    {
+      "startMinutes": 1395,
+      "endMinutes": 1410,
+      "value": 0,
+      "rowIndex": 111
+    },
+    {
+      "startMinutes": 1410,
+      "endMinutes": 1425,
+      "value": 0,
+      "rowIndex": 112
+    },
+    {
+      "startMinutes": 1425,
+      "endMinutes": 1440,
+      "value": 0,
+      "rowIndex": 113
+    }
+  ]
+}

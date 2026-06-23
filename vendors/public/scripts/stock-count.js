@@ -37,11 +37,16 @@ let mmxPipelineManualOnly = false;
 let mmxActivityLog = [];
 let mmxLastKnownServerInProgress = false;
 let mmxPollInFlight = null;
+let mmxProgressPercent = 0;
+let mmxStepStartedAt = 0;
+let mmxProgressStepSeen = '';
+let mmxProgressTicker = null;
 let stockCountToastTimer = null;
 let lowStockAlerts = [];
 let lowStockPanelOpen = false;
 let levelsSummary = null;
 let levelsChecking = false;
+let canSkipKeyItemCount = false;
 
 const MMX_UI_WATCH_KEY = 'stockCountMmxUiWatch';
 const MMX_UI_WATCH_MAX_MS = 15 * 60 * 1000;
@@ -68,6 +73,30 @@ const MMX_PIPELINE_STEPS = [
 ];
 
 const MMX_STEP_SEQUENCE = MMX_PIPELINE_STEPS.map((s) => s.id);
+
+// Relative weight of each step in the overall progress bar. Report download is the
+// real Macromatix wait so it dominates; the fast local steps stay small.
+const MMX_STEP_WEIGHTS = {
+    save: 3,
+    'open-kic': 5,
+    'fill-locations': 12,
+    variances: 2,
+    apply: 8,
+    reports: 45,
+    orders: 25,
+};
+
+// Rough expected duration per step (ms) used only to ease the bar forward within a
+// step. The bar never fills a segment until the next step actually arrives.
+const MMX_STEP_EXPECTED_MS = {
+    save: 4000,
+    'open-kic': 6000,
+    'fill-locations': 20000,
+    variances: 3000,
+    apply: 15000,
+    reports: 90000,
+    orders: 45000,
+};
 
 function dashboardPath() {
     if (!STORE_NUMBER) return '/';
@@ -1225,6 +1254,8 @@ function finishMmxOrdersSuccess(data) {
         partial: Boolean(data?.orderFailures),
         orderFailures: data?.orderFailures || null,
     };
+    mmxProgressPercent = 100;
+    stopMmxProgressTicker();
     lowStockAlerts = Array.isArray(data?.lowStockAlerts) ? data.lowStockAlerts : [];
     processing = true;
     processingStageLabel = data?.orderFailures
@@ -1331,6 +1362,62 @@ function visibleMmxPipelineSteps() {
 function mmxStepRank(stepId) {
     const idx = MMX_STEP_SEQUENCE.indexOf(stepId);
     return idx >= 0 ? idx : -1;
+}
+
+function noteMmxStepForProgress() {
+    if (mmxProcessingStepId !== mmxProgressStepSeen) {
+        mmxProgressStepSeen = mmxProcessingStepId;
+        mmxStepStartedAt = Date.now();
+    }
+}
+
+/** Target percentage for the current step, eased forward over the step's expected time. */
+function computeMmxProgressTarget() {
+    if (mmxProcessingSuccess) return 100;
+    noteMmxStepForProgress();
+    const steps = visibleMmxPipelineSteps();
+    const total = steps.reduce((sum, s) => sum + (MMX_STEP_WEIGHTS[s.id] || 1), 0) || 1;
+    let curIdx = steps.findIndex((s) => s.id === mmxProcessingStepId);
+    if (curIdx < 0) curIdx = 0;
+
+    let before = 0;
+    for (let i = 0; i < curIdx; i++) before += MMX_STEP_WEIGHTS[steps[i].id] || 1;
+
+    const curWeight = MMX_STEP_WEIGHTS[steps[curIdx].id] || 1;
+    const expected = MMX_STEP_EXPECTED_MS[steps[curIdx].id] || 8000;
+    const elapsed = mmxStepStartedAt ? Math.max(0, Date.now() - mmxStepStartedAt) : 0;
+    // Ease toward (but never reach) the end of the current segment until the next step lands.
+    const frac = Math.min(0.92, 1 - Math.exp(-elapsed / (expected * 0.6)));
+    return ((before + frac * curWeight) / total) * 100;
+}
+
+/** Monotonic progress percent - only moves forward (resets in beginMmxProcessing). */
+function currentMmxProgressPercent() {
+    const target = computeMmxProgressTarget();
+    if (target > mmxProgressPercent) mmxProgressPercent = target;
+    if (mmxProcessingSuccess) mmxProgressPercent = 100;
+    return Math.max(0, Math.min(100, mmxProgressPercent));
+}
+
+function updateMmxProgressBarDom() {
+    const bar = document.querySelector('.stock-count-progress-bar');
+    if (!bar) return;
+    const pct = currentMmxProgressPercent();
+    bar.style.width = `${pct.toFixed(1)}%`;
+    const shell = bar.closest('.stock-count-progress-shell');
+    if (shell) shell.setAttribute('aria-valuenow', String(Math.round(pct)));
+}
+
+function startMmxProgressTicker() {
+    stopMmxProgressTicker();
+    mmxProgressTicker = setInterval(updateMmxProgressBarDom, 250);
+}
+
+function stopMmxProgressTicker() {
+    if (mmxProgressTicker) {
+        clearInterval(mmxProgressTicker);
+        mmxProgressTicker = null;
+    }
 }
 
 function advanceMmxStepId(nextId) {
@@ -1558,6 +1645,19 @@ function mmxLoginRequestBody() {
     return window.MmxUserLoginPrompt?.loginRequestBody?.() || {};
 }
 
+/** Area Manager or above may skip Key Item Count and order straight from reports/counts. */
+async function loadUserCapabilities() {
+    try {
+        const res = await fetch('/api/me', { credentials: 'same-origin' });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.success) {
+            canSkipKeyItemCount = Boolean(data.canEditGlobalBuildTo);
+        }
+    } catch {
+        canSkipKeyItemCount = false;
+    }
+}
+
 async function ensureMmxUserLoginBeforeSend() {
     return window.MmxUserLoginPrompt.ensureBeforeMmx(STORE_NUMBER, { purpose: 'send' });
 }
@@ -1594,12 +1694,15 @@ function showVarianceAttention(varianceCount) {
     showStockCountToast(title, body, count > 0 ? 'warn' : 'ok');
 }
 
-async function acceptSendToMmx() {
+async function acceptSendToMmx(skipKeyItemCount = false) {
     const postSend = () =>
         fetchJson(apiQuery('/api/stock-count/send-to-mmx'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(mmxLoginRequestBody()),
+            body: JSON.stringify({
+                ...mmxLoginRequestBody(),
+                ...(skipKeyItemCount ? { skipKeyItemCount: true } : {}),
+            }),
         });
 
     try {
@@ -1794,8 +1897,9 @@ function shouldRecoverApplyError(message) {
     return /session expired|apply failed|apply button/i.test(String(message || '')) || shouldRecoverGatewayError(message);
 }
 
-async function sendToMmx() {
+async function sendToMmx(options = {}) {
     if (saving || processing) return;
+    const skipKeyItemCount = Boolean(options.skipKeyItemCount) && canSkipKeyItemCount;
     let preparedAutoApplied = false;
 
     if (autoSaveTimer) {
@@ -1843,30 +1947,37 @@ async function sendToMmx() {
     }
 
     saving = true;
-    mmxPipelineManualOnly = false;
+    mmxPipelineManualOnly = skipKeyItemCount;
     beginMmxProcessing('Saving your counts…');
     mmxProcessingStepId = 'save';
     pushMmxActivity('Saving your counts');
     setStatus('', '');
     render();
     try {
-        const { res: planRes, data: plan } = await fetchJson(apiQuery('/api/stock-count/send-plan'));
-        if (planRes.ok && plan.success && plan.manualOnly) {
+        if (skipKeyItemCount) {
             mmxPipelineManualOnly = true;
             mmxProcessingStepId = 'reports';
             processingStageLabel = 'Skipping Key Item Count - downloading reports…';
             render();
-        } else if (planRes.ok && plan.success && plan.needsKeyItemCount) {
-            mmxProcessingStepId = 'open-kic';
-            processingStageLabel = 'Opening Key Item Count in Macromatix…';
-            render();
         } else {
-            mmxProcessingStepId = 'reports';
-            processingStageLabel = 'Downloading reports and placing orders…';
-            render();
+            const { res: planRes, data: plan } = await fetchJson(apiQuery('/api/stock-count/send-plan'));
+            if (planRes.ok && plan.success && plan.manualOnly) {
+                mmxPipelineManualOnly = true;
+                mmxProcessingStepId = 'reports';
+                processingStageLabel = 'Skipping Key Item Count - downloading reports…';
+                render();
+            } else if (planRes.ok && plan.success && plan.needsKeyItemCount) {
+                mmxProcessingStepId = 'open-kic';
+                processingStageLabel = 'Opening Key Item Count in Macromatix…';
+                render();
+            } else {
+                mmxProcessingStepId = 'reports';
+                processingStageLabel = 'Downloading reports and placing orders…';
+                render();
+            }
         }
 
-        const accepted = await acceptSendToMmx();
+        const accepted = await acceptSendToMmx(skipKeyItemCount);
         if (accepted.accepted || accepted.inProgress) {
             const outcome = await waitForPipelinePrepareComplete();
             if (outcome?.autoApplied) {
@@ -2232,6 +2343,15 @@ function buildMmxProgressHtml({ showHeading = true } = {}) {
         </div>`;
 }
 
+function buildMmxProgressBarHtml() {
+    const pct = currentMmxProgressPercent();
+    const done = mmxProcessingSuccess ? ' stock-count-progress-shell--done' : '';
+    return `
+        <div class="stock-count-progress-shell stock-count-progress-shell--determinate${done}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}" aria-label="Overall progress">
+            <div class="stock-count-progress-bar" style="width:${pct.toFixed(1)}%"></div>
+        </div>`;
+}
+
 function buildMmxWaitBody() {
     const notify = window.StockCountNotify;
     const notificationsOn =
@@ -2303,9 +2423,7 @@ function buildMmxProcessingOverlay() {
                 <h2 id="sc-mmx-wait-title" class="stock-count-processing-label">${escapeHtml(mmxProcessingTitle())}</h2>
                 <p class="stock-count-mmx-wait-body">${buildMmxWaitBody()}</p>
                 ${buildMmxProgressHtml()}
-                <div class="stock-count-progress-shell" aria-hidden="true">
-                    <div class="stock-count-progress-bar"></div>
-                </div>
+                ${buildMmxProgressBarHtml()}
                 ${buildMmxNotifySection()}
             </div>
         </div>`;
@@ -2320,10 +2438,14 @@ function beginMmxProcessing(stageLabel) {
     mmxLastPipelineStep = processingStageLabel;
     mmxProcessingDetail = '';
     mmxActivityLog = [];
+    mmxProgressPercent = 0;
+    mmxProgressStepSeen = '';
+    mmxStepStartedAt = Date.now();
     pushMmxActivity(processingStageLabel);
     mmxNotifyEnabled = Boolean(window.StockCountNotify?.isWatching?.(STORE_NUMBER));
     mmxNotifyDenied = false;
     startMmxUiWatch();
+    startMmxProgressTicker();
     document.body.classList.add('stock-count-mmx-wait-active');
 }
 
@@ -2335,12 +2457,15 @@ function endMmxProcessing() {
     mmxProcessingDetail = '';
     mmxActivityLog = [];
     mmxLastKnownServerInProgress = false;
+    mmxProgressPercent = 0;
+    stopMmxProgressTicker();
     clearMmxUiWatch();
     document.body.classList.remove('stock-count-mmx-wait-active');
 }
 
 function showMmxProcessingError(message, failedAtStep, options = {}) {
     clearMmxUiWatch();
+    stopMmxProgressTicker();
     mmxLastKnownServerInProgress = false;
     const safeMessage = String(message || 'Something went wrong').trim();
     const safeStep = String(
@@ -2617,6 +2742,9 @@ function buildView() {
 
     const clearDisabled = saving || processing;
     const sendMmxBtn = `<button type="button" class="stock-count-btn stock-count-btn--mmx" id="sc-send-mmx" ${clearDisabled ? 'disabled' : ''}>Send to MMX</button>`;
+    const skipKicBtn = canSkipKeyItemCount
+        ? `<button type="button" class="stock-count-btn stock-count-btn--secondary stock-count-btn--skip-kic" id="sc-skip-kic" ${clearDisabled ? 'disabled' : ''} title="Area Manager and above: place scheduled orders from reports without entering the Key Item Count">Skip count &amp; order</button>`
+        : '';
     const panelTitle = locationName;
     const combinedTableClass =
         isCombinedMode() && combinedVendorSlugs.length > 1 ? ' stock-count-table--combined' : '';
@@ -2637,6 +2765,7 @@ function buildView() {
                 <a class="stock-count-btn stock-count-btn--secondary stock-count-btn--link" href="${escapeHtml(dashboardPath())}">Back to dashboard</a>
             </div>
             ${sendMmxBtn}
+            ${skipKicBtn}
         </div>
     `;
 }
@@ -2646,11 +2775,11 @@ function buildLowStockWarningHtml() {
     const rows = lowStockAlerts
         .map(
             (item) => `
-        <tr>
-            <td>${escapeHtml(item.description || item.itemCode || '')}</td>
-            <td>${escapeHtml(String(item.onHandCartons ?? '-'))}</td>
-            <td>${escapeHtml(String(item.onOrderCartons ?? '-'))}</td>
-            <td>${escapeHtml(String(item.daysOfStock ?? '-'))}</td>
+        <tr class="stock-count-low-stock-row">
+            <td class="stock-count-low-stock-item">${escapeHtml(item.description || item.itemCode || '')}</td>
+            <td class="stock-count-low-stock-value">${escapeHtml(String(item.onHandCartons ?? '-'))}</td>
+            <td class="stock-count-low-stock-value">${escapeHtml(String(item.onOrderCartons ?? '-'))}</td>
+            <td class="stock-count-low-stock-value">${escapeHtml(String(item.daysOfStock ?? '-'))}</td>
         </tr>`
         )
         .join('');
@@ -2741,6 +2870,13 @@ function bindEvents() {
 
     document.getElementById('sc-clear-page')?.addEventListener('click', () => void clearCurrentLocationPage());
     document.getElementById('sc-send-mmx')?.addEventListener('click', () => void sendToMmx());
+    document.getElementById('sc-skip-kic')?.addEventListener('click', () => {
+        if (saving || processing) return;
+        const ok = window.confirm(
+            'Skip the Key Item Count?\n\nCounts will NOT be entered into the Macromatix Key Item Count. Scheduled orders will be placed from the latest reports and your counts. Continue?'
+        );
+        if (ok) void sendToMmx({ skipKeyItemCount: true });
+    });
     document.getElementById('sc-mmx-notify-btn')?.addEventListener('click', () => void enableMmxNotifications());
     document.getElementById('sc-mmx-dismiss-error')?.addEventListener('click', () => dismissMmxProcessingError());
     document.getElementById('sc-mmx-retry-poll')?.addEventListener('click', () => void resumeMmxPipelineFromError());
@@ -2940,6 +3076,8 @@ async function init() {
         app.textContent = 'Invalid stock count URL.';
         return;
     }
+
+    await loadUserCapabilities();
 
     if (IS_LEVELS) {
         try {

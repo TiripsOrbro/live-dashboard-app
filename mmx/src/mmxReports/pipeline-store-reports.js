@@ -35,7 +35,7 @@ async function triggerStoreSelectionReload(page) {
     // Force a full refresh so the selected store context is fully committed.
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForFunction(() => document.readyState === 'complete', { timeout: 25000 }).catch(() => {});
-    await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_STORE_SETTLE_MS || 3500));
+    await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_STORE_SETTLE_MS || 1200));
 }
 
 async function configureAndGenerateStoreReport(page, report, reportNav, hooks = {}) {
@@ -55,7 +55,8 @@ async function configureAndGenerateStoreReport(page, report, reportNav, hooks = 
         if (chain) chain.lastGroup = group;
     }
     await selectReportInList(page, report.reportName, { loose: true });
-    await page.waitForTimeout(2000);
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_SELECT_SETTLE_MS || 700));
 
     if (report.storeName) {
         await selectStoreForStoreReport(page, report.storeName, {

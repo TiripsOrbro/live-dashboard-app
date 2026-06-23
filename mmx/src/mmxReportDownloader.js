@@ -350,11 +350,10 @@ async function downloadReportsForStores(options = {}) {
 function parallelReportDownloadEnabled(options = {}) {
     if (options.parallelReportDownload === false) return false;
     if (process.env.MMX_PARALLEL_BUILD_TO_REPORTS === '0') return false;
-    if (options.parallelReportDownload === true) return true;
-    if (options.afterCountApply) return true;
-    if (options.forceDownload) return true;
-    if (Array.isArray(options.onlyReportIds) && options.onlyReportIds.length >= 2) return true;
-    return process.env.MMX_PARALLEL_BUILD_TO_REPORTS === '1';
+    // Concurrent download (one browser per report) is the default for build-to.
+    // Single-report passes naturally fall back to one browser (no concurrency to gain).
+    // Set MMX_PARALLEL_BUILD_TO_REPORTS=0 to force the legacy sequential single-browser path.
+    return true;
 }
 
 async function downloadOneBuildToReportForStore(store, reportId, options = {}) {

@@ -103,8 +103,8 @@ body.stock-count-page {
 }
 
 .stock-count-status--warning {
-    border-color: #e65100;
-    background: color-mix(in srgb, #fb8c00 14%, var(--blank, #fff));
+    border: var(--cell-border, 2px solid) var(--bad-border, #b86f69);
+    background: color-mix(in srgb, var(--bad, #d99792) 18%, var(--blank, #fff));
 }
 
 .stock-count-low-stock {
@@ -119,15 +119,62 @@ body.stock-count-page {
     flex-wrap: wrap;
 }
 
+.stock-count-low-stock-head strong {
+    font-size: var(--font-size-4, 1.15rem);
+    font-weight: var(--font-weight-semibold, 600);
+}
+
 .stock-count-low-stock-note {
     margin: 8px 0 0;
-    font-size: 0.92rem;
-    opacity: 0.85;
+    font-size: var(--font-size-5, 1rem);
+    font-weight: var(--font-weight-normal, 400);
+    opacity: 1;
 }
 
 .stock-count-low-stock-table {
     margin-top: 12px;
     width: 100%;
+    border-collapse: collapse;
+}
+
+.stock-count-low-stock-table thead th {
+    background: var(--charcoal, #231e1f);
+    border: var(--cell-border, 2px solid) var(--charcoal, #231e1f);
+    color: var(--grey, #d9d9d9);
+    font-size: var(--font-size-5, 1rem);
+    font-weight: var(--font-weight-grid-label, 700);
+    text-align: center;
+    text-transform: none;
+    letter-spacing: normal;
+    padding: calc(10px * var(--dashboard-scale, 1)) calc(12px * var(--dashboard-scale, 1));
+}
+
+.stock-count-low-stock-table tbody td {
+    background: var(--bad, #d99792);
+    border: var(--cell-border, 2px solid) var(--bad-border, #b86f69);
+    color: var(--grid-data-text-color, #000);
+    font-size: var(--font-size-3, 1.35rem);
+    font-weight: var(--font-weight-grid-value, 400);
+    padding: calc(10px * var(--dashboard-scale, 1)) calc(12px * var(--dashboard-scale, 1));
+    text-align: center;
+    vertical-align: middle;
+    font-variant-numeric: tabular-nums;
+}
+
+.stock-count-low-stock-table tbody td.stock-count-low-stock-item {
+    background: var(--charcoal, #231e1f);
+    border-color: var(--charcoal, #231e1f);
+    color: var(--grey, #d9d9d9);
+    text-align: left;
+    font-weight: var(--font-weight-grid-label, 700);
+}
+
+.stock-count-low-stock-table tbody tr:last-child td {
+    border-bottom: var(--cell-border, 2px solid) var(--bad-border, #b86f69);
+}
+
+.stock-count-low-stock-table tbody tr:last-child td.stock-count-low-stock-item {
+    border-bottom-color: var(--charcoal, #231e1f);
 }
 
 .stock-count-levels-actions {
@@ -870,6 +917,19 @@ body.stock-count-page {
     justify-content: center;
     text-decoration: none;
     box-sizing: border-box;
+}
+
+/* Area Manager+ "Skip count & order" sits on its own full-width row below the action grid. */
+.stock-count-actions .stock-count-btn--skip-kic {
+    grid-column: 1 / -1;
+    background: var(--blank, #fff);
+    color: #6a3599;
+    border-color: #7a3eb1;
+    border-style: dashed;
+}
+
+.stock-count-actions .stock-count-btn--skip-kic:hover:not(:disabled) {
+    background: color-mix(in srgb, #7a3eb1 10%, #fff);
 }
 
 .stock-count-actions--variances {
@@ -1675,6 +1735,51 @@ body.stock-count-mmx-wait-active {
     will-change: transform;
 }
 
+/* Determinate mode: width reflects real overall pipeline progress. */
+.stock-count-progress-shell--determinate .stock-count-progress-bar {
+    width: 0;
+    animation: none;
+    transform: none;
+    transition: width 0.4s ease-out;
+    background: linear-gradient(90deg, #7a3eb1, #9b63d6 55%, #7a3eb1);
+    background-size: 200% 100%;
+    will-change: width;
+}
+
+/* Subtle moving sheen so the bar still feels alive during the long report wait. */
+.stock-count-progress-shell--determinate .stock-count-progress-bar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 999px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        color-mix(in srgb, #fff 45%, transparent) 50%,
+        transparent
+    );
+    background-size: 220% 100%;
+    animation: stock-count-progress-sheen 1.6s linear infinite;
+}
+
+.stock-count-progress-shell--determinate.stock-count-progress-shell--done .stock-count-progress-bar {
+    background: linear-gradient(90deg, #2e8b57, #3fae6b 55%, #2e8b57);
+}
+
+.stock-count-progress-shell--determinate.stock-count-progress-shell--done .stock-count-progress-bar::after {
+    animation: none;
+    opacity: 0;
+}
+
+@keyframes stock-count-progress-sheen {
+    0% {
+        background-position: 120% 0;
+    }
+    100% {
+        background-position: -120% 0;
+    }
+}
+
 .stock-count-processing-card--complete {
     gap: 22px;
     min-width: min(340px, 92vw);
@@ -1756,12 +1861,19 @@ body.stock-count-mmx-wait-active {
         animation: none;
         opacity: 1;
     }
-    .stock-count-progress-bar {
+    .stock-count-progress-shell:not(.stock-count-progress-shell--determinate) .stock-count-progress-bar {
         animation: none;
         position: static;
         left: auto;
         transform: none;
         width: 100%;
+    }
+    .stock-count-progress-shell--determinate .stock-count-progress-bar {
+        transition: none;
+    }
+    .stock-count-progress-shell--determinate .stock-count-progress-bar::after {
+        animation: none;
+        opacity: 0;
     }
     .stock-count-mmx-progress-line {
         transition: none;

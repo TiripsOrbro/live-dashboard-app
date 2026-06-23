@@ -27,7 +27,6 @@
         const darkHint = options.darkModeHint || 'Dark background and tiles on this page.';
         const hasStoreTab = Boolean(options.storeNumber);
         const email = String(options.reportEmail || '').trim();
-        const adminActionsHtml = global.AdminMenu?.renderActionsHtml?.() || '';
 
         return `
         <div id="mic-settings-picker" class="mic-item-picker" hidden>
@@ -38,7 +37,6 @@
                     <button type="button" class="mic-settings-tab" role="tab" data-settings-tab="preferences" aria-selected="false">Preferences</button>
                     ${hasStoreTab ? '<button type="button" class="mic-settings-tab" role="tab" data-settings-tab="store" aria-selected="false">Store</button>' : ''}
                     <button type="button" class="mic-settings-tab" role="tab" data-settings-tab="general" aria-selected="false">General</button>
-                    <button type="button" class="mic-settings-tab" role="tab" data-settings-tab="admin" id="mic-settings-admin-tab" aria-selected="false" hidden>Admin</button>
                 </div>
                 <div class="mic-settings-tabpanels">
                     <div class="mic-settings-tabpanel is-active" data-settings-panel="account" role="tabpanel">
@@ -113,10 +111,8 @@
                             <button type="button" class="mic-settings-btn" data-action="hard-refresh">Refresh page</button>
                         </div>
                     </div>
-                    <div class="mic-settings-tabpanel" data-settings-panel="admin" role="tabpanel" hidden>
-                        ${adminActionsHtml}
-                    </div>
                 </div>
+                <button type="button" class="mic-settings-admin-btn" id="mic-settings-admin-btn" hidden>Admin settings</button>
                 <button type="button" class="mic-settings-close" id="mic-settings-close">Close</button>
             </div>
         </div>`;
@@ -417,29 +413,23 @@
             void saveReportEmail();
         });
 
-        const getViewAccountsOptions =
-            typeof bindOptions.getViewAccountsOptions === 'function'
-                ? bindOptions.getViewAccountsOptions
-                : () => bindOptions.viewAccountsOptions || {};
-
-        global.AdminMenu?.bindActionButtons?.(picker.querySelector('[data-settings-panel="admin"]'), {
-            onBeforeAction: closeSettingsPanel,
-            getViewAccountsOptions,
+        picker.querySelector('#mic-settings-admin-btn')?.addEventListener('click', () => {
+            closeSettingsPanel();
+            global.location.href = global.AdminMenu?.ADMIN_PAGE_PATH || '/Admin/Settings';
         });
 
         if (bindOptions.resolveAdminMenuVisibility !== false) {
             global.AdminMenu?.fetchProfile?.()
                 .then((data) => {
-                    const adminTab = document.getElementById('mic-settings-admin-tab');
-                    if (adminTab && (data.canAccessAdminMenu || data.canManageStoreLogins)) {
-                        adminTab.hidden = false;
+                    const adminBtn = document.getElementById('mic-settings-admin-btn');
+                    if (adminBtn && (data.canAccessAdminMenu || data.canManageStoreLogins)) {
+                        adminBtn.hidden = false;
                     }
-                    global.AdminMenu?.applyActionVisibility?.(
-                        picker.querySelector('[data-settings-panel="admin"]'),
-                        data
-                    );
                     global.AdminMenu?.bind?.({
-                        getViewAccountsOptions,
+                        getViewAccountsOptions:
+                            typeof bindOptions.getViewAccountsOptions === 'function'
+                                ? bindOptions.getViewAccountsOptions
+                                : () => bindOptions.viewAccountsOptions || {},
                         resolveVisibility: false,
                     });
                 })

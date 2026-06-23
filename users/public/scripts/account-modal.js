@@ -126,7 +126,7 @@
         });
         panel.querySelector('[data-action="admin-menu"]')?.addEventListener('click', () => {
             panel.hidden = true;
-            window.AdminMenu?.open?.();
+            window.location.href = window.AdminMenu?.ADMIN_PAGE_PATH || '/Admin/Settings';
         });
         fetchProfile()
             .then((data) => {
@@ -267,6 +267,13 @@
     }
 
     function openViewAccountsModal(options = {}) {
+        const query = {};
+        if (options.storeNumber) query.store = options.storeNumber;
+        if (options.focusCreate) query.focusCreate = '1';
+        if (window.AdminMenu?.sectionUrl) {
+            window.location.href = window.AdminMenu.sectionUrl('accounts-existing', query);
+            return;
+        }
         if (window.AdminAccounts?.open) {
             void window.AdminAccounts.open(options);
             return;
@@ -369,6 +376,22 @@
     }
 
     function openCreateAccountModal() {
+        if (window.AdminMenu?.sectionUrl) {
+            void fetchProfile()
+                .then((data) => {
+                    const storeNumber =
+                        data.effectiveStores?.[0] ||
+                        (Array.isArray(data.stores) ? data.stores[0] : '') ||
+                        '';
+                    const query = { focusCreate: '1' };
+                    if (storeNumber) query.store = storeNumber;
+                    window.location.href = window.AdminMenu.sectionUrl('accounts-create', query);
+                })
+                .catch(() => {
+                    window.location.href = window.AdminMenu.sectionUrl('accounts-create', { focusCreate: '1' });
+                });
+            return;
+        }
         if (!window.AdminAccounts?.open) {
             window.location.href = '/Create-Account';
             return;

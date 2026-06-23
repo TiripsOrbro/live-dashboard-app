@@ -39,6 +39,13 @@
     --meal-period-body-padding-y: 8px;
     --meal-period-body-padding-x: 10px;
     --meal-period-stack-gap: 4px;
+
+    /* Square by default; Settings → Preferences enables rounded corners. */
+    --mic-tile-radius: 0;
+}
+
+html.mic-rounded-tiles {
+    --mic-tile-radius: calc(10px * var(--dashboard-scale));
 }
 
 /* -----------------------------------------------------------
@@ -724,7 +731,7 @@ a.audit-chip:hover {
 .grid-cell {
     box-sizing: border-box;
     padding: calc(14px * var(--dashboard-scale)) calc(12px * var(--dashboard-scale));
-    border-radius: 0;
+    border-radius: var(--mic-tile-radius, 0);
     font-size: var(--font-size-3);
     min-height: var(--dashboard-grid-min-height);
     display: flex;
@@ -1572,6 +1579,100 @@ body.rotate-hint-active .dashboard {
     .dashboard-grid--portrait .portrait-cell-value {
         position: relative;
         z-index: 2;
+    }
+
+    body.dashboard-page--admin-store.dashboard--mic-mobile-sales .dashboard--admin-store {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        max-height: 100%;
+        overflow: hidden;
+    }
+
+    body.dashboard-page--admin-store.dashboard--mic-mobile-sales #admin-store-view {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+    }
+
+    body.dashboard-page--admin-store.dashboard--mic-mobile-sales .dashboard-grid--mic-mobile {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+        gap: 0;
+        padding-left: max(8px, env(safe-area-inset-left));
+        padding-right: max(8px, env(safe-area-inset-right));
+        box-sizing: border-box;
+    }
+
+    body.dashboard-page--admin-store.dashboard--mic-mobile-sales .mic-admin-mobile-sales {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100%;
+        overflow: hidden;
+        border: var(--cell-border) var(--dark-purple-border);
+        border-radius: calc(6px * var(--dashboard-scale));
+    }
+
+    body.dashboard-page--admin-store.dashboard--mic-mobile-sales .mic-admin-mobile-sales .mic-store-lead {
+        flex-shrink: 0;
+        border-radius: calc(6px * var(--dashboard-scale)) calc(6px * var(--dashboard-scale)) 0 0;
+    }
+
+    body.dashboard-page--admin-store.dashboard--mic-mobile-sales .mic-admin-mobile-sales .mic-mini-dashboard--mobile {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        width: 100%;
+        padding: 0;
+    }
+
+    body.dashboard-page--admin-store.dashboard--mic-mobile-sales .mic-admin-mobile-sales .mic-meal-totals {
+        flex: 0 0 auto;
+        width: 100%;
+        margin: 0;
+        border-left: none;
+        border-right: none;
+        border-radius: 0;
+    }
+
+    body.dashboard-page--admin-store.dashboard--mic-mobile-sales .mic-admin-mobile-sales .mic-mobile-hourly,
+    body.dashboard-page--admin-store.dashboard--mic-mobile-sales .mic-admin-mobile-sales .mic-mobile-hourly--scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border-left: none;
+        border-right: none;
+        border-bottom: none;
+        border-radius: 0;
+    }
+
+    body.dashboard-page--admin-store.dashboard--mic-mobile-sales .mic-admin-mobile-sales .mic-mobile-hourly-head {
+        flex: 0 0 auto;
+    }
+
+    body.dashboard-page--admin-store.dashboard--mic-mobile-sales .mic-admin-mobile-sales .mic-mobile-hourly-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
     }
 }
 

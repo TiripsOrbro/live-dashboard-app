@@ -27,6 +27,28 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.9.4 – June 2026
+
+**Added**
+
+- **Admin settings page** — full-page admin at `/Admin/Settings` with a sidebar (replaces the old popup menu).
+- **Create account** and **Existing accounts** — separate sidebar sections, each with a clear header.
+- **Store logins** — same org-tree layout as Existing accounts; pick a store, then edit MMX / LifeLenz / SMG / NSF credentials.
+
+**Changed**
+
+- **Settings → Admin settings** — purple button above Close opens the new admin page (no Admin tab inside Settings).
+- **Last login** on existing accounts — readable dates instead of raw timestamps.
+
+**Fixed**
+
+- **Org tree** — market, area, and store rows now show even when there is only one option (no more false “No stores available”).
+
+**What you need to do**
+
+- On the Pi: `git pull origin Version-0.4 && npm install && pm2 restart dashboard`
+- Hard refresh (Ctrl+F5) once. Bookmark **`/Admin/Settings`** if you use admin often.
+
 ### Version 0.4.9.3 – June 2026
 
 **Added**

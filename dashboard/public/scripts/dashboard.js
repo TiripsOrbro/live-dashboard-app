@@ -2133,11 +2133,108 @@ function buildPortraitGridContent() {
     `;
 }
 
+function useAdminMicMobileSalesLayout() {
+    return IS_ADMIN_STORE_DASHBOARD && isPortraitMobileView();
+}
+
+function buildSalesTodayFromGrid() {
+    return {
+        actualHourly: liveSales,
+        forecastHourly: forecastSales,
+        openHour: TRADING_GRID_START_HOUR,
+        closeHour: tradingCloseHour,
+        timeZone: DASHBOARD_TIME_ZONE,
+        actual: sumHourlySlice(liveSales),
+        forecast: sumHourlySlice(forecastSales),
+    };
+}
+
+function buildAdminMicMobileSalesHeader(salesToday) {
+    const actual = Number(salesToday.actual) || 0;
+    const forecast = Number(salesToday.forecast) || 0;
+    const name = String(currentStoreLabel || STORE_NUMBER || '').trim();
+    const num = String(STORE_NUMBER || '').trim();
+    const storeLabel =
+        name && num && name.toLowerCase() !== num.toLowerCase()
+            ? `${escapeHtml(name)} · ${escapeHtml(num)}`
+            : escapeHtml(name || num);
+    return `
+        <div class="mic-store-lead mic-store-lead--purple mic-store-lead--mobile">
+            <div class="mic-store-lead-store-label mic-store-lead-store-label--mobile">${storeLabel}</div>
+            <div class="mic-store-lead-sales">
+                <div class="mic-store-lead-sales-stack">
+                    <div class="mic-store-lead-total-amount">${formatCurrency(actual)} / ${formatCurrency(forecast)}</div>
+                </div>
+            </div>
+        </div>`;
+}
+
+function buildAdminMicMobileGridContent() {
+    const salesToday = buildSalesTodayFromGrid();
+    const totalsHtml = window.MicMiniDashboard?.renderMobileMealTotals?.(salesToday) || '';
+    const hourlyHtml =
+        window.MicMiniDashboard?.renderMobileHourlyWindow?.(salesToday, { allHours: true }) || '';
+    return `
+        <div class="mic-admin-mobile-sales">
+            ${buildAdminMicMobileSalesHeader(salesToday)}
+            <div class="mic-mini-dashboard mic-mini-dashboard--mobile">
+                ${totalsHtml}
+                ${hourlyHtml}
+            </div>
+        </div>`;
+}
+
+function buildLoadingAdminMicMobileGridContent() {
+    return `
+        <div class="mic-admin-mobile-sales mic-admin-mobile-sales--loading" aria-busy="true">
+            <div class="mic-store-lead mic-store-lead--purple mic-store-lead--mobile">
+                <div class="mic-store-lead-store-label mic-store-lead-store-label--mobile">Loading…</div>
+            </div>
+            <div class="mic-mini-dashboard mic-mini-dashboard--mobile">
+                <p class="mic-mini-dashboard-empty">Loading sales data…</p>
+            </div>
+        </div>`;
+}
+
+function syncAdminMicMobileHourlyScroll() {
+    if (!useAdminMicMobileSalesLayout()) return;
+    const grid = document.querySelector('.dashboard-grid--mic-mobile');
+    const hourly = grid?.querySelector('.mic-mobile-hourly--scroll');
+    const body = hourly?.querySelector('.mic-mobile-hourly-body');
+    const head = hourly?.querySelector('.mic-mobile-hourly-head');
+    if (!grid || !hourly || !body) return;
+
+    const gridRect = grid.getBoundingClientRect();
+    const headHeight = head?.offsetHeight || 0;
+    const available = gridRect.bottom - hourly.getBoundingClientRect().top - headHeight - 8;
+    const maxHeight = Math.max(160, Math.floor(available));
+
+    body.style.maxHeight = `${maxHeight}px`;
+    body.style.overflowY = 'auto';
+    body.style.webkitOverflowScrolling = 'touch';
+}
+
+function portraitGridContentForLayout() {
+    if (useAdminMicMobileSalesLayout()) {
+        return buildAdminMicMobileGridContent();
+    }
+    return buildPortraitGridContent();
+}
+
+function loadingPortraitGridContentForLayout() {
+    if (useAdminMicMobileSalesLayout()) {
+        return buildLoadingAdminMicMobileGridContent();
+    }
+    return buildLoadingPortraitGridContent();
+}
+
 let lastPortraitLayout = null;
 
 function syncDashboardLayoutMode() {
     const portrait = isPortraitMobileView();
+    const micMobileSales = useAdminMicMobileSalesLayout();
     document.body.classList.toggle('dashboard--portrait', portrait);
+    document.body.classList.toggle('dashboard--mic-mobile-sales', micMobileSales);
     document.body.classList.toggle(
         'dashboard--mobile-landscape',
         window.matchMedia('(max-width: 900px) and (orientation: landscape)').matches
@@ -2385,11 +2482,15 @@ function showGridSkeleton() {
 
     syncAuditPeriodState();
     syncDashboardLayoutMode();
+    const micMobileSales = useAdminMicMobileSalesLayout();
     grid.classList.remove('dashboard-grid--skeleton');
-    grid.classList.toggle('dashboard-grid--portrait', isPortraitMobileView());
+    grid.classList.toggle('dashboard-grid--portrait', isPortraitMobileView() && !micMobileSales);
+    grid.classList.toggle('dashboard-grid--mic-mobile', micMobileSales);
     grid.classList.toggle('dashboard-grid--loading', true);
     grid.setAttribute('aria-busy', 'true');
-    grid.innerHTML = isPortraitMobileView() ? buildLoadingPortraitGridContent() : buildLoadingGridContent();
+    grid.innerHTML = isPortraitMobileView()
+        ? loadingPortraitGridContentForLayout()
+        : buildLoadingGridContent();
     updateAuditsPanel();
     updatePendingVendorsPanel();
     applyPortraitTabVisibility();
@@ -2401,28 +2502,33 @@ function updateGrid() {
 
     syncAuditPeriodState();
     syncDashboardLayoutMode();
+    const micMobileSales = useAdminMicMobileSalesLayout();
 
     grid.classList.remove('dashboard-grid--skeleton', 'dashboard-grid--loading');
 
     if (shouldShowSalesLoadingGrid()) {
-        grid.classList.toggle('dashboard-grid--portrait', isPortraitMobileView());
+        grid.classList.toggle('dashboard-grid--portrait', isPortraitMobileView() && !micMobileSales);
+        grid.classList.toggle('dashboard-grid--mic-mobile', micMobileSales);
         grid.classList.add('dashboard-grid--loading');
         grid.setAttribute('aria-busy', 'true');
-        grid.innerHTML = isPortraitMobileView() ? buildLoadingPortraitGridContent() : buildLoadingGridContent();
+        grid.innerHTML = isPortraitMobileView()
+            ? loadingPortraitGridContentForLayout()
+            : buildLoadingGridContent();
         updateAuditsPanel();
         updatePendingVendorsPanel();
         applyPortraitTabVisibility();
         return;
     }
 
-    grid.classList.toggle('dashboard-grid--portrait', isPortraitMobileView());
+    grid.classList.toggle('dashboard-grid--portrait', isPortraitMobileView() && !micMobileSales);
+    grid.classList.toggle('dashboard-grid--mic-mobile', micMobileSales);
     grid.removeAttribute('aria-busy');
 
     const forecasts = gridForecastValues();
     const actuals = gridActualValues();
 
     grid.innerHTML = isPortraitMobileView()
-        ? buildPortraitGridContent()
+        ? portraitGridContentForLayout()
         : `
         ${buildHeaderRow()}
         ${buildForecastRow(forecasts, actuals)}
@@ -2433,6 +2539,9 @@ function updateGrid() {
     updateAuditsPanel();
     updatePendingVendorsPanel();
     applyPortraitTabVisibility();
+    if (micMobileSales) {
+        requestAnimationFrame(syncAdminMicMobileHourlyScroll);
+    }
 }
 
 /* -----------------------------------------------------------

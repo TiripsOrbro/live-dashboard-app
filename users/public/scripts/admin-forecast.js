@@ -1,5 +1,6 @@
 (function (global) {
     let backdrop = null;
+    let pageHost = null;
     let historyBackdrop = null;
     let previewBackdrop = null;
     let progressBackdrop = null;
@@ -73,12 +74,15 @@
         return '$' + Number(value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
     }
 
-    function ensureBackdrop() {
-        if (backdrop) return backdrop;
-        backdrop = document.createElement('div');
-        backdrop.className = 'admin-modal-backdrop';
-        backdrop.hidden = true;
-        backdrop.innerHTML = `
+    function getRoot() {
+        return pageHost || backdrop;
+    }
+
+    function isInline() {
+        return Boolean(pageHost);
+    }
+
+    const FORECAST_MODAL_HTML = `
             <div class="admin-modal admin-modal--wide" role="dialog" aria-modal="true">
                 <h2>Forecast tool</h2>
                 <p class="admin-accounts-meta">Uses 5 weeks of stored hourly sales (trimmed weekday averages + hourly shape), then writes one target week (Monday start, 2 weeks out) to Macromatix and LifeLenz when configured. History builds automatically after each trading day; import backfill for gaps.</p>
@@ -95,27 +99,48 @@
                     <button type="button" id="admin-forecast-close">Close</button>
                 </div>
             </div>`;
-        document.body.appendChild(backdrop);
-        backdrop.addEventListener('click', (event) => {
-            if (event.target === backdrop) close();
-        });
-        backdrop.querySelector('#admin-forecast-close')?.addEventListener('click', close);
-        backdrop.querySelector('#admin-forecast-submit-all')?.addEventListener('click', () => {
+
+    function bindPanel(root) {
+        if (root.dataset.adminForecastBound) return;
+        root.dataset.adminForecastBound = '1';
+        root.querySelector('#admin-forecast-close')?.addEventListener('click', close);
+        root.querySelector('#admin-forecast-submit-all')?.addEventListener('click', () => {
             void runAll();
         });
-        backdrop.querySelector('#admin-forecast-setup-lifelenz')?.addEventListener('click', () => {
+        root.querySelector('#admin-forecast-setup-lifelenz')?.addEventListener('click', () => {
             void openLifeLenzSetup();
         });
-        backdrop.querySelector('#admin-forecast-area-tabs')?.addEventListener('click', (event) => {
+        root.querySelector('#admin-forecast-area-tabs')?.addEventListener('click', (event) => {
             const tab = event.target.closest('[data-forecast-area]');
             if (!tab) return;
             activeArea = tab.getAttribute('data-forecast-area') || '';
             sessionStorage.setItem(FORECAST_AREA_STORAGE_KEY, activeArea);
-            if (statusPayload) {
-                renderAreaTabs(backdrop);
-                renderTable(backdrop, statusPayload);
+            const surface = getRoot();
+            if (statusPayload && surface) {
+                renderAreaTabs(surface);
+                renderTable(surface, statusPayload);
             }
         });
+    }
+
+    function ensureBackdrop() {
+        if (pageHost) {
+            if (!pageHost.querySelector('.admin-modal')) {
+                pageHost.innerHTML = FORECAST_MODAL_HTML;
+                bindPanel(pageHost);
+            }
+            return pageHost;
+        }
+        if (backdrop) return backdrop;
+        backdrop = document.createElement('div');
+        backdrop.className = 'admin-modal-backdrop';
+        backdrop.hidden = true;
+        backdrop.innerHTML = FORECAST_MODAL_HTML;
+        document.body.appendChild(backdrop);
+        backdrop.addEventListener('click', (event) => {
+            if (event.target === backdrop) close();
+        });
+        bindPanel(backdrop);
         return backdrop;
     }
 
@@ -149,6 +174,7 @@
     }
 
     function close() {
+        if (isInline()) return;
         if (backdrop) backdrop.hidden = true;
         closeHistory();
         closePreview();
@@ -1793,7 +1819,7 @@
 
     async function open() {
         const root = ensureBackdrop();
-        root.hidden = false;
+        if (!isInline()) root.hidden = false;
         root.querySelector('#admin-forecast-error').textContent = '';
         root.querySelector('#admin-forecast-body').innerHTML = '<p>Loading…</p>';
         try {
@@ -1804,5 +1830,14 @@
         }
     }
 
-    global.AdminForecast = { open, close };
+    function mount(host, options = {}) {
+        pageHost = host;
+        return open(options);
+    }
+
+    function unmount() {
+        pageHost = null;
+    }
+
+    global.AdminForecast = { open, close, mount, unmount };
 })(window);

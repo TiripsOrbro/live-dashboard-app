@@ -1,0 +1,23 @@
+{
+  "timezone": "Australia/Melbourne",
+  "rounds": [
+    {
+      "id": "R1",
+      "label": "Round 1",
+      "start": { "month": 1, "day": 1, "periodWeek": "P9W4" },
+      "end": { "month": 4, "day": 30, "periodWeek": "P13W5" }
+    },
+    {
+      "id": "R2",
+      "label": "Round 2",
+      "start": { "month": 5, "day": 1, "periodWeek": "P13W5" },
+      "end": { "month": 8, "day": 31, "periodWeek": "P5W2" }
+    },
+    {
+      "id": "R3",
+      "label": "Round 3",
+      "start": { "month": 9, "day": 1, "periodWeek": "P5W2" },
+      "end": { "month": 12, "day": 31, "periodWeek": "P9W3" }
+    }
+  ]
+}

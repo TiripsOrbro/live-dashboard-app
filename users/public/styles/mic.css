@@ -1649,9 +1649,9 @@ html.mic-dark-mode .mic-audit-stat--complete {
 .mic-meal-totals {
     display: flex;
     flex-direction: column;
-    gap: calc(4px * var(--dashboard-scale));
+    gap: calc(6px * var(--dashboard-scale));
     width: 100%;
-    --mic-meal-box-h: calc(42px * var(--dashboard-scale));
+    --mic-meal-box-h: calc(46px * var(--dashboard-scale));
     --mic-grid-divider: 1px solid color-mix(in srgb, var(--charcoal) 6%, white);
     border: none;
     border-radius: 0;
@@ -1766,13 +1766,13 @@ html.mic-dark-mode .mic-audit-stat--complete {
     background: transparent;
     display: flex;
     flex-direction: column;
-    gap: calc(4px * var(--dashboard-scale));
+    gap: calc(6px * var(--dashboard-scale));
 }
 
 .mic-mobile-hourly-body {
     display: flex;
     flex-direction: column;
-    gap: calc(4px * var(--dashboard-scale));
+    gap: calc(6px * var(--dashboard-scale));
     min-height: 0;
 }
 
@@ -1780,7 +1780,7 @@ html.mic-dark-mode .mic-audit-stat--complete {
 .mic-mobile-hour-row {
     display: grid;
     grid-template-columns: minmax(3.2rem, 0.75fr) minmax(0, 1fr) minmax(0, 1fr);
-    gap: calc(4px * var(--dashboard-scale));
+    gap: calc(6px * var(--dashboard-scale));
     align-items: stretch;
     width: 100%;
     box-sizing: border-box;
@@ -1789,7 +1789,7 @@ html.mic-dark-mode .mic-audit-stat--complete {
 .mic-mobile-hourly-head {
     background: transparent;
     color: var(--blank);
-    font-size: calc(0.68rem * var(--dashboard-scale));
+    font-size: calc(0.74rem * var(--dashboard-scale));
     font-weight: var(--font-weight-grid-label);
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -1799,8 +1799,8 @@ html.mic-dark-mode .mic-audit-stat--complete {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: calc(6px * var(--dashboard-scale)) calc(4px * var(--dashboard-scale));
-    min-height: calc(34px * var(--dashboard-scale));
+    padding: calc(8px * var(--dashboard-scale)) calc(6px * var(--dashboard-scale));
+    min-height: calc(50px * var(--dashboard-scale));
     background: var(--dark-purple-border);
     color: var(--blank);
     border: var(--cell-border) var(--dark-purple-border);
@@ -1820,12 +1820,12 @@ html.mic-dark-mode .mic-audit-stat--complete {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: calc(6px * var(--dashboard-scale)) calc(4px * var(--dashboard-scale));
+    padding: calc(8px * var(--dashboard-scale)) calc(6px * var(--dashboard-scale));
     background: var(--dark-purple-border);
     color: var(--blank);
-    font-size: calc(0.72rem * var(--dashboard-scale));
+    font-size: calc(0.84rem * var(--dashboard-scale));
     font-weight: var(--font-weight-grid-label);
-    min-height: calc(34px * var(--dashboard-scale));
+    min-height: calc(50px * var(--dashboard-scale));
     border: var(--cell-border) var(--dark-purple-border);
     border-radius: 0;
     box-sizing: border-box;
@@ -1835,9 +1835,9 @@ html.mic-dark-mode .mic-audit-stat--complete {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: calc(34px * var(--dashboard-scale));
-    padding: calc(4px * var(--dashboard-scale));
-    font-size: calc(0.78rem * var(--dashboard-scale));
+    min-height: calc(50px * var(--dashboard-scale));
+    padding: calc(6px * var(--dashboard-scale));
+    font-size: calc(0.95rem * var(--dashboard-scale));
     font-weight: var(--font-weight-grid-value);
     border: var(--cell-border) var(--blank-border);
     border-radius: 0;
@@ -2132,6 +2132,7 @@ html.mic-dark-mode .mic-audit-stat--complete {
 .mic-tile {
     background: var(--white);
     border: var(--cell-border) var(--charcoal);
+    border-radius: var(--mic-tile-radius, 0);
     padding: calc(18px * var(--dashboard-scale)) calc(14px * var(--dashboard-scale));
     display: flex;
     flex-direction: column;
@@ -2242,7 +2243,7 @@ html.mic-dark-mode .mic-audit-stat--complete {
     flex-shrink: 0;
 }
 
-.mic-tile--voc .mic-tile-body {
+.mic-tile--voc .mic-tile-body:not(.mic-metric-card) {
     justify-content: center;
     gap: calc(8px * var(--dashboard-scale));
     min-height: 0;
@@ -2299,6 +2300,240 @@ html.mic-dark-mode .mic-audit-stat--complete {
     line-height: 1.1;
 }
 
+.mic-tile--metric-card {
+    border: 1px solid color-mix(in srgb, var(--charcoal) 10%, white);
+    border-radius: var(--mic-tile-radius, 0);
+    box-shadow: 0 calc(2px * var(--dashboard-scale)) calc(10px * var(--dashboard-scale))
+        color-mix(in srgb, var(--charcoal) 6%, transparent);
+    padding: calc(12px * var(--dashboard-scale)) calc(14px * var(--dashboard-scale));
+    min-height: calc(118px * var(--dashboard-scale));
+    overflow: hidden;
+}
+
+.mic-metric-card {
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: calc(8px * var(--dashboard-scale));
+    text-align: left;
+}
+
+.mic-metric-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    flex-shrink: 0;
+}
+
+.mic-tile--metric-card .mic-metric-card__head .mic-tile-label {
+    width: auto;
+    text-align: left;
+    font-size: var(--font-size-5);
+    color: color-mix(in srgb, var(--charcoal) 58%, white);
+}
+
+.mic-tile--link.mic-tile--voc.mic-tile--metric-card .mic-metric-card__head::after {
+    content: '↗';
+    font-size: var(--font-size-5);
+    line-height: 1;
+    color: color-mix(in srgb, var(--tb-purple) 50%, white);
+    opacity: 0.75;
+}
+
+.mic-tile--metric-card .mic-voc-grid,
+.mic-tile--metric-card .mic-sssg-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.mic-tile--metric-card .mic-voc-count {
+    min-height: calc(44px * var(--dashboard-scale));
+}
+
+.mic-tile--metric-card .mic-voc-metrics {
+    padding-top: calc(8px * var(--dashboard-scale));
+}
+
+.mic-tile--metric-card .mic-voc-metric {
+    font-size: var(--font-size-4);
+}
+
+.mic-tile--metric-card .mic-tile-sub--footnote {
+    margin-top: auto;
+    text-align: center;
+}
+
+.mic-sssg-grid {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    flex: 0 1 auto;
+    min-height: 0;
+}
+
+.mic-sssg-footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-top: 1px solid color-mix(in srgb, var(--charcoal) 12%, white);
+    padding-top: calc(8px * var(--dashboard-scale));
+    margin-top: calc(2px * var(--dashboard-scale));
+}
+
+.mic-tile--metric-card .mic-sssg-value {
+    flex: 0 0 auto;
+    min-height: calc(44px * var(--dashboard-scale));
+    font-size: clamp(1.75rem, 6vmin, calc(var(--font-size-1) * 2.1));
+}
+
+.mic-tile--metric-card .mic-sssg-footer .mic-sssg-wtd {
+    font-size: var(--font-size-4);
+    font-weight: var(--font-weight-semibold);
+}
+
+.mic-grid--admin > .mic-tile--metric-card {
+    border-color: color-mix(in srgb, var(--charcoal) 10%, white);
+    box-shadow: 0 calc(2px * var(--dashboard-scale)) calc(10px * var(--dashboard-scale))
+        color-mix(in srgb, var(--charcoal) 6%, transparent);
+}
+
+.mic-grid--admin > .mic-tile--metric-card .mic-tile-body {
+    align-items: stretch;
+    justify-content: flex-start;
+    text-align: left;
+}
+
+.mic-tile--core-countdown {
+    position: relative;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--tb-purple, #702082) 68%, black);
+    color: #fff;
+    transition: box-shadow 0.35s ease;
+}
+
+.mic-tile--core-countdown:hover,
+.mic-tile--core-countdown:focus-within {
+    box-shadow: 0 calc(4px * var(--dashboard-scale)) calc(16px * var(--dashboard-scale))
+        color-mix(in srgb, var(--tb-purple, #702082) 28%, transparent);
+}
+
+.mic-core-countdown-bg {
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--tb-purple, #702082) 32%, transparent) 0%,
+            color-mix(in srgb, var(--tb-purple, #702082) 52%, black) 100%
+        ),
+        url('/images/core/taco-bell-defy-bg.png') center 35% / cover no-repeat;
+    opacity: 0.62;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+}
+
+.mic-tile--core-countdown:hover .mic-core-countdown-bg,
+.mic-tile--core-countdown:focus-within .mic-core-countdown-bg {
+    opacity: 0.92;
+}
+
+.mic-core-countdown-bg::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--tb-purple, #702082) 14%, transparent) 0%,
+        color-mix(in srgb, black 28%, var(--tb-purple, #702082)) 100%
+    );
+    transition: background 0.35s ease;
+}
+
+.mic-tile--core-countdown:hover .mic-core-countdown-bg::after,
+.mic-tile--core-countdown:focus-within .mic-core-countdown-bg::after {
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--tb-purple, #702082) 6%, transparent) 0%,
+        color-mix(in srgb, black 14%, var(--tb-purple, #702082)) 100%
+    );
+}
+
+.mic-core-countdown-body {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(4px * var(--dashboard-scale));
+    width: 100%;
+    min-height: 0;
+    padding: calc(6px * var(--dashboard-scale)) calc(8px * var(--dashboard-scale));
+    text-align: center;
+}
+
+.mic-core-countdown-round {
+    font-size: var(--font-size-4);
+    font-weight: var(--font-weight-bold);
+    letter-spacing: 0.04em;
+    text-transform: none;
+}
+
+.mic-core-countdown-clock {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: calc(4px * var(--dashboard-scale));
+    width: 100%;
+    max-width: 100%;
+}
+
+.mic-core-countdown-unit {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: calc(2px * var(--dashboard-scale));
+    min-width: 0;
+}
+
+.mic-core-countdown-value {
+    font-size: clamp(1rem, 3.2vmin, calc(var(--font-size-2) * 1.05));
+    font-weight: var(--font-weight-bold);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.mic-core-countdown-unit-label {
+    font-size: calc(var(--font-size-5) * 0.92);
+    font-weight: var(--font-weight-medium);
+    opacity: 0.92;
+    text-transform: lowercase;
+}
+
+.mic-core-countdown-schedule {
+    display: none;
+    flex-direction: column;
+    gap: calc(2px * var(--dashboard-scale));
+    width: 100%;
+    margin-top: calc(2px * var(--dashboard-scale));
+    font-size: calc(var(--font-size-5) * 0.88);
+    line-height: 1.25;
+    opacity: 0.9;
+}
+
+.mic-grid--admin .mic-grid-equal-row > .mic-tile.mic-tile--core-countdown {
+    background: color-mix(in srgb, var(--tb-purple, #702082) 68%, black);
+}
+
+.mic-grid--admin .mic-grid-equal-row > .mic-tile.mic-tile--core-countdown .mic-tile-body {
+    color: #fff;
+}
+
+@media (min-width: 1100px) {
+    .mic-core-countdown-schedule {
+        display: flex;
+    }
+}
+
 .mic-tile--multiplier {
     position: relative;
 }
@@ -2313,7 +2548,7 @@ html.mic-dark-mode .mic-audit-stat--complete {
     background: color-mix(in srgb, var(--grey) 70%, white);
 }
 
-.mic-tile--sssg .mic-tile-body {
+.mic-tile--sssg .mic-tile-body:not(.mic-metric-card) {
     justify-content: stretch;
     gap: calc(6px * var(--dashboard-scale));
     min-height: 0;
@@ -2653,7 +2888,7 @@ html.mic-dark-mode .mic-audit-stat--complete {
     box-sizing: border-box;
     flex: 1 1 50%;
     border: var(--cell-border) var(--charcoal);
-    border-radius: calc(6px * var(--dashboard-scale));
+    border-radius: var(--mic-tile-radius, 0);
     overflow: hidden;
 }
 
@@ -3031,6 +3266,34 @@ html.mic-dark-mode .mic-audit-stat--complete {
     font: inherit;
     cursor: pointer;
     border-radius: 6px;
+}
+
+.mic-settings-admin-btn {
+    width: 100%;
+    margin-top: 0.75rem;
+    margin-bottom: 0.5rem;
+    border: var(--cell-border) var(--tb-purple, #7a3eb1);
+    background: var(--tb-purple, #7a3eb1);
+    color: var(--white);
+    padding: 0.65rem;
+    font: inherit;
+    font-weight: var(--font-weight-semibold, 600);
+    cursor: pointer;
+    border-radius: 6px;
+    transition: filter 0.15s ease;
+}
+
+.mic-settings-admin-btn:hover {
+    filter: brightness(1.08);
+}
+
+.mic-settings-admin-btn:focus-visible {
+    outline: 2px solid var(--tb-purple-light, #9b63d6);
+    outline-offset: 2px;
+}
+
+.mic-settings-admin-btn[hidden] {
+    display: none !important;
 }
 
 .mic-item-picker {
@@ -3531,7 +3794,7 @@ button.mic-tile.mic-tile--link {
         font-size: var(--font-size-4);
         color: color-mix(in srgb, var(--charcoal) 55%, white);
         border: var(--cell-border) var(--charcoal);
-        border-radius: calc(6px * var(--dashboard-scale));
+        border-radius: var(--mic-tile-radius, 0);
         background: var(--white);
     }
 
@@ -3564,7 +3827,7 @@ button.mic-tile.mic-tile--link {
         align-self: stretch;
         display: flex;
         flex-direction: column;
-        border-radius: calc(6px * var(--dashboard-scale));
+        border-radius: var(--mic-tile-radius, 0);
         overflow: hidden;
     }
 
@@ -3678,18 +3941,18 @@ button.mic-tile.mic-tile--link {
         box-sizing: border-box;
     }
 
-    .mic-overview--mobile .mic-tab-panel .mic-tile:not(.mic-tile--store-leaderboard) {
+    .mic-overview--mobile .mic-tab-panel .mic-tile:not(.mic-tile--store-leaderboard):not(.mic-tile--metric-card) {
         min-height: calc(72px * var(--dashboard-scale));
         height: auto;
         max-height: none;
         padding: calc(10px * var(--dashboard-scale)) calc(14px * var(--dashboard-scale));
-        border-radius: calc(6px * var(--dashboard-scale));
+        border-radius: var(--mic-tile-radius, 0);
         border: var(--cell-border) var(--charcoal);
         background: var(--white);
         overflow: hidden;
     }
 
-    .mic-overview--mobile .mic-tab-panel .mic-tile:not(.mic-tile--store-leaderboard) .mic-tile-body {
+    .mic-overview--mobile .mic-tab-panel .mic-tile:not(.mic-tile--store-leaderboard):not(.mic-tile--metric-card) .mic-tile-body {
         flex-direction: row;
         flex-wrap: wrap;
         align-items: center;
@@ -3698,26 +3961,23 @@ button.mic-tile.mic-tile--link {
         text-align: left;
     }
 
-    .mic-overview--mobile .mic-tab-panel .mic-tile--voc .mic-tile-body {
-        flex-wrap: nowrap;
-        gap: calc(10px * var(--dashboard-scale));
+    .mic-overview--mobile .mic-tab-panel .mic-tile--metric-card {
+        min-height: calc(108px * var(--dashboard-scale));
+        height: auto;
+        max-height: none;
+        padding: calc(12px * var(--dashboard-scale)) calc(14px * var(--dashboard-scale));
     }
 
-    .mic-overview--mobile .mic-tab-panel .mic-tile--voc .mic-tile-sub--footnote {
-        display: none;
-    }
-
-    .mic-overview--mobile .mic-tab-panel .mic-tile--voc .mic-tile-main {
-        flex: 0 0 auto;
-        font-size: calc(var(--font-size-2) * 1.15);
-        margin-left: auto;
-    }
-
-    .mic-overview--mobile .mic-tab-panel .mic-tile--sssg .mic-tile-body {
+    .mic-overview--mobile .mic-tab-panel .mic-tile--metric-card .mic-tile-body {
         flex-direction: column;
-        align-items: center;
-        text-align: center;
-        gap: calc(6px * var(--dashboard-scale));
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: calc(8px * var(--dashboard-scale));
+        text-align: left;
+    }
+
+    .mic-overview--mobile .mic-tab-panel .mic-tile--metric-card .mic-tile-sub--footnote {
+        display: none;
     }
 
     .mic-overview--mobile .mic-grid--admin {
@@ -3743,17 +4003,17 @@ button.mic-tile.mic-tile--link {
         align-self: stretch;
     }
 
-    .mic-overview--mobile .mic-grid--admin > .mic-tile:not(.mic-tile--store-leaderboard) {
+    .mic-overview--mobile .mic-grid--admin > .mic-tile:not(.mic-tile--store-leaderboard):not(.mic-tile--metric-card) {
         grid-column: 1 / -1;
         min-height: calc(72px * var(--dashboard-scale));
         height: auto;
         max-height: none;
         padding: calc(10px * var(--dashboard-scale)) calc(14px * var(--dashboard-scale));
-        border-radius: calc(6px * var(--dashboard-scale));
+        border-radius: var(--mic-tile-radius, 0);
         overflow: hidden;
     }
 
-    .mic-overview--mobile .mic-grid--admin > .mic-tile:not(.mic-tile--store-leaderboard) .mic-tile-body {
+    .mic-overview--mobile .mic-grid--admin > .mic-tile:not(.mic-tile--store-leaderboard):not(.mic-tile--metric-card) .mic-tile-body {
         flex-direction: row;
         flex-wrap: wrap;
         align-items: center;
@@ -3762,13 +4022,28 @@ button.mic-tile.mic-tile--link {
         text-align: left;
     }
 
-    .mic-overview--mobile .mic-grid--admin > .mic-tile:not(.mic-tile--store-leaderboard) .mic-tile-label {
+    .mic-overview--mobile .mic-grid--admin > .mic-tile--metric-card {
+        grid-column: 1 / -1;
+        min-height: calc(108px * var(--dashboard-scale));
+        height: auto;
+        max-height: none;
+    }
+
+    .mic-overview--mobile .mic-grid--admin > .mic-tile--metric-card .mic-tile-body {
+        flex-direction: column;
+        align-items: stretch;
+        justify-content: flex-start;
+        gap: calc(8px * var(--dashboard-scale));
+        text-align: left;
+    }
+
+    .mic-overview--mobile .mic-grid--admin > .mic-tile:not(.mic-tile--store-leaderboard):not(.mic-tile--metric-card) .mic-tile-label {
         width: auto;
         flex: 0 0 auto;
         text-align: left;
     }
 
-    .mic-overview--mobile .mic-grid--admin > .mic-tile:not(.mic-tile--store-leaderboard) .mic-tile-sub {
+    .mic-overview--mobile .mic-grid--admin > .mic-tile:not(.mic-tile--store-leaderboard):not(.mic-tile--metric-card) .mic-tile-sub {
         width: auto;
         flex: 1 1 auto;
         margin: 0;
@@ -3776,24 +4051,8 @@ button.mic-tile.mic-tile--link {
         font-size: var(--font-size-5);
     }
 
-    .mic-overview--mobile .mic-tile--voc .mic-tile-body {
-        flex-wrap: nowrap;
-        gap: calc(10px * var(--dashboard-scale));
-    }
-
-    .mic-overview--mobile .mic-tile--voc .mic-tile-sub--footnote {
+    .mic-overview--mobile .mic-tile--metric-card .mic-tile-sub--footnote {
         display: none;
-    }
-
-    .mic-overview--mobile .mic-tile--voc .mic-tile-main {
-        flex: 0 0 auto;
-        font-size: calc(var(--font-size-2) * 1.15);
-        margin-left: auto;
-    }
-
-    .mic-overview--mobile .mic-tile--voc .mic-tile-sub:not(.mic-tile-sub--footnote) {
-        flex: 1 1 auto;
-        text-align: right;
     }
 
     .mic-overview--mobile .mic-tile--orders-to-place .mic-tile-body--orders,
@@ -3834,11 +4093,11 @@ button.mic-tile.mic-tile--link {
     }
 
     .mic-overview--mobile .mic-meal-totals {
-        --mic-meal-box-h: calc(34px * var(--dashboard-scale));
-        --mic-meal-pad-y: calc(6px * var(--dashboard-scale));
-        --mic-meal-pad-x: calc(6px * var(--dashboard-scale));
-        gap: calc(4px * var(--dashboard-scale));
-        margin-bottom: calc(4px * var(--dashboard-scale));
+        --mic-meal-box-h: calc(46px * var(--dashboard-scale));
+        --mic-meal-pad-y: calc(8px * var(--dashboard-scale));
+        --mic-meal-pad-x: calc(8px * var(--dashboard-scale));
+        gap: calc(6px * var(--dashboard-scale));
+        margin-bottom: calc(6px * var(--dashboard-scale));
     }
 
     .mic-overview--mobile .mic-meal-total-row {
@@ -3864,7 +4123,7 @@ button.mic-tile.mic-tile--link {
     }
 
     .mic-overview--mobile .mic-meal-total-amount {
-        font-size: calc(1.05rem * var(--dashboard-scale));
+        font-size: calc(1.12rem * var(--dashboard-scale));
         padding: 0;
     }
 
@@ -3937,6 +4196,19 @@ html.mic-dark-mode .mic-settings-pref-hint,
 html.mic-dark-mode .mic-colour-samples-hint,
 html.mic-dark-mode .mic-item-option-points {
     color: color-mix(in srgb, #e8e8e8 72%, #161616);
+}
+
+html.mic-dark-mode .mic-grid--admin .mic-grid-equal-row > .mic-tile.mic-tile--core-countdown {
+    background: color-mix(in srgb, var(--tb-purple, #702082) 52%, #161616);
+}
+
+html.mic-dark-mode .mic-tile--core-countdown .mic-core-countdown-bg {
+    opacity: 0.5;
+}
+
+html.mic-dark-mode .mic-tile--core-countdown:hover .mic-core-countdown-bg,
+html.mic-dark-mode .mic-tile--core-countdown:focus-within .mic-core-countdown-bg {
+    opacity: 0.86;
 }
 
 html.mic-dark-mode .mic-tile {
@@ -4109,6 +4381,12 @@ html.mic-dark-mode .mic-settings-close {
     background: #f0f0f0;
     color: #161616;
     border-color: #f0f0f0;
+}
+
+html.mic-dark-mode .mic-settings-admin-btn {
+    background: var(--tb-purple-light, #9b63d6);
+    border-color: var(--tb-purple-light, #9b63d6);
+    color: #fff;
 }
 
 html.mic-dark-mode .mic-toggle-slider {

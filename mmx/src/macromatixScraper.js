@@ -270,11 +270,6 @@ function clearStoreScrapeCaches(storeNumber) {
     lastKnownPendingVendorsByStore.delete(key);
     scheduledOrdersEmptyCheckByStore.delete(key);
     scheduledOrdersCompleteByStore.delete(key);
-    try {
-        require('../../dashboard/src/sssg/sssgCache').clearSssgLyCache(storeNumber);
-    } catch {
-        /* ignore */
-    }
 }
 
 function resetScheduledOrdersForNewDay(storeNumber) {

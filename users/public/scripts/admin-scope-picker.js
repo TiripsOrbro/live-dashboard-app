@@ -122,23 +122,27 @@
             </div>`;
     }
 
+    function treeHasStores(tree) {
+        return Object.values(tree?.storesByArea || {}).some((rows) => rows?.length > 0);
+    }
+
     function buildNavigatorRows(tree, scope, scopePrefix = 'browse') {
         const resolved = resolveBrowseScope(tree, scope, scope.storeNumber || '');
         const rows = [];
 
-        if (tree.markets.length > 1) {
+        if (tree.markets.length >= 1) {
             rows.push(
                 renderBrowseScopeRow(`${scopePrefix}-market`, 'Market', tree.markets, resolved.market, (row) => row)
             );
         }
 
         const areas = resolved.market ? tree.areasByMarket[resolved.market] || [] : [];
-        if (areas.length > 1) {
+        if (areas.length >= 1) {
             rows.push(renderBrowseScopeRow(`${scopePrefix}-area`, 'Area', areas, resolved.area, (row) => row));
         }
 
         const stores = resolved.area ? tree.storesByArea[resolved.area] || [] : [];
-        if (stores.length > 1) {
+        if (stores.length >= 1) {
             rows.push(
                 renderBrowseScopeRow(
                     `${scopePrefix}-store`,
@@ -149,13 +153,15 @@
                     (row) => String(row.storeNumber)
                 )
             );
-        } else if (stores.length === 1) {
-            resolved.storeNumber = stores[0].storeNumber;
         }
 
         const finalScope = resolveBrowseScope(tree, resolved, '');
         return {
-            html: rows.join('') || '<p class="admin-scope-picker-empty">No stores available.</p>',
+            html:
+                rows.join('') ||
+                (treeHasStores(tree)
+                    ? ''
+                    : '<p class="admin-scope-picker-empty">No stores available.</p>'),
             scope: finalScope,
         };
     }

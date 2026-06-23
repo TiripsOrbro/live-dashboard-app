@@ -1,17 +1,14 @@
 (function (global) {
     let backdrop = null;
+    let pageHost = null;
+    let activeView = '';
     let profile = null;
     let createOptions = null;
     let currentStoreNumber = '';
+    let scopeNavigator = null;
     let browseScope = { market: '', area: '', storeNumber: '' };
 
-    const LEVEL_LABELS = {
-        market: 'Market',
-        area: 'Area',
-        manager: 'Manager',
-        mic: 'MIC',
-        tm: 'TM',
-    };
+    const Form = () => global.CreateAccountForm;
 
     function escapeHtml(text) {
         return String(text)
@@ -21,61 +18,48 @@
             .replace(/"/g, '&quot;');
     }
 
-    function escapeAttr(text) {
-        return escapeHtml(text);
-    }
-
-    function levelNeedsMarket(level) {
-        return ['market', 'area', 'manager', 'mic', 'tm'].includes(level);
-    }
-
-    function levelNeedsArea(level) {
-        return ['area', 'manager', 'mic', 'tm'].includes(level);
-    }
-
-    function levelNeedsStore(level) {
-        return ['manager', 'mic', 'tm'].includes(level);
-    }
-
-    function ensureBackdrop() {
-        if (backdrop && !backdrop.querySelector('.admin-accounts-create-toggle-label')) {
-            backdrop.remove();
-            backdrop = null;
+    function formatLastLogin(iso) {
+        if (!iso) return '-';
+        try {
+            const date = new Date(iso);
+            if (Number.isNaN(date.getTime())) return '-';
+            return date.toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' });
+        } catch {
+            return '-';
         }
-        if (backdrop && backdrop.querySelector('#admin-accounts-browse-scope input[name="browse-area"]')) {
-            backdrop.remove();
-            backdrop = null;
-        }
-        if (backdrop) return backdrop;
-        backdrop = document.createElement('div');
-        backdrop.className = 'admin-modal-backdrop';
-        backdrop.hidden = true;
-        backdrop.innerHTML = `
-            <div class="admin-modal admin-modal--wide" role="dialog" aria-modal="true">
-                <h2>Accounts</h2>
-                <section class="admin-accounts-existing">
-                    <h3>Existing accounts</h3>
-                    <div id="admin-accounts-browse-scope" class="admin-accounts-browse-scope"></div>
-                    <div id="admin-accounts-body"></div>
-                </section>
-                <button type="button" id="admin-accounts-create-toggle" class="mic-settings-btn admin-accounts-create-toggle" aria-expanded="false" aria-controls="admin-accounts-create">
-                    <span class="admin-accounts-create-toggle-label">Create account</span>
-                    <span class="admin-accounts-create-toggle-icon" aria-hidden="true">▼</span>
-                </button>
-                <section id="admin-accounts-create" class="admin-accounts-create" hidden>
+    }
+
+    function getRoot() {
+        return pageHost || backdrop;
+    }
+
+    function isInline() {
+        return Boolean(pageHost);
+    }
+
+    function sectionHeader(title, subtitle) {
+        return `
+            <header class="admin-section-header">
+                <h2>${escapeHtml(title)}</h2>
+                ${subtitle ? `<p class="admin-section-subtitle">${escapeHtml(subtitle)}</p>` : ''}
+            </header>`;
+    }
+
+    function createViewHtml() {
+        return `
+            <div class="admin-modal admin-modal--wide admin-accounts-view" data-accounts-view="create">
+                ${sectionHeader(
+                    'Create account',
+                    'Add a new dashboard login. A temporary password is generated automatically for the user to sign in and set their own password.'
+                )}
+                <section id="admin-accounts-create" class="admin-accounts-create admin-accounts-create--standalone">
                     <form id="admin-accounts-create-form" class="admin-accounts-form-grid">
+                        <div id="admin-create-scope-fields" class="admin-accounts-scope-stack"></div>
                         <label class="admin-accounts-field">
                             Username
                             <input id="admin-create-username" type="text" autocomplete="off" required>
+                            <span class="create-account-field-error" role="alert" hidden></span>
                         </label>
-                        <div class="admin-accounts-field">
-                            <span>Access level</span>
-                            <div id="admin-create-level-group" class="admin-accounts-level-bar" role="radiogroup" aria-label="Access level"></div>
-                        </div>
-                        <div id="admin-create-scope-stack" class="admin-accounts-scope-stack"></div>
-                        <p class="admin-accounts-meta" style="margin: 0;">
-                            A temporary password is generated automatically. The new user must sign in, link Macromatix if required, and set a personal password.
-                        </p>
                         <div class="admin-accounts-create-actions">
                             <button type="submit" class="mic-settings-btn admin-btn-primary" id="admin-create-submit">Save account</button>
                             <button type="reset" class="mic-settings-btn" id="admin-create-reset">Clear form</button>
@@ -88,89 +72,107 @@
                     <button type="button" id="admin-accounts-close">Close</button>
                 </div>
             </div>`;
-        document.body.appendChild(backdrop);
-        backdrop.addEventListener('click', (event) => {
-            if (event.target === backdrop) close();
-        });
-        backdrop.querySelector('#admin-accounts-close')?.addEventListener('click', close);
-        backdrop.querySelector('#admin-accounts-create-toggle')?.addEventListener('click', () => {
-            const panel = backdrop.querySelector('#admin-accounts-create');
-            const willExpand = Boolean(panel?.hidden);
-            void setCreatePanelExpanded(willExpand, { focus: willExpand });
-        });
-        backdrop.querySelector('#admin-create-level-group')?.addEventListener('change', syncCreateScopeUI);
-        backdrop.querySelector('#admin-create-scope-stack')?.addEventListener('change', syncCreateScopeUI);
-        backdrop.querySelector('#admin-accounts-browse-scope')?.addEventListener('click', (event) => {
-            const chip = event.target.closest('[data-browse-scope]');
-            if (!chip || chip.classList.contains('is-active')) return;
-            const scopeName = chip.getAttribute('data-browse-scope') || '';
-            const scopeValue = chip.getAttribute('data-browse-value') || '';
-            if (scopeName === 'browse-market') {
-                browseScope.market = scopeValue;
-                browseScope.area = '';
-                browseScope.storeNumber = '';
-            } else if (scopeName === 'browse-area') {
-                browseScope.area = scopeValue;
-                browseScope.storeNumber = '';
-            } else if (scopeName === 'browse-store') {
-                browseScope.storeNumber = scopeValue;
-            }
-            void onBrowseScopeChange();
-        });
-        backdrop.querySelector('#admin-accounts-create-form')?.addEventListener('submit', (event) => {
+    }
+
+    function existingViewHtml() {
+        return `
+            <div class="admin-modal admin-modal--wide admin-accounts-view" data-accounts-view="existing">
+                ${sectionHeader(
+                    'Existing accounts',
+                    'Use the org tree to pick a market, area, and store, then view or manage crew logins for that store.'
+                )}
+                <div id="admin-accounts-browse-scope" class="admin-accounts-browse-scope admin-accounts-org-nav"></div>
+                <div id="admin-accounts-body" class="admin-accounts-body"></div>
+                <p id="admin-accounts-error" class="admin-modal-error" role="alert"></p>
+                <div class="admin-modal-actions">
+                    <button type="button" id="admin-accounts-close">Close</button>
+                </div>
+            </div>`;
+    }
+
+    function viewHtml(view) {
+        return view === 'existing' ? existingViewHtml() : createViewHtml();
+    }
+
+    function bindCreatePanel(root) {
+        if (root.dataset.adminAccountsCreateBound) return;
+        root.dataset.adminAccountsCreateBound = '1';
+        root.querySelector('#admin-accounts-close')?.addEventListener('click', close);
+        root.querySelector('#admin-accounts-create-form')?.addEventListener('submit', (event) => {
             event.preventDefault();
             void submitCreateAccount();
         });
-        backdrop.querySelector('#admin-accounts-create-form')?.addEventListener('reset', () => {
+        root.querySelector('#admin-accounts-create-form')?.addEventListener('reset', () => {
             window.setTimeout(() => {
-                syncCreateScopeUI();
-                backdrop.querySelector('#admin-create-result').hidden = true;
-                backdrop.querySelector('#admin-create-result').innerHTML = '';
-                const submitBtn = backdrop.querySelector('#admin-create-submit');
+                const scopeFields = root.querySelector('#admin-create-scope-fields');
+                Form()?.syncScopeSelects(scopeFields, createOptions);
+                Form()?.clearFieldErrors(scopeFields, [root.querySelector('#admin-create-username')]);
+                root.querySelector('#admin-create-result').hidden = true;
+                root.querySelector('#admin-create-result').innerHTML = '';
+                const submitBtn = root.querySelector('#admin-create-submit');
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Save account';
             }, 0);
         });
+    }
+
+    function bindExistingPanel(root) {
+        if (root.dataset.adminAccountsExistingBound) return;
+        root.dataset.adminAccountsExistingBound = '1';
+        root.querySelector('#admin-accounts-close')?.addEventListener('click', close);
+    }
+
+    function ensureViewRoot(view) {
+        const html = viewHtml(view);
+        if (pageHost) {
+            if (pageHost.querySelector(`[data-accounts-view="${view}"]`)) {
+                return pageHost;
+            }
+            pageHost.innerHTML = html;
+            if (view === 'create') bindCreatePanel(pageHost);
+            else bindExistingPanel(pageHost);
+            return pageHost;
+        }
+        if (backdrop && backdrop.querySelector(`[data-accounts-view="${view}"]`)) {
+            return backdrop;
+        }
+        if (backdrop) {
+            backdrop.remove();
+            backdrop = null;
+        }
+        backdrop = document.createElement('div');
+        backdrop.className = 'admin-modal-backdrop';
+        backdrop.hidden = true;
+        backdrop.innerHTML = html;
+        document.body.appendChild(backdrop);
+        backdrop.addEventListener('click', (event) => {
+            if (event.target === backdrop) close();
+        });
+        if (view === 'create') bindCreatePanel(backdrop);
+        else bindExistingPanel(backdrop);
         return backdrop;
     }
 
     function close() {
+        if (isInline()) return;
         if (backdrop) backdrop.hidden = true;
         resetCreateForm();
-        setCreatePanelExpanded(false);
+        scopeNavigator = null;
     }
 
-    async function setCreatePanelExpanded(expanded, { focus = false } = {}) {
-        if (!backdrop) return;
-        const panel = backdrop.querySelector('#admin-accounts-create');
-        const toggle = backdrop.querySelector('#admin-accounts-create-toggle');
-        if (!panel || !toggle) return;
-        panel.hidden = !expanded;
-        toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-        toggle.classList.toggle('is-expanded', expanded);
-        const label = toggle.querySelector('.admin-accounts-create-toggle-label');
-        const icon = toggle.querySelector('.admin-accounts-create-toggle-icon');
-        if (label) label.textContent = 'Create account';
-        if (icon) icon.textContent = expanded ? '▲' : '▼';
-        if (!expanded) return;
-        const needsLoad = !backdrop.querySelector('#admin-create-level-group input[name="accountLevel"]');
-        if (needsLoad) {
-            try {
-                await populateCreateForm(currentStoreNumber);
-            } catch (error) {
-                backdrop.querySelector('#admin-accounts-error').textContent = error.message;
-            }
-        } else {
-            syncCreateScopeUI();
-        }
-        if (focus) backdrop.querySelector('#admin-create-username')?.focus();
+    function unmount() {
+        pageHost = null;
+        activeView = '';
+        scopeNavigator = null;
     }
 
     function resetCreateForm() {
-        if (!backdrop) return;
-        const form = backdrop.querySelector('#admin-accounts-create-form');
-        const resultEl = backdrop.querySelector('#admin-create-result');
-        const submitBtn = backdrop.querySelector('#admin-create-submit');
+        const root = getRoot();
+        if (!root || activeView !== 'create') return;
+        const form = root.querySelector('#admin-accounts-create-form');
+        const resultEl = root.querySelector('#admin-create-result');
+        const submitBtn = root.querySelector('#admin-create-submit');
+        const scopeFields = root.querySelector('#admin-create-scope-fields');
         form?.reset();
         if (resultEl) {
             resultEl.hidden = true;
@@ -180,313 +182,101 @@
             submitBtn.disabled = false;
             submitBtn.textContent = 'Save account';
         }
-        syncCreateScopeUI();
+        Form()?.syncScopeSelects(scopeFields, createOptions);
+        Form()?.clearFieldErrors(scopeFields, [root.querySelector('#admin-create-username')]);
     }
 
-    function selectedRadioValue(root, name) {
-        return root.querySelector(`input[type="radio"][name="${name}"]:checked`)?.value || '';
+    function scopeTreeHasData(tree) {
+        if (!tree) return false;
+        if (tree.markets?.length) return true;
+        return Object.values(tree.storesByArea || {}).some((rows) => rows?.length > 0);
     }
 
-    function resolveScopeSelections(level, tree, selections = {}) {
-        let market = selections.market || '';
-        let area = selections.area || '';
-        let storeNumber = selections.storeNumber || '';
-
-        if (levelNeedsMarket(level)) {
-            if (!market && tree.markets.length === 1) market = tree.markets[0];
-            if (!market && tree.defaults?.market) market = tree.defaults.market;
-        } else {
-            market = '';
+    async function loadScopeTree() {
+        if (!global.AdminScopePicker?.loadScopeTree) {
+            throw new Error('Org tree picker is not available.');
         }
-
-        const areas = market ? tree.areasByMarket[market] || [] : [];
-        if (levelNeedsArea(level)) {
-            if (area && !areas.includes(area)) area = '';
-            if (!area && areas.length === 1) area = areas[0];
-            if (!area && tree.defaults?.area && areas.includes(tree.defaults.area)) area = tree.defaults.area;
-        } else {
-            area = '';
+        try {
+            const tree = await global.AdminScopePicker.loadScopeTree();
+            if (scopeTreeHasData(tree)) return tree;
+        } catch (_) {
+            /* fall back to create-options scope tree */
         }
-
-        const stores = area ? tree.storesByArea[area] || [] : [];
-        if (levelNeedsStore(level)) {
-            if (storeNumber && !stores.some((row) => row.storeNumber === storeNumber)) storeNumber = '';
-            if (!storeNumber && stores.length === 1) storeNumber = stores[0].storeNumber;
-            if (
-                !storeNumber &&
-                tree.defaults?.storeNumber &&
-                stores.some((row) => row.storeNumber === tree.defaults.storeNumber)
-            ) {
-                storeNumber = tree.defaults.storeNumber;
-            }
-        } else {
-            storeNumber = '';
-        }
-
-        return { market, area, storeNumber };
+        const opts = await ensureCreateOptions();
+        if (scopeTreeHasData(opts?.scopeTree)) return opts.scopeTree;
+        throw new Error('Could not load store list.');
     }
 
-    function resolveBrowseScope(tree, selections = {}, preferredStore = '') {
-        let market = selections.market || '';
-        let area = selections.area || '';
-        let storeNumber = selections.storeNumber || '';
-
-        const pref = String(preferredStore || '').trim();
-        if (pref && !market && !area && !storeNumber) {
-            storeNumber = pref;
-            for (const [areaName, stores] of Object.entries(tree.storesByArea || {})) {
-                if (!stores.some((row) => row.storeNumber === storeNumber)) continue;
-                area = areaName;
-                for (const [marketName, areas] of Object.entries(tree.areasByMarket || {})) {
-                    if ((areas || []).includes(areaName)) {
-                        market = marketName;
-                        break;
-                    }
-                }
-                break;
-            }
-        }
-
-        if (!market && tree.markets.length === 1) market = tree.markets[0];
-        if (!market && tree.defaults?.market) market = tree.defaults.market;
-
-        const areas = market ? tree.areasByMarket[market] || [] : [];
-        if (area && !areas.includes(area)) area = '';
-        if (!area && areas.length === 1) area = areas[0];
-        if (!area && tree.defaults?.area && areas.includes(tree.defaults.area)) area = tree.defaults.area;
-
-        const stores = area ? tree.storesByArea[area] || [] : [];
-        if (storeNumber && !stores.some((row) => row.storeNumber === storeNumber)) storeNumber = '';
-        if (!storeNumber && stores.length === 1) storeNumber = stores[0].storeNumber;
-        if (
-            !storeNumber &&
-            tree.defaults?.storeNumber &&
-            stores.some((row) => row.storeNumber === tree.defaults.storeNumber)
-        ) {
-            storeNumber = tree.defaults.storeNumber;
-        }
-
-        return { market, area, storeNumber };
-    }
-
-    function renderBrowseScopeRow(name, label, rows, selectedValue, getValue, getLabel) {
-        const labelFn = getLabel || getValue;
-        const colCount = Math.max(rows.length, 1);
-        const items = rows
-            .map((row) => {
-                const value = getValue(row);
-                const active = String(value) === String(selectedValue);
-                return `
-                    <button
-                        type="button"
-                        class="admin-accounts-scope-chip${active ? ' is-active' : ''}"
-                        data-browse-scope="${escapeAttr(name)}"
-                        data-browse-value="${escapeAttr(value)}"
-                        aria-pressed="${active ? 'true' : 'false'}"
-                    >${escapeHtml(labelFn(row))}</button>
-                `;
-            })
-            .join('');
-        return `
-            <div class="admin-accounts-scope-row-wrap">
-                <span class="admin-accounts-scope-row-label">${escapeHtml(label)}</span>
-                <div class="admin-accounts-scope-row admin-accounts-scope-row--equal" role="group" aria-label="${escapeAttr(label)}" style="--scope-cols: ${colCount};">${items}</div>
-            </div>
-        `;
-    }
-
-    function renderScopeRow(name, label, rows, selectedValue, getValue, getLabel) {
-        const labelFn = getLabel || getValue;
-        const colCount = Math.max(rows.length, 1);
-        const items = rows
-            .map((row, index) => {
-                const value = getValue(row);
-                const id = `${name}-${index}`;
-                const checked = String(value) === String(selectedValue) ? ' checked' : '';
-                return `
-                    <label class="admin-accounts-scope-chip" for="${escapeAttr(id)}">
-                        <input type="radio" id="${escapeAttr(id)}" name="${escapeAttr(name)}" value="${escapeAttr(value)}"${checked}>
-                        <span>${escapeHtml(labelFn(row))}</span>
-                    </label>
-                `;
-            })
-            .join('');
-        return `
-            <div class="admin-accounts-scope-row-wrap">
-                <span class="admin-accounts-scope-row-label">${escapeHtml(label)}</span>
-                <div class="admin-accounts-scope-row admin-accounts-scope-row--equal" role="radiogroup" aria-label="${escapeAttr(label)}" style="--scope-cols: ${colCount};">${items}</div>
-            </div>
-        `;
-    }
-
-    function renderScopeSection(name, label, rows, selectedValue, getValue, getLabel) {
-        return renderScopeRow(name, label, rows, selectedValue, getValue, getLabel);
-    }
-
-    function renderBrowseScopeNavigator(root, tree, preferredStore = '') {
+    function renderScopeNavigator(root, tree, preferredStore = '') {
         const host = root.querySelector('#admin-accounts-browse-scope');
         if (!host || !tree) {
             if (host) host.innerHTML = '';
             return null;
         }
-
-        browseScope = resolveBrowseScope(
+        scopeNavigator = global.AdminScopePicker.mountInline(host, {
             tree,
-            preferredStore ? { market: '', area: '', storeNumber: '' } : { ...browseScope },
-            preferredStore
-        );
-
-        const rows = [];
-        if (tree.markets.length > 1) {
-            rows.push(renderBrowseScopeRow('browse-market', 'Market', tree.markets, browseScope.market, (row) => row));
-        }
-
-        const areas = browseScope.market ? tree.areasByMarket[browseScope.market] || [] : [];
-        if (areas.length > 1) {
-            rows.push(renderBrowseScopeRow('browse-area', 'Area', areas, browseScope.area, (row) => row));
-        }
-
-        const stores = browseScope.area ? tree.storesByArea[browseScope.area] || [] : [];
-        if (stores.length > 1) {
-            rows.push(
-                renderBrowseScopeRow(
-                    'browse-store',
-                    'Store',
-                    stores,
-                    browseScope.storeNumber,
-                    (row) => row.storeNumber,
-                    (row) => row.storeNumber
-                )
-            );
-        }
-
-        host.innerHTML = rows.join('');
-        browseScope = resolveBrowseScope(tree, { ...browseScope }, '');
-        return browseScope.storeNumber;
+            initialScope: { ...browseScope },
+            preferredStore,
+            scopePrefix: 'browse',
+            onChange: (scope) => {
+                browseScope = { ...scope };
+                void onExistingScopeChange(root);
+            },
+        });
+        return scopeNavigator;
     }
 
-    async function onBrowseScopeChange() {
-        if (!backdrop || !createOptions?.scopeTree) return;
-        const root = backdrop;
-        const storeNumber = renderBrowseScopeNavigator(root, createOptions.scopeTree);
+    async function onExistingScopeChange(root) {
+        const scope = scopeNavigator?.getScope?.() || browseScope;
+        const storeNumber = String(scope.storeNumber || '').trim();
         if (!storeNumber) {
             if (currentStoreNumber) {
                 currentStoreNumber = '';
-                root.querySelector('#admin-accounts-body').innerHTML = '<p>Select a store to view accounts.</p>';
+                root.querySelector('#admin-accounts-body').innerHTML =
+                    '<p class="admin-accounts-empty-hint">Select a store in the org tree to view accounts.</p>';
+            } else {
+                root.querySelector('#admin-accounts-body').innerHTML =
+                    '<p class="admin-accounts-empty-hint">Select a store in the org tree to view accounts.</p>';
             }
             return;
         }
         if (storeNumber === currentStoreNumber) return;
         currentStoreNumber = storeNumber;
         try {
-            await loadIntoModal(root, storeNumber);
+            await loadAccountsList(root, storeNumber);
         } catch (error) {
             root.querySelector('#admin-accounts-error').textContent = error.message;
         }
     }
 
-    function renderLevelBar(container, levels, selected = '') {
-        if (!container) return;
-        if (!levels.length) {
-            container.innerHTML = '<p class="admin-accounts-meta">No account levels available.</p>';
-            return;
-        }
-        const pick = selected && levels.includes(selected) ? selected : levels[0];
-        container.innerHTML = levels
-            .map((value) => {
-                const id = `accountLevel-${value}`;
-                const checked = value === pick ? ' checked' : '';
-                return `
-                    <label class="admin-accounts-level-btn" for="${escapeAttr(id)}">
-                        <input type="radio" id="${escapeAttr(id)}" name="accountLevel" value="${escapeAttr(value)}"${checked}>
-                        <span>${escapeHtml(LEVEL_LABELS[value] || value)}</span>
-                    </label>
-                `;
-            })
-            .join('');
-    }
-
-    function renderScopeStack(root, level) {
-        const stack = root.querySelector('#admin-create-scope-stack');
-        const tree = createOptions?.scopeTree;
-        if (!stack || !tree || !level) {
-            if (stack) stack.innerHTML = '';
-            return;
-        }
-
-        const selections = resolveScopeSelections(level, tree, {
-            market: selectedRadioValue(root, 'market'),
-            area: selectedRadioValue(root, 'area'),
-            storeNumber: selectedRadioValue(root, 'storeNumber'),
-        });
-
-        const sections = [];
-
-        if (levelNeedsMarket(level) && tree.markets.length > 1) {
-            sections.push(renderScopeSection('market', 'Market', tree.markets, selections.market, (row) => row));
-        }
-
-        const areas = selections.market ? tree.areasByMarket[selections.market] || [] : [];
-        if (levelNeedsArea(level) && areas.length > 1) {
-            sections.push(renderScopeSection('area', 'Area', areas, selections.area, (row) => row));
-        }
-
-        const stores = selections.area ? tree.storesByArea[selections.area] || [] : [];
-        if (levelNeedsStore(level) && stores.length > 1) {
-            sections.push(
-                renderScopeSection(
-                    'storeNumber',
-                    'Store',
-                    stores,
-                    selections.storeNumber,
-                    (row) => row.storeNumber,
-                    (row) => row.storeNumber
-                )
-            );
-        }
-
-        stack.innerHTML = sections.join('');
-    }
-
-    function syncCreateScopeUI() {
-        if (!backdrop || !createOptions) return;
-        const level = selectedRadioValue(backdrop, 'accountLevel');
-        renderScopeStack(backdrop, level);
-    }
-
     async function populateCreateForm(storeNumber) {
-        const root = ensureBackdrop();
-        const levelGroup = root.querySelector('#admin-create-level-group');
+        const root = ensureViewRoot('create');
+        const scopeFields = root.querySelector('#admin-create-scope-fields');
         const errorEl = root.querySelector('#admin-accounts-error');
-        if (levelGroup) levelGroup.innerHTML = '<p class="admin-accounts-meta">Loading access levels…</p>';
-        createOptions = null;
+        Form()?.setLoading(scopeFields, true);
         try {
             const opts = await ensureCreateOptions();
             const levels = opts.levelChoices?.length
                 ? opts.levelChoices
                 : (opts.assignableLevels || []).map((row) => row.value);
             if (!levels.length) {
-                if (levelGroup) {
-                    levelGroup.innerHTML = '<p class="admin-accounts-meta">No account levels available for your login.</p>';
+                if (scopeFields) {
+                    scopeFields.innerHTML =
+                        '<p class="admin-accounts-meta">No account levels available for your login.</p>';
                 }
                 return;
             }
-            const defaultLevel =
-                levels.find((level) => level === 'manager') ||
-                levels.find((level) => level === 'mic') ||
-                levels[0] ||
-                '';
-            renderLevelBar(levelGroup, levels, defaultLevel);
-            if (opts.scopeTree?.defaults) {
-                opts.scopeTree.defaults.storeNumber =
-                    String(storeNumber || opts.scopeTree.defaults.storeNumber || opts.defaultStore || '').trim() ||
-                    opts.scopeTree.defaults.storeNumber;
-            }
-            syncCreateScopeUI();
-            currentStoreNumber = String(storeNumber || opts.defaultStore || '').trim();
+            const resolvedStore =
+                String(storeNumber || opts.scopeTree?.defaults?.storeNumber || opts.defaultStore || '').trim();
+            Form()?.mountCreateAccountForm(scopeFields, {
+                theme: 'admin',
+                createOptions: opts,
+                defaultStore: resolvedStore,
+            });
+            currentStoreNumber = resolvedStore;
         } catch (error) {
-            if (levelGroup) {
-                levelGroup.innerHTML = `<p class="admin-accounts-meta">${escapeHtml(error.message || 'Could not load access levels.')}</p>`;
+            if (scopeFields) {
+                scopeFields.innerHTML = `<p class="admin-accounts-meta">${escapeHtml(error.message || 'Could not load access levels.')}</p>`;
             }
             if (errorEl) errorEl.textContent = error.message || 'Could not load access levels.';
             throw error;
@@ -494,44 +284,24 @@
     }
 
     async function submitCreateAccount() {
-        const root = ensureBackdrop();
+        const root = ensureViewRoot('create');
         const errorEl = root.querySelector('#admin-accounts-error');
         const submitBtn = root.querySelector('#admin-create-submit');
         const resultEl = root.querySelector('#admin-create-result');
-        const username = root.querySelector('#admin-create-username')?.value.trim() || '';
-        const level = selectedRadioValue(root, 'accountLevel');
-        const tree = createOptions?.scopeTree;
-        const resolved = tree
-            ? resolveScopeSelections(level, tree, {
-                  market: selectedRadioValue(root, 'market'),
-                  area: selectedRadioValue(root, 'area'),
-                  storeNumber: selectedRadioValue(root, 'storeNumber'),
-              })
-            : { market: '', area: '', storeNumber: '' };
-        const listStore = currentStoreNumber;
-        const storeNumber = resolved.storeNumber || listStore;
+        const scopeFields = root.querySelector('#admin-create-scope-fields');
+        const usernameEl = root.querySelector('#admin-create-username');
 
         errorEl.textContent = '';
-        if (!username) {
-            errorEl.textContent = 'Enter a username.';
+        const validation = Form()?.validateCreateAccountForm(scopeFields, createOptions, {
+            usernameEl,
+            fallbackStore: currentStoreNumber,
+        });
+        if (!validation?.ok) {
+            errorEl.textContent = validation.errors[0]?.message || 'Fix the highlighted fields.';
             return;
         }
-        if (!level) {
-            errorEl.textContent = 'Choose an access level.';
-            return;
-        }
-        if (levelNeedsMarket(level) && !resolved.market) {
-            errorEl.textContent = 'Choose a market.';
-            return;
-        }
-        if (levelNeedsArea(level) && !resolved.area) {
-            errorEl.textContent = 'Choose an area.';
-            return;
-        }
-        if (levelNeedsStore(level) && !storeNumber) {
-            errorEl.textContent = 'Choose a store.';
-            return;
-        }
+
+        const { username, accountLevel, storeNumber, market, area } = validation.values;
 
         submitBtn.disabled = true;
         submitBtn.textContent = 'Creating…';
@@ -542,10 +312,10 @@
                 credentials: 'same-origin',
                 body: JSON.stringify({
                     username,
-                    accountLevel: level,
+                    accountLevel,
                     storeNumber,
-                    market: resolved.market,
-                    area: resolved.area,
+                    market,
+                    area,
                     useTemporaryPassword: true,
                 }),
             });
@@ -557,17 +327,11 @@
                 resultEl.hidden = false;
                 resultEl.innerHTML = `
                     <strong>Account created for ${escapeHtml(data.username || username)}</strong>
-                    <span class="admin-accounts-meta">Copy this temporary password now - it will not be shown again.</span>
+                    <span class="admin-accounts-meta">Copy this temporary password now — it will not be shown again.</span>
                     <code>${escapeHtml(data.temporaryPassword || '')}</code>
-                    <span class="admin-accounts-meta">${escapeHtml(data.message || '')}</span>
-                `;
+                    <span class="admin-accounts-meta">${escapeHtml(data.message || '')}</span>`;
             }
             submitBtn.textContent = 'Created';
-            if (storeNumber) {
-                currentStoreNumber = storeNumber;
-                renderBrowseScopeNavigator(root, createOptions.scopeTree, storeNumber);
-                await loadIntoModal(root, storeNumber);
-            }
         } catch (error) {
             errorEl.textContent = error.message;
             submitBtn.disabled = false;
@@ -635,7 +399,7 @@
     function renderAccounts(root, accounts, storeNumber, reload) {
         const body = root.querySelector('#admin-accounts-body');
         if (!accounts.length) {
-            body.innerHTML = '<p>No crew accounts have been created for this store yet.</p>';
+            body.innerHTML = '<p class="admin-accounts-empty-hint">No crew accounts have been created for this store yet.</p>';
             return;
         }
         body.innerHTML = `<ul class="admin-accounts-list"></ul>`;
@@ -647,7 +411,7 @@
                 <div>
                     <strong>${escapeHtml(row.nickname || row.username)}</strong>
                     <span class="admin-accounts-meta">${escapeHtml(row.username)} · ${escapeHtml(row.accountLevel || 'mic')} · stores: ${escapeHtml(storesLabel)}</span>
-                    <span class="admin-accounts-meta">Last login: ${escapeHtml(row.lastLoginAt || '-')}</span>
+                    <span class="admin-accounts-meta">Last login: ${escapeHtml(formatLastLogin(row.lastLoginAt))}</span>
                 </div>
                 <div>
                     <button type="button" class="mic-settings-btn" data-action="edit">Edit</button>
@@ -711,56 +475,106 @@
         });
     }
 
-    async function loadIntoModal(root, storeNumber) {
+    async function loadAccountsList(root, storeNumber) {
         root.querySelector('#admin-accounts-error').textContent = '';
         root.querySelector('#admin-accounts-body').innerHTML = '<p>Loading…</p>';
         const data = await fetchAccounts(storeNumber);
-        renderAccounts(root, data.accounts || [], storeNumber, () => loadIntoModal(root, storeNumber));
+        renderAccounts(root, data.accounts || [], storeNumber, () => loadAccountsList(root, storeNumber));
     }
 
-    async function open(options = {}) {
-        const root = ensureBackdrop();
-        root.hidden = false;
+    async function mountCreate(host, options = {}) {
+        activeView = 'create';
+        pageHost = host;
+        browseScope = { market: '', area: '', storeNumber: '' };
+        scopeNavigator = null;
+        const root = ensureViewRoot('create');
         root.querySelector('#admin-accounts-error').textContent = '';
         resetCreateForm();
-        setCreatePanelExpanded(false);
-        browseScope = { market: '', area: '', storeNumber: '' };
-        let storeNumber = String(options.storeNumber || '').trim();
-
+        const storeNumber = String(options.storeNumber || '').trim();
         try {
-            await ensureCreateOptions();
+            await populateCreateForm(storeNumber);
         } catch (error) {
             root.querySelector('#admin-accounts-error').textContent = error.message;
         }
-
-        const tree = createOptions?.scopeTree;
-        if (tree) {
-            storeNumber =
-                renderBrowseScopeNavigator(root, tree, storeNumber || currentStoreNumber) ||
-                resolveBrowseScope(tree, {}, storeNumber || currentStoreNumber).storeNumber;
-        }
-        currentStoreNumber = storeNumber;
-
-        if (storeNumber) {
-            await loadIntoModal(root, storeNumber);
-        } else {
-            root.querySelector('#admin-accounts-body').innerHTML = '<p>No store selected.</p>';
-        }
-
         if (options.focusCreate) {
-            await setCreatePanelExpanded(true, { focus: true });
+            root.querySelector('#admin-create-username')?.focus();
+        }
+    }
+
+    async function mountExisting(host, options = {}) {
+        activeView = 'existing';
+        pageHost = host;
+        browseScope = { market: '', area: '', storeNumber: '' };
+        scopeNavigator = null;
+        currentStoreNumber = '';
+        const root = ensureViewRoot('existing');
+        root.querySelector('#admin-accounts-error').textContent = '';
+        root.querySelector('#admin-accounts-body').innerHTML = '<p>Loading…</p>';
+        try {
+            const tree = await loadScopeTree();
+            const preferred = String(options.storeNumber || '').trim();
+            renderScopeNavigator(root, tree, preferred);
+            await onExistingScopeChange(root);
+        } catch (error) {
+            root.querySelector('#admin-accounts-body').innerHTML = '';
+            root.querySelector('#admin-accounts-error').textContent = error.message;
+        }
+    }
+
+    async function mount(host, options = {}) {
+        const view = options.view === 'existing' ? 'existing' : 'create';
+        if (view === 'existing') return mountExisting(host, options);
+        return mountCreate(host, options);
+    }
+
+    async function open(options = {}) {
+        pageHost = null;
+        activeView = options.view === 'existing' ? 'existing' : 'create';
+        const root = ensureViewRoot(activeView);
+        if (!isInline()) root.hidden = false;
+        root.querySelector('#admin-accounts-error').textContent = '';
+
+        if (activeView === 'existing') {
+            browseScope = { market: '', area: '', storeNumber: '' };
+            scopeNavigator = null;
+            currentStoreNumber = '';
+            root.querySelector('#admin-accounts-body').innerHTML = '<p>Loading…</p>';
+            try {
+                const tree = await loadScopeTree();
+                renderScopeNavigator(root, tree, options.storeNumber || '');
+                await onExistingScopeChange(root);
+            } catch (error) {
+                root.querySelector('#admin-accounts-body').innerHTML = '';
+                root.querySelector('#admin-accounts-error').textContent = error.message;
+            }
+            return;
+        }
+
+        resetCreateForm();
+        try {
+            await populateCreateForm(options.storeNumber || '');
+        } catch (error) {
+            root.querySelector('#admin-accounts-error').textContent = error.message;
+        }
+        if (options.focusCreate) {
+            root.querySelector('#admin-create-username')?.focus();
         }
     }
 
     function maybeOpenFromQuery() {
         const params = new URLSearchParams(window.location.search);
         if (params.get('accounts') !== '1') return;
-        params.delete('accounts');
-        const query = params.toString();
-        const next = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash || ''}`;
-        window.history.replaceState(null, '', next);
-        void open({ focusCreate: true });
+        const focusCreate = params.get('focusCreate') === '1' ? '1' : 'true';
+        window.location.href = `/Admin/Settings?focusCreate=${focusCreate}#accounts-create`;
     }
 
-    global.AdminAccounts = { open, close, maybeOpenFromQuery };
+    global.AdminAccounts = {
+        open,
+        close,
+        mount,
+        mountCreate,
+        mountExisting,
+        unmount,
+        maybeOpenFromQuery,
+    };
 })(window);

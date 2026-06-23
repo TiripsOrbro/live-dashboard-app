@@ -330,11 +330,17 @@ function renderSssgTile(sales = {}, { tabbed = false } = {}) {
     const futureClass = hasData ? '' : ' mic-tile--future';
     const posClass = tabbed ? '' : ' mic-tile--pos-sssg';
     return `
-        <article class="mic-tile mic-tile--sssg${futureClass}${posClass}">
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">Today SSSG</div>
-                <div class="mic-sssg-value ${today.toneClass}">${escapeHtml(today.text)}</div>
-                <div class="mic-sssg-wtd ${wtd.toneClass}">WTD ${escapeHtml(wtd.text)}</div>
+        <article class="mic-tile mic-tile--sssg mic-tile--metric-card${futureClass}${posClass}">
+            <div class="mic-tile-body mic-metric-card">
+                <div class="mic-metric-card__head">
+                    <div class="mic-tile-label">Today SSSG</div>
+                </div>
+                <div class="mic-sssg-grid">
+                    <div class="mic-sssg-value ${today.toneClass}">${escapeHtml(today.text)}</div>
+                    <div class="mic-sssg-footer">
+                        <span class="mic-sssg-wtd ${wtd.toneClass}">WTD ${escapeHtml(wtd.text)}</span>
+                    </div>
+                </div>
             </div>
         </article>
     `;
@@ -343,18 +349,27 @@ function renderSssgTile(sales = {}, { tabbed = false } = {}) {
 function renderVocTile(voc, { tabbed = false, wide = false, inRow = false } = {}) {
     const posClass =
         tabbed || inRow ? '' : ` mic-tile--pos-voc${wide ? ' mic-tile--pos-voc-wide' : ''}`;
+    const osatText = voc.osat == null ? '—' : `${voc.osat}%`;
+    const accText = voc.acc == null ? '—' : `${voc.acc}%`;
     return `
         <a
-            class="mic-tile mic-tile--link mic-tile--voc${posClass}"
+            class="mic-tile mic-tile--link mic-tile--voc mic-tile--metric-card${posClass}"
             href="${SMG_REPORTING_URL}"
             target="_blank"
             rel="noopener noreferrer"
             aria-label="VOC - open SMG reporting"
         >
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">VOC</div>
-                <div class="mic-tile-main">${voc.count}</div>
-                <div class="mic-tile-sub">OSAT ${voc.osat == null ? '-' : `${voc.osat}%`} · Acc ${voc.acc == null ? '-' : `${voc.acc}%`}</div>
+            <div class="mic-tile-body mic-metric-card">
+                <div class="mic-metric-card__head">
+                    <div class="mic-tile-label">VOC</div>
+                </div>
+                <div class="mic-voc-grid">
+                    <div class="mic-voc-count">${voc.count}</div>
+                    <div class="mic-voc-metrics">
+                        <span class="mic-voc-metric">OSAT ${osatText}</span>
+                        <span class="mic-voc-metric">Acc ${accText}</span>
+                    </div>
+                </div>
                 <div class="mic-tile-sub mic-tile-sub--footnote">Pipeline coming soon</div>
             </div>
         </a>
@@ -807,12 +822,17 @@ function renderSquareOneMiddleTile(data, { inRow = false } = {}) {
     });
 }
 
+function renderCoreCountdownTile({ tabbed = false, inRow = false } = {}) {
+    return window.CoreCountdown?.renderTileHtml?.({ tabbed, inRow }) || '';
+}
+
 function renderStoreTopRow(data) {
     const voc = formatVocDisplay(data?.voc || {});
     const tiles = [renderVocTile(voc, { inRow: true })];
     if (shouldShowDfscTile(data)) {
         tiles.push(renderDfscTile(data, { inRow: true }));
     }
+    tiles.push(renderCoreCountdownTile({ inRow: true }));
     if (!tiles.length) return '';
     return renderEqualWidthRow(tiles, { rowNum: 'top' });
 }
@@ -869,6 +889,7 @@ function renderMobileTabbedTiles(data) {
             'results',
             `
             ${renderVocTile(voc, { tabbed })}
+            ${renderCoreCountdownTile({ tabbed: true })}
             ${renderSssgTile(data?.salesToday || {}, { tabbed })}
         `
         )}
@@ -890,6 +911,8 @@ function renderTiles(data) {
         grid.style.removeProperty('--mic-content-rows');
     }
     grid.innerHTML = mobile ? renderMobileTabbedTiles(data) : renderDesktopTiles(data);
+    window.CoreCountdown?.refreshTiles?.();
+    window.CoreCountdown?.startTick?.();
 
     bindStockLevelsCheck();
 
@@ -1143,6 +1166,7 @@ async function initStoreOverview(me) {
     window.AdminAccounts?.maybeOpenFromQuery?.();
     window.MicSettings?.initPreferences?.();
     window.AdminStoreView?.afterShellRendered?.(me);
+    await window.CoreCountdown?.init?.();
     loadMicData();
     window.setInterval(() => {
         const clock = document.getElementById('mic-clock');

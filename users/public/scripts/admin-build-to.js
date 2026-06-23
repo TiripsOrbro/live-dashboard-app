@@ -1,5 +1,6 @@
 (function (global) {
     let backdrop = null;
+    let pageHost = null;
     let profile = null;
     let activeTab = 'global';
     let catalogCache = null;
@@ -36,12 +37,13 @@
 
     function applyRuleTypeRow(row) {
         const type = row.querySelector('[data-field="ruleType"]')?.value || 'days';
-        const showDays = type === 'days';
+        const showDaysBuffer = type === 'days' || type === 'on-hand';
+        const showFixed = type === 'manual';
         row.querySelectorAll('[data-buildto-group="days"]').forEach((cell) => {
-            cell.classList.toggle('admin-buildto-group--off', !showDays);
+            cell.classList.toggle('admin-buildto-group--off', !showDaysBuffer);
         });
         row.querySelectorAll('[data-buildto-group="fixed"]').forEach((cell) => {
-            cell.classList.toggle('admin-buildto-group--off', showDays);
+            cell.classList.toggle('admin-buildto-group--off', !showFixed);
         });
     }
 
@@ -57,12 +59,15 @@
         });
     }
 
-    function ensureBackdrop() {
-        if (backdrop) return backdrop;
-        backdrop = document.createElement('div');
-        backdrop.className = 'admin-modal-backdrop';
-        backdrop.hidden = true;
-        backdrop.innerHTML = `
+    function getRoot() {
+        return pageHost || backdrop;
+    }
+
+    function isInline() {
+        return Boolean(pageHost);
+    }
+
+    const BUILD_TO_MODAL_HTML = `
             <div class="admin-modal admin-modal--wide admin-modal--build-to" role="dialog" aria-modal="true">
                 <div class="admin-buildto-header">
                     <h2>Build to adjustments</h2>
@@ -87,16 +92,16 @@
                     <button type="button" class="admin-buildto-close-btn" id="admin-buildto-close">Close</button>
                 </div>
             </div>`;
-        document.body.appendChild(backdrop);
-        backdrop.addEventListener('click', (event) => {
-            if (event.target === backdrop) close();
-        });
-        backdrop.querySelector('#admin-buildto-close')?.addEventListener('click', close);
-        backdrop.querySelector('#admin-buildto-save')?.addEventListener('click', () => {
+
+    function bindPanel(root) {
+        if (root.dataset.adminBuildToBound) return;
+        root.dataset.adminBuildToBound = '1';
+        root.querySelector('#admin-buildto-close')?.addEventListener('click', close);
+        root.querySelector('#admin-buildto-save')?.addEventListener('click', () => {
             void saveChanges();
         });
-        backdrop.querySelector('#admin-buildto-search')?.addEventListener('input', () => renderRows());
-        backdrop.querySelectorAll('[data-tab]').forEach((btn) => {
+        root.querySelector('#admin-buildto-search')?.addEventListener('input', () => renderRows());
+        root.querySelectorAll('[data-tab]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 activeTab = btn.dataset.tab;
                 applyTabUi();
@@ -104,10 +109,31 @@
                 void loadCatalog();
             });
         });
+    }
+
+    function ensureBackdrop() {
+        if (pageHost) {
+            if (!pageHost.querySelector('.admin-modal')) {
+                pageHost.innerHTML = BUILD_TO_MODAL_HTML;
+                bindPanel(pageHost);
+            }
+            return pageHost;
+        }
+        if (backdrop) return backdrop;
+        backdrop = document.createElement('div');
+        backdrop.className = 'admin-modal-backdrop';
+        backdrop.hidden = true;
+        backdrop.innerHTML = BUILD_TO_MODAL_HTML;
+        document.body.appendChild(backdrop);
+        backdrop.addEventListener('click', (event) => {
+            if (event.target === backdrop) close();
+        });
+        bindPanel(backdrop);
         return backdrop;
     }
 
     function close() {
+        if (isInline()) return;
         if (backdrop) backdrop.hidden = true;
     }
 
@@ -392,7 +418,7 @@
 
     async function open() {
         const root = ensureBackdrop();
-        root.hidden = false;
+        if (!isInline()) root.hidden = false;
         root.querySelector('#admin-buildto-error').textContent = '';
         const me = await fetchProfile();
         const globalTab = root.querySelector('#admin-buildto-global-tab');
@@ -415,5 +441,14 @@
         }
     }
 
-    global.AdminBuildTo = { open, close };
+    function mount(host, options = {}) {
+        pageHost = host;
+        return open(options);
+    }
+
+    function unmount() {
+        pageHost = null;
+    }
+
+    global.AdminBuildTo = { open, close, mount, unmount };
 })(window);

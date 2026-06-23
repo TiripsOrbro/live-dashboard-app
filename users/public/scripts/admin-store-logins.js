@@ -1,8 +1,8 @@
 (function (global) {
     let backdrop = null;
+    let pageHost = null;
     let profile = null;
     let activeTab = 'mmx';
-    let activeView = 'overview';
     let storeList = [];
     let scopeTree = null;
     let scopeNavigator = null;
@@ -55,12 +55,27 @@
         if (by) parts.push(escapeHtml(by));
         if (iso) {
             try {
-                parts.push(new Date(iso).toLocaleString());
+                const date = new Date(iso);
+                if (!Number.isNaN(date.getTime())) {
+                    parts.push(
+                        date.toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' })
+                    );
+                } else {
+                    parts.push(escapeHtml(iso));
+                }
             } catch {
                 parts.push(escapeHtml(iso));
             }
         }
         return parts.length ? parts.join(' · ') : '-';
+    }
+
+    function sectionHeader(title, subtitle) {
+        return `
+            <header class="admin-section-header">
+                <h2>${escapeHtml(title)}</h2>
+                ${subtitle ? `<p class="admin-section-subtitle">${escapeHtml(subtitle)}</p>` : ''}
+            </header>`;
     }
 
     function loginFieldForService(service) {
@@ -93,8 +108,9 @@
         return row ? String(row.storeNumber) : num;
     }
 
-    function preferredStoreNumber() {
+    function preferredStoreNumber(explicit = '') {
         const candidates = [
+            explicit,
             currentStore,
             browseScope.storeNumber,
             storeList.length === 1 ? storeList[0].storeNumber : '',
@@ -117,6 +133,12 @@
         return '';
     }
 
+    function scopeTreeHasData(tree) {
+        if (!tree) return false;
+        if (tree.markets?.length) return true;
+        return Object.values(tree.storesByArea || {}).some((rows) => rows?.length > 0);
+    }
+
     function buildFallbackScopeTree(stores) {
         const rows = (stores || []).map((row) => ({
             storeNumber: String(row.storeNumber),
@@ -136,61 +158,15 @@
         };
     }
 
-    function syncScopeNavVisibility() {
-        const wrap = ensureBackdrop().querySelector('#admin-store-logins-scope-wrap');
-        if (!wrap) return;
-        const hidePicker = storeList.length === 1 && Boolean(currentStore);
-        wrap.hidden = hidePicker;
-    }
-
-    function ensurePreferredStoreSelected() {
-        const preferred = preferredStoreNumber();
-        if (!preferred) return false;
-
-        if (scopeTree) {
-            browseScope = global.AdminScopePicker.resolveBrowseScope(scopeTree, browseScope, preferred);
-        }
-        if (!browseScope.storeNumber) {
-            browseScope = { market: '', area: '', storeNumber: preferred };
-        }
-
-        currentStore = storeNumberFromList(browseScope.storeNumber || preferred);
-        browseScope.storeNumber = currentStore;
-        scopeNavigator?.setScope?.(browseScope);
-        syncScopeNavVisibility();
-        return true;
-    }
-
-    function bindEditPanelActions() {
-        const editRoot = ensureBackdrop().querySelector('#admin-store-logins-edit');
-        if (!editRoot || editRoot.dataset.actionsBound === '1') return;
-        editRoot.dataset.actionsBound = '1';
-        editRoot.addEventListener('submit', (event) => {
-            const form = event.target.closest('.admin-store-logins-form');
-            if (!form) return;
-            event.preventDefault();
-            void submitForm(form);
-        });
-    }
-
-    function ensureBackdrop() {
-        if (backdrop) return backdrop;
-        backdrop = document.createElement('div');
-        backdrop.className = 'admin-modal-backdrop';
-        backdrop.hidden = true;
-        backdrop.innerHTML = `
-            <div class="admin-modal admin-modal--wide admin-modal--store-logins" role="dialog" aria-modal="true">
-                <h2>Setup Store Logins</h2>
-                <div class="admin-tabs admin-tabs--full admin-store-logins-view-tabs" id="admin-store-logins-view-tabs">
-                    <button type="button" class="admin-tab is-active" data-view="overview">Overview</button>
-                    <button type="button" class="admin-tab" data-view="edit">Edit store</button>
-                </div>
-                <div id="admin-store-logins-scope-wrap" class="admin-store-logins-scope-wrap">
-                    <div id="admin-store-logins-scope-nav" class="admin-store-logins-scope-nav"></div>
-                    <p id="admin-store-logins-scope-summary" class="admin-store-logins-scope-summary"></p>
-                </div>
-                <div id="admin-store-logins-overview" class="admin-store-logins-overview"></div>
-                <div id="admin-store-logins-edit" class="admin-store-logins-edit" hidden>
+    function viewHtml() {
+        return `
+            <div class="admin-modal admin-modal--wide admin-store-logins-view" data-store-logins-view="main">
+                ${sectionHeader(
+                    'Store logins',
+                    'Use the org tree to pick a market, area, and store, then configure MMX, LifeLenz, SMG, and NSF credentials.'
+                )}
+                <div id="admin-store-logins-browse-scope" class="admin-accounts-browse-scope admin-accounts-org-nav"></div>
+                <div id="admin-store-logins-content" class="admin-store-logins-content" hidden>
                     <div class="admin-tabs admin-tabs--full" id="admin-store-logins-tabs">
                         ${SERVICES.map(
                             (svc) =>
@@ -199,41 +175,78 @@
                     </div>
                     <div id="admin-store-logins-body"></div>
                 </div>
+                <div id="admin-store-logins-empty" class="admin-store-logins-empty">
+                    <p class="admin-accounts-empty-hint">Select a store in the org tree to manage logins.</p>
+                </div>
                 <p id="admin-store-logins-status" class="admin-store-logins-status" role="status" hidden></p>
                 <p id="admin-store-logins-error" class="admin-modal-error" role="alert"></p>
                 <div class="admin-modal-actions">
                     <button type="button" id="admin-store-logins-close">Close</button>
                 </div>
             </div>`;
-        document.body.appendChild(backdrop);
-        backdrop.addEventListener('click', (event) => {
-            if (event.target === backdrop) close();
-        });
-        backdrop.querySelector('#admin-store-logins-close')?.addEventListener('click', close);
-        backdrop.querySelectorAll('#admin-store-logins-view-tabs [data-view]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                activeView = btn.dataset.view;
-                applyViewUi();
-                void refresh();
-            });
-        });
-        backdrop.querySelectorAll('#admin-store-logins-tabs [data-tab]').forEach((btn) => {
+    }
+
+    function getRoot() {
+        return pageHost || backdrop;
+    }
+
+    function isInline() {
+        return Boolean(pageHost);
+    }
+
+    function bindPanel(root) {
+        if (root.dataset.adminStoreLoginsBound) return;
+        root.dataset.adminStoreLoginsBound = '1';
+        root.querySelector('#admin-store-logins-close')?.addEventListener('click', close);
+        root.querySelectorAll('#admin-store-logins-tabs [data-tab]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 activeTab = btn.dataset.tab;
                 applyTabUi();
                 renderEditPanel();
             });
         });
-        bindEditPanelActions();
+        root.querySelector('#admin-store-logins-body')?.addEventListener('submit', (event) => {
+            const form = event.target.closest('.admin-store-logins-form');
+            if (!form) return;
+            event.preventDefault();
+            void submitForm(form);
+        });
+    }
+
+    function ensureViewRoot() {
+        if (pageHost) {
+            if (!pageHost.querySelector('[data-store-logins-view="main"]')) {
+                pageHost.innerHTML = viewHtml();
+                bindPanel(pageHost);
+            }
+            return pageHost;
+        }
+        if (backdrop?.querySelector('[data-store-logins-view="main"]')) {
+            return backdrop;
+        }
+        if (backdrop) {
+            backdrop.remove();
+            backdrop = null;
+        }
+        backdrop = document.createElement('div');
+        backdrop.className = 'admin-modal-backdrop';
+        backdrop.hidden = true;
+        backdrop.innerHTML = viewHtml();
+        document.body.appendChild(backdrop);
+        backdrop.addEventListener('click', (event) => {
+            if (event.target === backdrop) close();
+        });
+        bindPanel(backdrop);
         return backdrop;
     }
 
     function close() {
+        if (isInline()) return;
         if (backdrop) backdrop.hidden = true;
     }
 
     function setError(message) {
-        const el = ensureBackdrop().querySelector('#admin-store-logins-error');
+        const el = getRoot()?.querySelector('#admin-store-logins-error');
         if (!el) return;
         if (message) {
             stopVerifyStatus();
@@ -247,7 +260,7 @@
     }
 
     function setStatus(message) {
-        const el = ensureBackdrop().querySelector('#admin-store-logins-status');
+        const el = getRoot()?.querySelector('#admin-store-logins-status');
         if (!el) return;
         if (message) {
             el.textContent = message;
@@ -280,20 +293,18 @@
         verifyStatusTimer = setInterval(tick, 1000);
     }
 
-    function applyViewUi() {
-        const root = ensureBackdrop();
-        root.querySelectorAll('#admin-store-logins-view-tabs [data-view]').forEach((btn) => {
-            btn.classList.toggle('is-active', btn.dataset.view === activeView);
-        });
-        root.querySelector('#admin-store-logins-overview').hidden = activeView !== 'overview';
-        root.querySelector('#admin-store-logins-edit').hidden = activeView !== 'edit';
-    }
-
     function applyTabUi() {
-        const root = ensureBackdrop();
+        const root = getRoot();
+        if (!root) return;
         root.querySelectorAll('#admin-store-logins-tabs [data-tab]').forEach((tab) => {
             tab.classList.toggle('is-active', tab.dataset.tab === activeTab);
         });
+    }
+
+    function updateStorePanelVisibility(root) {
+        const hasStore = Boolean(currentStore);
+        root.querySelector('#admin-store-logins-content').hidden = !hasStore;
+        root.querySelector('#admin-store-logins-empty').hidden = hasStore;
     }
 
     async function fetchProfile() {
@@ -306,15 +317,27 @@
     }
 
     async function loadScopeTree() {
+        let raw = null;
         try {
-            const raw = await global.AdminScopePicker.loadScopeTree();
-            scopeTree = global.AdminScopePicker.filterScopeTreeForStores(raw, storeList);
+            raw = await global.AdminScopePicker.loadScopeTree();
         } catch {
-            scopeTree = buildFallbackScopeTree(storeList);
+            try {
+                const res = await fetch('/api/account/create-options', { credentials: 'same-origin' });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.success && data.scopeTree) {
+                    raw = data.scopeTree;
+                }
+            } catch {
+                /* fall through */
+            }
         }
-        if (!scopeTree) {
-            scopeTree = buildFallbackScopeTree(storeList);
+
+        if (raw) {
+            scopeTree = global.AdminScopePicker.filterScopeTreeForStores(raw, storeList);
+            if (scopeTreeHasData(scopeTree)) return scopeTree;
         }
+
+        scopeTree = buildFallbackScopeTree(storeList);
         return scopeTree;
     }
 
@@ -326,92 +349,63 @@
         return storeList;
     }
 
-    function filteredStores() {
-        return global.AdminScopePicker.storesMatchingScope(storeList, scopeTree, browseScope);
-    }
-
-    function updateScopeSummary() {
-        const el = ensureBackdrop().querySelector('#admin-store-logins-scope-summary');
-        if (!el) return;
-        const rows = filteredStores();
-        const parts = [];
-        if (browseScope.market) parts.push(browseScope.market);
-        if (browseScope.area) parts.push(browseScope.area);
-        if (browseScope.storeNumber) parts.push(`Store ${browseScope.storeNumber}`);
-        const scopeLabel = parts.length ? parts.join(' · ') : 'All stores';
-        el.textContent =
-            activeView === 'edit'
-                ? `${scopeLabel}${browseScope.storeNumber ? '' : ': pick a store to edit logins'}`
-                : `${scopeLabel}: showing ${rows.length} store${rows.length === 1 ? '' : 's'}`;
-    }
-
-    function syncCurrentStoreFromScope() {
-        if (ensurePreferredStoreSelected()) return true;
-
-        const store = String(browseScope.storeNumber || '').trim();
-        if (store && storeList.some((row) => String(row.storeNumber) === store)) {
-            currentStore = store;
-            return true;
-        }
-        if (activeView === 'edit') {
-            const scoped = filteredStores();
-            if (scoped.length === 1) {
-                const only = String(scoped[0].storeNumber);
-                browseScope = global.AdminScopePicker.resolveBrowseScope(scopeTree, browseScope, only);
-                currentStore = only;
-                scopeNavigator?.setScope?.(browseScope);
-                return true;
-            }
-            currentStore = '';
-            return false;
-        }
-        return Boolean(currentStore);
-    }
-
-    function renderScopeNavigator() {
-        const host = ensureBackdrop().querySelector('#admin-store-logins-scope-nav');
+    function renderScopeNavigator(root, preferredStore = '') {
+        const host = root.querySelector('#admin-store-logins-browse-scope');
         if (!host || !scopeTree) {
-            if (host) host.innerHTML = '<p class="admin-accounts-meta">No stores in your scope.</p>';
+            if (host) {
+                host.innerHTML = '<p class="admin-scope-picker-empty">No stores available.</p>';
+            }
+            return null;
+        }
+
+        scopeNavigator = global.AdminScopePicker.mountInline(host, {
+            tree: scopeTree,
+            initialScope: { ...browseScope },
+            preferredStore,
+            scopePrefix: 'browse',
+            onChange: (scope) => {
+                browseScope = { ...scope };
+                void onStoreScopeChange(root);
+            },
+        });
+        browseScope = scopeNavigator.getScope();
+        return scopeNavigator;
+    }
+
+    async function onStoreScopeChange(root) {
+        const scope = scopeNavigator?.getScope?.() || browseScope;
+        const storeNumber = String(scope.storeNumber || '').trim();
+        setError('');
+
+        if (!storeNumber) {
+            currentStore = '';
+            storeDetail = null;
+            updateStorePanelVisibility(root);
             return;
         }
 
-        const onScopeChange = (scope) => {
-            browseScope = { ...scope };
-            updateScopeSummary();
-            if (activeView === 'overview') {
-                renderOverview();
-                return;
-            }
-            if (syncCurrentStoreFromScope()) {
-                void loadStoreDetail();
-            } else {
-                storeDetail = null;
-                renderEditPanel();
-            }
-        };
+        const resolved = storeNumberFromList(storeNumber);
+        if (resolved === currentStore) return;
 
-        if (!scopeNavigator) {
-            scopeNavigator = global.AdminScopePicker.mountInline(host, {
-                tree: scopeTree,
-                initialScope: browseScope,
-                preferredStore: preferredStoreNumber(),
-                onChange: onScopeChange,
-            });
-        } else {
-            scopeNavigator.setTree(scopeTree);
-            scopeNavigator.setScope(browseScope);
+        currentStore = resolved;
+        updateStorePanelVisibility(root);
+        try {
+            await loadStoreDetail();
+        } catch (error) {
+            setError(error.message);
         }
-        browseScope = scopeNavigator.getScope();
-        updateScopeSummary();
-        syncScopeNavVisibility();
     }
 
     async function loadStoreDetail() {
-        if (!syncCurrentStoreFromScope()) {
+        const root = getRoot();
+        if (!currentStore) {
             storeDetail = null;
             renderEditPanel();
             return;
         }
+        const body = root?.querySelector('#admin-store-logins-body');
+        if (body) body.innerHTML = '<p>Loading…</p>';
+
         const res = await fetch(`/api/admin/store-logins/${encodeURIComponent(currentStore)}`, {
             credentials: 'same-origin',
         });
@@ -421,78 +415,7 @@
         renderEditPanel();
     }
 
-    function renderOverview() {
-        const root = ensureBackdrop();
-        const host = root.querySelector('#admin-store-logins-overview');
-        const rows = filteredStores();
-        if (!rows.length) {
-            host.innerHTML = '<p>No stores match this market / area / store selection.</p>';
-            updateScopeSummary();
-            return;
-        }
-        host.innerHTML = `
-            <p class="admin-accounts-meta">Masked logins only. Full credentials are never shown after save.</p>
-            <table class="admin-table admin-store-logins-table">
-                <colgroup>
-                    ${'<col class="admin-store-logins-col" />'.repeat(5)}
-                </colgroup>
-                <thead>
-                    <tr>
-                        <th>Store</th>
-                        ${SERVICES.map((svc) => `<th>${SERVICE_LABELS[svc]}</th>`).join('')}
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rows
-                        .map((row) => {
-                            const cells = SERVICES.map((svc) => {
-                                const status = row.services?.[svc] || {};
-                                if (!status.configured) {
-                                    return '<td class="admin-store-logins-missing">Not configured</td>';
-                                }
-                                const primary = status.primary;
-                                const lines = [];
-                                if (primary?.maskedLogin) {
-                                    lines.push(
-                                        `<div><strong>${escapeHtml(primary.maskedLogin)}</strong></div>`
-                                    );
-                                    lines.push(
-                                        `<div class="admin-accounts-meta">${formatWhen(primary.updatedAt, primary.updatedBy)}</div>`
-                                    );
-                                }
-                                return `<td>${lines.join('') || 'Configured'}</td>`;
-                            }).join('');
-                            return `<tr class="admin-store-logins-overview-row" data-store-number="${escapeAttr(row.storeNumber)}" tabindex="0" role="button">
-                                <td>${escapeHtml(row.storeName || row.storeNumber)}<span class="admin-accounts-meta">${escapeHtml(row.storeNumber)}</span></td>
-                                ${cells}
-                            </tr>`;
-                        })
-                        .join('')}
-                </tbody>
-            </table>`;
-        host.querySelectorAll('.admin-store-logins-overview-row').forEach((row) => {
-            const openStore = () => {
-                const storeNumber = row.getAttribute('data-store-number') || '';
-                browseScope = global.AdminScopePicker.resolveBrowseScope(scopeTree, {}, storeNumber);
-                currentStore = storeNumber;
-                scopeNavigator?.setScope?.(browseScope);
-                activeView = 'edit';
-                applyViewUi();
-                updateScopeSummary();
-                void loadStoreDetail();
-            };
-            row.addEventListener('click', openStore);
-            row.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    openStore();
-                }
-            });
-        });
-        updateScopeSummary();
-    }
-
-    function renderCredentialBlock(entry, service, isPrimary) {
+    function renderCredentialBlock(entry) {
         if (!entry) {
             return '<p class="admin-accounts-meta">No login saved.</p>';
         }
@@ -500,25 +423,28 @@
             <div class="admin-store-logins-entry">
                 <div><strong>${escapeHtml(entry.label || 'Primary')}</strong></div>
                 <div>${escapeHtml(entry.maskedLogin || '-')}</div>
-                <div class="admin-accounts-meta">Updated by ${formatWhen(entry.updatedAt, entry.updatedBy)}</div>
+                <div class="admin-accounts-meta">Updated ${formatWhen(entry.updatedAt, entry.updatedBy)}</div>
             </div>`;
     }
 
     function renderEditPanel() {
-        const root = ensureBackdrop();
+        const root = getRoot();
+        if (!root) return;
         const body = root.querySelector('#admin-store-logins-body');
+        if (!body) return;
+
         if (!currentStore) {
-            body.innerHTML = '<p>Select market, area, and store above to manage logins.</p>';
-            updateScopeSummary();
+            body.innerHTML = '';
             return;
         }
+
         const service = activeTab;
         const status = storeDetail?.services?.[service] || { configured: false, primary: null, fallbacks: [] };
         const loginField = loginFieldForService(service);
         body.innerHTML = `
             <section class="admin-store-logins-section">
                 <h3>Primary ${escapeHtml(SERVICE_LABELS[service])} login for store ${escapeHtml(currentStore)}</h3>
-                ${renderCredentialBlock(status.primary, service, true)}
+                ${renderCredentialBlock(status.primary)}
                 <form class="admin-accounts-form-grid admin-store-logins-form" data-role="primary">
                     <label class="admin-accounts-field">
                         ${escapeHtml(loginLabelForService(service))}
@@ -537,8 +463,6 @@
                     </div>
                 </form>
             </section>`;
-
-        updateScopeSummary();
     }
 
     function formPayload(form) {
@@ -599,9 +523,7 @@
             }
             form.reset();
             await loadStoreDetail();
-            void loadStores().then(() => {
-                if (activeView === 'overview') renderOverview();
-            });
+            await loadStores();
         } catch (err) {
             setError(err?.message || 'Could not save login.');
         } finally {
@@ -618,50 +540,52 @@
         }
     }
 
-    async function refresh() {
-        setError('');
-        await loadStores();
-        await loadScopeTree();
-        ensurePreferredStoreSelected();
-        renderScopeNavigator();
-        browseScope = scopeNavigator?.getScope?.() || browseScope;
-        ensurePreferredStoreSelected();
-        syncScopeNavVisibility();
-        if (activeView === 'overview') {
-            renderOverview();
-            return;
-        }
-        if (syncCurrentStoreFromScope()) {
-            await loadStoreDetail();
-        } else {
-            storeDetail = null;
-            renderEditPanel();
-        }
-    }
-
-    async function open() {
-        const me = await fetchProfile();
-        if (!me.canManageStoreLogins) {
-            throw new Error('You do not have permission to manage store logins.');
-        }
-        ensureBackdrop();
-        bindEditPanelActions();
-        backdrop.hidden = false;
+    async function initView(root, options = {}) {
         activeTab = 'mmx';
         scopeNavigator = null;
         browseScope = { market: '', area: '', storeNumber: '' };
         currentStore = '';
-        activeView = 'overview';
-        applyViewUi();
+        storeDetail = null;
+        stopVerifyStatus();
+
+        const me = await fetchProfile();
+        if (!me.canManageStoreLogins) {
+            throw new Error('You do not have permission to manage store logins.');
+        }
+
+        root.querySelector('#admin-store-logins-error').textContent = '';
+        setStatus('');
         applyTabUi();
+        updateStorePanelVisibility(root);
+
         await loadStores();
         await loadScopeTree();
-        if (preferredStoreNumber()) {
-            activeView = 'edit';
-            applyViewUi();
-        }
-        await refresh();
+
+        const preferred = preferredStoreNumber(String(options.storeNumber || '').trim());
+        renderScopeNavigator(root, preferred);
+        await onStoreScopeChange(root);
     }
 
-    global.AdminStoreLogins = { open, close };
+    async function mount(host, options = {}) {
+        pageHost = host;
+        await initView(ensureViewRoot(), options);
+    }
+
+    async function open(options = {}) {
+        pageHost = null;
+        const root = ensureViewRoot();
+        root.hidden = false;
+        await initView(root, options);
+    }
+
+    function unmount() {
+        pageHost = null;
+        scopeNavigator = null;
+        browseScope = { market: '', area: '', storeNumber: '' };
+        currentStore = '';
+        storeDetail = null;
+        stopVerifyStatus();
+    }
+
+    global.AdminStoreLogins = { open, close, mount, unmount };
 })(window);

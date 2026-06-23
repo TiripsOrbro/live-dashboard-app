@@ -1,5 +1,6 @@
 (function (global) {
     let backdrop = null;
+    let pageHost = null;
     let profile = null;
     let activeTab = 'smg';
     let smgConfig = null;
@@ -26,12 +27,15 @@
         return parts.length ? `<p class="admin-accounts-meta">Last updated by ${parts.join(' · ')}</p>` : '';
     }
 
-    function ensureBackdrop() {
-        if (backdrop) return backdrop;
-        backdrop = document.createElement('div');
-        backdrop.className = 'admin-modal-backdrop';
-        backdrop.hidden = true;
-        backdrop.innerHTML = `
+    function getRoot() {
+        return pageHost || backdrop;
+    }
+
+    function isInline() {
+        return Boolean(pageHost);
+    }
+
+    const SMG_NSF_MODAL_HTML = `
             <div class="admin-modal admin-modal--wide admin-modal--smg-nsf" role="dialog" aria-modal="true">
                 <h2>Setup SMG / NSF</h2>
                 <div class="admin-tabs admin-tabs--full" id="admin-smg-nsf-tabs">
@@ -44,22 +48,43 @@
                     <button type="button" id="admin-smg-nsf-close">Close</button>
                 </div>
             </div>`;
-        document.body.appendChild(backdrop);
-        backdrop.addEventListener('click', (event) => {
-            if (event.target === backdrop) close();
-        });
-        backdrop.querySelector('#admin-smg-nsf-close')?.addEventListener('click', close);
-        backdrop.querySelectorAll('[data-tab]').forEach((btn) => {
+
+    function bindPanel(root) {
+        if (root.dataset.adminSmgNsfBound) return;
+        root.dataset.adminSmgNsfBound = '1';
+        root.querySelector('#admin-smg-nsf-close')?.addEventListener('click', close);
+        root.querySelectorAll('[data-tab]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 activeTab = btn.dataset.tab;
                 applyTabUi();
                 renderPanel();
             });
         });
+    }
+
+    function ensureBackdrop() {
+        if (pageHost) {
+            if (!pageHost.querySelector('.admin-modal')) {
+                pageHost.innerHTML = SMG_NSF_MODAL_HTML;
+                bindPanel(pageHost);
+            }
+            return pageHost;
+        }
+        if (backdrop) return backdrop;
+        backdrop = document.createElement('div');
+        backdrop.className = 'admin-modal-backdrop';
+        backdrop.hidden = true;
+        backdrop.innerHTML = SMG_NSF_MODAL_HTML;
+        document.body.appendChild(backdrop);
+        backdrop.addEventListener('click', (event) => {
+            if (event.target === backdrop) close();
+        });
+        bindPanel(backdrop);
         return backdrop;
     }
 
     function close() {
+        if (isInline()) return;
         if (backdrop) backdrop.hidden = true;
     }
 
@@ -271,7 +296,7 @@
             throw new Error('Area access or above is required for SMG/NSF settings.');
         }
         ensureBackdrop();
-        backdrop.hidden = false;
+        if (!isInline()) backdrop.hidden = false;
         activeTab = 'smg';
         applyTabUi();
         setError('');
@@ -279,5 +304,14 @@
         renderPanel();
     }
 
-    global.AdminSmgNsf = { open, close };
+    function mount(host) {
+        pageHost = host;
+        return open();
+    }
+
+    function unmount() {
+        pageHost = null;
+    }
+
+    global.AdminSmgNsf = { open, close, mount, unmount };
 })(window);

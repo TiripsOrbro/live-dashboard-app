@@ -90,9 +90,10 @@ const {
     captureEndOfDaySssg,
     updateTodayPartialInLedger,
     finalizeYesterdaySssg,
+    finalizePastWeekDays,
     getStoreDateKey,
+    getStoreDayEntry,
     getMelbourneWeekStart,
-    getStoreWeekDays,
 } = require('./services/sssg/sssgWeeklyLedger');
 const { getLowStockSummary } = require('../vendors/src/lowStockAlerts');
 const {
@@ -249,6 +250,7 @@ const {
     setAccountColourBlindPreference,
     setAccountMicDarkModePreference,
     setAccountAuditAutoCollapsePreference,
+    setAccountMicRoundedTilesPreference,
     appendStoreUser,
     appendDashboardUser,
     buildCreateAccountParentFromUser,
@@ -520,6 +522,17 @@ function isApiRequest(req) {
     return req.path.startsWith('/api/') || /\bjson\b/i.test(String(req.headers.accept || ''));
 }
 
+const NOT_FOUND_VARIANTS = ['purple', 'grey'];
+
+function sendNotFoundPage(req, res) {
+    if (isApiRequest(req)) {
+        res.status(404).json({ success: false, error: 'Not found.' });
+        return;
+    }
+    const variant = NOT_FOUND_VARIANTS[Math.floor(Math.random() * NOT_FOUND_VARIANTS.length)];
+    res.status(404).sendFile(path.join(paths.legacy.public, `404-${variant}.html`));
+}
+
 function sendUnauthorized(req, res) {
     if (isApiRequest(req)) {
         res.status(401).json({ success: false, error: 'Dashboard login required.' });
@@ -709,6 +722,9 @@ function isLoginPublicPath(reqPath) {
     if (reqPath === '/api/account/create') return true;
     if (reqPath === '/api/account/create-options') return true;
     if (reqPath.startsWith('/api/webauthn/')) return true;
+    if (reqPath === '/404-grey.html' || reqPath === '/404-purple.html') return true;
+    if (reqPath === '/styles/404.css') return true;
+    if (reqPath.startsWith('/images/core/404-')) return true;
     return false;
 }
 
@@ -906,19 +922,14 @@ app.get('/kiosk', (req, res) => {
 
 app.get(['/Create-Account', '/create-account'], (req, res) => {
     if (req.dashboardUser && canUserCreateAccounts(req.dashboardUser)) {
-        const dest = getLoginRedirectPath(req.dashboardUser);
-        res.redirect(`${dest}${dest.includes('?') ? '&' : '?'}accounts=1`);
+        res.redirect('/Admin/Settings?focusCreate=1#accounts-create');
         return;
     }
     res.sendFile(path.join(paths.users.public, 'create-account.html'));
 });
 
 app.get(['/Create-Account/details', '/create-account/details'], (req, res) => {
-    if (!resolveCreateAccountParent(req)) {
-        res.redirect('/Create-Account?error=session');
-        return;
-    }
-    res.sendFile(path.join(paths.users.public, 'create-account-details.html'));
+    res.redirect('/Create-Account');
 });
 
 app.post(['/Create-Account/verify', '/create-account/verify'], (req, res) => {
@@ -939,7 +950,7 @@ app.post(['/Create-Account/verify', '/create-account/verify'], (req, res) => {
     }
     setAccountGateCookie(res, user);
     logAuthLogin(req, user);
-    res.json({ success: true, nextPath: '/Create-Account/details' });
+    res.json({ success: true, nextPath: '/Create-Account' });
 });
 
 app.post('/login', (req, res) => {
@@ -1348,29 +1359,11 @@ function computeSssgForStore(store) {
 function finalizeEndOfYesterdaySssg(store, now = new Date()) {
     if (!store?.storeNumber) return;
     const snap = store.postCloseSnapshot || loadPostCloseSnapshotFromDisk(store.storeNumber);
-    if (!snap || !Array.isArray(snap.actual) || sumHourly(snap.actual) <= 0) return;
-
-    const todayKey = getStoreDateKey(store, now);
-    const weekStart = getMelbourneWeekStart(now);
-    const days = getStoreWeekDays(store.storeNumber, weekStart);
-    const dateKey = Object.keys(days)
-        .filter((dayKey) => dayKey < todayKey && days[dayKey] && !days[dayKey].finalized)
-        .sort()
-        .pop();
-    if (!dateKey) return;
-
-    const slots = getCachedSssgLy(store.storeNumber, dateKey);
-    if (!Array.isArray(slots) || !slots.length) return;
-
-    finalizeYesterdaySssg(
-        {
-            ...store,
-            actual: snap.actual,
-            forecast: snap.forecast,
-        },
-        slots,
-        now
-    );
+    finalizePastWeekDays(store, {
+        now,
+        postCloseSnapshot: snap,
+        getSlots: (storeNumber, dateKey) => getCachedSssgLy(storeNumber, dateKey),
+    });
 }
 
 function syncSssgWeeklyForStore(store, { finalize = false } = {}) {
@@ -1537,10 +1530,14 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
             delete store.retained;
             delete store.postCloseSnapshot;
             store.scrapePhase = 'idle';
-            clearPostCloseSnapshot(key);
         } else if (phase === 'retain' || inPostCloseGrace) {
-            if (prev === 'active' && storeHasMeaningfulData(store)) {
-                syncSssgWeeklyForStore(store, { finalize: true });
+            if (storeHasMeaningfulData(store)) {
+                const todayKey = getStoreDateKey(listedStore, now);
+                const weekStart = getMelbourneWeekStart(now);
+                const todayEntry = getStoreDayEntry(key, todayKey, weekStart);
+                if (prev === 'active' || !todayEntry?.finalized) {
+                    syncSssgWeeklyForStore(store, { finalize: true });
+                }
             }
             if (!storeHasMeaningfulData(store)) {
                 restorePostCloseSnapshot(store);
@@ -2407,8 +2404,22 @@ function sendAdminOverviewPage(_req, res) {
     res.redirect(302, getMicOverviewPath());
 }
 
+function sendAdminSettingsPage(req, res) {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!user || (!canUserAccessAdminMenu(user) && !canUserManageStoreLogins(user))) {
+        sendUnauthorized(req, res);
+        return;
+    }
+    const bootId = getDashboardMeta().bootId;
+    let html = fsSync.readFileSync(path.join(paths.users.public, 'admin.html'), 'utf8');
+    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    res.type('html').send(html);
+}
+
 app.get(/^\/admin\/overview\/?$/i, sendAdminOverviewPage);
 app.get(/^\/Admin\/Overview\/?$/i, sendAdminOverviewPage);
+app.get(/^\/admin\/settings\/?$/i, sendAdminSettingsPage);
+app.get(/^\/Admin\/Settings\/?$/i, sendAdminSettingsPage);
 
 app.get(/^\/Admin\/A(\d+)\/?$/i, requireMultiStoreScope, (req, res) => {
     res.sendFile(path.join(paths.dashboard.public, 'index.html'));
@@ -3156,6 +3167,28 @@ app.post('/api/account/audit-auto-collapse', (req, res) => {
     const freshUser = { ...user, auditAutoCollapse: Boolean(result.auditAutoCollapse) };
     setSessionCookie(res, freshUser, true, dashboardEntryFromRequest(req) || 'store');
     res.json({ success: true, auditAutoCollapse: Boolean(result.auditAutoCollapse) });
+});
+
+app.post('/api/account/mic-rounded-tiles', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.status(403).json({ success: false, error: 'Sign in with your store account to change this setting.' });
+        return;
+    }
+    const enabled = !(req.body?.enabled === false || req.body?.enabled === 0 || req.body?.enabled === '0');
+    try {
+        const result = setAccountMicRoundedTilesPreference(user.username, enabled);
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        const freshUser = { ...user, micRoundedTiles: Boolean(result.micRoundedTiles) };
+        setSessionCookie(res, freshUser, true, dashboardEntryFromRequest(req) || 'store');
+        res.json({ success: true, micRoundedTiles: Boolean(result.micRoundedTiles) });
+    } catch (error) {
+        console.error('[Auth] mic-rounded-tiles pref save failed:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not save rounded tile preference.' });
+    }
 });
 
 app.get('/api/account/managed-accounts', (req, res) => {
@@ -6930,6 +6963,18 @@ app.get('/api/area-dashboard', async (req, res) => {
         console.error('API: Error loading area dashboard:', error);
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+app.use((req, res) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+        if (isApiRequest(req)) {
+            res.status(404).json({ success: false, error: 'Not found.' });
+            return;
+        }
+        res.status(404).send('Not found');
+        return;
+    }
+    sendNotFoundPage(req, res);
 });
 
 app.use((err, req, res, next) => {

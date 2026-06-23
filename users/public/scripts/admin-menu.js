@@ -1,7 +1,6 @@
 (function (global) {
-    let menuOpen = false;
-    let panelBound = false;
-    let bindOptions = {};
+    const ADMIN_PAGE_PATH = '/Admin/Settings';
+
     let profile = null;
 
     function escapeAttr(value) {
@@ -9,6 +8,19 @@
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/"/g, '&quot;');
+    }
+
+    function sectionUrl(section, query = {}) {
+        const params = new URLSearchParams();
+        Object.entries(query).forEach(([key, value]) => {
+            if (value != null && String(value).trim() !== '') params.set(key, String(value));
+        });
+        const qs = params.toString();
+        return `${ADMIN_PAGE_PATH}${qs ? `?${qs}` : ''}#${section}`;
+    }
+
+    function goToAdminPage(section, query = {}) {
+        global.location.href = sectionUrl(section, query);
     }
 
     function renderTrigger(options = {}) {
@@ -22,54 +34,12 @@
         return `
                 <div class="admin-menu-actions mic-settings-actions">
                     <button type="button" class="mic-settings-btn" data-admin-action="view-accounts">Accounts</button>
-                    <button type="button" class="mic-settings-btn" data-admin-action="store-logins" hidden>Setup Store Logins</button>
+                    <button type="button" class="mic-settings-btn" data-admin-action="store-logins" hidden>Store logins</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="smg-nsf" hidden>Setup SMG/NSF</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="forecast">Forecast tool</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="build-to">Build to adjustments</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="feature-requests" hidden>Feature requests</button>
                 </div>`;
-    }
-
-    function renderPanel() {
-        return `
-        <div id="admin-menu-picker" class="mic-item-picker admin-menu-picker" hidden>
-            <div class="mic-item-picker-panel admin-menu-panel">
-                <h2>Admin menu</h2>
-                ${renderActionsHtml()}
-                <div class="admin-menu-footer">
-                    <button type="button" class="mic-settings-btn" id="admin-menu-close">Close</button>
-                </div>
-            </div>
-        </div>`;
-    }
-
-    function ensurePanel() {
-        let picker = document.getElementById('admin-menu-picker');
-        if (picker) return picker;
-        const host = document.createElement('div');
-        host.innerHTML = renderPanel();
-        picker = host.firstElementChild;
-        document.body.appendChild(picker);
-        return picker;
-    }
-
-    function closeMenu() {
-        const picker = document.getElementById('admin-menu-picker');
-        if (!picker) return;
-        picker.classList.add('is-closing');
-        window.setTimeout(() => {
-            picker.hidden = true;
-            picker.classList.remove('is-closing');
-            menuOpen = false;
-        }, 350);
-    }
-
-    function openMenu() {
-        const picker = ensurePanel();
-        if (!panelBound) bindPanel(picker);
-        picker.hidden = false;
-        picker.classList.remove('is-closing');
-        menuOpen = true;
     }
 
     function viewAccountsOptions() {
@@ -94,46 +64,41 @@
         if (featureRequestsBtn) featureRequestsBtn.hidden = !data.isSuperAdmin;
     }
 
+    let bindOptions = {};
+
     function bindActionButtons(root, options = {}) {
         if (!root || root.dataset.adminActionsBound) return;
         root.dataset.adminActionsBound = '1';
+        bindOptions = { ...bindOptions, ...options };
         if (options.getViewAccountsOptions) {
             bindOptions.getViewAccountsOptions = options.getViewAccountsOptions;
         }
-        const onBeforeAction = options.onBeforeAction || closeMenu;
+        const onBeforeAction = options.onBeforeAction || (() => {});
+
         root.querySelector('[data-admin-action="view-accounts"]')?.addEventListener('click', () => {
             onBeforeAction();
-            global.AdminAccounts?.open?.(viewAccountsOptions());
+            goToAdminPage('accounts-existing', viewAccountsOptions());
         });
         root.querySelector('[data-admin-action="forecast"]')?.addEventListener('click', () => {
             onBeforeAction();
-            global.AdminForecast?.open?.(viewAccountsOptions());
+            goToAdminPage('forecast', viewAccountsOptions());
         });
         root.querySelector('[data-admin-action="build-to"]')?.addEventListener('click', () => {
             onBeforeAction();
-            global.AdminBuildTo?.open?.(viewAccountsOptions());
+            goToAdminPage('build-to', viewAccountsOptions());
         });
         root.querySelector('[data-admin-action="store-logins"]')?.addEventListener('click', () => {
             onBeforeAction();
-            global.AdminStoreLogins?.open?.();
+            goToAdminPage('store-logins');
         });
         root.querySelector('[data-admin-action="smg-nsf"]')?.addEventListener('click', () => {
             onBeforeAction();
-            global.AdminSmgNsf?.open?.();
+            goToAdminPage('smg-nsf');
         });
         root.querySelector('[data-admin-action="feature-requests"]')?.addEventListener('click', () => {
             onBeforeAction();
-            window.location.href = '/requests';
+            global.location.href = '/requests';
         });
-    }
-
-    function bindPanel(picker) {
-        panelBound = true;
-        picker.addEventListener('click', (event) => {
-            if (event.target === picker) closeMenu();
-        });
-        picker.querySelector('#admin-menu-close')?.addEventListener('click', closeMenu);
-        bindActionButtons(picker.querySelector('.admin-menu-actions'), { onBeforeAction: closeMenu });
     }
 
     async function fetchProfile() {
@@ -150,7 +115,9 @@
         document.querySelectorAll('.admin-menu-trigger').forEach((btn) => {
             if (btn.dataset.adminMenuBound) return;
             btn.dataset.adminMenuBound = '1';
-            btn.addEventListener('click', () => openMenu());
+            btn.addEventListener('click', () => {
+                global.location.href = ADMIN_PAGE_PATH;
+            });
         });
         if (bindOptions.resolveVisibility !== false) {
             void fetchProfile()
@@ -158,14 +125,10 @@
                     document.querySelectorAll('.admin-menu-trigger').forEach((btn) => {
                         if (data.canAccessAdminMenu || data.canManageStoreLogins) btn.hidden = false;
                     });
-                    const adminTab = document.getElementById('mic-settings-admin-tab');
-                    if (adminTab && (data.canAccessAdminMenu || data.canManageStoreLogins)) {
-                        adminTab.hidden = false;
+                    const adminBtn = document.getElementById('mic-settings-admin-btn');
+                    if (adminBtn && (data.canAccessAdminMenu || data.canManageStoreLogins)) {
+                        adminBtn.hidden = false;
                     }
-                    const settingsAdminPanel = document.querySelector('[data-settings-panel="admin"]');
-                    if (settingsAdminPanel) applyActionVisibility(settingsAdminPanel, data);
-                    const adminMenuPicker = document.getElementById('admin-menu-picker');
-                    if (adminMenuPicker) applyActionVisibility(adminMenuPicker, data);
                 })
                 .catch(() => {});
         }
@@ -178,15 +141,19 @@
     }
 
     global.AdminMenu = {
+        ADMIN_PAGE_PATH,
+        sectionUrl,
+        goToAdminPage,
         renderTrigger,
         renderActionsHtml,
-        renderPanel,
         mountHeaderTrigger,
         bind,
         bindActionButtons,
         applyActionVisibility,
-        open: openMenu,
-        close: closeMenu,
+        open: () => {
+            global.location.href = ADMIN_PAGE_PATH;
+        },
+        close: () => {},
         fetchProfile,
     };
 })(window);

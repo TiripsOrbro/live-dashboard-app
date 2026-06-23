@@ -293,6 +293,19 @@
         return global.matchMedia('(max-width: 900px)').matches;
     }
 
+    let lastMicMobileLayout = null;
+
+    function syncMicLayoutMode() {
+        const mobile = isMicMobileView();
+        document.body.classList.toggle('mic-overview--mobile', mobile);
+        document.documentElement.classList.toggle('mic-overview--mobile', mobile);
+        if (lastMicMobileLayout !== null && lastMicMobileLayout !== mobile && overviewData) {
+            renderTiles();
+        }
+        lastMicMobileLayout = mobile;
+        return mobile;
+    }
+
     function renderMicTabPanel(tabId, content) {
         return `
         <section
@@ -327,6 +340,16 @@
             button.classList.toggle('is-active', isActive);
             button.setAttribute('aria-selected', isActive ? 'true' : 'false');
         });
+        const tabClasses = [
+            'mic-overview-tab--sales',
+            'mic-overview-tab--results',
+            'mic-overview-tab--orders',
+            'mic-overview-tab--audits',
+        ];
+        document.body.classList.remove(...tabClasses);
+        document.documentElement.classList.remove(...tabClasses);
+        document.body.classList.add(`mic-overview-tab--${tabId}`);
+        document.documentElement.classList.add(`mic-overview-tab--${tabId}`);
         const grid = document.getElementById('mic-grid');
         if (!grid) return;
         grid.querySelectorAll('[data-mic-tab-panel]').forEach((panel) => {
@@ -349,8 +372,16 @@
 
     function syncMicOverviewTabs(mobile) {
         const nav = document.getElementById('mic-overview-tabs');
+        const tabClasses = [
+            'mic-overview-tab--sales',
+            'mic-overview-tab--results',
+            'mic-overview-tab--orders',
+            'mic-overview-tab--audits',
+        ];
         if (!mobile) {
             if (nav) nav.hidden = true;
+            document.body.classList.remove(...tabClasses);
+            document.documentElement.classList.remove(...tabClasses);
             return;
         }
         if (!nav) return;
@@ -438,13 +469,14 @@
                 adminStoreSnapOptions(area)
             ) || '<p class="mic-store-lead-empty">No stores in this area yet.</p>';
         const posClass = tabbed ? '' : ' mic-tile--pos-area-stores';
+        const mobileClass = tabbed ? ' mic-store-lead--mobile' : '';
         return `
         <article class="mic-tile mic-tile--store-leaderboard${posClass}">
-            <div class="mic-store-lead mic-store-lead--purple">
+            <div class="mic-store-lead mic-store-lead--purple${mobileClass}">
                 ${renderAreaTextSelector({ live: true })}
                 <div class="mic-store-lead-sales">${renderAreaSalesTotal(sales)}</div>
             </div>
-            <div class="mic-store-lead-list" role="list">${rows}</div>
+            <div class="mic-store-lead-list${tabbed ? ' mic-store-lead-list--dashboard' : ''}" role="list">${rows}</div>
         </article>`;
     }
 
@@ -455,11 +487,17 @@
         const futureClass = hasData ? '' : ' mic-tile--future';
         const posClass = tabbed ? '' : ' mic-tile--pos-sssg';
         return `
-        <article class="mic-tile mic-tile--sssg${futureClass}${posClass}">
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">Today SSSG</div>
-                <div class="mic-sssg-value ${today.toneClass}">${escapeHtml(today.text)}</div>
-                <div class="mic-sssg-wtd ${wtd.toneClass}">WTD ${escapeHtml(wtd.text)}</div>
+        <article class="mic-tile mic-tile--sssg mic-tile--metric-card${futureClass}${posClass}">
+            <div class="mic-tile-body mic-metric-card">
+                <div class="mic-metric-card__head">
+                    <div class="mic-tile-label">Today SSSG</div>
+                </div>
+                <div class="mic-sssg-grid">
+                    <div class="mic-sssg-value ${today.toneClass}">${escapeHtml(today.text)}</div>
+                    <div class="mic-sssg-footer">
+                        <span class="mic-sssg-wtd ${wtd.toneClass}">WTD ${escapeHtml(wtd.text)}</span>
+                    </div>
+                </div>
             </div>
         </article>`;
     }
@@ -471,13 +509,22 @@
     function renderVocTile(vocRaw, { tabbed = false, inRow = false } = {}) {
         const voc = formatVocDisplay(useMicStyleTiles() ? VOC_PLACEHOLDER : vocRaw);
         const posClass = tabbed || inRow ? '' : ' mic-tile--pos-voc';
+        const osatText = voc.osat == null ? '—' : `${voc.osat}%`;
+        const accText = voc.acc == null ? '—' : `${voc.acc}%`;
         const footnote = 'Pipeline coming soon';
         return `
-        <a class="mic-tile mic-tile--link mic-tile--voc${posClass}" href="${SMG_REPORTING_URL}" target="_blank" rel="noopener noreferrer" aria-label="VOC - open SMG reporting">
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">VOC</div>
-                <div class="mic-tile-main">${voc.count}</div>
-                <div class="mic-tile-sub">OSAT ${voc.osat == null ? '-' : `${voc.osat}%`} · Acc ${voc.acc == null ? '-' : `${voc.acc}%`}</div>
+        <a class="mic-tile mic-tile--link mic-tile--voc mic-tile--metric-card${posClass}" href="${SMG_REPORTING_URL}" target="_blank" rel="noopener noreferrer" aria-label="VOC - open SMG reporting">
+            <div class="mic-tile-body mic-metric-card">
+                <div class="mic-metric-card__head">
+                    <div class="mic-tile-label">VOC</div>
+                </div>
+                <div class="mic-voc-grid">
+                    <div class="mic-voc-count">${voc.count}</div>
+                    <div class="mic-voc-metrics">
+                        <span class="mic-voc-metric">OSAT ${osatText}</span>
+                        <span class="mic-voc-metric">Acc ${accText}</span>
+                    </div>
+                </div>
                 <div class="mic-tile-sub mic-tile-sub--footnote">${footnote}</div>
             </div>
         </a>`;
@@ -932,10 +979,15 @@
         });
     }
 
+    function renderCoreCountdownTile({ tabbed = false, inRow = false } = {}) {
+        return global.CoreCountdown?.renderTileHtml?.({ tabbed, inRow }) || '';
+    }
+
     function renderAdminTopRow(vocRaw) {
         const tiles = [
             renderVocTile(vocRaw, { inRow: true }),
             renderDfscAdminTile({ inRow: true }),
+            renderCoreCountdownTile({ inRow: true }),
         ].filter(Boolean);
         if (!tiles.length) return '';
         return renderEqualWidthRow(tiles, { rowNum: 'top' });
@@ -984,7 +1036,7 @@
         const auditTiles = auditTilesForDisplay();
         return `
         ${renderMicTabPanel('sales', renderAreaStoresTile(displayArea, { tabbed: true }))}
-        ${renderMicTabPanel('results', `${renderVocTile(vocRaw, { tabbed: true })}${renderSssgTile(displayArea, { tabbed: true })}`)}
+        ${renderMicTabPanel('results', `${renderVocTile(vocRaw, { tabbed: true })}${renderCoreCountdownTile({ tabbed: true })}${renderSssgTile(displayArea, { tabbed: true })}`)}
         ${renderMicTabPanel('orders', renderMobileOrdersTab())}
         ${renderMicTabPanel('audits', `${renderDfscAdminTile({ tabbed: true })}${renderAdminAuditTilesOnly(auditTiles, { tabbed: true })}`)}`;
     }
@@ -1043,7 +1095,7 @@
     function renderTiles() {
         const grid = document.getElementById('mic-grid');
         if (!grid || !overviewData) return;
-        const mobile = isMicMobileView();
+        const mobile = syncMicLayoutMode();
         const auditTiles = auditTilesForDisplay();
         syncMicOverviewTabs(mobile);
         grid.classList.toggle('mic-grid--tabbed', mobile);
@@ -1053,6 +1105,8 @@
             grid.style.removeProperty('--mic-content-rows');
         }
         grid.innerHTML = mobile ? renderMobileTabbedTiles() : renderDesktopTiles();
+        global.CoreCountdown?.refreshTiles?.();
+        global.CoreCountdown?.startTick?.();
         bindStorePickerTiles();
         bindTacauditTileLinks();
         bindAreaTextSelector();
@@ -1169,7 +1223,8 @@
         document.body.classList.add('mic-overview-page');
         marketViewActive = isMarketScope();
         renderShell(promoBannerHtml);
-        loadOverview();
+        syncMicLayoutMode();
+        global.CoreCountdown?.init?.().then(() => loadOverview());
         intervals.push(
             global.setInterval(() => {
                 const clock = document.getElementById('mic-clock');
@@ -1179,7 +1234,7 @@
         intervals.push(global.setInterval(loadOverview, REFRESH_MS));
         intervals.push(global.setInterval(checkForScrapeUpdate, SCRAPE_POLL_MS));
         global.addEventListener('resize', () => {
-            if (overviewData) renderTiles();
+            syncMicLayoutMode();
         });
     }
 

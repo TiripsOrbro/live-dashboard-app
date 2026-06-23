@@ -95,6 +95,7 @@ const FIELD_LABELS = {
     colourBlind: ['colourblind', 'colorblind', 'color blind', 'colour blind'],
     micDarkMode: ['micdarkmode', 'mic dark mode', 'darkmode', 'dark mode'],
     auditAutoCollapse: ['auditautocollapse', 'audit auto collapse', 'autocollapse', 'auto collapse'],
+    micRoundedTiles: ['microundedtiles', 'mic rounded tiles', 'roundedtiles', 'rounded tiles'],
 };
 
 /** Ordered account levels - higher rank = more permissions. */
@@ -501,6 +502,7 @@ function parseAccessBlock(block) {
     let colourBlindPref = false;
     let micDarkModePref = false;
     let auditAutoCollapsePref = true;
+    let micRoundedTilesPref = false;
     let accountLevel = '';
 
     for (const line of lines) {
@@ -525,6 +527,11 @@ function parseAccessBlock(block) {
         if (FIELD_LABELS.auditAutoCollapse.some((k) => lower.startsWith(`${k} `) || lower.startsWith(`${k}|`))) {
             const val = parseFieldLine(trimmed, FIELD_LABELS.auditAutoCollapse);
             auditAutoCollapsePref = !/^(0|false|no|off)$/i.test(String(val || '').trim());
+            continue;
+        }
+        if (FIELD_LABELS.micRoundedTiles.some((k) => lower.startsWith(`${k} `) || lower.startsWith(`${k}|`))) {
+            const val = parseFieldLine(trimmed, FIELD_LABELS.micRoundedTiles);
+            micRoundedTilesPref = /^(1|true|yes|on)$/i.test(String(val || '').trim());
             continue;
         }
         if (!username && FIELD_LABELS.username.some((k) => lower.startsWith(`${k} `) || lower.startsWith(`${k}|`))) {
@@ -574,6 +581,7 @@ function parseAccessBlock(block) {
         colourBlindPref,
         micDarkModePref,
         auditAutoCollapsePref,
+        micRoundedTilesPref,
         accountLevel,
     };
 }
@@ -609,6 +617,7 @@ function parseUsersFile(text) {
             };
             const micDarkMode = Boolean(row.micDarkModePref);
             const auditAutoCollapse = row.auditAutoCollapsePref !== false;
+            const micRoundedTiles = Boolean(row.micRoundedTilesPref);
             if (row.username && !isCbUsername(row.username)) {
                 users.push({
                     ...base,
@@ -616,13 +625,14 @@ function parseUsersFile(text) {
                     colorBlind: Boolean(row.colourBlindPref),
                     micDarkMode,
                     auditAutoCollapse,
+                    micRoundedTiles,
                 });
             }
             if (row.cbUsername) {
-                users.push({ ...base, username: row.cbUsername, colorBlind: true, micDarkMode, auditAutoCollapse });
+                users.push({ ...base, username: row.cbUsername, colorBlind: true, micDarkMode, auditAutoCollapse, micRoundedTiles });
             }
             if (row.username && isCbUsername(row.username)) {
-                users.push({ ...base, username: row.username, colorBlind: true, micDarkMode, auditAutoCollapse });
+                users.push({ ...base, username: row.username, colorBlind: true, micDarkMode, auditAutoCollapse, micRoundedTiles });
             }
         }
         block = [];
@@ -672,6 +682,7 @@ function parseUsersFileBlocks(text) {
                 colourBlindPref: Boolean(row.colourBlindPref),
                 micDarkModePref: Boolean(row.micDarkModePref),
                 auditAutoCollapsePref: row.auditAutoCollapsePref !== false,
+                micRoundedTilesPref: Boolean(row.micRoundedTilesPref),
                 accountLevel: inferAccountLevel({ ...row, username: row.username }),
             });
         }
@@ -725,6 +736,7 @@ function serializeUserBlock(block) {
     if (block.colourBlindPref) out.push('colourblind | on');
     if (block.micDarkModePref) out.push('micdarkmode | on');
     if (block.auditAutoCollapsePref === false) out.push('auditautocollapse | off');
+    if (block.micRoundedTilesPref) out.push('microundedtiles | on');
     out.push('');
     return out.join('\n');
 }
@@ -1581,6 +1593,27 @@ function setAccountAuditAutoCollapsePreference(username, enabled) {
     return { ok: true, auditAutoCollapse: Boolean(block.auditAutoCollapsePref) };
 }
 
+function setAccountMicRoundedTilesPreference(username, enabled) {
+    const name = String(username || '').trim();
+    if (!name) {
+        return { ok: false, error: 'Not signed in.' };
+    }
+    const blocks = parseUsersFileBlocks(readUsersFileText());
+    const block = blocks.find((row) => blockMatchesUsername(row, name));
+    if (!block) {
+        return { ok: false, error: 'Account not found.' };
+    }
+    block.micRoundedTilesPref = Boolean(enabled);
+    writeUsersFileText(serializeUsersFile(blocks));
+    appendAccountAudit({
+        action: 'mic-rounded-tiles-pref',
+        username: block.username,
+        enabled: block.micRoundedTilesPref,
+        setBy: name,
+    });
+    return { ok: true, micRoundedTiles: Boolean(block.micRoundedTilesPref) };
+}
+
 function appendDashboardUser({
     username,
     password,
@@ -1770,6 +1803,7 @@ function normalizeUser(row) {
         colorBlind: Boolean(row.colorBlind),
         micDarkMode: Boolean(row.micDarkMode),
         auditAutoCollapse: row.auditAutoCollapse !== false,
+        micRoundedTiles: Boolean(row.micRoundedTiles),
         accountLevel: inferAccountLevel(row),
     };
 }
@@ -1849,6 +1883,7 @@ function parseSessionToken(token) {
         colorBlind: payload.c === 1,
         micDarkMode: payload.m === 1,
         auditAutoCollapse: payload.ac !== 0,
+        micRoundedTiles: payload.rt === 1,
     };
 }
 
@@ -1866,6 +1901,7 @@ function createSessionToken(user) {
         c: user.colorBlind ? 1 : 0,
         m: user.micDarkMode ? 1 : 0,
         ac: user.auditAutoCollapse === false ? 0 : 1,
+        rt: user.micRoundedTiles ? 1 : 0,
         exp: Date.now() + SESSION_MAX_AGE_MS,
     });
 }
@@ -2231,6 +2267,7 @@ function userProfileForClient(user) {
             colorBlind: false,
             micDarkMode: false,
             auditAutoCollapse: true,
+            micRoundedTiles: false,
             nologin: true,
         };
     }
@@ -2249,6 +2286,7 @@ function userProfileForClient(user) {
             colorBlind: false,
             micDarkMode: false,
             auditAutoCollapse: true,
+            micRoundedTiles: false,
         };
     }
     const overviewScope = getOverviewScope(user);
@@ -2293,6 +2331,7 @@ function userProfileForClient(user) {
         micDarkMode: Boolean(user.micDarkMode),
         auditAutoCollapse: user.auditAutoCollapse !== false,
         mustCompleteMmxSetup,
+        micRoundedTiles: Boolean(user.micRoundedTiles),
         mustChangePassword,
         passwordPolicy: mustChangePassword ? passwordPolicyForUser(user) : null,
     };
@@ -2373,6 +2412,7 @@ module.exports = {
     setAccountColourBlindPreference,
     setAccountMicDarkModePreference,
     setAccountAuditAutoCollapsePreference,
+    setAccountMicRoundedTilesPreference,
     appendStoreUser,
     appendDashboardUser,
     buildCreateAccountParentFromUser,

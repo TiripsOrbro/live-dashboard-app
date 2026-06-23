@@ -112,7 +112,7 @@
                     </label>
                 </div>
                 <p class="mic-settings-pref-hint" id="mic-admin-store-view-hint">
-                    Preview the MIC overview as a single store. Admin menu and settings stay available.
+                    Use the store selector in the page header, or the toggle below, to preview the MIC overview as a single store.
                 </p>
                 <p class="mic-admin-store-view-current" id="mic-admin-store-view-current"></p>
                 <button type="button" class="mic-settings-btn" id="mic-admin-store-view-pick">Select store</button>
@@ -130,6 +130,7 @@
     }
 
     function syncSettingsUi() {
+        syncHeaderSelector();
         const block = document.getElementById('mic-admin-store-view-block');
         if (!block || block.hidden) return;
         const toggle = document.getElementById('mic-admin-store-view-toggle');
@@ -140,6 +141,117 @@
             current.textContent = store ? `Selected: ${storeLabel(store)}` : 'No store selected yet.';
             current.classList.toggle('mic-admin-store-view-current--empty', !store);
         }
+    }
+
+    function formatStoreOptionLabel(row) {
+        const num = String(row?.storeNumber || '').trim();
+        const name = String(row?.storeName || '').trim();
+        if (!num) return '';
+        return name && name !== num ? `${num} — ${name}` : num;
+    }
+
+    async function loadStoreOptions() {
+        const allowed = new Set((meProfile?.effectiveStores || []).map(String));
+        try {
+            const tree = await global.AdminScopePicker?.loadScopeTree?.();
+            if (tree) {
+                const flat = [];
+                const seen = new Set();
+                for (const rows of Object.values(tree.storesByArea || {})) {
+                    for (const row of rows || []) {
+                        const num = String(row.storeNumber || '').trim();
+                        if (!num || seen.has(num)) continue;
+                        if (allowed.size && !allowed.has(num)) continue;
+                        seen.add(num);
+                        flat.push({
+                            storeNumber: num,
+                            label: formatStoreOptionLabel(row),
+                        });
+                    }
+                }
+                flat.sort((a, b) =>
+                    a.storeNumber.localeCompare(b.storeNumber, undefined, { numeric: true })
+                );
+                if (flat.length) return flat;
+            }
+        } catch {
+            /* ignore */
+        }
+        return [...allowed]
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+            .map((num) => ({ storeNumber: num, label: storeLabel(num) }));
+    }
+
+    function syncHeaderSelector(selectEl) {
+        const select = selectEl || document.getElementById('mic-header-store-select');
+        if (!select) return;
+        const activeStore = isEnabled() ? getSelectedStore() : '';
+        const hasOption = activeStore && [...select.options].some((opt) => opt.value === activeStore);
+        select.value = hasOption ? activeStore : '';
+        document.body.classList.toggle('mic-store-view-active', Boolean(activeStore));
+    }
+
+    function onHeaderStoreSelectChange(event) {
+        const value = String(event.target?.value || '').trim();
+        if (!value) {
+            applyAndReload({ enabled: false, storeNumber: '' });
+            return;
+        }
+        applyAndReload({ enabled: true, storeNumber: value });
+    }
+
+    function wireHeaderSelector(select) {
+        if (!select || select.dataset.storeSelectWired) return;
+        select.dataset.storeSelectWired = '1';
+        select.addEventListener('change', onHeaderStoreSelectChange);
+    }
+
+    async function populateHeaderSelector(select) {
+        if (!select) return;
+        const currentValue = isEnabled() ? getSelectedStore() : '';
+        select.innerHTML = '<option value="">Default — all stores</option>';
+        const stores = await loadStoreOptions();
+        for (const store of stores) {
+            const opt = document.createElement('option');
+            opt.value = store.storeNumber;
+            opt.textContent = store.label || store.storeNumber;
+            select.appendChild(opt);
+        }
+        syncHeaderSelector(select);
+        if (currentValue && select.value !== currentValue) {
+            const missing = document.createElement('option');
+            missing.value = currentValue;
+            missing.textContent = storeLabel(currentValue);
+            select.appendChild(missing);
+            select.value = currentValue;
+        }
+    }
+
+    function mountHeaderSelector() {
+        if (!canUse(meProfile)) return;
+        const actions = document.querySelector('.mic-header--admin .mic-header-actions');
+        if (!actions) return;
+
+        let wrap = document.getElementById('mic-header-store-select-wrap');
+        if (!wrap) {
+            wrap = document.createElement('div');
+            wrap.id = 'mic-header-store-select-wrap';
+            wrap.className = 'mic-header-store-select-wrap';
+            wrap.innerHTML = `
+                <label class="mic-header-store-select-label" for="mic-header-store-select">Store</label>
+                <select
+                    id="mic-header-store-select"
+                    class="mic-header-store-select"
+                    aria-label="Select store or default admin view"
+                >
+                    <option value="">Default — all stores</option>
+                </select>`;
+            actions.insertBefore(wrap, actions.firstChild);
+        }
+
+        const select = wrap.querySelector('#mic-header-store-select');
+        wireHeaderSelector(select);
+        void populateHeaderSelector(select);
     }
 
     function wireSettingsControls() {
@@ -165,24 +277,6 @@
         });
     }
 
-    function mountBanner() {
-        if (!isActiveOnOverview(meProfile)) return;
-        const store = getSelectedStore();
-        if (!store) return;
-        const page = document.getElementById('mic-page');
-        if (!page || document.getElementById('mic-admin-store-view-banner')) return;
-        const banner = document.createElement('div');
-        banner.id = 'mic-admin-store-view-banner';
-        banner.className = 'mic-admin-store-view-banner';
-        banner.innerHTML = `
-            <span>Viewing as ${escapeHtml(storeLabel(store))}</span>
-            <button type="button" class="mic-admin-store-view-banner-exit" id="mic-admin-store-view-exit">Exit store view</button>`;
-        page.insertAdjacentElement('afterbegin', banner);
-        banner.querySelector('#mic-admin-store-view-exit')?.addEventListener('click', () => {
-            applyAndReload({ enabled: false });
-        });
-    }
-
     function escapeHtml(value) {
         return String(value ?? '')
             .replace(/&/g, '&amp;')
@@ -198,8 +292,8 @@
     function afterShellRendered(profile) {
         meProfile = profile || meProfile;
         if (!canUse(meProfile)) return;
+        mountHeaderSelector();
         mountSettingsBlock(meProfile);
-        mountBanner();
     }
 
     global.AdminStoreView = {
@@ -210,6 +304,7 @@
         getSelectedStore,
         resolveStoreForOverview,
         isActiveOnOverview,
+        mountHeaderSelector,
         mountSettingsBlock,
         syncSettingsUi,
         openStorePicker,

@@ -604,6 +604,34 @@ html.mic-rounded-corners .admin-modal--build-to {
     box-shadow: 0 0 0 2px rgba(122, 62, 177, 0.15);
 }
 
+.admin-buildto-code-input {
+    width: 5.5rem;
+    padding: 0.35rem 0.45rem;
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    border-radius: var(--admin-buildto-control-radius);
+    background: #fff;
+    font: inherit;
+    font-size: 0.82rem;
+}
+
+.admin-buildto-fallback-input {
+    width: 10rem;
+    min-width: 8rem;
+    padding: 0.35rem 0.45rem;
+    border: 1px solid rgba(0, 0, 0, 0.14);
+    border-radius: var(--admin-buildto-control-radius);
+    background: #fff;
+    font: inherit;
+    font-size: 0.82rem;
+}
+
+.admin-buildto-code-input:focus,
+.admin-buildto-fallback-input:focus {
+    outline: none;
+    border-color: #7a3eb1;
+    box-shadow: 0 0 0 2px rgba(122, 62, 177, 0.15);
+}
+
 .admin-buildto-warn-cell {
     min-width: 4rem;
     text-align: center;
@@ -1219,6 +1247,8 @@ html.mic-dark-mode .admin-buildto-store-field {
 html.mic-dark-mode .admin-buildto-store-field select,
 html.mic-dark-mode .admin-buildto-search-wrap input[type='search'],
 html.mic-dark-mode .admin-buildto-num-input,
+html.mic-dark-mode .admin-buildto-code-input,
+html.mic-dark-mode .admin-buildto-fallback-input,
 html.mic-dark-mode .admin-buildto-type-select,
 html.mic-dark-mode .admin-buildto-close-btn {
     background: #2a2a32;

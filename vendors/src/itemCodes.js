@@ -95,8 +95,13 @@ function canonicalItemCode(itemCode) {
     return mmxCodeForOrderCode(key) || key;
 }
 
-/** All lookup keys for a catalog line or a raw report row code. */
-function allLookupKeys(itemCode) {
+/** All lookup keys for a catalog line or a raw report row code. Optional storeNumber applies admin overrides. */
+function allLookupKeys(itemCode, storeNumber) {
+    const store = String(storeNumber || '').trim();
+    if (store) {
+        const { effectiveLookupKeys } = require('./itemCodeOverrides');
+        return effectiveLookupKeys(itemCode, { storeNumber: store });
+    }
     const raw = normalizeItemCode(itemCode);
     if (!raw) return [];
     const mmx = mmxCodeForOrderCode(raw) || raw;
@@ -105,13 +110,22 @@ function allLookupKeys(itemCode) {
     return preferAltCodesFirst([...new Set(ordered)]);
 }
 
-function findInReportMap(reportMap, itemCode) {
+function reportRowQuantity(row) {
+    const qty = Number(row?.quantity);
+    return Number.isFinite(qty) ? qty : 0;
+}
+
+/** First alias row with qty > 0; if all matches are zero, return the first zero row. */
+function findInReportMap(reportMap, itemCode, storeNumber) {
     if (!reportMap) return null;
-    for (const key of allLookupKeys(itemCode)) {
+    let zeroHit = null;
+    for (const key of allLookupKeys(itemCode, storeNumber)) {
         const row = reportMap.get(key);
-        if (row) return { key, row };
+        if (!row) continue;
+        if (reportRowQuantity(row) > 0) return { key, row };
+        if (!zeroHit) zeroHit = { key, row };
     }
-    return null;
+    return zeroHit;
 }
 
 function clearItemCodesCache() {
@@ -125,7 +139,9 @@ module.exports = {
     canonicalItemCode,
     allLookupKeys,
     findInReportMap,
+    reportRowQuantity,
     parseItemCodesText,
     clearItemCodesCache,
+    preferAltCodesFirst,
     ITEM_CODES_PATH,
 };

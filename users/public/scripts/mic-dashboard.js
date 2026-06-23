@@ -769,30 +769,55 @@ function renderOrdersToPlaceTile(data, { tabbed = false, inRow = false } = {}) {
     return `<article class="mic-tile mic-tile--orders-to-place${posClass}">${body}</article>`;
 }
 
+function formatStockDaysLeft(days) {
+    const n = Number(days);
+    if (!Number.isFinite(n)) return '—';
+    return n < 10 ? `${n}d` : `${Math.round(n)}d`;
+}
+
+function buildMicStockShortfallListHtml(items) {
+    const list = Array.isArray(items) ? items : [];
+    if (!list.length) return '';
+    const rows = list
+        .map(
+            (item) => `
+        <li class="mic-tile-stock-item">
+            <span class="mic-tile-stock-item-name" title="${escapeHtml(item.description || item.itemCode || '')}">${escapeHtml(item.description || item.itemCode || 'Item')}</span>
+            <span class="mic-tile-stock-item-meta">${escapeHtml(formatStockDaysLeft(item.daysOfStock))}</span>
+        </li>`
+        )
+        .join('');
+    return `<ul class="mic-tile-stock-list" aria-label="Stock shortfalls">${rows}</ul>`;
+}
+
 function renderStockLevelsTile(data, { tabbed = false, inRow = false } = {}) {
     const sc = data?.stockCount || {};
+    const shortfallItems = Array.isArray(sc.lowStockItems) ? sc.lowStockItems : [];
+    const hasShortfalls = Number(sc.lowStockCount) > 0;
     const stockSub =
         sc.stockLevelsSub ||
-        (Number(sc.lowStockCount) > 0
+        (hasShortfalls
             ? `${sc.lowStockCount} item${sc.lowStockCount === 1 ? '' : 's'} under stock warning`
             : sc.stockLevelsChecked
               ? 'No stock shortfalls'
               : 'Stock levels not checked today');
     const checkLabel = sc.stockLevelsCheckLabel || 'Check stock levels';
     const href = sc.stockLevelsHref || (STORE_NUMBER ? `/${STORE_NUMBER}/stock-count/levels` : '');
-    const hasShortfalls = Number(sc.lowStockCount) > 0;
     const warnClass = hasShortfalls ? ' mic-tile--stock-warn' : sc.stockLevelsChecked ? ' mic-tile--stock-ok' : '';
+    const listClass = hasShortfalls && shortfallItems.length ? ' mic-tile--has-stock-list' : '';
     const posClass = tabbed || inRow ? '' : ' mic-tile--pos-stock-levels';
     const checking = stockLevelsChecking;
+    const shortfallListHtml = hasShortfalls ? buildMicStockShortfallListHtml(shortfallItems) : '';
     const viewLink =
         sc.stockLevelsChecked && href
             ? `<a class="mic-tile-stock-view" href="${escapeHtml(href)}">${escapeHtml(hasShortfalls ? 'View shortfalls' : 'View stock levels')}</a>`
             : '';
     return `
-        <article class="mic-tile mic-tile--stock-levels${warnClass}${posClass}">
+        <article class="mic-tile mic-tile--stock-levels${warnClass}${listClass}${posClass}">
             <div class="mic-tile-body">
                 <div class="mic-tile-label">Stock levels</div>
                 <div class="mic-tile-sub">${escapeHtml(stockSub)}</div>
+                ${shortfallListHtml}
             </div>
             <button
                 type="button"

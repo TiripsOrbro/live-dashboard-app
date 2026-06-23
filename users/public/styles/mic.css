@@ -2793,6 +2793,68 @@ html.mic-dark-mode .mic-audit-stat--complete {
     flex: 1 1 auto;
 }
 
+.mic-tile--stock-levels.mic-tile--has-stock-list {
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow: hidden;
+}
+
+.mic-tile--stock-levels.mic-tile--has-stock-list .mic-tile-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    align-items: stretch;
+    text-align: left;
+    gap: calc(4px * var(--dashboard-scale));
+}
+
+.mic-tile--stock-levels.mic-tile--has-stock-list .mic-tile-label,
+.mic-tile--stock-levels.mic-tile--has-stock-list .mic-tile-sub {
+    text-align: center;
+}
+
+.mic-tile-stock-list {
+    list-style: none;
+    margin: calc(2px * var(--dashboard-scale)) 0 0;
+    padding: 0;
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: calc(96px * var(--dashboard-scale));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    text-align: left;
+}
+
+.mic-tile-stock-item {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: calc(6px * var(--dashboard-scale));
+    padding: calc(3px * var(--dashboard-scale)) 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--charcoal) 10%, transparent);
+    font-size: calc(0.78rem * var(--dashboard-scale));
+    line-height: 1.25;
+}
+
+.mic-tile-stock-item:last-child {
+    border-bottom: none;
+}
+
+.mic-tile-stock-item-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mic-tile-stock-item-meta {
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--charcoal) 70%, transparent);
+    font-weight: 600;
+}
+
 .mic-tile--stock-warn {
     background: color-mix(in srgb, #f5c400 14%, var(--white));
     border-color: color-mix(in srgb, #f5c400 45%, var(--charcoal));
@@ -2805,7 +2867,8 @@ html.mic-dark-mode .mic-audit-stat--complete {
 .mic-tile-stock-view {
     display: block;
     width: 100%;
-    margin-top: 4px;
+    margin-top: 2px;
+    flex: 0 0 auto;
     font-size: 0.82rem;
     font-weight: 600;
     color: var(--tb-purple, #702082);
@@ -2840,7 +2903,8 @@ html.mic-dark-mode .mic-audit-stat--complete {
 }
 
 .mic-tile-stock-check {
-    margin-top: 8px;
+    margin-top: 4px;
+    flex: 0 0 auto;
     width: 100%;
     border: 1px solid color-mix(in srgb, var(--tb-purple, #702082) 35%, var(--grey));
     border-radius: 8px;
@@ -3476,6 +3540,49 @@ html.mic-dark-mode .mic-audit-stat--complete {
     width: 100%;
 }
 
+.mic-header-store-select-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: calc(2px * var(--dashboard-scale));
+    min-width: 0;
+}
+
+.mic-header-store-select-label {
+    font-size: var(--font-size-6);
+    font-weight: var(--font-weight-semibold, 600);
+    color: color-mix(in srgb, var(--charcoal) 65%, white);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.1;
+}
+
+.mic-header-store-select {
+    min-width: calc(168px * var(--dashboard-scale));
+    max-width: calc(240px * var(--dashboard-scale));
+    border: var(--cell-border) var(--charcoal);
+    background: var(--white);
+    color: var(--charcoal);
+    font: inherit;
+    font-size: var(--font-size-5);
+    font-weight: var(--font-weight-semibold, 600);
+    padding: calc(6px * var(--dashboard-scale)) calc(8px * var(--dashboard-scale));
+    border-radius: calc(4px * var(--dashboard-scale));
+    cursor: pointer;
+}
+
+.mic-header-store-select:hover,
+.mic-header-store-select:focus-visible {
+    border-color: var(--tb-purple-light);
+    outline: none;
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--tb-purple-light) 35%, white);
+}
+
+body.mic-store-view-active .mic-header-store-select {
+    border-color: color-mix(in srgb, var(--tb-purple-light) 55%, var(--charcoal));
+    background: color-mix(in srgb, var(--tb-purple-light) 10%, var(--white));
+}
+
 .mic-admin-store-view-banner {
     display: flex;
     flex-wrap: wrap;
@@ -3526,6 +3633,21 @@ html.mic-dark-mode .mic-admin-store-view-current {
 
 html.mic-dark-mode .mic-admin-store-view-current--empty {
     color: color-mix(in srgb, #e8e8e8 55%, #161616);
+}
+
+html.mic-dark-mode .mic-header-store-select-label {
+    color: color-mix(in srgb, #e8e8e8 70%, #161616);
+}
+
+html.mic-dark-mode .mic-header-store-select {
+    background: #2a2a2a;
+    border-color: #5a5a5a;
+    color: #f0f0f0;
+}
+
+html.mic-dark-mode body.mic-store-view-active .mic-header-store-select {
+    border-color: color-mix(in srgb, var(--tb-purple-light) 45%, #5a5a5a);
+    background: color-mix(in srgb, var(--tb-purple-light) 16%, #2a2a2a);
 }
 
 .admin-store-picker-hint {
@@ -3647,6 +3769,19 @@ button.mic-tile.mic-tile--link {
         grid-row: 1;
         align-self: start;
         padding-top: calc(2px * var(--dashboard-scale));
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .mic-header-store-select-wrap {
+        align-items: flex-start;
+        width: 100%;
+        max-width: calc(220px * var(--dashboard-scale));
+    }
+
+    .mic-header-store-select {
+        width: 100%;
+        max-width: none;
     }
 
     .mic-grid--admin .mic-tile--pos-area-stores,

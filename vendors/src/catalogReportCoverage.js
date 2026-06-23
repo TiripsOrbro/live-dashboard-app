@@ -15,10 +15,15 @@ function lookupKeysForCatalogItem(itemCode) {
 
 function findInReportMap(keys, reportMap) {
     if (!reportMap) return { hit: false, key: null };
+    let zeroKey = null;
     for (const key of keys) {
         const hit = reportMap.get(key);
-        if (hit) return { hit: true, key };
+        if (!hit) continue;
+        const qty = Number(hit.quantity);
+        if (Number.isFinite(qty) && qty > 0) return { hit: true, key };
+        if (!zeroKey) zeroKey = key;
     }
+    if (zeroKey) return { hit: true, key: zeroKey };
     return { hit: false, key: null };
 }
 

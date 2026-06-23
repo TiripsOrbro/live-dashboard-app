@@ -266,8 +266,8 @@ function findManualCountEntry(counts, item) {
  * orderQty = finalizeOrderQty(max(0, buildTo - onHandCartons - onOrderCartons))
  * On-hand comes from the Stock On Hand report (refreshed after stock count apply).
  */
-function resolveOnOrderCartons(onOrderReport, itemCode, iseUnit, isePack) {
-    const hit = findInReportMap(onOrderReport, itemCode);
+function resolveOnOrderCartons(onOrderReport, itemCode, iseUnit, isePack, storeNumber) {
+    const hit = findInReportMap(onOrderReport, itemCode, storeNumber);
     if (!hit) return { onOrderCartons: 0, onOrderRow: null };
     return {
         onOrderCartons: onOrderToCartons(hit.row, iseUnit, isePack, hit.key),
@@ -288,20 +288,20 @@ function allBuildToCatalogItems() {
     return items;
 }
 
-function findIseUsageForItemCode(itemCode, usage, catalogItem = null) {
+function findIseUsageForItemCode(itemCode, usage, catalogItem = null, storeNumber = '') {
     if (!usage) return null;
     if (catalogItem) {
         const hit = findIseRowForCatalogItem(catalogItem, usage);
         return hit?.ise || null;
     }
     const target = normalizeItemCode(itemCode);
-    for (const key of allLookupKeys(itemCode)) {
+    for (const key of allLookupKeys(itemCode, storeNumber)) {
         if (usage.has(key)) return usage.get(key);
     }
     for (const [reportItemCode, ise] of usage.entries()) {
         const canon = canonicalItemCode(reportItemCode) || normalizeItemCode(reportItemCode);
         if (canon === target) return ise;
-        for (const key of allLookupKeys(reportItemCode)) {
+        for (const key of allLookupKeys(reportItemCode, storeNumber)) {
             if (normalizeItemCode(key) === target) return ise;
         }
     }
@@ -318,6 +318,7 @@ function ensureBuildToReportContext(storeNumber, options = {}) {
             return null;
         }
         options._buildToReportCtx = {
+            storeNumber: String(storeNumber || '').trim(),
             onOrderReport: parseStockOnOrder(files.stockOnOrder, storeNumber),
             onHandReport: files.stockOnHand ? parseStockOnHand(files.stockOnHand, storeNumber) : null,
             usage: files.inventorySpecialEvent
@@ -333,19 +334,17 @@ function ensureBuildToReportContext(storeNumber, options = {}) {
 /** On-hand cartons from stock-on-hand report (alias-aware, same rules as ISE build-to lines). */
 function onHandCartonsForCatalogItem(itemCode, catalogItem, ctx) {
     if (!ctx?.onHandReport) return null;
-    const ise = findIseUsageForItemCode(itemCode, ctx.usage);
+    const storeNumber = ctx.storeNumber || '';
+    const ise = findIseUsageForItemCode(itemCode, ctx.usage, catalogItem, storeNumber);
     const iseUnit = ise?.unit || '';
     let isePack = ise?.packSize || packSizeFromUnit(iseUnit);
     if (!Number.isFinite(isePack) || isePack <= 0) {
         const inner = Number(catalogItem?.innerPerCarton);
         isePack = Number.isFinite(inner) && inner > 0 ? inner : 0;
     }
-    const keys = [...new Set([...allLookupKeys(itemCode), normalizeItemCode(itemCode)].filter(Boolean))];
-    for (const key of keys) {
-        const hit = findInReportMap(ctx.onHandReport, key);
-        if (hit?.row) {
-            return onHandToCartons(hit.row, iseUnit, isePack, key);
-        }
+    const hit = findInReportMap(ctx.onHandReport, itemCode, storeNumber);
+    if (hit?.row) {
+        return onHandToCartons(hit.row, iseUnit, isePack, hit.key);
     }
     return null;
 }
@@ -353,20 +352,16 @@ function onHandCartonsForCatalogItem(itemCode, catalogItem, ctx) {
 /** On-order cartons from stock-on-order report (same rules as ISE build-to lines). */
 function onOrderCartonsForCatalogItem(itemCode, catalogItem, ctx) {
     if (!ctx?.onOrderReport) return 0;
-    const ise = findIseUsageForItemCode(itemCode, ctx.usage);
+    const storeNumber = ctx.storeNumber || '';
+    const ise = findIseUsageForItemCode(itemCode, ctx.usage, catalogItem, storeNumber);
     const iseUnit = ise?.unit || '';
     let isePack = ise?.packSize || packSizeFromUnit(iseUnit);
     if (!Number.isFinite(isePack) || isePack <= 0) {
         const inner = Number(catalogItem?.innerPerCarton);
         isePack = Number.isFinite(inner) && inner > 0 ? inner : 0;
     }
-    const keys = [...new Set([...allLookupKeys(itemCode), normalizeItemCode(itemCode)].filter(Boolean))];
-    for (const key of keys) {
-        const { onOrderCartons } = resolveOnOrderCartons(ctx.onOrderReport, key, iseUnit, isePack);
-        if (onOrderCartons > 0) return onOrderCartons;
-    }
-    return resolveOnOrderCartons(ctx.onOrderReport, normalizeItemCode(itemCode), iseUnit, isePack)
-        .onOrderCartons;
+    const { onOrderCartons } = resolveOnOrderCartons(ctx.onOrderReport, itemCode, iseUnit, isePack, storeNumber);
+    return onOrderCartons;
 }
 
 async function calculateBuildToOrders(storeNumber, options = {}) {
@@ -418,9 +413,9 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         const matchSource = resolved?.matchSource || iseMatchSource || 'code';
         const catalogName = matchedCatalog?.name || ise.description || '';
 
-        let onHandHit = findInReportMap(onHandReport, reportItemCode);
+        let onHandHit = findInReportMap(onHandReport, reportItemCode, storeNumber);
         if (!onHandHit && catalogName) {
-            onHandHit = findInReportMapWithNameFallback(itemCode, catalogName, onHandReport);
+            onHandHit = findInReportMapWithNameFallback(itemCode, catalogName, onHandReport, storeNumber);
         }
         const onHandRow = onHandHit?.row || null;
         const isePack = ise.packSize || packSizeFromUnit(ise.unit);
@@ -430,7 +425,7 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
             manualEntry = manualCounts.get(normalizeItemCode(matchedCatalog.itemCode)) || null;
         }
         if (!manualEntry) {
-            for (const key of allLookupKeys(reportItemCode)) {
+            for (const key of allLookupKeys(reportItemCode, storeNumber)) {
                 manualEntry = manualCounts.get(normalizeItemCode(key)) || null;
                 if (manualEntry) break;
             }
@@ -459,7 +454,13 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
                 : 'missing';
         if (onHandFromManual != null && !useReportOnHandOnly) manualCountItems++;
 
-        const { onOrderCartons, onOrderRow } = resolveOnOrderCartons(onOrderReport, reportItemCode, ise.unit, isePack);
+        const { onOrderCartons, onOrderRow } = resolveOnOrderCartons(
+            onOrderReport,
+            reportItemCode,
+            ise.unit,
+            isePack,
+            storeNumber
+        );
         const description = ise.description || onHandRow?.description || onOrderRow?.description || '';
 
         if (catalogRule?.buildToManual) {

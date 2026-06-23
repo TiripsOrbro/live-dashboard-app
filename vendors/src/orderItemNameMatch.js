@@ -196,8 +196,8 @@ function resolveCatalogItemForIseRow(iseEntry, reportItemCode, catalogItems) {
 }
 
 /** SOH/SOO row - code/alias first, then name match against catalog label. */
-function findInReportMapWithNameFallback(itemCode, itemName, reportMap) {
-    const codeHit = findInReportMap(reportMap, itemCode);
+function findInReportMapWithNameFallback(itemCode, itemName, reportMap, storeNumber) {
+    const codeHit = findInReportMap(reportMap, itemCode, storeNumber);
     if (codeHit) return { ...codeHit, matchSource: 'code', matchScore: 100 };
     if (!itemName || !reportMap) return null;
 

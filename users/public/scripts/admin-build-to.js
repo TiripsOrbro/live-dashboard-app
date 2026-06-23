@@ -71,7 +71,7 @@
             <div class="admin-modal admin-modal--wide admin-modal--build-to" role="dialog" aria-modal="true">
                 <div class="admin-buildto-header">
                     <h2>Build to adjustments</h2>
-                    <p class="admin-buildto-subtitle">Set build-to rules and low-stock warning thresholds per item.</p>
+                    <p class="admin-buildto-subtitle">Set build-to rules, item codes (MMX / vendor / fallbacks), and low-stock thresholds. Global, area, or per-store.</p>
                 </div>
                 <div class="admin-tabs admin-tabs--full" id="admin-buildto-tabs">
                     <button type="button" class="admin-tab is-active" data-tab="global" id="admin-buildto-global-tab" hidden>Global</button>
@@ -146,9 +146,25 @@
         root.querySelector('#admin-buildto-scope-wrap').hidden = activeTab === 'global';
     }
 
-    function getStoreForCatalog() {
-        if (activeTab === 'global') return '';
-        return String(browseScope.storeNumber || '').trim();
+    function formatFallbackCodes(codes) {
+        return (codes || []).filter(Boolean).join(', ');
+    }
+
+    function getOverrideScope() {
+        if (activeTab === 'global') return { level: 'global' };
+        const area = String(browseScope.area || '').trim();
+        const store = String(browseScope.storeNumber || '').trim();
+        if (store) return { level: 'store', store, area };
+        if (area) return { level: 'area', area };
+        return { level: 'none' };
+    }
+
+    function scopeCatalogParams() {
+        const scope = getOverrideScope();
+        const params = new URLSearchParams();
+        if (scope.level === 'store' && scope.store) params.set('store', scope.store);
+        else if (scope.level === 'area' && scope.area) params.set('area', scope.area);
+        return { scope, params };
     }
 
     async function loadScopeTree() {
@@ -210,13 +226,12 @@
     async function loadCatalog() {
         const root = ensureBackdrop();
         const body = root.querySelector('#admin-buildto-body');
-        const store = getStoreForCatalog();
-        if (activeTab === 'store' && !store) {
+        const { scope, params } = scopeCatalogParams();
+        if (activeTab === 'store' && scope.level === 'none') {
             catalogCache = null;
-            body.innerHTML = '<p>Select a store to view build-to adjustments.</p>';
+            body.innerHTML = '<p>Select an area or store to view build-to adjustments.</p>';
             return;
         }
-        const params = new URLSearchParams({ store });
         const res = await fetch(`/api/admin/build-to/catalog?${params}`, { credentials: 'same-origin' });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) throw new Error(data.error || 'Could not load build-to catalog.');
@@ -255,6 +270,9 @@
                     <tr>
                         <th>Item</th>
                         <th>Vendor</th>
+                        <th>MMX code</th>
+                        <th>Vendor code</th>
+                        <th>Fallback codes</th>
                         <th>Type</th>
                         <th>Count</th>
                         <th>Daily</th>
@@ -271,6 +289,8 @@
                             const fixedValue = fixedDisplayValue(item);
                             const defaultWarn = item.defaultStockWarningDays ?? 5;
                             const warnValue = warnDisplayValue(item);
+                            const fallbacks = formatFallbackCodes(item.fallbackCodes);
+                            const scopeFallbacks = formatFallbackCodes(item.scopeFallbackCodes);
                             return `
                         <tr data-item-code="${escapeHtml(item.itemCode)}"
                             data-catalog-needs-count="${item.catalogNeedsCount ? '1' : '0'}"
@@ -283,9 +303,21 @@
                             data-global-include-daily-override="${item.globalIncludeDailyOverride != null ? '1' : '0'}"
                             data-default-stock-warning="${escapeHtml(defaultWarn)}"
                             data-initial-stock-warning="${item.stockWarningDays != null ? escapeHtml(item.stockWarningDays) : ''}"
-                            data-initial-rule-type="${escapeHtml(ruleType)}">
+                            data-initial-rule-type="${escapeHtml(ruleType)}"
+                            data-catalog-mmx="${escapeHtml(item.catalogMmxCode || item.itemCode)}"
+                            data-loaded-mmx="${escapeHtml(item.mmxCode || item.itemCode)}"
+                            data-initial-mmx="${item.scopeMmxCode != null ? escapeHtml(item.scopeMmxCode) : ''}"
+                            data-catalog-vendor="${escapeHtml(item.catalogMmxCode || item.itemCode)}"
+                            data-loaded-vendor="${escapeHtml(item.vendorCode || item.itemCode)}"
+                            data-initial-vendor="${item.scopeVendorCode != null ? escapeHtml(item.scopeVendorCode) : ''}"
+                            data-loaded-fallbacks="${escapeHtml(fallbacks)}"
+                            data-initial-fallbacks="${escapeHtml(scopeFallbacks)}"
+                            data-file-fallbacks="${escapeHtml(formatFallbackCodes(item.fileFallbackCodes))}">
                             <td class="admin-buildto-item-cell">${escapeHtml(item.name)}<span class="admin-accounts-meta">${escapeHtml(item.itemCode)}</span></td>
                             <td class="admin-buildto-vendor-cell">${escapeHtml(item.vendorLabel || item.vendorSlug)}</td>
+                            <td><input type="text" data-field="mmxCode" class="admin-buildto-code-input" value="${escapeHtml(item.mmxCode || item.itemCode)}" title="MMX / Key Item Count code" /></td>
+                            <td><input type="text" data-field="vendorCode" class="admin-buildto-code-input" value="${escapeHtml(item.vendorCode || item.itemCode)}" title="Vendor order code" /></td>
+                            <td><input type="text" data-field="fallbackCodes" class="admin-buildto-fallback-input" value="${escapeHtml(fallbacks)}" placeholder="${escapeHtml(formatFallbackCodes(item.fileFallbackCodes) || 'code1, code2')}" title="Extra ISE/SOH codes, tried in order (comma-separated)" /></td>
                             <td>
                                 <select data-field="ruleType" class="admin-buildto-type-select">
                                     <option value="days" ${ruleType === 'days' ? 'selected' : ''}>Days</option>
@@ -305,6 +337,52 @@
                 </tbody>
             </table>`;
         bindRowControls();
+    }
+
+    function parseFallbackInput(value) {
+        return String(value || '')
+            .split(/[,;\s]+/)
+            .map((part) => part.trim())
+            .filter(Boolean);
+    }
+
+    function sameCodeList(a, b) {
+        const left = parseFallbackInput(a).map((c) => c.toUpperCase());
+        const right = parseFallbackInput(b).map((c) => c.toUpperCase());
+        if (left.length !== right.length) return false;
+        return left.every((code, i) => code === right[i]);
+    }
+
+    function collectCodePatch(row, rule) {
+        const mmx = String(row.querySelector('[data-field="mmxCode"]')?.value || '').trim();
+        const vendor = String(row.querySelector('[data-field="vendorCode"]')?.value || '').trim();
+        const fallbacks = String(row.querySelector('[data-field="fallbackCodes"]')?.value || '').trim();
+        const catalogMmx = row.dataset.catalogMmx || '';
+        const loadedMmx = row.dataset.loadedMmx || '';
+        const initialMmx = row.dataset.initialMmx || '';
+        const loadedVendor = row.dataset.loadedVendor || '';
+        const initialVendor = row.dataset.initialVendor || '';
+        const loadedFallbacks = row.dataset.loadedFallbacks || '';
+        const initialFallbacks = row.dataset.initialFallbacks || '';
+
+        if (mmx !== loadedMmx) {
+            rule.mmxCode = mmx && mmx !== catalogMmx ? mmx : null;
+        } else if (initialMmx && mmx === catalogMmx) {
+            rule.mmxCode = null;
+        }
+
+        if (vendor !== loadedVendor) {
+            rule.vendorCode = vendor && vendor !== catalogMmx ? vendor : null;
+        } else if (initialVendor && vendor === catalogMmx) {
+            rule.vendorCode = null;
+        }
+
+        if (!sameCodeList(fallbacks, loadedFallbacks)) {
+            const list = parseFallbackInput(fallbacks);
+            rule.fallbackCodes = list.length ? list : null;
+        } else if (initialFallbacks && !fallbacks) {
+            rule.fallbackCodes = null;
+        }
     }
 
     function collectPatch() {
@@ -390,6 +468,8 @@
                 rule.stockWarningDays = Number(effectiveWarn);
             }
 
+            collectCodePatch(row, rule);
+
             if (Object.keys(rule).length) patch[code] = rule;
         });
         return patch;
@@ -399,12 +479,18 @@
         const root = ensureBackdrop();
         root.querySelector('#admin-buildto-error').textContent = '';
         const patch = collectPatch();
-        const store = getStoreForCatalog();
-        if (activeTab === 'store' && !store) throw new Error('Select a store first.');
-        const body =
-            activeTab === 'global'
-                ? { global: patch }
-                : { stores: { [store]: patch } };
+        const scope = getOverrideScope();
+        if (activeTab === 'store' && scope.level === 'none') throw new Error('Select an area or store first.');
+        let body = {};
+        if (activeTab === 'global') {
+            body = { global: patch };
+        } else if (scope.level === 'store') {
+            body = { stores: { [scope.store]: patch } };
+        } else if (scope.level === 'area') {
+            body = { areas: { [scope.area]: patch } };
+        } else {
+            throw new Error('Select an area or store first.');
+        }
         const res = await fetch('/api/admin/build-to/overrides', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },

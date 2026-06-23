@@ -58,6 +58,12 @@
         const areaCode = String(options.adminAreaCode || '').trim();
         if (base === '/Admin' || base === '/admin') {
             if (options.adminAreaLinkOnly && areaCode) {
+                if (num) {
+                    return (
+                        window.AppPaths?.adminAreaWithStore?.(areaCode, num) ||
+                        `/Admin/${encodeURIComponent(areaCode)}?store=${encodeURIComponent(num)}`
+                    );
+                }
                 return (
                     window.AppPaths?.adminArea?.(areaCode, { view: 'area' }) ||
                     `/Admin/${encodeURIComponent(areaCode)}?view=area`

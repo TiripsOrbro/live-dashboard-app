@@ -613,8 +613,7 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
             }
             await timeStoreStage(storeNumber, 'download-reports', () =>
                 ensureReportsForOrders(storeNumber, {
-                    page: options.page,
-                    browser: options.browser,
+                    ...withStoreMmxOptions(storeNumber, options),
                     reportsDir,
                     onlyReportIds: refreshReportIds,
                     forceDownload: Boolean(options.forceReportDownload),
@@ -729,9 +728,10 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
     }
 }
 
-async function runOrdersAfterApply(storeNumber, dateKey, mmx = {}) {
+async function runOrdersAfterApply(storeNumber, dateKey, mmx = {}, pipelineOptions = {}) {
     const page = mmx?.page ?? mmx;
     const result = await runStoreBuildToCycle(storeNumber, {
+        ...withStoreMmxOptions(storeNumber, pipelineOptions),
         dateKey,
         page,
         browser: mmx?.browser,
@@ -750,7 +750,7 @@ async function resumeScheduledOrdersInNewBrowser(storeNumber, dateKey, options =
     let page;
     try {
         ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
-        const orders = await runOrdersAfterApply(storeNumber, dateKey, { page, browser });
+        const orders = await runOrdersAfterApply(storeNumber, dateKey, { page, browser }, options);
         const orderFailures = formatOrderFailures(orders);
         return { orders, orderFailures };
     } finally {
@@ -1222,7 +1222,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
 
             if (await shouldRunOrderPipeline(storeNumber, dateKey)) {
                 log.info(`Key Item Count applied for store ${storeNumber} - downloading reports, then scheduled orders`);
-                orderPipelineResult = await runOrdersAfterApply(storeNumber, dateKey, { page, browser });
+                orderPipelineResult = await runOrdersAfterApply(storeNumber, dateKey, { page, browser }, options);
                 if (ordersAllSuccessful(orderPipelineResult)) {
                     await runStoreOrdersCompleteCleanup(storeNumber, dateKey);
                 }

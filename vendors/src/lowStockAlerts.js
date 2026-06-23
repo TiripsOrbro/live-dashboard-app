@@ -3,10 +3,31 @@ const { catalogRuleForItem, calculateBuildToOrders, REPORTS_DIR } = require('./b
 const { buildCatalogBuildToIndex } = require('./vendorCatalog');
 const { buildToOverridesForStore } = require('./buildToStoreOverrides');
 const { adminOverridesForStore, readOverridesDoc } = require('./buildToAdminOverrides');
+const { normalizeItemName } = require('./orderItemNameMatch');
 
 const DEFAULT_STOCK_WARNING_DAYS = 5;
 const SUMMARY_CACHE_MS = Number(process.env.LOW_STOCK_SUMMARY_CACHE_MS || 15 * 60 * 1000);
 const summaryCache = new Map();
+
+/** Item descriptions omitted from stock shortfall alerts (prep / packaging — not order-critical). */
+const LOW_STOCK_SHORTFALL_EXCLUDE_NAMES = new Set(
+    [
+        'TB MEXICAN RICE (FINISHED PRODUCT)',
+        'TB GUACAMOLE (FINISHED PRODUCT)',
+        'TB TACO SHELLS (FINISHED PRODUCT)',
+        'TB TOSTADA (FINISHED PRODUCT)',
+        'TB FIESTA SALSA (FINISHED PRODUCT)',
+        '4OZ PORTION CUP 50EA',
+        '260 x 260mm Baking Paper Golden Silidor',
+        '4OZ PORTION CUP LID 50EA',
+        'TB TOMATO DICED (FINISHED PRODUCT)',
+    ].map(normalizeItemName)
+);
+
+function isExcludedFromLowStockShortfall(line) {
+    const name = normalizeItemName(line?.description || '');
+    return Boolean(name && LOW_STOCK_SHORTFALL_EXCLUDE_NAMES.has(name));
+}
 
 function defaultStockWarningDays() {
     const doc = readOverridesDoc();
@@ -35,6 +56,7 @@ function computeLowStockAlerts(lines, options = {}) {
 
     const alerts = [];
     for (const line of lines || []) {
+        if (isExcludedFromLowStockShortfall(line)) continue;
         const avgDaily = Number(line.avgDaily);
         if (!Number.isFinite(avgDaily) || avgDaily <= 0) continue;
         const onHand = Number(line.onHandCartons) || 0;
@@ -134,6 +156,7 @@ module.exports = {
     DEFAULT_STOCK_WARNING_DAYS,
     defaultStockWarningDays,
     stockWarningDaysForItem,
+    isExcludedFromLowStockShortfall,
     computeLowStockAlerts,
     getLowStockSummary,
     setLowStockSummaryCache,

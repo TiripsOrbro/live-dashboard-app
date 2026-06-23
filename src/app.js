@@ -3912,8 +3912,39 @@ app.get('/api/admin/build-to/catalog', (req, res) => {
         return;
     }
     const store = String(req.query.store || '').trim();
-    if (!store || !assertStoreAccess(req, res, store)) return;
-    res.json({ success: true, ...buildAdminBuildToCatalog(store) });
+    const area = String(req.query.area || '').trim();
+    const scope = String(req.query.scope || '').trim().toLowerCase();
+
+    if (store) {
+        if (!assertStoreAccess(req, res, store)) return;
+        res.json({
+            success: true,
+            ...buildAdminBuildToCatalog({ storeNumber: store, level: 'store' }),
+        });
+        return;
+    }
+    if (area || scope === 'area') {
+        const areaName = area || String(req.query.areaName || '').trim();
+        if (!areaName) {
+            res.status(400).json({ success: false, error: 'Area is required.' });
+            return;
+        }
+        const allowedAreas = new Set(getAccessibleAreasForUser(user).map(String));
+        if (!canUserEditGlobalBuildTo(user) && !allowedAreas.has(areaName)) {
+            res.status(403).json({ success: false, error: 'Area is outside your scope.' });
+            return;
+        }
+        res.json({
+            success: true,
+            ...buildAdminBuildToCatalog({ areaName, level: 'area' }),
+        });
+        return;
+    }
+    if (!canUserEditGlobalBuildTo(user)) {
+        res.status(403).json({ success: false, error: 'Area access or above is required for global build-to.' });
+        return;
+    }
+    res.json({ success: true, ...buildAdminBuildToCatalog({ level: 'global' }) });
 });
 
 app.get('/api/admin/build-to/overrides', (req, res) => {
@@ -3926,7 +3957,8 @@ app.get('/api/admin/build-to/overrides', (req, res) => {
     const filtered = filterOverridesForActor(
         doc,
         getEffectiveStoresForUser(user),
-        canUserEditGlobalBuildTo(user)
+        canUserEditGlobalBuildTo(user),
+        getAccessibleAreasForUser(user)
     );
     res.json({ success: true, overrides: filtered });
 });
@@ -3953,6 +3985,20 @@ app.put('/api/admin/build-to/overrides', (req, res) => {
     } else if (body.global && !canUserEditGlobalBuildTo(user)) {
         res.status(403).json({ success: false, error: 'Area access or above is required for global build-to changes.' });
         return;
+    }
+
+    if (body.areas && typeof body.areas === 'object') {
+        const allowedAreas = new Set(getAccessibleAreasForUser(user).map(String));
+        for (const [areaName, areaPatch] of Object.entries(body.areas)) {
+            const area = String(areaName || '').trim();
+            if (!area) continue;
+            if (!canUserEditGlobalBuildTo(user) && !allowedAreas.has(area)) {
+                res.status(403).json({ success: false, error: `Area ${areaName} is outside your scope.` });
+                return;
+            }
+            patch.areas = patch.areas || {};
+            patch.areas[area] = areaPatch;
+        }
     }
 
     if (body.stores && typeof body.stores === 'object') {

@@ -15,7 +15,7 @@ let cache = null;
 let cacheMtime = 0;
 
 function emptyDoc() {
-    return { settings: { stockWarningDays: DEFAULT_STOCK_WARNING_DAYS }, global: {}, stores: {} };
+    return { settings: { stockWarningDays: DEFAULT_STOCK_WARNING_DAYS }, global: {}, areas: {}, stores: {} };
 }
 
 function readOverridesDoc() {
@@ -33,6 +33,7 @@ function readOverridesDoc() {
                         : DEFAULT_STOCK_WARNING_DAYS,
             },
             global: raw.global && typeof raw.global === 'object' ? raw.global : {},
+            areas: raw.areas && typeof raw.areas === 'object' ? raw.areas : {},
             stores: raw.stores && typeof raw.stores === 'object' ? raw.stores : {},
         };
         cacheMtime = stat.mtimeMs;
@@ -52,6 +53,7 @@ function writeOverridesDoc(doc) {
                     : DEFAULT_STOCK_WARNING_DAYS,
         },
         global: doc.global && typeof doc.global === 'object' ? doc.global : {},
+        areas: doc.areas && typeof doc.areas === 'object' ? doc.areas : {},
         stores: doc.stores && typeof doc.stores === 'object' ? doc.stores : {},
     };
     fs.mkdirSync(path.dirname(OVERRIDES_PATH), { recursive: true });
@@ -59,6 +61,20 @@ function writeOverridesDoc(doc) {
     cache = next;
     cacheMtime = fs.statSync(OVERRIDES_PATH).mtimeMs;
     return next;
+}
+
+function normalizeCodeList(raw) {
+    if (raw == null) return [];
+    const list = Array.isArray(raw) ? raw : String(raw).split(/[,;\s]+/);
+    const out = [];
+    const seen = new Set();
+    for (const part of list) {
+        const code = normalizeItemCode(part);
+        if (!code || seen.has(code)) continue;
+        seen.add(code);
+        out.push(code);
+    }
+    return out;
 }
 
 function normalizeRule(raw) {
@@ -84,6 +100,15 @@ function normalizeRule(raw) {
     if (raw.includeDaily === false) rule.includeDaily = false;
     if (raw.stockWarningDays != null && Number.isFinite(Number(raw.stockWarningDays))) {
         rule.stockWarningDays = Number(raw.stockWarningDays);
+    }
+    if (raw.mmxCode != null && String(raw.mmxCode).trim() !== '') {
+        rule.mmxCode = normalizeItemCode(raw.mmxCode);
+    }
+    if (raw.vendorCode != null && String(raw.vendorCode).trim() !== '') {
+        rule.vendorCode = normalizeItemCode(raw.vendorCode);
+    }
+    if (Array.isArray(raw.fallbackCodes)) {
+        rule.fallbackCodes = normalizeCodeList(raw.fallbackCodes);
     }
     return Object.keys(rule).length ? rule : null;
 }
@@ -152,6 +177,9 @@ function mergeItemOverridePatch(existing, itemPatch) {
         'buildToOrderManual',
         'onHandOnly',
         'stockWarningDays',
+        'mmxCode',
+        'vendorCode',
+        'fallbackCodes',
     ];
     for (const key of clearKeys) {
         if (itemPatch?.[key] === null) delete merged[key];
@@ -179,6 +207,22 @@ function adminOverridesForStore(storeNumber) {
         if (rule) registerOverrideKeys(map, itemCode, rule);
     }
 
+    let areaKey = '';
+    if (storeKey) {
+        const { areaForStoreNumber } = require('./itemCodeOverrides');
+        areaKey = areaForStoreNumber(storeKey);
+    }
+    const areaRules = areaKey ? doc.areas?.[areaKey] : null;
+    if (areaRules && typeof areaRules === 'object') {
+        for (const [itemCode, rawRule] of Object.entries(areaRules)) {
+            const rule = normalizeRule(rawRule);
+            if (!rule) continue;
+            const existing = [...map.keys()].find((k) => normalizeItemCode(k) === normalizeItemCode(itemCode));
+            const merged = mergeBuildToRules(existing ? map.get(existing) : null, rule);
+            registerOverrideKeys(map, itemCode, merged);
+        }
+    }
+
     const storeRules = storeKey ? doc.stores?.[storeKey] : null;
     if (storeRules && typeof storeRules === 'object') {
         for (const [itemCode, rawRule] of Object.entries(storeRules)) {
@@ -193,7 +237,39 @@ function adminOverridesForStore(storeNumber) {
     return map;
 }
 
-function patchOverrides({ global = null, stores = null, settings = null }) {
+function adminOverridesForScope(scope = {}) {
+    const doc = readOverridesDoc();
+    const map = new Map();
+    const level = scope.level || 'global';
+    const areaKey = String(scope.area || '').trim();
+    const storeKey = String(scope.store || '').trim();
+
+    const applyLayer = (layer) => {
+        if (!layer || typeof layer !== 'object') return;
+        for (const [itemCode, rawRule] of Object.entries(layer)) {
+            const rule = normalizeRule(rawRule);
+            if (!rule) continue;
+            const existing = [...map.keys()].find((k) => normalizeItemCode(k) === normalizeItemCode(itemCode));
+            const merged = mergeBuildToRules(existing ? map.get(existing) : null, rule);
+            registerOverrideKeys(map, itemCode, merged);
+        }
+    };
+
+    if (level === 'global') {
+        applyLayer(doc.global);
+        return map;
+    }
+    applyLayer(doc.global);
+    if (level === 'area' || level === 'store') {
+        if (areaKey) applyLayer(doc.areas?.[areaKey]);
+    }
+    if (level === 'store' && storeKey) {
+        applyLayer(doc.stores?.[storeKey]);
+    }
+    return map;
+}
+
+function patchOverrides({ global = null, areas = null, stores = null, settings = null }) {
     const doc = readOverridesDoc();
     if (settings && typeof settings === 'object') {
         doc.settings = doc.settings || {};
@@ -213,6 +289,28 @@ function patchOverrides({ global = null, stores = null, settings = null }) {
             const merged = mergeItemOverridePatch(doc.global[itemCode], itemPatch);
             if (merged) doc.global[itemCode] = merged;
             else delete doc.global[itemCode];
+        }
+    }
+    if (areas && typeof areas === 'object') {
+        doc.areas = doc.areas || {};
+        for (const [areaName, patch] of Object.entries(areas)) {
+            const ak = String(areaName || '').trim();
+            if (!ak) continue;
+            if (patch == null) {
+                delete doc.areas[ak];
+                continue;
+            }
+            doc.areas[ak] = doc.areas[ak] || {};
+            for (const [itemCode, itemPatch] of Object.entries(patch)) {
+                if (itemPatch == null) {
+                    delete doc.areas[ak][itemCode];
+                    continue;
+                }
+                const merged = mergeItemOverridePatch(doc.areas[ak][itemCode], itemPatch);
+                if (merged) doc.areas[ak][itemCode] = merged;
+                else delete doc.areas[ak][itemCode];
+            }
+            if (!Object.keys(doc.areas[ak]).length) delete doc.areas[ak];
         }
     }
     if (stores && typeof stores === 'object') {
@@ -247,7 +345,9 @@ module.exports = {
     writeOverridesDoc,
     patchOverrides,
     adminOverridesForStore,
+    adminOverridesForScope,
     normalizeRule,
+    normalizeCodeList,
     effectiveSkipKeyItemCount,
     effectiveSkipStockCount,
     effectiveIncludeDaily,

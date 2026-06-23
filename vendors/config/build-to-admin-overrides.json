@@ -1,4 +1,8 @@
 {
+  "settings": {
+    "stockWarningDays": 5
+  },
   "global": {},
+  "areas": {},
   "stores": {}
 }

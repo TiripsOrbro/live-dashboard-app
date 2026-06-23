@@ -152,7 +152,7 @@ async function enrichStockCountTileState(base, storeNumber) {
         return {
             ...base,
             lowStockCount: summary.count,
-            lowStockItems: summary.items || [],
+            lowStockItems: summary.alerts || summary.items || [],
             stockLevelsChecked: Boolean(summary.checked),
             stockLevelsCheckedAt: summary.checkedAt || null,
             stockLevelsSub,

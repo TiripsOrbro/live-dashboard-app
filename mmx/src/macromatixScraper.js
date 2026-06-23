@@ -17,6 +17,8 @@ const SCHEDULED_ORDERS_URL = 'https://tacobellau.macromatix.net/mms_stores_sched
 const GOTO_OPTS = { waitUntil: 'load', timeout: 45000 };
 const DASHBOARD_TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
 const CONFIRMED_EMPTY_ORDER_CHECKS = Number(process.env.CONFIRMED_EMPTY_ORDER_CHECKS || 2);
+/** Re-read Macromatix forecast row after this many seconds (actual sales still scraped every cycle). */
+const FORECAST_CACHE_SECONDS = Math.max(60, Number(process.env.FORECAST_CACHE_SECONDS || 3600));
 
 /* Per-store state keyed by store number (e.g. "3811"). A multi-store account scrapes each store in turn. */
 const forecastCacheByStore = new Map();
@@ -75,11 +77,18 @@ function storeStateKey(storeNumber) {
 
 function getCachedForecastForToday(storeNumber, dateKey) {
     const entry = forecastCacheByStore.get(storeStateKey(storeNumber));
-    return entry && entry.dateKey === dateKey && Array.isArray(entry.values) ? entry.values : null;
+    if (!entry || entry.dateKey !== dateKey || !Array.isArray(entry.values)) return null;
+    const ageMs = Date.now() - (entry.cachedAt || 0);
+    if (ageMs >= FORECAST_CACHE_SECONDS * 1000) return null;
+    return entry.values;
 }
 
 function setCachedForecast(storeNumber, dateKey, values) {
-    forecastCacheByStore.set(storeStateKey(storeNumber), { dateKey, values });
+    forecastCacheByStore.set(storeStateKey(storeNumber), {
+        dateKey,
+        values,
+        cachedAt: Date.now(),
+    });
 }
 
 function warnIfSuspiciousForecast(storeNumber, forecast) {
@@ -1450,17 +1459,21 @@ async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
         }
     }
 
+    const hadForecastCache = forecastCacheByStore.get(storeStateKey(storeNumber))?.dateKey === todayKey;
     const cachedForecast = getCachedForecastForToday(storeNumber, todayKey);
     const sales = await openDayViewAndReadSales(page, !cachedForecast);
+    let forecastNote = '(fresh)';
     if (cachedForecast) {
         sales.forecast = cachedForecast;
-    } else {
+        forecastNote = '(cached)';
+    } else if (Array.isArray(sales.forecast)) {
         setCachedForecast(storeNumber, todayKey, sales.forecast);
         warnIfSuspiciousForecast(storeNumber, sales.forecast);
+        forecastNote = hadForecastCache ? '(refreshed)' : '(fresh)';
     }
 
     console.log(
-        `[Macromatix] Store ${label} - actual ${sales.actual.length}h, forecast ${sales.forecast.length}h ${cachedForecast ? '(cached)' : '(fresh)'}`
+        `[Macromatix] Store ${label} - actual ${sales.actual.length}h, forecast ${sales.forecast?.length || 0}h ${forecastNote}`
     );
 
     let pendingVendors = [];

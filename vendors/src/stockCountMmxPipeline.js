@@ -285,6 +285,7 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
             page,
             browser,
             skipReportDownload: false,
+            forceReportDownload: reportsOnly,
             cleanupReports: options.cleanupReports !== false,
         });
         const orders = cycle.orders;
@@ -641,7 +642,7 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
                 log.info(
                     `Store ${storeNumber}: refreshing SOH + SOO after count apply (${iseReuse})`
                 );
-            } else if (!preReady.ready) {
+            } else if (!preReady.ready || options.forceReportDownload) {
                 log.info(
                     `Store ${storeNumber}: downloading build-to reports (ISE, stock-on-hand, stock-on-order)`
                 );

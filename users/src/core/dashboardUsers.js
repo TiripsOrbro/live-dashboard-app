@@ -2074,7 +2074,7 @@ function getAccessibleAreasForUser(user) {
         return [...new Set(areas.map(normalizeAreaLabel))];
     }
     if (scope.type === 'area') {
-        return scope.areas;
+        return Array.isArray(scope.areas) ? scope.areas.map(normalizeAreaLabel) : [];
     }
     const storeNums = new Set(getEffectiveStoresForUser(user));
     return [

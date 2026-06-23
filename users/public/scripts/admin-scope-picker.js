@@ -41,7 +41,7 @@
             }
         }
 
-        if (!market && tree.markets.length === 1) market = tree.markets[0];
+        if (!market && (tree.markets || []).length === 1) market = tree.markets[0];
         if (!market && tree.defaults?.market) market = tree.defaults.market;
 
         const areas = market ? tree.areasByMarket[market] || [] : [];
@@ -67,7 +67,16 @@
         const allowed = new Set(
             (storeRows || []).map((row) => String(row.storeNumber || row).trim()).filter(Boolean)
         );
-        if (!tree || !allowed.size) return tree;
+        if (!tree || !allowed.size) {
+            if (!tree) return tree;
+            return {
+                ...tree,
+                markets: tree.markets || [],
+                areasByMarket: tree.areasByMarket || {},
+                storesByArea: tree.storesByArea || {},
+                defaults: tree.defaults || {},
+            };
+        }
 
         const storesByArea = {};
         for (const [area, stores] of Object.entries(tree.storesByArea || {})) {
@@ -99,9 +108,10 @@
     }
 
     function renderBrowseScopeRow(scopePrefix, label, rows, selectedValue, getValue, getLabel) {
+        const list = Array.isArray(rows) ? rows : [];
         const labelFn = getLabel || getValue;
-        const colCount = Math.max(rows.length, 1);
-        const items = rows
+        const colCount = Math.max(list.length, 1);
+        const items = list
             .map((row) => {
                 const value = getValue(row);
                 const active = String(value) === String(selectedValue);
@@ -130,9 +140,10 @@
         const resolved = resolveBrowseScope(tree, scope, scope.storeNumber || '');
         const rows = [];
 
-        if (tree.markets.length >= 1) {
+        const markets = tree.markets || [];
+        if (markets.length >= 1) {
             rows.push(
-                renderBrowseScopeRow(`${scopePrefix}-market`, 'Market', tree.markets, resolved.market, (row) => row)
+                renderBrowseScopeRow(`${scopePrefix}-market`, 'Market', markets, resolved.market, (row) => row)
             );
         }
 

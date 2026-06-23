@@ -200,7 +200,9 @@
             scopeNavigator.setTree(scopeTree);
             scopeNavigator.setScope(browseScope);
         }
-        browseScope = scopeNavigator.getScope();
+        if (scopeNavigator) {
+            browseScope = scopeNavigator.getScope();
+        }
     }
 
     async function fetchProfile() {

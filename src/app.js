@@ -3911,40 +3911,44 @@ app.get('/api/admin/build-to/catalog', (req, res) => {
         res.status(403).json({ success: false, error: 'Admin menu access required.' });
         return;
     }
-    const store = String(req.query.store || '').trim();
-    const area = String(req.query.area || '').trim();
-    const scope = String(req.query.scope || '').trim().toLowerCase();
+    try {
+        const store = String(req.query.store || '').trim();
+        const area = String(req.query.area || '').trim();
+        const scope = String(req.query.scope || '').trim().toLowerCase();
 
-    if (store) {
-        if (!assertStoreAccess(req, res, store)) return;
-        res.json({
-            success: true,
-            ...buildAdminBuildToCatalog({ storeNumber: store, level: 'store' }),
-        });
-        return;
-    }
-    if (area || scope === 'area') {
-        const areaName = area || String(req.query.areaName || '').trim();
-        if (!areaName) {
-            res.status(400).json({ success: false, error: 'Area is required.' });
+        if (store) {
+            if (!assertStoreAccess(req, res, store)) return;
+            res.json({
+                success: true,
+                ...buildAdminBuildToCatalog({ storeNumber: store, level: 'store' }),
+            });
             return;
         }
-        const allowedAreas = new Set(getAccessibleAreasForUser(user).map(String));
-        if (!canUserEditGlobalBuildTo(user) && !allowedAreas.has(areaName)) {
-            res.status(403).json({ success: false, error: 'Area is outside your scope.' });
+        if (area || scope === 'area') {
+            const areaName = area || String(req.query.areaName || '').trim();
+            if (!areaName) {
+                res.status(400).json({ success: false, error: 'Area is required.' });
+                return;
+            }
+            const allowedAreas = new Set((getAccessibleAreasForUser(user) || []).map(String));
+            if (!canUserEditGlobalBuildTo(user) && !allowedAreas.has(areaName)) {
+                res.status(403).json({ success: false, error: 'Area is outside your scope.' });
+                return;
+            }
+            res.json({
+                success: true,
+                ...buildAdminBuildToCatalog({ areaName, level: 'area' }),
+            });
             return;
         }
-        res.json({
-            success: true,
-            ...buildAdminBuildToCatalog({ areaName, level: 'area' }),
-        });
-        return;
+        if (!canUserEditGlobalBuildTo(user)) {
+            res.status(403).json({ success: false, error: 'Area access or above is required for global build-to.' });
+            return;
+        }
+        res.json({ success: true, ...buildAdminBuildToCatalog({ level: 'global' }) });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message || 'Could not load build-to catalog.' });
     }
-    if (!canUserEditGlobalBuildTo(user)) {
-        res.status(403).json({ success: false, error: 'Area access or above is required for global build-to.' });
-        return;
-    }
-    res.json({ success: true, ...buildAdminBuildToCatalog({ level: 'global' }) });
 });
 
 app.get('/api/admin/build-to/overrides', (req, res) => {
@@ -3988,7 +3992,7 @@ app.put('/api/admin/build-to/overrides', (req, res) => {
     }
 
     if (body.areas && typeof body.areas === 'object') {
-        const allowedAreas = new Set(getAccessibleAreasForUser(user).map(String));
+        const allowedAreas = new Set((getAccessibleAreasForUser(user) || []).map(String));
         for (const [areaName, areaPatch] of Object.entries(body.areas)) {
             const area = String(areaName || '').trim();
             if (!area) continue;

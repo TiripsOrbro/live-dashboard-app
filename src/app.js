@@ -336,12 +336,23 @@ const {
     buildHistoryDayEntry,
     historyDateBounds,
     readStoreHistory,
+    finalizeForecastHistoryFromSnapshot,
+    sweepForecastHistoryFromSnapshots,
 } = require('../dashboard/src/forecast/forecastHistoryLedger');
 const {
     readAdjustments,
     writeAdjustments,
     deleteAdjustments,
 } = require('../dashboard/src/forecast/forecastAdjustmentsLedger');
+const {
+    readAutoSubmitSettings,
+    writeAutoSubmitSettings,
+    buildAutoSubmitStatus,
+} = require('../dashboard/src/forecast/forecastAutoSubmitLedger');
+const {
+    buildForecastUpdatesForStores,
+    summarizeForecastUpdates,
+} = require('../dashboard/src/forecast/forecastUpdateLedger');
 const { buildAdminDfscStatus } = require('../tacaudit/audits/Daily Food Safety Check/dfscAdmin');
 const { buildAdminBuildToCatalog, filterOverridesForActor, readOverridesDoc } = require('../vendors/src/buildToAdminCatalog');
 const { patchOverrides } = require('../vendors/src/buildToAdminOverrides');
@@ -1461,10 +1472,22 @@ function syncSssgWeeklyForStore(store, { finalize = false } = {}) {
 
 function capturePostCloseSnapshot(store, options = {}) {
     if (!storeHasMeaningfulData(store)) return;
+    const cfg = getStoreConfig(store.storeNumber) || {};
+    const timeZone =
+        String(store.timeZone || '').trim() ||
+        cfg?.timeZone ||
+        process.env.DASHBOARD_TIME_ZONE ||
+        'Australia/Melbourne';
+    const dateKey =
+        options.historyDateKey ||
+        getStoreDateKey({ storeNumber: store.storeNumber, timeZone }, options.now || new Date());
     const sssgPercent =
         store.sssgPercent != null ? store.sssgPercent : computeSssgForStore(store);
     const snap = {
         capturedAt: new Date().toISOString(),
+        dateKey,
+        openHour: store.openHour,
+        closeHour: store.closeHour,
         actual: [...store.actual],
         forecast: [...store.forecast],
         pendingVendors: Array.isArray(store.pendingVendors) ? [...store.pendingVendors] : [],
@@ -1478,16 +1501,51 @@ function capturePostCloseSnapshot(store, options = {}) {
         console.warn(`[Dashboard] Could not write post-close snapshot for ${store.storeNumber}:`, err.message);
     }
     if (options.recordForecastHistory) {
-        try {
-            recordForecastHistoryFromStore(store, options.historyDateKey, {
-                source: options.historySource || 'live-scrape',
-            });
-        } catch (err) {
-            console.warn(
-                `[Forecast] Could not record hourly history for ${store.storeNumber}:`,
-                err.message
+        tryFinalizeForecastHistory(store, dateKey, snap, options);
+    }
+}
+
+function tryFinalizeForecastHistory(store, dateKey, snapshot, options = {}) {
+    const storeNumber = String(store?.storeNumber || '').trim();
+    const date = String(dateKey || snapshot?.dateKey || '').trim();
+    if (!storeNumber || !date || !snapshot) return null;
+    try {
+        return finalizeForecastHistoryFromSnapshot(storeNumber, date, snapshot, {
+            source: options.historySource || 'live-scrape',
+            force: options.forceFinalize,
+        });
+    } catch (err) {
+        console.warn(`[Forecast] Could not finalize hourly history for ${storeNumber} ${date}:`, err.message);
+        return null;
+    }
+}
+
+function finalizeForecastHistoryBeforeClear(store, listedStore, now = new Date()) {
+    const storeNumber = String(store?.storeNumber || '').trim();
+    if (!storeNumber) return;
+    const snap = store.postCloseSnapshot || loadPostCloseSnapshotFromDisk(storeNumber);
+    if (!snap?.actual?.length) return;
+    const cfg = getStoreConfig(storeNumber) || listedStore || {};
+    const dateKey =
+        snap.dateKey ||
+        getStoreDateKey(
+            { storeNumber, timeZone: cfg.timeZone || store.timeZone },
+            snap.capturedAt ? new Date(snap.capturedAt) : now
+        );
+    tryFinalizeForecastHistory(store, dateKey, snap, { forceFinalize: true, historySource: 'live-scrape' });
+}
+
+function sweepForecastHistoryOnStartup() {
+    try {
+        const storeNumbers = getStoreList().map((s) => String(s.storeNumber)).filter(Boolean);
+        const result = sweepForecastHistoryFromSnapshots(POST_CLOSE_SNAPSHOT_DIR, storeNumbers);
+        if (result.imported > 0) {
+            console.log(
+                `[Forecast] Startup history sweep: backfilled ${result.imported} day(s) for ${result.stores.length} store(s).`
             );
         }
+    } catch (err) {
+        console.warn('[Forecast] Startup history sweep failed:', err.message);
     }
 }
 
@@ -1603,6 +1661,7 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
 
         if (phase === 'idle' && !inPostCloseGrace) {
             if (prev && prev !== 'idle') {
+                finalizeForecastHistoryBeforeClear(store, listedStore, now);
                 clearStoreScrapeCaches(key);
             }
             store.actual = [];
@@ -1625,7 +1684,11 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
                 restorePostCloseSnapshot(store);
             }
             if (storeHasMeaningfulData(store)) {
-                capturePostCloseSnapshot(store, { recordForecastHistory: true });
+                const todayKey = getStoreDateKey(listedStore, now);
+                capturePostCloseSnapshot(store, {
+                    recordForecastHistory: true,
+                    historyDateKey: todayKey,
+                });
             }
             store.scrapePhase = 'retain';
         } else {
@@ -3377,7 +3440,54 @@ app.get('/api/admin/forecast/status', (req, res) => {
     const storeNumbers = getEffectiveStoresForUser(user).filter((s) => !isTestStore(s));
     const payload = buildStatusForStores(storeNumbers);
     const history = buildHistoryCoverageForStores(storeNumbers);
-    res.json({ success: true, ...payload, history });
+    const weekStart = payload.targetWeeks?.[0] || getTargetForecastWeekStarts()[0];
+    const forecastUpdates = buildForecastUpdatesForStores(storeNumbers, weekStart);
+    const updatesSummary = {};
+    for (const store of storeNumbers) {
+        updatesSummary[String(store)] = summarizeForecastUpdates(forecastUpdates[String(store)]);
+    }
+    const autoSubmit = buildAutoSubmitStatus();
+    res.json({
+        success: true,
+        ...payload,
+        history,
+        forecastUpdates,
+        updatesSummary,
+        autoSubmit,
+        canManageAutoSubmit: canUserEditGlobalBuildTo(user),
+    });
+});
+
+app.get('/api/admin/forecast/auto-submit', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    res.json({
+        success: true,
+        ...buildAutoSubmitStatus(),
+        canManage: canUserEditGlobalBuildTo(user),
+    });
+});
+
+app.put('/api/admin/forecast/auto-submit', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    if (!canUserEditGlobalBuildTo(user)) {
+        res.status(403).json({ success: false, error: 'Area Manager access or above required.' });
+        return;
+    }
+    try {
+        const enabled = !(req.body?.enabled === false || req.body?.enabled === 0 || req.body?.enabled === '0');
+        const doc = writeAutoSubmitSettings({ enabled }, user.username);
+        res.json({ success: true, ...buildAutoSubmitStatus(), settings: doc });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not save auto-submit setting.' });
+    }
 });
 
 app.get('/api/admin/forecast/history-grid', (req, res) => {
@@ -7295,6 +7405,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on http://0.0.0.0:${PORT}`);
     void resetStalePipelineCheckpointsOnStartup();
     primeSalesCacheFromDisk();
+    sweepForecastHistoryOnStartup();
     startBackgroundRefresh();
     try {
         ensureCompletedWeekSnapshotsCaptured();

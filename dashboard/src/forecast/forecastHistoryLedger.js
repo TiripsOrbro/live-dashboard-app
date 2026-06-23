@@ -217,10 +217,135 @@ function assessHistoryReadiness(storeNumber, options = {}) {
     };
 }
 
+function shouldOverwriteHistoryDay(existing, newTotal) {
+    if (!existing) return true;
+    if (String(existing.source || '').trim() === 'manual-ui') return false;
+    const oldTotal = Number(existing.actualTotal) || 0;
+    const nextTotal = Number(newTotal) || 0;
+    if (!existing.finalized) return true;
+    return nextTotal > oldTotal + 0.009;
+}
+
+function finalizeForecastHistoryFromSnapshot(storeNumber, dateKey, snapshot, options = {}) {
+    const store = String(storeNumber || '').trim();
+    const date = String(dateKey || snapshot?.dateKey || '').trim();
+    if (!store || !date || !snapshot || !Array.isArray(snapshot.actual)) return null;
+
+    const doc = readStoreHistory(store);
+    const existing = doc.days?.[date];
+    const cfg = getStoreConfig(store) || {};
+    const openHour = Number.isFinite(snapshot.openHour)
+        ? snapshot.openHour
+        : Number.isFinite(existing?.openHour)
+          ? existing.openHour
+          : doc.defaultOpenHour;
+    const closeHour = Number.isFinite(snapshot.closeHour)
+        ? snapshot.closeHour
+        : Number.isFinite(existing?.closeHour)
+          ? existing.closeHour
+          : doc.defaultCloseHour;
+    const normalized = normalizeHourlyEntry(
+        {
+            openHour,
+            closeHour,
+            actual: snapshot.actual,
+            actualRaw: snapshot.actualRaw,
+            actualFormat: snapshot.actualFormat,
+        },
+        doc
+    );
+    if (normalized.actualTotal <= 0 && !options.force) return null;
+    if (!shouldOverwriteHistoryDay(existing, normalized.actualTotal)) return existing;
+
+    return recordForecastHistoryDay(
+        store,
+        date,
+        {
+            openHour: normalized.openHour,
+            closeHour: normalized.closeHour,
+            actual: normalized.actual,
+            actualRaw: normalized.actualRaw,
+            timeZone: cfg.timeZone || doc.timeZone,
+        },
+        {
+            finalized: true,
+            source: options.source || 'live-scrape',
+            force: options.force,
+        }
+    );
+}
+
+function assessHistoryCaptureHealth(storeNumber, options = {}) {
+    const base = assessHistoryReadiness(storeNumber, options);
+    const doc = readStoreHistory(storeNumber);
+    const timeZone = String(doc.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne').trim();
+    const now = options.now || new Date();
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone }).format(now);
+    const yesterday = addDaysToIso(today, -1);
+
+    const finalizedDates = Object.values(doc.days || {})
+        .filter((day) => day.finalized && Number(day.actualTotal) > 0)
+        .map((day) => day.date)
+        .sort();
+
+    const finalizedSet = new Set(finalizedDates);
+    const missingRecentDays = [];
+    for (let i = 0; i < 7; i += 1) {
+        const iso = addDaysToIso(today, -i);
+        if (!finalizedSet.has(iso)) missingRecentDays.push(iso);
+    }
+
+    return {
+        ...base,
+        newestFinalizedDate: finalizedDates[finalizedDates.length - 1] || null,
+        yesterdayCaptured: finalizedSet.has(yesterday),
+        missingRecentDays,
+    };
+}
+
+function sweepForecastHistoryFromSnapshots(snapshotDir, storeNumbers) {
+    if (!snapshotDir || !fs.existsSync(snapshotDir)) return { imported: 0, stores: [] };
+    const allow = storeNumbers ? new Set(storeNumbers.map(String)) : null;
+    let imported = 0;
+    const storesTouched = new Set();
+
+    for (const file of fs.readdirSync(snapshotDir)) {
+        if (!file.endsWith('.json')) continue;
+        const storeNumber = file.replace(/\.json$/i, '');
+        if (allow && !allow.has(storeNumber)) continue;
+        const filePath = path.join(snapshotDir, file);
+        let snap;
+        try {
+            snap = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        } catch {
+            continue;
+        }
+        if (!snap?.actual?.length) continue;
+        const cfg = getStoreConfig(storeNumber) || {};
+        const dateKey =
+            snap.dateKey ||
+            (snap.capturedAt
+                ? getStoreDateKey({ storeNumber, timeZone: cfg.timeZone }, new Date(snap.capturedAt))
+                : null);
+        if (!dateKey) continue;
+        const row = finalizeForecastHistoryFromSnapshot(storeNumber, dateKey, {
+            ...snap,
+            openHour: snap.openHour,
+            closeHour: snap.closeHour,
+        });
+        if (row) {
+            imported += 1;
+            storesTouched.add(storeNumber);
+        }
+    }
+
+    return { imported, stores: [...storesTouched] };
+}
+
 function buildHistoryCoverageForStores(storeNumbers, options = {}) {
     const stores = {};
     for (const storeNumber of storeNumbers || []) {
-        stores[String(storeNumber)] = assessHistoryReadiness(storeNumber, options);
+        stores[String(storeNumber)] = assessHistoryCaptureHealth(storeNumber, options);
     }
     return { historyDays: HISTORY_DAYS, stores };
 }
@@ -645,4 +770,8 @@ module.exports = {
     buildHistoryDayEntry,
     historyDateBounds,
     validateHistoryDate,
+    finalizeForecastHistoryFromSnapshot,
+    assessHistoryCaptureHealth,
+    sweepForecastHistoryFromSnapshots,
+    shouldOverwriteHistoryDay,
 };

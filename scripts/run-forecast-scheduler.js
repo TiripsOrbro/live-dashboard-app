@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 /**
- * Monday 2 AM (Melbourne) - auto-submit forecasts for eligible stores.
+ * Daily 5 AM (Melbourne) - auto-submit forecasts for eligible stores when admin toggle is on.
  *
  * Usage:
  *   npm run forecast-scheduler
  *
  * Enable in .env:
  *   FORECAST_SCHEDULE_ENABLED=1
- *   FORECAST_SCHEDULE_HOUR=2
+ *   FORECAST_SCHEDULE_HOUR=5
  *   FORECAST_SCHEDULE_WINDOW_MIN=30
+ *
+ * Also enable in Admin → Forecast → "Daily auto-submit" (Area Manager+).
  */
 const path = require('path');
 require('../src/loadEnv').loadEnv();
@@ -18,8 +20,9 @@ const { getStoreList } = require('../stores/src/storeList');
 const { storeHasMmxCredentials } = require('../mmx/src/macromatixScraper');
 const { listCredentialCandidates } = require('../stores/src/storeCredentials');
 const { assessHistoryReadiness } = require('../dashboard/src/forecast/forecastHistoryLedger');
-const { buildStatusForStores, getTargetForecastWeekStarts } = require('../dashboard/src/forecast/forecastStatusLedger');
+const { getTargetForecastWeekStarts } = require('../dashboard/src/forecast/forecastStatusLedger');
 const { runCombinedForecastForStores } = require('../dashboard/src/forecast/forecastRunner');
+const { isAutoSubmitEnabled } = require('../dashboard/src/forecast/forecastAutoSubmitLedger');
 const {
     TIME_ZONE,
     melbourneDateKey,
@@ -28,7 +31,7 @@ const {
     isScheduleEnabled,
     isWithinScheduleWindow,
     msUntilNextScheduleRun,
-    hasScheduledRunForWeek,
+    hasScheduledRunForDate,
     markScheduledRun,
     appendScheduleLog,
 } = require('../dashboard/src/forecast/forecastSchedule');
@@ -41,13 +44,11 @@ function sleep(ms) {
 async function listEligibleStores() {
     const targetWeeks = getTargetForecastWeekStarts();
     const weekStart = targetWeeks[0];
-    const status = buildStatusForStores(getStoreList().map((s) => String(s.storeNumber)));
     const eligible = [];
 
     for (const cfg of getStoreList()) {
         const store = String(cfg.storeNumber || '').trim();
         if (!store) continue;
-        if (status.stores?.[store]?.[weekStart]?.completed) continue;
         if (!storeHasMmxCredentials(store)) continue;
 
         const readiness = assessHistoryReadiness(store);
@@ -55,15 +56,30 @@ async function listEligibleStores() {
 
         const lifelenzCandidates = listCredentialCandidates(store, 'lifelenz');
         const lifelenzCredentials = lifelenzCandidates[0];
-        if (!lifelenzCredentials?.email || !lifelenzCredentials?.password) continue;
+        const lifelenzByStore =
+            lifelenzCredentials?.email && lifelenzCredentials?.password
+                ? { [store]: { email: lifelenzCredentials.email, password: lifelenzCredentials.password } }
+                : null;
 
-        eligible.push({ storeNumber: store, lifelenzCredentials });
+        eligible.push({ storeNumber: store, lifelenzByStore });
     }
     return { weekStart, eligible };
 }
 
 async function runScheduledForecastJob() {
     const runDateKey = melbourneDateKey();
+
+    if (!isAutoSubmitEnabled()) {
+        console.log('[ForecastScheduler] Admin auto-submit toggle is off - skipping.');
+        appendScheduleLog(runDateKey, { action: 'skip', reason: 'admin toggle off' });
+        return { skipped: true, reason: 'toggle-off' };
+    }
+
+    if (hasScheduledRunForDate(runDateKey)) {
+        console.log(`[ForecastScheduler] Already ran today (${runDateKey}) - skipping.`);
+        return { skipped: true, reason: 'already-ran' };
+    }
+
     const { weekStart, eligible } = await listEligibleStores();
 
     if (!eligible.length) {
@@ -72,18 +88,10 @@ async function runScheduledForecastJob() {
         return { skipped: true, weekStart, stores: [] };
     }
 
-    if (hasScheduledRunForWeek(runDateKey, weekStart)) {
-        console.log(`[ForecastScheduler] Already ran today for week ${weekStart} - skipping.`);
-        return { skipped: true, weekStart, stores: [] };
-    }
-
     const storeNumbers = eligible.map((row) => row.storeNumber);
-    const lifelenzByStore = Object.fromEntries(
-        eligible.map((row) => [
-            row.storeNumber,
-            { email: row.lifelenzCredentials.email, password: row.lifelenzCredentials.password },
-        ])
-    );
+    const lifelenzByStore = Object.assign({}, ...eligible.map((row) => row.lifelenzByStore || {}));
+    const lifelenzCredentials =
+        Object.keys(lifelenzByStore).length > 0 ? { byStore: lifelenzByStore } : null;
 
     console.log(`[ForecastScheduler] Running ${storeNumbers.length} store(s) for week ${weekStart}…`);
 
@@ -101,9 +109,9 @@ async function runScheduledForecastJob() {
                     break;
                 }
                 const row = await runCombinedForecastForStores([storeNumber], {
-                    completedBy: 'scheduler',
+                    completedBy: 'auto',
                     headless: true,
-                    lifelenzCredentials: { byStore: lifelenzByStore },
+                    lifelenzCredentials,
                     onProgress: (payload) => {
                         console.log(`[ForecastScheduler] [${storeNumber}]`, JSON.stringify(payload));
                     },
@@ -136,7 +144,7 @@ async function main() {
     const hour = scheduleHour();
     const windowMin = scheduleWindowMinutes();
     console.log(
-        `[ForecastScheduler] Started - ${TIME_ZONE}, Monday ~${hour}:00 (window ${windowMin} min), week target +14d`
+        `[ForecastScheduler] Started - ${TIME_ZONE}, daily ~${hour}:00 (window ${windowMin} min), week target +14d`
     );
 
     if (!isScheduleEnabled()) {
@@ -163,7 +171,7 @@ async function main() {
 
         const wait = msUntilNextScheduleRun(now);
         const mins = Math.round(wait / 60000);
-        console.log(`[ForecastScheduler] Next check in ~${mins} min (target Mon ${hour}:00 ${TIME_ZONE})`);
+        console.log(`[ForecastScheduler] Next check in ~${mins} min (target daily ${hour}:00 ${TIME_ZONE})`);
         await sleep(Math.min(wait, 10 * 60 * 1000));
     }
 }

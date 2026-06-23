@@ -1483,6 +1483,45 @@ html.mic-dark-mode .admin-buildto-close-btn:hover {
     cursor: pointer;
 }
 
+.admin-forecast-auto-submit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    user-select: none;
+}
+
+.admin-forecast-update-badge {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: rgba(0, 0, 0, 0.55);
+}
+
+.admin-forecast-update-badge--auto {
+    color: #15803d;
+}
+
+.admin-forecast-update-badge--user {
+    color: #1d4ed8;
+}
+
+html.mic-dark-mode .admin-forecast-update-badge {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+html.mic-dark-mode .admin-forecast-update-badge--auto {
+    color: #86efac;
+}
+
+html.mic-dark-mode .admin-forecast-update-badge--user {
+    color: #93c5fd;
+}
+
 .admin-forecast-manual-history-total {
     margin: 0.5rem 0 0;
     font-size: 0.95rem;

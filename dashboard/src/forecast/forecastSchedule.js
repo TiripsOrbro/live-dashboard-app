@@ -28,8 +28,8 @@ function localHourMinute(date = new Date()) {
 }
 
 function scheduleHour() {
-    const h = Number(process.env.FORECAST_SCHEDULE_HOUR ?? 2);
-    return Number.isFinite(h) && h >= 0 && h <= 23 ? Math.floor(h) : 2;
+    const h = Number(process.env.FORECAST_SCHEDULE_HOUR ?? 5);
+    return Number.isFinite(h) && h >= 0 && h <= 23 ? Math.floor(h) : 5;
 }
 
 function scheduleWindowMinutes() {
@@ -37,29 +37,36 @@ function scheduleWindowMinutes() {
     return Number.isFinite(m) && m > 0 ? Math.floor(m) : 30;
 }
 
-function scheduleWeekday() {
-    return String(process.env.FORECAST_SCHEDULE_WEEKDAY || 'Mon').trim();
-}
-
 function isScheduleEnabled() {
     return /^(1|true|yes|on)$/i.test(String(process.env.FORECAST_SCHEDULE_ENABLED ?? '').trim());
 }
 
-function isScheduleWeekday(date = new Date()) {
-    const want = scheduleWeekday();
-    const { weekday } = localHourMinute(date);
-    return String(weekday || '').toLowerCase().startsWith(String(want).slice(0, 3).toLowerCase());
-}
-
 function isWithinScheduleWindow(date = new Date()) {
-    if (!isScheduleWeekday(date)) return false;
     const { hour, minute } = localHourMinute(date);
     const start = scheduleHour();
     return hour === start && minute < scheduleWindowMinutes();
 }
 
+function nextScheduleRunDate(date = new Date()) {
+    const start = scheduleHour();
+    const { hour, minute } = localHourMinute(date);
+    const minuteOfDay = hour * 60 + minute;
+    const targetMinute = start * 60;
+    const run = new Date(date.getTime());
+    if (minuteOfDay < targetMinute) {
+        run.setMinutes(0, 0, 0);
+        run.setHours(start, 0, 0, 0);
+        return run;
+    }
+    run.setDate(run.getDate() + 1);
+    run.setHours(start, 0, 0, 0);
+    run.setMinutes(0, 0, 0);
+    return run;
+}
+
 function msUntilNextScheduleRun(date = new Date()) {
-    return 10 * 60 * 1000;
+    const next = nextScheduleRunDate(date);
+    return Math.max(60000, next.getTime() - date.getTime());
 }
 
 function readState() {
@@ -76,19 +83,25 @@ function writeState(state) {
     fs.writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
 }
 
+function hasScheduledRunForDate(runDateKey) {
+    const state = readState();
+    return Boolean(state.runs?.[String(runDateKey || '').trim()]);
+}
+
+/** @deprecated Use hasScheduledRunForDate */
 function hasScheduledRunForWeek(runDateKey, weekStart) {
     const state = readState();
     const key = `${runDateKey}:${weekStart}`;
-    return Boolean(state.runs?.[key]);
+    return Boolean(state.runs?.[key] || state.runs?.[String(runDateKey || '').trim()]);
 }
 
 function markScheduledRun(runDateKey, weekStart, meta = {}) {
     const state = readState();
     state.runs = state.runs || {};
-    const key = `${runDateKey}:${weekStart}`;
-    state.runs[key] = {
-        runDateKey,
-        weekStart,
+    const dateKey = String(runDateKey || '').trim();
+    state.runs[dateKey] = {
+        runDateKey: dateKey,
+        weekStart: weekStart || meta.weekStart || null,
         completedAt: new Date().toISOString(),
         ...meta,
     };
@@ -118,11 +131,11 @@ module.exports = {
     melbourneDateKey,
     scheduleHour,
     scheduleWindowMinutes,
-    scheduleWeekday,
     isScheduleEnabled,
-    isScheduleWeekday,
     isWithinScheduleWindow,
     msUntilNextScheduleRun,
+    nextScheduleRunDate,
+    hasScheduledRunForDate,
     hasScheduledRunForWeek,
     markScheduledRun,
     appendScheduleLog,

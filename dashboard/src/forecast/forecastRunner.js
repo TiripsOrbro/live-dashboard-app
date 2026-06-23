@@ -6,7 +6,29 @@ const {
 } = require('./forecastStatusLedger');
 const { saveManualEntryPacksForRun } = require('./forecastManualPack');
 const { loadAdjustmentRules } = require('./forecastAdjustmentsLedger');
+const { recordForecastDayUpdate } = require('./forecastUpdateLedger');
 const { getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../../../stores/src/storeList');
+
+function wrapForecastProgress(options = {}, context = {}) {
+    const weekStart = context.weekStart || getTargetForecastWeekStarts()[0];
+    const storeNumber = context.storeNumber;
+    const completedBy = context.completedBy || options.completedBy || null;
+    const userOnProgress = options.onProgress;
+    if (typeof userOnProgress !== 'function') return options.onProgress;
+
+    return (payload) => {
+        const type = String(payload?.type || '').trim();
+        if ((type === 'day-done' || type === 'day-complete') && payload.date && storeNumber) {
+            const platform = String(payload.platform || 'mmx').trim().toLowerCase();
+            try {
+                recordForecastDayUpdate(weekStart, storeNumber, payload.date, platform, { updatedBy: completedBy });
+            } catch (err) {
+                console.warn(`[Forecast] Could not record day update for ${storeNumber} ${payload.date}:`, err.message);
+            }
+        }
+        userOnProgress(payload);
+    };
+}
 
 /**
  * Trim highest and lowest weekday totals from up to 5 weeks, average the remaining three.
@@ -362,7 +384,14 @@ async function runForecastForStore(storeNumber, options = {}) {
         });
     }
 
-    const writeResult = await writeForecastPlanToMmx(store, plan, options);
+    const writeResult = await writeForecastPlanToMmx(store, plan, {
+        ...options,
+        onProgress: wrapForecastProgress(options, {
+            weekStart: targetWeeks[0],
+            storeNumber: store,
+            completedBy: options.completedBy,
+        }),
+    });
     return {
         storeNumber: store,
         storeName: cfg.storeName || store,
@@ -476,11 +505,21 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
                 }
                 const applied = await writeForecastPlanOnPage(page, store, preview.plan, accessibleStores, {
                     headless: options.headless,
-                    onProgress: (payload) => {
-                        if (typeof options.onProgress === 'function') {
-                            options.onProgress({ platform: 'lifelenz', storeNumber: store, ...payload });
+                    onProgress: wrapForecastProgress(
+                        {
+                            ...options,
+                            onProgress: (payload) => {
+                                if (typeof options.onProgress === 'function') {
+                                    options.onProgress({ platform: 'lifelenz', storeNumber: store, ...payload });
+                                }
+                            },
+                        },
+                        {
+                            weekStart: targetWeeks[0],
+                            storeNumber: store,
+                            completedBy: options.completedBy,
                         }
-                    },
+                    ),
                 });
                 if (options.markPlatformComplete !== false) {
                     for (const weekStart of targetWeeks) {

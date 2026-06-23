@@ -95,6 +95,10 @@
                     <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-submit-all">Submit all in scope</button>
                     <button type="button" class="mic-settings-btn" id="admin-forecast-setup-lifelenz">Setup LifeLenz</button>
                     <span class="admin-forecast-lifelenz-status" id="admin-forecast-lifelenz-status">LifeLenz: checking…</span>
+                    <label class="admin-forecast-auto-submit" id="admin-forecast-auto-submit-wrap" hidden>
+                        <input type="checkbox" id="admin-forecast-auto-submit-toggle" />
+                        <span>Daily 5AM auto-submit</span>
+                    </label>
                     <span id="admin-forecast-busy" hidden>MMX busy…</span>
                 </div>
                 <div id="admin-forecast-body"></div>
@@ -113,6 +117,9 @@
         });
         root.querySelector('#admin-forecast-setup-lifelenz')?.addEventListener('click', () => {
             void openLifeLenzSetup();
+        });
+        root.querySelector('#admin-forecast-auto-submit-toggle')?.addEventListener('change', (event) => {
+            void saveAutoSubmitToggle(event.target.checked);
         });
         root.querySelector('#admin-forecast-area-tabs')?.addEventListener('click', (event) => {
             const tab = event.target.closest('[data-forecast-area]');
@@ -1267,6 +1274,18 @@
             state.complete = true;
             state.results = payload;
         }
+        void (async () => {
+            const surface = getRoot();
+            if (!surface) return;
+            try {
+                statusPayload = await fetchStatus();
+                renderAreaTabs(surface);
+                renderAutoSubmitControl(surface, statusPayload);
+                renderTable(surface, statusPayload);
+            } catch (_) {
+                /* ignore refresh errors after submit */
+            }
+        })();
     }
 
     function openProgress(storeNumbers, previewSnapshot) {
@@ -1553,16 +1572,74 @@
         return (grid?.dayTotals || []).reduce((sum, value) => sum + (Number(value) || 0), 0);
     }
 
-    function renderForecastGrid(container, grid, { emptyMessage, mode = 'history' } = {}) {
+    function formatShortDateTime(iso) {
+        if (!iso) return '-';
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return String(iso);
+        const date = formatShortDate(
+            `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        );
+        const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        return `${date} ${time}`;
+    }
+
+    function formatUpdateBadge(day) {
+        if (!day?.updatedAt) return '';
+        const source = day.source === 'auto' ? 'Auto' : 'User';
+        const who = day.source === 'auto' ? '' : day.updatedBy ? ` · ${day.updatedBy}` : '';
+        return `<span class="admin-forecast-update-badge admin-forecast-update-badge--${escapeHtml(day.source || 'user')}">${escapeHtml(source)}${escapeHtml(who)} · ${escapeHtml(formatShortDateTime(day.updatedAt))}</span>`;
+    }
+
+    function renderAutoSubmitControl(root, payload) {
+        const wrap = root.querySelector('#admin-forecast-auto-submit-wrap');
+        const toggle = root.querySelector('#admin-forecast-auto-submit-toggle');
+        if (!wrap || !toggle) return;
+        if (!payload?.canManageAutoSubmit) {
+            wrap.hidden = true;
+            return;
+        }
+        wrap.hidden = false;
+        toggle.checked = Boolean(payload?.autoSubmit?.enabled);
+        wrap.title =
+            'Runs daily at 5:00 AM Melbourne. Overwrites MMX/LifeLenz with the latest calculated forecast when enabled.';
+    }
+
+    async function saveAutoSubmitToggle(enabled) {
+        const root = getRoot();
+        if (!root) return;
+        root.querySelector('#admin-forecast-error').textContent = '';
+        try {
+            const res = await fetch('/api/admin/forecast/auto-submit', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ enabled }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) throw new Error(data.error || 'Could not save auto-submit setting.');
+            if (statusPayload) {
+                statusPayload.autoSubmit = data;
+                statusPayload.canManageAutoSubmit = true;
+            }
+            renderAutoSubmitControl(root, statusPayload || data);
+        } catch (error) {
+            root.querySelector('#admin-forecast-error').textContent = error.message;
+            renderAutoSubmitControl(root, statusPayload || { canManageAutoSubmit: true, autoSubmit: { enabled: !enabled } });
+        }
+    }
+
+    function renderForecastGrid(container, grid, options = {}) {
+        const { emptyMessage, mode = 'history', forecastDayUpdates = {} } = options;
         if (!grid?.columns?.length) {
             container.innerHTML = `<p>${escapeHtml(emptyMessage || 'No forecast data.')}</p>`;
             return;
         }
         const head = grid.columns
-            .map(
-                (col) =>
-                    `<th><span class="admin-history-col-label">${escapeHtml(col.weekdayLabel || col.label || '')}</span><span class="admin-accounts-meta">${escapeHtml(col.date || '-')}</span></th>`
-            )
+            .map((col) => {
+                const badge =
+                    mode === 'preview' && col.date ? formatUpdateBadge(forecastDayUpdates[col.date]) : '';
+                return `<th><span class="admin-history-col-label">${escapeHtml(col.weekdayLabel || col.label || '')}</span><span class="admin-accounts-meta">${escapeHtml(col.date || '-')}</span>${badge}</th>`;
+            })
             .join('');
         const rows = (grid.rows || [])
             .map((row) => {
@@ -1848,10 +1925,13 @@
             tabs.innerHTML = '';
         }
         renderPreviewAdjustmentsPanel(root, preview);
+        const weekStart = preview.targetWeeks?.[0] || statusPayload?.targetWeeks?.[0] || '';
+        const forecastDayUpdates = statusPayload?.forecastUpdates?.[storeNumber]?.days || {};
         renderForecastGrid(body, preview.grid, {
             mode: 'preview',
             baseWeekTotal: preview.baseWeekTotal,
             adjustmentDelta: preview.adjustmentDelta,
+            forecastDayUpdates,
         });
     }
 
@@ -2003,6 +2083,7 @@
         const body = root.querySelector('#admin-forecast-body');
         const weeks = payload.targetWeeks || [];
         const history = payload.history?.stores || {};
+        const updatesSummary = payload.updatesSummary || {};
         const stores = storesInActiveArea(
             Object.keys(payload.stores || {}).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
         );
@@ -2014,15 +2095,24 @@
         const rows = stores
             .map((storeNumber) => {
                 const hist = history[storeNumber] || {};
+                const captureNote = hist.newestFinalizedDate
+                    ? ` · last ${formatShortDate(hist.newestFinalizedDate)}`
+                    : hist.yesterdayCaptured === false
+                      ? ' · yesterday missing'
+                      : '';
                 const histLabel = hist.ready
-                    ? `History ${hist.daysRecorded}/${hist.daysRequired}d`
-                    : `History ${hist.daysRecorded}/${hist.daysRequired}d - need ${escapeHtml((hist.weekdayGaps || []).join(', ') || 'more days')}`;
+                    ? `History ${hist.daysRecorded}/${hist.daysRequired}d${captureNote}`
+                    : `History ${hist.daysRecorded}/${hist.daysRequired}d${captureNote} - need ${escapeHtml((hist.weekdayGaps || []).join(', ') || 'more days')}`;
                 const runDisabled = hist.ready ? '' : ' disabled title="Import or wait for 5 weeks of hourly history"';
                 const weekCells = weeks
                     .map((weekStart) => {
                         const row = payload.stores[storeNumber]?.[weekStart] || {};
+                        const upd = updatesSummary[storeNumber];
+                        const updNote = upd?.lastUpdatedAt
+                            ? `<span class="admin-accounts-meta">${upd.daysUpdated || 0}/7 · ${upd.lastSource === 'auto' ? 'Auto' : 'User'} ${escapeHtml(formatShortDateTime(upd.lastUpdatedAt))}</span>`
+                            : '';
                         if (row.completed) {
-                            return `<td>${dot(true)} Done</td>`;
+                            return `<td>${dot(true)} Done${updNote}</td>`;
                         }
                         if (row.mmxCompleted && !row.lifelenzCompleted) {
                             return `<td>${dot(false, true)} MMX only</td>`;
@@ -2434,6 +2524,7 @@
             sessionStorage.setItem(FORECAST_AREA_STORAGE_KEY, activeArea);
         }
         renderAreaTabs(root);
+        renderAutoSubmitControl(root, statusPayload);
         renderTable(root, statusPayload);
     }
 

@@ -588,6 +588,17 @@ html.page-scroll.mic-overview-page #app {
     grid-column: 2 / -1;
 }
 
+.mic-grid--admin .mic-grid-equal-row > .mic-tile.mic-tile--stock-levels {
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: calc(18px * var(--dashboard-scale)) 0 0;
+    overflow: hidden;
+}
+
+.mic-grid--admin .mic-grid-equal-row > .mic-tile.mic-tile--stock-levels .mic-tile-body {
+    justify-content: flex-start;
+}
+
 .mic-grid--admin .mic-grid-equal-row > .mic-tile {
     box-sizing: border-box;
     min-height: 0;
@@ -2785,12 +2796,16 @@ html.mic-dark-mode .mic-audit-stat--complete {
 
 .mic-tile--stock-levels {
     justify-content: flex-start;
-    gap: calc(8px * var(--dashboard-scale));
-    padding-bottom: calc(14px * var(--dashboard-scale));
+    align-items: stretch;
+    gap: 0;
+    padding: calc(18px * var(--dashboard-scale)) 0 0;
 }
 
 .mic-tile--stock-levels .mic-tile-body {
     flex: 1 1 auto;
+    padding-left: calc(14px * var(--dashboard-scale));
+    padding-right: calc(14px * var(--dashboard-scale));
+    padding-bottom: calc(8px * var(--dashboard-scale));
 }
 
 .mic-tile--stock-levels.mic-tile--has-stock-list {
@@ -2867,7 +2882,9 @@ html.mic-dark-mode .mic-audit-stat--complete {
 .mic-tile-stock-view {
     display: block;
     width: 100%;
-    margin-top: 2px;
+    box-sizing: border-box;
+    padding: 0 calc(14px * var(--dashboard-scale)) calc(6px * var(--dashboard-scale));
+    margin-top: 0;
     flex: 0 0 auto;
     font-size: 0.82rem;
     font-weight: 600;
@@ -2905,13 +2922,21 @@ html.mic-dark-mode .mic-audit-stat--complete {
 .mic-tile-stock-check-tabs {
     width: 100%;
     flex: 0 0 auto;
-    margin-top: calc(4px * var(--dashboard-scale));
+    margin-top: auto;
+    border-bottom: none;
 }
 
 .mic-tile-stock-check-tabs .app-tab {
+    flex: 1 1 0;
     font-size: calc(0.72rem * var(--dashboard-scale));
-    --app-tab-pad-y: calc(6px * var(--dashboard-scale));
-    --app-tab-pad-x: calc(4px * var(--dashboard-scale));
+    --app-tab-pad-y: calc(8px * var(--dashboard-scale));
+    --app-tab-pad-x: calc(6px * var(--dashboard-scale));
+    border-bottom: var(--app-tab-border);
+    margin-bottom: 0;
+}
+
+.mic-tile-stock-check-tabs .app-tab.is-active {
+    border-bottom: var(--app-tab-active-bottom);
 }
 
 .mic-tile-stock-check-tabs .app-tab:disabled {

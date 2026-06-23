@@ -1795,8 +1795,8 @@ async function refreshMmxPipelineUi() {
     if (!result.ok) return;
     const status = result.status;
 
-    if (pipelineOrdersActuallyComplete(status)) {
-                finishMmxOrdersSuccess(pipelineSuccessPayload(status));
+    if (pipelineOrdersActuallyComplete(status) && (readMmxUiWatch() || status.workLive)) {
+        finishMmxOrdersSuccess(pipelineSuccessPayload(status));
         return;
     }
 
@@ -1836,6 +1836,7 @@ async function tryResumePipelineOnLoad() {
     const result = await fetchPipelineStatusOrNull();
     let uiWatch = readMmxUiWatch();
     const status = result.ok ? result.status : null;
+    const hadActiveWatch = Boolean(uiWatch);
 
     if (status && !status.workLive && !status.inProgress) {
         clearMmxUiWatch();
@@ -1854,8 +1855,11 @@ async function tryResumePipelineOnLoad() {
     }
 
     if (status && pipelineOrdersActuallyComplete(status)) {
-                finishMmxOrdersSuccess(pipelineSuccessPayload(status));
-        return true;
+        if (hadActiveWatch || status.workLive) {
+            finishMmxOrdersSuccess(pipelineSuccessPayload(status));
+            return true;
+        }
+        return false;
     }
 
     if (status) {
@@ -1943,7 +1947,7 @@ async function sendToMmx(options = {}) {
                 mmxSessionId = '';
             }
             await resubmitAllVendorsForMmx();
-        } else {
+        } else if (!skipKeyItemCount) {
             const saved = await saveAndSubmitVendor();
             if (!saved || !canShowSendToMmx()) {
                 throw new Error('Enter at least one count before sending to Macromatix.');
@@ -1957,9 +1961,15 @@ async function sendToMmx(options = {}) {
 
     saving = true;
     mmxPipelineManualOnly = skipKeyItemCount;
-    beginMmxProcessing('Saving your counts…');
-    mmxProcessingStepId = 'save';
-    pushMmxActivity('Saving your counts');
+    if (skipKeyItemCount) {
+        beginMmxProcessing('Skipping Key Item Count - downloading reports…');
+        mmxProcessingStepId = 'reports';
+        pushMmxActivity('Skipping Key Item Count - ordering from reports');
+    } else {
+        beginMmxProcessing('Saving your counts…');
+        mmxProcessingStepId = 'save';
+        pushMmxActivity('Saving your counts');
+    }
     setStatus('', '');
     render();
     try {

@@ -308,6 +308,26 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
 
 async function resolveToSend(storeNumber, vendorSlug, options = {}) {
     const dateKey = options.dateKey || melbourneDateKey();
+
+    if (options.skipKeyItemCount) {
+        const slugs = isCombinedStockCountSlug(vendorSlug)
+            ? vendorSlugsFromPendingLabels(options.pendingVendorLabels)
+            : vendorSlug && !isCombinedStockCountSlug(vendorSlug)
+              ? [vendorSlug]
+              : [];
+        const toSend = [];
+        for (const slug of slugs) {
+            if (!slug || isCombinedStockCountSlug(slug)) continue;
+            const catalog = getVendorCatalog(slug, { forStockCount: true, storeNumber });
+            if (!catalog) continue;
+            toSend.push({ slug, label: catalog.label });
+        }
+        if (!toSend.length) {
+            throw new Error('No vendors configured for stock count at this store.');
+        }
+        return { dateKey, toSend };
+    }
+
     const queueStatus = await getStockCountQueueStatus(storeNumber, {
         dateKey,
         vendorSlug,

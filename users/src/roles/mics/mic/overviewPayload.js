@@ -20,7 +20,7 @@ function normalizeAreaKey(value) {
 }
 
 function filterAreaGroupsForUser(areaGroups, user) {
-    const allowed = new Set(getAccessibleAreasForUser(user).map(normalizeAreaLabel));
+    const allowed = new Set((getAccessibleAreasForUser(user) || []).map(normalizeAreaLabel));
     if (!allowed.size) return areaGroups || [];
 
     const byKey = new Map();
@@ -95,8 +95,8 @@ async function buildStoreOverviewPayload(user, deps) {
         ok: true,
         overviewScope: 'store',
         areaName: String(storeCfg.area || '').trim(),
-        accessibleAreas: getAccessibleAreasForUser(user),
-        accessibleMarkets: getUserAccessScope(user).markets,
+        accessibleAreas: getAccessibleAreasForUser(user) || [],
+        accessibleMarkets: getUserAccessScope(user).markets || [],
         ...buildMicPayload(store, storeSlice, { canAccessDfsc: canUserAccessDfsc(user) }),
         stockCount: await buildStockCountTileStateAsync(store, storeSlice),
         dailyStockCount: await buildDailyStockCountTileStateAsync(store),
@@ -109,10 +109,11 @@ async function buildStoreOverviewPayload(user, deps) {
 async function buildMultiStoreOverviewPayload(user, deps) {
     const overviewScope = getOverviewScope(user);
     const { salesPayload, stores, loadAuditStateMapForStores, getAuditSchedule, getSalesUpdatedAt } = deps;
+    const storeRows = Array.isArray(stores) ? stores : [];
 
-    const areaGroups = filterAreaGroupsForUser(buildAreaGroupsFromStoreRows(stores), user);
+    const areaGroups = filterAreaGroupsForUser(buildAreaGroupsFromStoreRows(storeRows), user);
     const auditsSchedule = getAuditSchedule();
-    const auditStateByStore = await loadAuditStateMapForStores(stores.map((s) => s.storeNumber));
+    const auditStateByStore = await loadAuditStateMapForStores(storeRows.map((s) => s.storeNumber));
 
     const adminPayload = await buildAdminOverviewPayload(salesPayload, areaGroups, {
         auditStateByStore,
@@ -123,8 +124,8 @@ async function buildMultiStoreOverviewPayload(user, deps) {
     return {
         ok: true,
         overviewScope,
-        accessibleAreas: getAccessibleAreasForUser(user),
-        accessibleMarkets: getUserAccessScope(user).markets,
+        accessibleAreas: getAccessibleAreasForUser(user) || [],
+        accessibleMarkets: getUserAccessScope(user).markets || [],
         salesUpdatedAt: getSalesUpdatedAt(),
         ...adminPayload,
     };
@@ -132,7 +133,8 @@ async function buildMultiStoreOverviewPayload(user, deps) {
 
 async function buildOverviewPayload(user, deps) {
     const scope = getOverviewScope(user);
-    if (scope === 'store') {
+    const store = String(deps?.store || '').trim();
+    if (scope === 'store' || store) {
         return buildStoreOverviewPayload(user, deps);
     }
     return buildMultiStoreOverviewPayload(user, deps);

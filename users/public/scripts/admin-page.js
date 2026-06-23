@@ -5,42 +5,42 @@
             label: 'Create account',
             visible: (p) => p.canAccessAdminMenu,
             mount: (host, opts) => global.AdminAccounts?.mountCreate?.(host, opts),
-            unmount: () => global.AdminAccounts?.unmount?.(),
+            activate: () => global.AdminAccounts?.setInlineHost?.(sectionPanels.get('accounts-create')?.host, 'create'),
         },
         {
             id: 'accounts-existing',
             label: 'Existing accounts',
             visible: (p) => p.canAccessAdminMenu,
             mount: (host, opts) => global.AdminAccounts?.mountExisting?.(host, opts),
-            unmount: () => global.AdminAccounts?.unmount?.(),
+            activate: () => global.AdminAccounts?.setInlineHost?.(sectionPanels.get('accounts-existing')?.host, 'existing'),
         },
         {
             id: 'store-logins',
             label: 'Store logins',
             visible: (p) => p.canManageStoreLogins,
             mount: (host, opts) => global.AdminStoreLogins?.mount?.(host, opts),
-            unmount: () => global.AdminStoreLogins?.unmount?.(),
+            activate: () => global.AdminStoreLogins?.setInlineHost?.(sectionPanels.get('store-logins')?.host),
         },
         {
             id: 'smg-nsf',
             label: 'Setup SMG/NSF',
             visible: (p) => p.canManageSmgNsfSettings,
             mount: (host) => global.AdminSmgNsf?.mount?.(host),
-            unmount: () => global.AdminSmgNsf?.unmount?.(),
+            activate: () => global.AdminSmgNsf?.setInlineHost?.(sectionPanels.get('smg-nsf')?.host),
         },
         {
             id: 'forecast',
             label: 'Forecast tool',
             visible: (p) => p.canAccessAdminMenu,
             mount: (host, opts) => global.AdminForecast?.mount?.(host, opts),
-            unmount: () => global.AdminForecast?.unmount?.(),
+            activate: () => global.AdminForecast?.setInlineHost?.(sectionPanels.get('forecast')?.host),
         },
         {
             id: 'build-to',
             label: 'Build to adjustments',
             visible: (p) => p.canAccessAdminMenu,
             mount: (host, opts) => global.AdminBuildTo?.mount?.(host, opts),
-            unmount: () => global.AdminBuildTo?.unmount?.(),
+            activate: () => global.AdminBuildTo?.setInlineHost?.(sectionPanels.get('build-to')?.host),
         },
         {
             id: 'feature-requests',
@@ -52,7 +52,9 @@
 
     let profile = null;
     let activeSection = '';
-    let mountedSection = '';
+    /** @type {Map<string, { host: HTMLElement, mounted: boolean }>} */
+    const sectionPanels = new Map();
+    let preloadPromise = null;
 
     function escapeAttr(value) {
         return String(value ?? '')
@@ -103,11 +105,59 @@
         });
     }
 
-    function unmountCurrent() {
-        if (!mountedSection) return;
-        const section = SECTIONS.find((row) => row.id === mountedSection);
-        section?.unmount?.();
-        mountedSection = '';
+    function contentHost() {
+        return document.getElementById('admin-settings-content');
+    }
+
+    async function ensureSectionMounted(section) {
+        if (section.external || sectionPanels.get(section.id)?.mounted) return;
+
+        const host = contentHost();
+        if (!host) return;
+
+        let panel = sectionPanels.get(section.id)?.host;
+        if (!panel) {
+            panel = document.createElement('div');
+            panel.className = 'admin-settings-section-panel';
+            panel.dataset.adminSection = section.id;
+            panel.hidden = true;
+            host.appendChild(panel);
+            sectionPanels.set(section.id, { host: panel, mounted: false });
+        }
+
+        try {
+            await section.mount(panel, mountOptions());
+            sectionPanels.set(section.id, { host: panel, mounted: true });
+        } catch (error) {
+            panel.innerHTML = `<p class="admin-modal-error" role="alert">${escapeAttr(error.message || 'Could not load section.')}</p>`;
+            sectionPanels.set(section.id, { host: panel, mounted: false });
+        }
+    }
+
+    async function preloadSections(sections) {
+        const internal = sections.filter((section) => !section.external);
+        const accountSections = internal.filter((section) => section.id.startsWith('accounts-'));
+        const otherSections = internal.filter((section) => !section.id.startsWith('accounts-'));
+
+        for (const section of accountSections) {
+            await ensureSectionMounted(section);
+        }
+        await Promise.all(otherSections.map((section) => ensureSectionMounted(section)));
+    }
+
+    function preloadAllSections(data) {
+        if (!preloadPromise) {
+            preloadPromise = preloadSections(visibleSections(data));
+        }
+        return preloadPromise;
+    }
+
+    function revealSection(sectionId) {
+        for (const [id, row] of sectionPanels) {
+            row.host.hidden = id !== sectionId;
+        }
+        const section = SECTIONS.find((row) => row.id === sectionId);
+        section?.activate?.();
     }
 
     async function showSection(sectionId) {
@@ -115,8 +165,10 @@
         const allowed = visibleSections(data);
         const section = allowed.find((row) => row.id === sectionId) || allowed[0];
         if (!section) {
-            document.getElementById('admin-settings-content').innerHTML =
-                '<p class="admin-settings-empty">You do not have access to any admin settings.</p>';
+            const host = contentHost();
+            if (host) {
+                host.innerHTML = '<p class="admin-settings-empty">You do not have access to any admin settings.</p>';
+            }
             return;
         }
 
@@ -125,29 +177,18 @@
             return;
         }
 
+        await preloadAllSections(data);
+
+        if (!sectionPanels.get(section.id)?.mounted) {
+            await ensureSectionMounted(section);
+        }
+
         activeSection = section.id;
         if (global.location.hash !== `#${section.id}`) {
             global.history.replaceState(null, '', `#${section.id}`);
         }
         setActiveNav(section.id);
-
-        const host = document.getElementById('admin-settings-content');
-        if (!host) return;
-
-        if (mountedSection && mountedSection !== section.id) {
-            unmountCurrent();
-        }
-
-        host.innerHTML = '<p class="admin-settings-loading">Loading…</p>';
-
-        try {
-            unmountCurrent();
-            host.innerHTML = '';
-            await section.mount(host, mountOptions());
-            mountedSection = section.id;
-        } catch (error) {
-            host.innerHTML = `<p class="admin-modal-error" role="alert">${escapeAttr(error.message || 'Could not load section.')}</p>`;
-        }
+        revealSection(section.id);
     }
 
     function renderNav(data) {
@@ -188,8 +229,19 @@
                 return;
             }
             renderNav(data);
-            const requested = sectionFromLocation();
-            await showSection(requested);
+
+            const host = contentHost();
+            if (host) {
+                host.innerHTML = '<p class="admin-settings-loading">Loading admin settings…</p>';
+            }
+
+            const requested = sectionFromLocation() || visibleSections(data)[0]?.id;
+            await preloadAllSections(data);
+            host?.querySelector('.admin-settings-loading')?.remove();
+
+            if (requested) {
+                await showSection(requested);
+            }
         } catch {
             global.location.href = '/login';
         }

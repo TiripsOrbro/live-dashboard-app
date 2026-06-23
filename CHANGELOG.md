@@ -27,6 +27,27 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.9.6 – June 2026
+
+**Added**
+
+- **Admin settings** — all sidebar sections preload on first visit so switching tabs is instant.
+
+**Changed**
+
+- **Login page** — version footer shows the full release number (e.g. `0.4.9.6`) from `package.json`.
+- **Store login bootstrap** — saving several MMX logins in a row triggers one combined scrape instead of a browser pile-up.
+
+**Fixed**
+
+- **MIC overview header** — Market 1 and area tabs (Area 1, 2, 21, 22) align on one row again.
+- **Stock count / scheduled orders** — Macromatix wait predicate runs fully inside the browser (fixes `pageHasScheduledOrderRows is not defined` on the Pi).
+
+**What you need to do**
+
+- On the Pi: `git pull origin Version-0.4 && pm2 restart dashboard`
+- Hard refresh MIC overview after deploy. If stores still show $0, wait ~2 minutes for the next sales scrape cycle (or save one store login again to trigger a bootstrap scrape).
+
 ### Version 0.4.9.5 – June 2026
 
 **Fixed**

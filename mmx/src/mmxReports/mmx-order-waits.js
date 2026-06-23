@@ -83,6 +83,25 @@ async function waitForOrderPageReady(page, timeoutMs = 30000) {
     );
 }
 
+async function waitForScheduledOrdersTableReady(page, timeoutMs = 12000) {
+    await page.waitForFunction(
+        () => {
+            const t = (document.body?.innerText || '').toLowerCase();
+            if (!t.includes('vendor')) return false;
+            const hasAction = [...document.querySelectorAll('a')].some((a) => {
+                const x = (a.textContent || '').trim().toLowerCase();
+                return x === 'create' || x === 'process';
+            });
+            if (hasAction) return true;
+            return [...document.querySelectorAll('table')].some((tb) => {
+                const x = (tb.innerText || '').toLowerCase();
+                return x.includes('vendor') && (x.includes('status') || x.includes('order #'));
+            });
+        },
+        { timeout: timeoutMs, polling: 100 }
+    );
+}
+
 function pageHasScheduledOrderRows() {
     const t = (document.body?.innerText || '').toLowerCase();
     if (!t.includes('vendor')) return false;
@@ -95,10 +114,6 @@ function pageHasScheduledOrderRows() {
         const x = (tb.innerText || '').toLowerCase();
         return x.includes('vendor') && (x.includes('status') || x.includes('order #'));
     });
-}
-
-async function waitForScheduledOrdersTableReady(page, timeoutMs = 12000) {
-    await page.waitForFunction(pageHasScheduledOrderRows, { timeout: timeoutMs, polling: 100 });
 }
 
 async function waitAfterOrderUpdate(page, timeoutMs = 20000) {

@@ -578,6 +578,10 @@
         await initView(root, options);
     }
 
+    function setInlineHost(host) {
+        pageHost = host || null;
+    }
+
     function unmount() {
         pageHost = null;
         scopeNavigator = null;
@@ -587,5 +591,5 @@
         stopVerifyStatus();
     }
 
-    global.AdminStoreLogins = { open, close, mount, unmount };
+    global.AdminStoreLogins = { open, close, mount, unmount, setInlineHost };
 })(window);

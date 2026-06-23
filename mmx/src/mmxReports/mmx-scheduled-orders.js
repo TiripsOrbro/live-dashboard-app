@@ -18,22 +18,8 @@ async function waitForAspNetSettle(page) {
     await waitForAspPostback(page, { timeoutMs: 12000 });
 }
 
-function pageHasScheduledOrderRows() {
-    const t = (document.body?.innerText || '').toLowerCase();
-    if (!t.includes('vendor')) return false;
-    const hasAction = [...document.querySelectorAll('a')].some((a) => {
-        const x = (a.textContent || '').trim().toLowerCase();
-        return x === 'create' || x === 'process';
-    });
-    if (hasAction) return true;
-    return [...document.querySelectorAll('table')].some((tb) => {
-        const x = (tb.innerText || '').toLowerCase();
-        return x.includes('vendor') && (x.includes('status') || x.includes('order #'));
-    });
-}
-
 async function waitForScheduledOrdersTable(page, timeoutMs = SCHEDULED_TABLE_WAIT_MS) {
-    await page.waitForFunction(pageHasScheduledOrderRows, { timeout: timeoutMs }).catch(() => null);
+    await waitForScheduledOrdersTableReady(page, timeoutMs).catch(() => null);
 }
 
 async function isListDateAlready(page, display) {

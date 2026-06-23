@@ -106,6 +106,14 @@ body.admin-settings-page .nav-back-bubble:hover {
     color: rgba(0, 0, 0, 0.55);
 }
 
+.admin-settings-section-panel[hidden] {
+    display: none !important;
+}
+
+.admin-settings-section-panel:not([hidden]) {
+    display: block;
+}
+
 .admin-settings-content .admin-modal {
     width: 100%;
     max-width: none;

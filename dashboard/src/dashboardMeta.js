@@ -14,15 +14,15 @@ function readDashboardVersion() {
     const fromEnv = String(process.env.DASHBOARD_VERSION || '').trim();
     if (fromEnv) return normalizeVersionDisplay(fromEnv);
     try {
-        const changelog = fs.readFileSync(CHANGELOG_PATH, 'utf8');
-        const match = changelog.match(/\*\*Current live branch:\*\*\s*`([^`]+)`/);
-        if (match) return normalizeVersionDisplay(match[1].trim());
+        const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, 'utf8'));
+        if (pkg?.version) return String(pkg.version).trim();
     } catch {
         /* ignore */
     }
     try {
-        const pkg = JSON.parse(fs.readFileSync(PACKAGE_PATH, 'utf8'));
-        if (pkg?.version) return pkg.version;
+        const changelog = fs.readFileSync(CHANGELOG_PATH, 'utf8');
+        const match = changelog.match(/\*\*Current live branch:\*\*\s*`([^`]+)`/);
+        if (match) return normalizeVersionDisplay(match[1].trim());
     } catch {
         /* ignore */
     }

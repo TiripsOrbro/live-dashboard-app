@@ -1835,9 +1835,13 @@
         return open(options);
     }
 
+    function setInlineHost(host) {
+        pageHost = host || null;
+    }
+
     function unmount() {
         pageHost = null;
     }
 
-    global.AdminForecast = { open, close, mount, unmount };
+    global.AdminForecast = { open, close, mount, unmount, setInlineHost };
 })(window);

@@ -309,9 +309,13 @@
         return open();
     }
 
+    function setInlineHost(host) {
+        pageHost = host || null;
+    }
+
     function unmount() {
         pageHost = null;
     }
 
-    global.AdminSmgNsf = { open, close, mount, unmount };
+    global.AdminSmgNsf = { open, close, mount, unmount, setInlineHost };
 })(window);

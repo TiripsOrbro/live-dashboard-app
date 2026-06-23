@@ -446,9 +446,13 @@
         return open(options);
     }
 
+    function setInlineHost(host) {
+        pageHost = host || null;
+    }
+
     function unmount() {
         pageHost = null;
     }
 
-    global.AdminBuildTo = { open, close, mount, unmount };
+    global.AdminBuildTo = { open, close, mount, unmount, setInlineHost };
 })(window);

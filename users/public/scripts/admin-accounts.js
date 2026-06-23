@@ -568,6 +568,11 @@
         window.location.href = `/Admin/Settings?focusCreate=${focusCreate}#accounts-create`;
     }
 
+    function setInlineHost(host, view) {
+        pageHost = host || null;
+        if (view) activeView = view;
+    }
+
     global.AdminAccounts = {
         open,
         close,
@@ -575,6 +580,7 @@
         mountCreate,
         mountExisting,
         unmount,
+        setInlineHost,
         maybeOpenFromQuery,
     };
 })(window);

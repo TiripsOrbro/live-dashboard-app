@@ -1665,19 +1665,30 @@ function runScrapeIntoCache(options = {}) {
     return salesInFlight;
 }
 
-/** After the first MMX login is saved for a store, scrape sales, SSSG, and pending orders. */
+/** After MMX logins are saved, scrape all credentialed stores once the batch settles. */
+let bootstrapScrapeTimer = null;
+const bootstrapScrapeStores = new Set();
+
 function queueStoreLoginBootstrapScrape(storeNumber) {
     const num = String(storeNumber || '').trim();
     if (!num || isTestStore(num)) return;
-    console.log(`[Dashboard] First MMX login saved for store ${num}; starting bootstrap sales scrape`);
-    runScrapeIntoCache({
-        scrapeReason: 'store-login-setup',
-        storeNumber: num,
-        bypassScrapeSchedule: true,
-    }).catch((error) => {
-        console.error(`[Dashboard] Store ${num} bootstrap scrape failed:`, error.message);
-        notifyScrapeFailure(error, `store ${num} bootstrap scrape`).catch(() => {});
-    });
+    bootstrapScrapeStores.add(num);
+    if (bootstrapScrapeTimer) clearTimeout(bootstrapScrapeTimer);
+    bootstrapScrapeTimer = setTimeout(() => {
+        bootstrapScrapeTimer = null;
+        const stores = [...bootstrapScrapeStores];
+        bootstrapScrapeStores.clear();
+        console.log(
+            `[Dashboard] Bootstrap sales scrape after login save (${stores.length} store${stores.length === 1 ? '' : 's'}: ${stores.join(', ')})`
+        );
+        runScrapeIntoCache({
+            scrapeReason: 'store-login-setup',
+            bypassScrapeSchedule: true,
+        }).catch((error) => {
+            console.error('[Dashboard] Bootstrap sales scrape failed:', error.message);
+            notifyScrapeFailure(error, 'store login bootstrap scrape').catch(() => {});
+        });
+    }, 5000);
 }
 
 async function getSalesDataCached() {

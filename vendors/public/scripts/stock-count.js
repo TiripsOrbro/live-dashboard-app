@@ -35,6 +35,7 @@ let mmxProcessingDetail = '';
 let mmxLastPipelineStep = '';
 let mmxPipelineManualOnly = false;
 let mmxActivityLog = [];
+let mmxPollGeneration = 0;
 let mmxLastPolledStepLabel = '';
 let mmxLastPolledStepAt = 0;
 let mmxStepHeartbeatText = '';
@@ -1555,7 +1556,12 @@ function pipelineOrdersActuallyComplete(status) {
     return false;
 }
 
+function pollSuperseded(generation) {
+    return generation !== mmxPollGeneration;
+}
+
 async function pollStockCountPipelineUntilDone() {
+    const pollGen = mmxPollGeneration;
     let started = Date.now();
     let networkStreak = 0;
     let sawInProgress = false;
@@ -1570,6 +1576,7 @@ async function pollStockCountPipelineUntilDone() {
     render();
 
     while (true) {
+        if (pollSuperseded(pollGen)) return { superseded: true };
         if (Date.now() - started >= MMX_PIPELINE_MAX_MS) {
             const deadlineCheck = await fetchPipelineStatusOrNull();
             if (
@@ -1590,6 +1597,7 @@ async function pollStockCountPipelineUntilDone() {
             break;
         }
         await sleep(MMX_PIPELINE_POLL_MS);
+        if (pollSuperseded(pollGen)) return { superseded: true };
 
         const result = await fetchPipelineStatusOrNull();
         if (!result.ok) {
@@ -1640,6 +1648,7 @@ async function pollStockCountPipelineUntilDone() {
 
         const pipelineFail = pipelineFailureFromStatus(status);
         if (pipelineFail) {
+            if (pollSuperseded(pollGen)) return { superseded: true };
             clearMmxUiWatch();
             mmxLastKnownServerInProgress = false;
             showMmxProcessingError(pipelineFail.message, pipelineFail.failedAtStep);
@@ -1647,6 +1656,7 @@ async function pollStockCountPipelineUntilDone() {
         }
 
         if (pipelineOrdersActuallyComplete(status)) {
+            if (pollSuperseded(pollGen)) return { superseded: true };
             finishMmxOrdersSuccess(pipelineSuccessPayload(status));
             return { autoApplied: true };
         }
@@ -1806,6 +1816,7 @@ async function waitForPipelineApplyComplete() {
 }
 
 async function handlePipelinePollOutcome(outcome) {
+    if (outcome?.superseded) return;
     if (viewMode === 'variances' || viewMode === 'recount') return;
     if (outcome?.autoApplied || outcome?.reset) return;
     if (outcome?.prepared && (await showPreparedVariancesFromStatus(outcome.status))) {
@@ -1864,7 +1875,7 @@ async function refreshMmxPipelineUi() {
     }
 
     const pipelineFail = pipelineFailureFromStatus(status);
-    if (pipelineFail) {
+    if (pipelineFail && (readMmxUiWatch() || status.workLive)) {
         showMmxProcessingError(pipelineFail.message, pipelineFail.failedAtStep);
         render();
         return;
@@ -1928,8 +1939,11 @@ async function tryResumePipelineOnLoad() {
     if (status) {
         const pipelineFail = pipelineFailureFromStatus(status);
         if (pipelineFail) {
-            showMmxProcessingError(pipelineFail.message, pipelineFail.failedAtStep);
-            return true;
+            if (hadActiveWatch || status.workLive) {
+                showMmxProcessingError(pipelineFail.message, pipelineFail.failedAtStep);
+                return true;
+            }
+            return false;
         }
     }
 
@@ -1975,6 +1989,7 @@ function shouldRecoverApplyError(message) {
 
 async function sendToMmx(options = {}) {
     if (saving || processing) return;
+    if (mmxProcessingError) dismissMmxProcessingError();
     const skipKeyItemCount = Boolean(options.skipKeyItemCount) && canSkipKeyItemCount;
     let preparedAutoApplied = false;
 
@@ -2488,6 +2503,21 @@ function buildMmxProcessingOverlay() {
         </div>`;
     }
 
+    if (processing && !mmxProcessingError) {
+        const markSvg = window.TbaBrandMark?.svg?.('stock-count-mmx-wait') || '';
+        return `
+        <div class="stock-count-processing stock-count-processing--fullscreen" role="dialog" aria-modal="true" aria-labelledby="sc-mmx-wait-title">
+            <div class="stock-count-processing-card stock-count-processing-card--wait stock-count-processing-card--fullscreen">
+                ${markSvg ? `<div class="stock-count-processing-mark" aria-hidden="true">${markSvg}</div>` : ''}
+                <h2 id="sc-mmx-wait-title" class="stock-count-processing-label">${escapeHtml(mmxProcessingTitle())}</h2>
+                <p class="stock-count-mmx-wait-body">${buildMmxWaitBody()}</p>
+                ${buildMmxProgressHtml()}
+                ${buildMmxProgressBarHtml()}
+                ${buildMmxNotifySection()}
+            </div>
+        </div>`;
+    }
+
     if (mmxProcessingError) {
         return `
         <div class="stock-count-processing stock-count-processing--fullscreen" role="alertdialog" aria-modal="true" aria-labelledby="sc-mmx-error-title">
@@ -2503,21 +2533,11 @@ function buildMmxProcessingOverlay() {
         </div>`;
     }
 
-    const markSvg = window.TbaBrandMark?.svg?.('stock-count-mmx-wait') || '';
-    return `
-        <div class="stock-count-processing stock-count-processing--fullscreen" role="dialog" aria-modal="true" aria-labelledby="sc-mmx-wait-title">
-            <div class="stock-count-processing-card stock-count-processing-card--wait stock-count-processing-card--fullscreen">
-                ${markSvg ? `<div class="stock-count-processing-mark" aria-hidden="true">${markSvg}</div>` : ''}
-                <h2 id="sc-mmx-wait-title" class="stock-count-processing-label">${escapeHtml(mmxProcessingTitle())}</h2>
-                <p class="stock-count-mmx-wait-body">${buildMmxWaitBody()}</p>
-                ${buildMmxProgressHtml()}
-                ${buildMmxProgressBarHtml()}
-                ${buildMmxNotifySection()}
-            </div>
-        </div>`;
+    return '';
 }
 
 function beginMmxProcessing(stageLabel) {
+    mmxPollGeneration++;
     processing = true;
     mmxProcessingError = null;
     mmxProcessingSuccess = null;

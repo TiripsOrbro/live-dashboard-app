@@ -107,6 +107,7 @@ const {
     getStockCountPipelineStatus,
     isStockCountPipelineBusy,
     recordStockCountPrepareFailure,
+    clearStockCountPipelineFailure,
     recordStockCountCheckFailure,
     resetStalePipelineCheckpointsOnStartup,
 } = require('./services/stockCountMmxPipeline');
@@ -4686,6 +4687,10 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
                 stage: pipeline.stage,
                 sessionId: pipeline.sessionId || null,
             });
+        }
+
+        if (await clearStockCountPipelineFailure(store)) {
+            console.log(`[StockCount] Cleared prior pipeline failure before new send - store ${store}`);
         }
 
         const skipKeyItemCount = /^(1|true|yes|on)$/i.test(

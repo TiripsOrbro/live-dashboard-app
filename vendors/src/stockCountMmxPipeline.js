@@ -1154,9 +1154,18 @@ function isStockCountPipelineBusy(stage) {
     return PIPELINE_ACTIVE_WORK_STAGES.has(stage);
 }
 
+const PIPELINE_TERMINAL_FAIL_STAGES = new Set(['prepare-failed', 'apply-failed', 'check-levels-failed']);
+
+async function clearStockCountPipelineFailure(storeNumber) {
+    const cp = await getCheckpoint(storeNumber);
+    if (!cp || !PIPELINE_TERMINAL_FAIL_STAGES.has(cp.stage)) return false;
+    await clearCheckpoint(storeNumber);
+    return true;
+}
+
 async function recordStockCountPrepareFailure(storeNumber, error) {
     const cp = await getCheckpoint(storeNumber);
-    if (!cp || cp.stage === 'completed' || cp.stage === 'prepare-failed') return;
+    if (!cp || cp.stage === 'completed') return;
     await updateCheckpoint(storeNumber, {
         stage: 'prepare-failed',
         lastError: error?.message || String(error || 'Prepare failed'),
@@ -1439,6 +1448,7 @@ module.exports = {
     getStockCountPipelineStatus,
     isStockCountPipelineBusy,
     recordStockCountPrepareFailure,
+    clearStockCountPipelineFailure,
     recordStockCountCheckFailure,
     resetStalePipelineCheckpointsOnStartup,
     runScheduledOrdersOnly,

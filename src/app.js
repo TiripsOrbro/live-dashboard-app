@@ -96,7 +96,7 @@ const {
     getStoreDayEntry,
     getMelbourneWeekStart,
 } = require('./services/sssg/sssgWeeklyLedger');
-const { getLowStockSummary } = require('../vendors/src/lowStockAlerts');
+const { getLowStockSummary, stockLevelsSubFromSummary } = require('../vendors/src/lowStockAlerts');
 const {
     prepareStockCountForMmx,
     applyStockCountSession,
@@ -4805,21 +4805,19 @@ app.get('/api/stock-count/low-stock-summary', async (req, res) => {
     try {
         const store = stockCountStoreFromQuery(req);
         if (!store || !assertStoreAccess(req, res, store)) return;
-        const summary = await getLowStockSummary(store);
+        const onHandOnly = /^(1|true|yes|on)$/i.test(String(req.query.onHandOnly ?? ''));
+        const summary = await getLowStockSummary(store, { onHandOnly });
         res.json({
             success: true,
             storeNumber: String(store),
             lowStockCount: summary.count,
             lowStockItems: summary.items || [],
             lowStockAlerts: summary.alerts || summary.items || [],
-            stockLevelsSub: summary.count
-                ? `${summary.count} item${summary.count === 1 ? '' : 's'} under ${summary.thresholdDays} days stock`
-                : summary.checked
-                  ? `No stock shortfalls (under ${summary.thresholdDays} days)`
-                  : 'Stock levels not checked today',
+            stockLevelsSub: stockLevelsSubFromSummary(summary),
             stockLevelsChecked: Boolean(summary.checked),
             stockLevelsCheckedAt: summary.checkedAt || null,
             thresholdDays: summary.thresholdDays,
+            onHandOnly: Boolean(summary.onHandOnly),
         });
     } catch (error) {
         console.error('API: Error loading low stock summary:', error);
@@ -4845,10 +4843,18 @@ app.post('/api/stock-count/check-stock-levels', async (req, res) => {
 
         if (!assertStockCountUserMmxLogin(req, res)) return;
 
-        console.log(`[StockCount] Check stock levels - store ${store} (async)`);
-        res.json({ success: true, accepted: true, storeNumber: String(store) });
+        const onHandOnly = /^(1|true|yes|on)$/i.test(
+            String(req.body?.onHandOnly ?? req.query.onHandOnly ?? '')
+        );
+        console.log(
+            `[StockCount] Check stock levels - store ${store} (${onHandOnly ? 'on hand only' : 'on hand + on order'}, async)`
+        );
+        res.json({ success: true, accepted: true, storeNumber: String(store), onHandOnly });
 
-        void checkStockLevelsForStore(store, mmxAutomationOptions(req, store, {})).catch(async (error) => {
+        void checkStockLevelsForStore(store, {
+            ...mmxAutomationOptions(req, store, {}),
+            onHandOnly,
+        }).catch(async (error) => {
             console.error('API: Error checking stock levels:', error);
             await recordStockCountCheckFailure(store, error);
         });

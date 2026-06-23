@@ -2902,27 +2902,20 @@ html.mic-dark-mode .mic-audit-stat--complete {
     margin-top: auto;
 }
 
-.mic-tile-stock-check {
-    margin-top: 4px;
-    flex: 0 0 auto;
+.mic-tile-stock-check-tabs {
     width: 100%;
-    border: 1px solid color-mix(in srgb, var(--tb-purple, #702082) 35%, var(--grey));
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--tb-purple, #702082) 8%, var(--white));
-    color: var(--charcoal);
-    font: inherit;
-    font-size: 0.82rem;
-    font-weight: 600;
-    padding: 8px 10px;
-    cursor: pointer;
+    flex: 0 0 auto;
+    margin-top: calc(4px * var(--dashboard-scale));
 }
 
-.mic-tile-stock-check:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--tb-purple, #702082) 14%, var(--white));
+.mic-tile-stock-check-tabs .app-tab {
+    font-size: calc(0.72rem * var(--dashboard-scale));
+    --app-tab-pad-y: calc(6px * var(--dashboard-scale));
+    --app-tab-pad-x: calc(4px * var(--dashboard-scale));
 }
 
-.mic-tile-stock-check:disabled {
-    opacity: 0.7;
+.mic-tile-stock-check-tabs .app-tab:disabled {
+    opacity: 0.65;
     cursor: wait;
 }
 

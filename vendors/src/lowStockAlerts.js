@@ -47,12 +47,17 @@ function stockWarningDaysForItem(itemCode, storeNumber, catalogRules, storeOverr
     return defaultStockWarningDays();
 }
 
+function summaryCacheKey(storeNumber, dateKey = '', onHandOnly = false) {
+    return `${String(storeNumber || '').trim()}:${dateKey || ''}:${onHandOnly ? 'oh' : 'ohoo'}`;
+}
+
 function computeLowStockAlerts(lines, options = {}) {
     const storeNumber = String(options.storeNumber || '').trim();
     const catalogRules = options.catalogRules || (storeNumber ? buildCatalogBuildToIndex() : null);
     const storeOverrideMap = storeNumber ? buildToOverridesForStore(storeNumber) : new Map();
     const adminOverrideMap = storeNumber ? adminOverridesForStore(storeNumber) : new Map();
     const defaultThreshold = options.thresholdDays != null ? Number(options.thresholdDays) : null;
+    const onHandOnly = Boolean(options.onHandOnly);
 
     const alerts = [];
     for (const line of lines || []) {
@@ -60,7 +65,7 @@ function computeLowStockAlerts(lines, options = {}) {
         const avgDaily = Number(line.avgDaily);
         if (!Number.isFinite(avgDaily) || avgDaily <= 0) continue;
         const onHand = Number(line.onHandCartons) || 0;
-        const onOrder = Number(line.onOrderCartons) || 0;
+        const onOrder = onHandOnly ? 0 : Number(line.onOrderCartons) || 0;
         const daysOfStock = (onHand + onOrder) / avgDaily;
         const threshold =
             defaultThreshold != null && Number.isFinite(defaultThreshold)
@@ -88,8 +93,8 @@ function computeLowStockAlerts(lines, options = {}) {
     return alerts;
 }
 
-function setLowStockSummaryCache(storeNumber, summary, dateKey = '') {
-    const cacheKey = `${String(storeNumber || '').trim()}:${dateKey || ''}`;
+function setLowStockSummaryCache(storeNumber, summary, dateKey = '', onHandOnly = false) {
+    const cacheKey = summaryCacheKey(storeNumber, dateKey, onHandOnly);
     summaryCache.set(cacheKey, { at: Date.now(), summary });
 }
 
@@ -100,19 +105,33 @@ function buildLowStockSummaryFromAlerts(alerts, options = {}) {
         items: alerts.slice(0, 5),
         alerts,
         thresholdDays,
+        onHandOnly: Boolean(options.onHandOnly),
         checked: true,
         checkedAt: options.checkedAt || new Date().toISOString(),
     };
 }
 
+function stockLevelsSubFromSummary(summary) {
+    const threshold = summary.thresholdDays ?? defaultStockWarningDays();
+    const modeLabel = summary.onHandOnly ? 'current on hand' : 'on hand + on order';
+    if (summary.count > 0) {
+        return `${summary.count} item${summary.count === 1 ? '' : 's'} under ${threshold} days (${modeLabel})`;
+    }
+    if (summary.checked) {
+        return `No stock shortfalls (${modeLabel})`;
+    }
+    return 'Stock levels not checked today';
+}
+
 async function getLowStockSummary(storeNumber, options = {}) {
     const store = String(storeNumber || '').trim();
+    const onHandOnly = Boolean(options.onHandOnly);
     const thresholdDays = defaultStockWarningDays();
     if (!store) {
-        return { count: 0, items: [], thresholdDays, checked: false, checkedAt: null };
+        return { count: 0, items: [], thresholdDays, onHandOnly, checked: false, checkedAt: null };
     }
 
-    const cacheKey = `${store}:${options.dateKey || ''}`;
+    const cacheKey = summaryCacheKey(store, options.dateKey || '', onHandOnly);
     if (!options.skipCache) {
         const cached = summaryCache.get(cacheKey);
         if (cached && Date.now() - cached.at < SUMMARY_CACHE_MS) {
@@ -123,8 +142,8 @@ async function getLowStockSummary(storeNumber, options = {}) {
     const reportsDir = options.reportsDir || REPORTS_DIR;
     const { ready } = reportsReadyForStore(store, reportsDir);
     if (!ready) {
-        const empty = { count: 0, items: [], thresholdDays, checked: false, checkedAt: null };
-        if (!options.skipCache) setLowStockSummaryCache(store, empty, options.dateKey);
+        const empty = { count: 0, items: [], thresholdDays, onHandOnly, checked: false, checkedAt: null };
+        if (!options.skipCache) setLowStockSummaryCache(store, empty, options.dateKey, onHandOnly);
         return empty;
     }
 
@@ -134,19 +153,24 @@ async function getLowStockSummary(storeNumber, options = {}) {
             dateKey: options.dateKey,
             preferReportOnHand: true,
         });
-        const alerts = computeLowStockAlerts(buildTo.lines || [], { storeNumber: store });
-        const summary = buildLowStockSummaryFromAlerts(alerts, { thresholdDays });
-        setLowStockSummaryCache(store, summary, options.dateKey);
+        const alerts = computeLowStockAlerts(buildTo.lines || [], { storeNumber: store, onHandOnly });
+        const summary = buildLowStockSummaryFromAlerts(alerts, { thresholdDays, onHandOnly });
+        setLowStockSummaryCache(store, summary, options.dateKey, onHandOnly);
         return summary;
     } catch {
-        const empty = { count: 0, items: [], thresholdDays, checked: false, checkedAt: null };
-        setLowStockSummaryCache(store, empty, options.dateKey);
+        const empty = { count: 0, items: [], thresholdDays, onHandOnly, checked: false, checkedAt: null };
+        setLowStockSummaryCache(store, empty, options.dateKey, onHandOnly);
         return empty;
     }
 }
 
-function invalidateLowStockSummaryCache(storeNumber) {
-    const prefix = `${String(storeNumber || '').trim()}:`;
+function invalidateLowStockSummaryCache(storeNumber, options = {}) {
+    const store = String(storeNumber || '').trim();
+    const prefix = `${store}:`;
+    if (options.onHandOnly === true || options.onHandOnly === false) {
+        summaryCache.delete(summaryCacheKey(store, options.dateKey || '', options.onHandOnly));
+        return;
+    }
     for (const key of summaryCache.keys()) {
         if (key.startsWith(prefix)) summaryCache.delete(key);
     }
@@ -161,5 +185,7 @@ module.exports = {
     getLowStockSummary,
     setLowStockSummaryCache,
     buildLowStockSummaryFromAlerts,
+    stockLevelsSubFromSummary,
+    summaryCacheKey,
     invalidateLowStockSummaryCache,
 };

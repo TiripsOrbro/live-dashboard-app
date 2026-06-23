@@ -46,6 +46,15 @@ let lowStockAlerts = [];
 let lowStockPanelOpen = false;
 let levelsSummary = null;
 let levelsChecking = false;
+const STOCK_LEVELS_MODE_KEY = 'stockLevelsCheckMode';
+let levelsCheckMode = (() => {
+    try {
+        const saved = sessionStorage.getItem(STOCK_LEVELS_MODE_KEY);
+        return saved === 'on-hand-only' ? 'on-hand-only' : 'with-on-order';
+    } catch {
+        return 'with-on-order';
+    }
+})();
 let canSkipKeyItemCount = false;
 
 const MMX_UI_WATCH_KEY = 'stockCountMmxUiWatch';
@@ -2905,8 +2914,32 @@ async function dismissStaleMmxSessionOnLoad() {
     }
 }
 
+function levelsOnHandOnly() {
+    return levelsCheckMode === 'on-hand-only';
+}
+
+function buildStockCheckTabsHtml(mode, checking) {
+    const tabs = [
+        { id: 'with-on-order', label: 'On hand + on order' },
+        { id: 'on-hand-only', label: 'Current on hand' },
+    ];
+    const buttons = tabs
+        .map((tab) => {
+            const active = mode === tab.id ? ' is-active' : '';
+            const busy = checking && mode === tab.id;
+            const disabled = checking ? ' disabled' : '';
+            const ariaBusy = busy ? ' aria-busy="true"' : '';
+            const ariaSelected = mode === tab.id ? 'true' : 'false';
+            const label = busy ? 'Checking Macromatix…' : tab.label;
+            return `<button type="button" class="app-tab${active}" data-stock-check-mode="${tab.id}" role="tab" aria-selected="${ariaSelected}"${disabled}${ariaBusy}>${escapeHtml(label)}</button>`;
+        })
+        .join('');
+    return `<div class="app-tabs stock-count-levels-check-tabs" role="tablist" aria-label="Stock level check">${buttons}</div>`;
+}
+
 function levelsSummaryUrl() {
-    return `${window.location.origin}/api/stock-count/low-stock-summary?store=${encodeURIComponent(STORE_NUMBER)}`;
+    const oh = levelsOnHandOnly() ? '1' : '0';
+    return `${window.location.origin}/api/stock-count/low-stock-summary?store=${encodeURIComponent(STORE_NUMBER)}&onHandOnly=${oh}`;
 }
 
 async function loadLevelsSummary() {
@@ -2957,18 +2990,28 @@ async function pollStockLevelsCheckComplete() {
 }
 
 async function postCheckStockLevels() {
+    const onHandOnly = levelsOnHandOnly();
+    const oh = onHandOnly ? '1' : '0';
     return fetchJson(
-        `${window.location.origin}/api/stock-count/check-stock-levels?store=${encodeURIComponent(STORE_NUMBER)}`,
+        `${window.location.origin}/api/stock-count/check-stock-levels?store=${encodeURIComponent(STORE_NUMBER)}&onHandOnly=${oh}`,
         {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(mmxLoginRequestBody()),
+            body: JSON.stringify({ ...mmxLoginRequestBody(), onHandOnly }),
         }
     );
 }
 
-async function runLevelsCheck() {
+async function runLevelsCheck(mode) {
     if (levelsChecking) return;
+    if (mode) {
+        levelsCheckMode = mode === 'on-hand-only' ? 'on-hand-only' : 'with-on-order';
+        try {
+            sessionStorage.setItem(STOCK_LEVELS_MODE_KEY, levelsCheckMode);
+        } catch {
+            /* ignore */
+        }
+    }
     levelsChecking = true;
     renderLevelsView();
     try {
@@ -3035,19 +3078,21 @@ function renderLevelsView() {
             </header>
             ${statusHtml}
             <div class="stock-count-levels-actions">
-                <button type="button" class="stock-count-btn stock-count-btn--primary" id="sc-levels-check" ${levelsChecking ? 'disabled aria-busy="true"' : ''}>
-                    ${escapeHtml(levelsChecking ? 'Checking Macromatix…' : 'Check stock levels')}
-                </button>
+                ${buildStockCheckTabsHtml(levelsCheckMode, levelsChecking)}
             </div>
             ${lowStockHtml}
         </div>`;
     window.DashboardNavBack?.mountBackButton(document.getElementById('stock-nav-back'), {
         fallback: dashboardPath(),
     });
-    app.querySelector('#sc-levels-check')?.addEventListener('click', () => {
-        statusMessage = '';
-        statusKind = '';
-        void runLevelsCheck();
+    app.querySelectorAll('[data-stock-check-mode]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const mode = btn.getAttribute('data-stock-check-mode');
+            if (!mode || levelsChecking) return;
+            statusMessage = '';
+            statusKind = '';
+            void runLevelsCheck(mode);
+        });
     });
     app.querySelector('#sc-low-stock-toggle')?.addEventListener('click', () => {
         lowStockPanelOpen = !lowStockPanelOpen;

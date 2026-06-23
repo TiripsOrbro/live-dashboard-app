@@ -13,6 +13,15 @@ let pickerOpen = false;
 let pickerEscHandler = null;
 let micCanViewAdminAuditSummary = false;
 let stockLevelsChecking = false;
+const STOCK_LEVELS_MODE_KEY = 'stockLevelsCheckMode';
+let stockLevelsCheckMode = (() => {
+    try {
+        const saved = sessionStorage.getItem(STOCK_LEVELS_MODE_KEY);
+        return saved === 'on-hand-only' ? 'on-hand-only' : 'with-on-order';
+    } catch {
+        return 'with-on-order';
+    }
+})();
 
 function formatSalesScrapeHint(status) {
     if (!status) return { text: '', title: '' };
@@ -790,6 +799,25 @@ function buildMicStockShortfallListHtml(items) {
     return `<ul class="mic-tile-stock-list" aria-label="Stock shortfalls">${rows}</ul>`;
 }
 
+function buildStockCheckTabsHtml(mode, checking) {
+    const tabs = [
+        { id: 'with-on-order', label: 'On hand + on order' },
+        { id: 'on-hand-only', label: 'Current on hand' },
+    ];
+    const buttons = tabs
+        .map((tab) => {
+            const active = mode === tab.id ? ' is-active' : '';
+            const busy = checking && mode === tab.id;
+            const disabled = checking ? ' disabled' : '';
+            const ariaBusy = busy ? ' aria-busy="true"' : '';
+            const ariaSelected = mode === tab.id ? 'true' : 'false';
+            const label = busy ? 'Checking…' : tab.label;
+            return `<button type="button" class="app-tab${active}" data-stock-check-mode="${tab.id}" role="tab" aria-selected="${ariaSelected}"${disabled}${ariaBusy}>${escapeHtml(label)}</button>`;
+        })
+        .join('');
+    return `<div class="app-tabs mic-tile-stock-check-tabs" role="tablist" aria-label="Stock level check">${buttons}</div>`;
+}
+
 function renderStockLevelsTile(data, { tabbed = false, inRow = false } = {}) {
     const sc = data?.stockCount || {};
     const shortfallItems = Array.isArray(sc.lowStockItems) ? sc.lowStockItems : [];
@@ -801,12 +829,12 @@ function renderStockLevelsTile(data, { tabbed = false, inRow = false } = {}) {
             : sc.stockLevelsChecked
               ? 'No stock shortfalls'
               : 'Stock levels not checked today');
-    const checkLabel = sc.stockLevelsCheckLabel || 'Check stock levels';
     const href = sc.stockLevelsHref || (STORE_NUMBER ? `/${STORE_NUMBER}/stock-count/levels` : '');
     const warnClass = hasShortfalls ? ' mic-tile--stock-warn' : sc.stockLevelsChecked ? ' mic-tile--stock-ok' : '';
     const listClass = hasShortfalls && shortfallItems.length ? ' mic-tile--has-stock-list' : '';
     const posClass = tabbed || inRow ? '' : ' mic-tile--pos-stock-levels';
     const checking = stockLevelsChecking;
+    const checkMode = stockLevelsCheckMode;
     const shortfallListHtml = hasShortfalls ? buildMicStockShortfallListHtml(shortfallItems) : '';
     const viewLink =
         sc.stockLevelsChecked && href
@@ -819,40 +847,49 @@ function renderStockLevelsTile(data, { tabbed = false, inRow = false } = {}) {
                 <div class="mic-tile-sub">${escapeHtml(stockSub)}</div>
                 ${shortfallListHtml}
             </div>
-            <button
-                type="button"
-                class="mic-tile-stock-check"
-                id="mic-check-stock-levels"
-                ${checking ? 'disabled aria-busy="true"' : ''}
-            >${escapeHtml(checking ? 'Checking…' : checkLabel)}</button>
+            ${buildStockCheckTabsHtml(checkMode, checking)}
             ${viewLink}
         </article>`;
 }
 
-async function postCheckStockLevels(storeNumber) {
-    const body = window.MmxUserLoginPrompt?.loginRequestBody?.() || {};
-    return fetch(`/api/stock-count/check-stock-levels?store=${encodeURIComponent(storeNumber)}`, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-    });
+async function postCheckStockLevels(storeNumber, { onHandOnly = false } = {}) {
+    const body = {
+        ...(window.MmxUserLoginPrompt?.loginRequestBody?.() || {}),
+        onHandOnly: Boolean(onHandOnly),
+    };
+    const oh = onHandOnly ? '1' : '0';
+    return fetch(
+        `/api/stock-count/check-stock-levels?store=${encodeURIComponent(storeNumber)}&onHandOnly=${oh}`,
+        {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        }
+    );
 }
 
-async function runStockLevelsCheck() {
+async function runStockLevelsCheck(mode = stockLevelsCheckMode) {
     if (stockLevelsChecking || !STORE_NUMBER) return;
+    stockLevelsCheckMode = mode === 'on-hand-only' ? 'on-hand-only' : 'with-on-order';
+    try {
+        sessionStorage.setItem(STOCK_LEVELS_MODE_KEY, stockLevelsCheckMode);
+    } catch {
+        /* ignore */
+    }
+    const onHandOnly = stockLevelsCheckMode === 'on-hand-only';
     stockLevelsChecking = true;
     if (micData) renderTiles(micData);
     try {
         await window.MmxUserLoginPrompt?.ensureBeforeMmx?.(STORE_NUMBER, { purpose: 'check-levels' });
-        let res = await postCheckStockLevels(STORE_NUMBER);
+        let res = await postCheckStockLevels(STORE_NUMBER, { onHandOnly });
         let data = await res.json().catch(() => ({}));
         if (res.status === 403 && data?.needsMmxUserLogin) {
             await window.MmxUserLoginPrompt.ensureBeforeMmx(STORE_NUMBER, { purpose: 'check-levels' });
-            res = await postCheckStockLevels(STORE_NUMBER);
+            res = await postCheckStockLevels(STORE_NUMBER, { onHandOnly });
             data = await res.json().catch(() => ({}));
         }
         if (res.status === 409) {
@@ -862,7 +899,7 @@ async function runStockLevelsCheck() {
             throw new Error(data.error || `Check failed (${res.status})`);
         }
         if (data.accepted) {
-            await pollStockLevelsCheckComplete(STORE_NUMBER);
+            await pollStockLevelsCheckComplete(STORE_NUMBER, onHandOnly);
         }
     } catch (error) {
         if (error.message === 'Macromatix login is required to continue.') {
@@ -882,7 +919,8 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function pollStockLevelsCheckComplete(storeNumber) {
+async function pollStockLevelsCheckComplete(storeNumber, onHandOnly = false) {
+    const oh = onHandOnly ? '1' : '0';
     const maxWaitMs = 12 * 60 * 1000;
     const startedAt = Date.now();
     while (Date.now() - startedAt < maxWaitMs) {
@@ -896,7 +934,7 @@ async function pollStockLevelsCheckComplete(storeNumber) {
             const errMsg = status.lastError || 'Stock level check failed.';
             if (window.MmxUserLoginPrompt?.isLoginRequiredError?.(errMsg)) {
                 await window.MmxUserLoginPrompt.ensureBeforeMmx(storeNumber, { purpose: 'check-levels' });
-                const retryRes = await postCheckStockLevels(storeNumber);
+                const retryRes = await postCheckStockLevels(storeNumber, { onHandOnly });
                 const retryData = await retryRes.json().catch(() => ({}));
                 if (retryRes.ok && (retryData.success || retryData.accepted)) {
                     continue;
@@ -908,7 +946,7 @@ async function pollStockLevelsCheckComplete(storeNumber) {
             continue;
         }
         const summaryRes = await fetch(
-            `/api/stock-count/low-stock-summary?store=${encodeURIComponent(storeNumber)}`,
+            `/api/stock-count/low-stock-summary?store=${encodeURIComponent(storeNumber)}&onHandOnly=${oh}`,
             { credentials: 'same-origin', headers: { Accept: 'application/json' } }
         );
         const summary = await summaryRes.json().catch(() => ({}));
@@ -921,11 +959,39 @@ async function pollStockLevelsCheckComplete(storeNumber) {
 }
 
 function bindStockLevelsCheck() {
-    document.getElementById('mic-check-stock-levels')?.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        void runStockLevelsCheck();
+    document.querySelectorAll('[data-stock-check-mode]').forEach((btn) => {
+        btn.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const mode = btn.getAttribute('data-stock-check-mode');
+            if (!mode || stockLevelsChecking) return;
+            void runStockLevelsCheck(mode);
+        });
     });
+}
+
+async function patchStockLevelsForMode() {
+    if (!STORE_NUMBER || !micData?.stockCount) return;
+    const onHandOnly = stockLevelsCheckMode === 'on-hand-only';
+    try {
+        const res = await fetch(
+            `/api/stock-count/low-stock-summary?store=${encodeURIComponent(STORE_NUMBER)}&onHandOnly=${onHandOnly ? '1' : '0'}`,
+            { credentials: 'same-origin', headers: { Accept: 'application/json' } }
+        );
+        const summary = await res.json().catch(() => ({}));
+        if (!res.ok || !summary.success) return;
+        micData.stockCount = {
+            ...micData.stockCount,
+            lowStockCount: summary.lowStockCount,
+            lowStockItems: summary.lowStockAlerts || summary.lowStockItems || [],
+            stockLevelsChecked: summary.stockLevelsChecked,
+            stockLevelsCheckedAt: summary.stockLevelsCheckedAt,
+            stockLevelsSub: summary.stockLevelsSub,
+            stockLevelsOnHandOnly: Boolean(summary.onHandOnly),
+        };
+    } catch {
+        /* keep overview defaults */
+    }
 }
 
 function renderDailyCountTile(data, { tabbed = false, inRow = false } = {}) {
@@ -1231,6 +1297,7 @@ async function loadMicData() {
         return;
     }
     micData = await enrichMicSalesHourly(data);
+    await patchStockLevelsForMode();
     updateSalesScrapeHint(data.salesScrapeStatus);
     window.MicSettings?.setStoreContext?.({
         storeNumber: STORE_NUMBER || '',

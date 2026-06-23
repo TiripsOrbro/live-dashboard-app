@@ -1316,6 +1316,7 @@ async function checkStockLevelsForStore(storeNumber, options = {}) {
     const { calculateBuildToOrders } = require('./buildToCalculator');
 
     return withStoreLock(storeNumber, async () => {
+        const onHandOnly = Boolean(options.onHandOnly);
         await beginStockCountMmxWork(`check stock levels (store ${storeNumber})`, storeNumber);
         try {
             await updateCheckpoint(storeNumber, {
@@ -1324,7 +1325,7 @@ async function checkStockLevelsForStore(storeNumber, options = {}) {
                 lastError: null,
                 failedAtStep: null,
             });
-            invalidateLowStockSummaryCache(storeNumber);
+            invalidateLowStockSummaryCache(storeNumber, { onHandOnly });
 
             await ensureReportsForOrders(storeNumber, {
                 forceDownload: true,
@@ -1341,11 +1342,12 @@ async function checkStockLevelsForStore(storeNumber, options = {}) {
                 dateKey: options.dateKey,
                 preferReportOnHand: true,
             });
-            const alerts = computeLowStockAlerts(buildTo.lines || [], { storeNumber });
+            const alerts = computeLowStockAlerts(buildTo.lines || [], { storeNumber, onHandOnly });
             const summary = buildLowStockSummaryFromAlerts(alerts, {
                 thresholdDays: defaultStockWarningDays(),
+                onHandOnly,
             });
-            setLowStockSummaryCache(storeNumber, summary, options.dateKey);
+            setLowStockSummaryCache(storeNumber, summary, options.dateKey, onHandOnly);
             await updateCheckpoint(storeNumber, {
                 stage: 'idle',
                 stepLabel: defaultStepLabel('idle'),
@@ -1353,9 +1355,10 @@ async function checkStockLevelsForStore(storeNumber, options = {}) {
                 failedAtStep: null,
                 lowStockAlerts: summary.items || [],
                 lowStockCount: summary.count || 0,
+                stockLevelsOnHandOnly: onHandOnly,
             });
             log.info(
-                `Stock levels checked for store ${storeNumber}: ${summary.count} shortfall(s) under ${summary.thresholdDays} days`
+                `Stock levels checked for store ${storeNumber} (${onHandOnly ? 'on hand only' : 'on hand + on order'}): ${summary.count} shortfall(s) under ${summary.thresholdDays} days`
             );
             return summary;
         } catch (error) {

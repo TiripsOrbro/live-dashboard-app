@@ -129,34 +129,22 @@ function buildStockCountTileState(storeNumber, storeSlice = {}) {
     };
 }
 
-function stockLevelsSubFromSummary(summary) {
-    const threshold = summary.thresholdDays ?? 5;
-    if (summary.count > 0) {
-        return `${summary.count} item${summary.count === 1 ? '' : 's'} under ${threshold} days stock`;
-    }
-    if (summary.checked) {
-        return `No stock shortfalls (under ${threshold} days)`;
-    }
-    return 'Stock levels not checked today';
-}
-
-async function enrichStockCountTileState(base, storeNumber) {
+async function enrichStockCountTileState(base, storeNumber, options = {}) {
     if (!base) return base;
     const store = String(storeNumber || '').trim();
+    const onHandOnly = Boolean(options.onHandOnly);
     try {
-        const { getLowStockSummary } = require('./lowStockAlerts');
-        const summary = await getLowStockSummary(store);
+        const { getLowStockSummary, stockLevelsSubFromSummary } = require('./lowStockAlerts');
+        const summary = await getLowStockSummary(store, { onHandOnly });
         const stockLevelsSub = stockLevelsSubFromSummary(summary);
-        const stockLevelsCheckLabel =
-            summary.count > 0 ? 'Check again' : summary.checked ? 'Check again' : 'Check stock levels';
         return {
             ...base,
             lowStockCount: summary.count,
             lowStockItems: summary.alerts || summary.items || [],
             stockLevelsChecked: Boolean(summary.checked),
             stockLevelsCheckedAt: summary.checkedAt || null,
+            stockLevelsOnHandOnly: Boolean(summary.onHandOnly),
             stockLevelsSub,
-            stockLevelsCheckLabel,
             stockLevelsHref: store ? `/${store}/stock-count/levels` : '',
             sub: base.active ? `${base.message} · ${stockLevelsSub}` : stockLevelsSub,
         };
@@ -164,16 +152,16 @@ async function enrichStockCountTileState(base, storeNumber) {
         return {
             ...base,
             stockLevelsSub: 'Stock levels not checked today',
-            stockLevelsCheckLabel: 'Check stock levels',
             stockLevelsHref: store ? `/${store}/stock-count/levels` : '',
             stockLevelsChecked: false,
+            stockLevelsOnHandOnly: onHandOnly,
         };
     }
 }
 
-async function buildStockCountTileStateAsync(storeNumber, storeSlice = {}) {
+async function buildStockCountTileStateAsync(storeNumber, storeSlice = {}, options = {}) {
     const base = buildStockCountTileState(storeNumber, storeSlice);
-    return enrichStockCountTileState(base, storeNumber);
+    return enrichStockCountTileState(base, storeNumber, options);
 }
 
 module.exports = {

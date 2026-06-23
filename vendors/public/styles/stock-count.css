@@ -138,6 +138,16 @@ body.stock-count-page {
     margin: 0 0 1rem;
 }
 
+.stock-count-levels-check-tabs {
+    width: 100%;
+    max-width: 28rem;
+}
+
+.stock-count-levels-check-tabs .app-tab:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
 .stock-count-btn--compact {
     min-height: 32px;
     padding: 4px 10px;

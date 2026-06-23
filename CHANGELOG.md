@@ -27,6 +27,17 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.9.7 – June 2026
+
+**Fixed**
+
+- **MIC overview header** — Market 1 on the top row, area tabs (Area 1, 2, 21, 22) on the row below.
+
+**What you need to do**
+
+- On the Pi: `git pull origin Version-0.4 && pm2 restart dashboard`
+- Hard refresh MIC overview (Ctrl+F5).
+
 ### Version 0.4.9.6 – June 2026
 
 **Added**

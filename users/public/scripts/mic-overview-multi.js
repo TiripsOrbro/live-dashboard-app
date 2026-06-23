@@ -428,7 +428,7 @@
         const marketRow = isMarketScope()
             ? `<div class="admin-market-text-row${marketViewActive ? '' : ' is-dimmed'}">
                 <button type="button" class="admin-market-text-tab${marketViewActive ? ' is-active' : ''}" role="tab" aria-selected="${marketViewActive}" data-view="market">${MARKET_LABEL}</button>
-            </div><span class="admin-area-text-pipe admin-area-text-pipe--market" aria-hidden="true"> |</span>`
+            </div>`
             : '';
         return `
         <div class="admin-area-text-track" role="tablist"${liveAttr} data-area-count="${areas.length}">

@@ -728,9 +728,9 @@ html.mic-dark-mode .mic-audit-stat--complete {
 .admin-area-text-track {
     position: relative;
     display: flex;
-    flex-wrap: nowrap;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 0;
     width: 100%;
     box-sizing: border-box;
@@ -739,11 +739,26 @@ html.mic-dark-mode .mic-audit-stat--complete {
 }
 
 .admin-market-text-row {
-    display: contents;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    margin-bottom: calc(4px * var(--dashboard-scale));
+}
+
+.admin-market-text-row.is-dimmed .admin-market-text-tab {
+    opacity: 0.35;
+}
+
+.admin-market-text-row.is-dimmed .admin-market-text-tab.is-active {
+    opacity: 1;
 }
 
 .admin-area-text-row {
-    display: contents;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
 }
 
 .admin-area-text-row.is-dimmed .admin-area-text-tab {
@@ -755,9 +770,9 @@ html.mic-dark-mode .mic-audit-stat--complete {
 }
 
 .admin-area-text-tab {
-    flex: 0 1 auto;
+    flex: 1 1 0;
     min-width: 0;
-    padding: calc(2px * var(--dashboard-scale)) calc(4px * var(--dashboard-scale));
+    padding: calc(2px * var(--dashboard-scale)) 0;
 }
 
 .admin-area-text-pipe {
@@ -770,10 +785,6 @@ html.mic-dark-mode .mic-audit-stat--complete {
     line-height: 1.2;
     padding: calc(2px * var(--dashboard-scale)) 0;
     user-select: none;
-}
-
-.admin-area-text-pipe--market {
-    margin-right: calc(2px * var(--dashboard-scale));
 }
 
 .mic-store-lead-store-label {

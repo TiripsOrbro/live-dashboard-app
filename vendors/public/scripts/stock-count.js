@@ -2887,7 +2887,7 @@ function buildLowStockWarningHtml() {
         .map(
             (item) => `
         <tr class="stock-count-low-stock-row">
-            <td class="stock-count-low-stock-item">${escapeHtml(item.description || item.itemCode || '')}</td>
+            <td class="stock-count-low-stock-item">${escapeHtml(item.displayName || item.description || item.itemCode || '')}</td>
             <td class="stock-count-low-stock-value">${escapeHtml(String(item.onHandCartons ?? '-'))}</td>
             <td class="stock-count-low-stock-value">${escapeHtml(String(item.onOrderCartons ?? '-'))}</td>
             <td class="stock-count-low-stock-value">${escapeHtml(String(item.daysOfStock ?? '-'))}</td>

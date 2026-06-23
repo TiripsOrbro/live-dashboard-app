@@ -20,9 +20,9 @@ const { getStoreList } = require('../stores/src/storeList');
 const { storeHasMmxCredentials } = require('../mmx/src/macromatixScraper');
 const { listCredentialCandidates } = require('../stores/src/storeCredentials');
 const { assessHistoryReadiness } = require('../dashboard/src/forecast/forecastHistoryLedger');
-const { getTargetForecastWeekStarts } = require('../dashboard/src/forecast/forecastStatusLedger');
+const { getTargetForecastWeekStarts, resolveForecastTarget } = require('../dashboard/src/forecast/forecastStatusLedger');
 const { runCombinedForecastForStores } = require('../dashboard/src/forecast/forecastRunner');
-const { isAutoSubmitEnabled } = require('../dashboard/src/forecast/forecastAutoSubmitLedger');
+const { isStoreAutoSubmitEnabled } = require('../dashboard/src/forecast/forecastStoreAutoSubmitLedger');
 const {
     TIME_ZONE,
     melbourneDateKey,
@@ -42,14 +42,15 @@ function sleep(ms) {
 }
 
 async function listEligibleStores() {
-    const targetWeeks = getTargetForecastWeekStarts();
-    const weekStart = targetWeeks[0];
+    const { weekStart } = resolveForecastTarget({ targetScope: 'week-after' });
+    const targetWeeks = [weekStart];
     const eligible = [];
 
     for (const cfg of getStoreList()) {
         const store = String(cfg.storeNumber || '').trim();
         if (!store) continue;
         if (!storeHasMmxCredentials(store)) continue;
+        if (!isStoreAutoSubmitEnabled(store)) continue;
 
         const readiness = assessHistoryReadiness(store);
         if (!readiness.ready) continue;
@@ -68,12 +69,6 @@ async function listEligibleStores() {
 
 async function runScheduledForecastJob() {
     const runDateKey = melbourneDateKey();
-
-    if (!isAutoSubmitEnabled()) {
-        console.log('[ForecastScheduler] Admin auto-submit toggle is off - skipping.');
-        appendScheduleLog(runDateKey, { action: 'skip', reason: 'admin toggle off' });
-        return { skipped: true, reason: 'toggle-off' };
-    }
 
     if (hasScheduledRunForDate(runDateKey)) {
         console.log(`[ForecastScheduler] Already ran today (${runDateKey}) - skipping.`);

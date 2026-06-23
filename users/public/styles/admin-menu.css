@@ -1355,7 +1355,8 @@ html.mic-dark-mode .admin-buildto-close-btn:hover {
 .admin-forecast-history-toolbar {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
     margin: 0.75rem 0 0.5rem;
 }
 
@@ -2768,4 +2769,131 @@ html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-entry {
     background: #3a3a3a;
     border-color: #555;
     color: #eee;
+}
+
+.admin-forecast-target-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    margin-right: 0.5rem;
+}
+
+.admin-forecast-target-scope-label,
+.admin-forecast-target-week-start-label,
+.admin-forecast-target-day-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.9rem;
+}
+
+.admin-forecast-target-wrap select,
+.admin-forecast-target-wrap input[type='date'] {
+    font: inherit;
+}
+
+.admin-forecast-toolbar {
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+}
+
+.admin-forecast-week-start-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.admin-forecast-week-start-label input[type='date'] {
+    font: inherit;
+}
+
+.admin-history-week-grid-wrap {
+    overflow-x: auto;
+}
+
+.admin-history-week-grid .admin-history-day-col,
+.admin-history-week-grid .admin-history-day-label {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--admin-surface, #fff);
+    min-width: 7rem;
+}
+
+.admin-history-week-row--missing .admin-history-day-label {
+    background: rgba(251, 191, 36, 0.12);
+}
+
+.admin-history-hour-col {
+    white-space: nowrap;
+    font-size: 0.8rem;
+}
+
+.admin-forecast-auto-cell {
+    text-align: center;
+    vertical-align: middle;
+}
+
+.admin-forecast-cell-with-override {
+    position: relative;
+    white-space: nowrap;
+}
+
+.admin-forecast-override-btn {
+    margin-left: 0.25rem;
+    padding: 0 0.35rem;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.04);
+    cursor: pointer;
+}
+
+.admin-forecast-override-badge {
+    display: inline-block;
+    margin-right: 0.2rem;
+    padding: 0 0.25rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #1d4ed8;
+    background: rgba(59, 130, 246, 0.15);
+    border-radius: 3px;
+}
+
+.admin-forecast-override-popover {
+    position: absolute;
+    z-index: 1200;
+    min-width: 200px;
+    padding: 0.75rem;
+    background: var(--admin-surface, #fff);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.admin-forecast-override-popover-title {
+    margin: 0 0 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.admin-forecast-override-popover-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+html.mic-dark-mode .admin-history-week-grid .admin-history-day-col,
+html.mic-dark-mode .admin-history-week-grid .admin-history-day-label {
+    background: #2a2a2a;
+}
+
+html.mic-dark-mode .admin-forecast-override-popover {
+    background: #2a2a2a;
+    border-color: #555;
 }

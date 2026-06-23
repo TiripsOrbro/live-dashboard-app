@@ -508,6 +508,118 @@ function buildHistoryHourGrid(storeNumber, options = {}) {
     };
 }
 
+/**
+ * Seven-day history grid: rows = calendar days, columns = trading hours.
+ * weekStart may be any date; loads 7 consecutive days from that date.
+ */
+function buildHistoryWeekGrid(storeNumber, options = {}) {
+    const store = String(storeNumber || '').trim();
+    const doc = readStoreHistory(store);
+    const cfg = getStoreConfig(store) || {};
+    const parsedStore = loadParsedStore(store);
+    const timeZone = String(options.timeZone || doc.timeZone || cfg.timeZone || 'Australia/Melbourne').trim();
+    const asOfIso =
+        options.asOfIso ||
+        new Intl.DateTimeFormat('en-CA', { timeZone }).format(options.asOf || new Date());
+
+    let weekStart = String(options.weekStart || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+        weekStart = weekStartingMondayFromDate(asOfIso, timeZone);
+    }
+    const weekEnd = addDaysToIso(weekStart, 6);
+
+    const defaultOpen = Number.isFinite(cfg.openHour) ? cfg.openHour : DEFAULT_OPEN_HOUR;
+    const defaultClose = Number.isFinite(cfg.closeHour) ? cfg.closeHour : DEFAULT_CLOSE_HOUR;
+
+    const dayRows = [];
+    let minOpen = Infinity;
+    let maxClose = -Infinity;
+
+    for (let offset = 0; offset < 7; offset += 1) {
+        const date = addDaysToIso(weekStart, offset);
+        const day = doc.days?.[date] || null;
+        const refDate = new Date(`${date}T12:00:00`);
+        const hoursResolved = parsedStore
+            ? resolveHours(parsedStore, refDate)
+            : {
+                  openHour: Number.isFinite(day?.openHour) ? day.openHour : defaultOpen,
+                  closeHour: Number.isFinite(day?.closeHour) ? day.closeHour : defaultClose,
+              };
+        const open = hoursResolved.openHour;
+        const close = hoursResolved.closeHour;
+        if (open < minOpen) minOpen = open;
+        if (close > maxClose) maxClose = close;
+
+        const weekday = weekdayForIso(date, timeZone);
+        const hourlyMap = new Map();
+        if (day?.actual?.length) {
+            const dayOpen = Number.isFinite(day.openHour) ? day.openHour : open;
+            for (let h = open; h < close; h += 1) {
+                const idx = h - dayOpen;
+                hourlyMap.set(
+                    h,
+                    idx >= 0 && idx < day.actual.length
+                        ? Math.round((Number(day.actual[idx]) || 0) * 100) / 100
+                        : 0
+                );
+            }
+        }
+
+        dayRows.push({
+            date,
+            weekday,
+            weekdayLabel: WEEKDAY_LABELS[weekday] || String(weekday),
+            openHour: open,
+            closeHour: close,
+            dayTotal: day?.actualTotal != null ? day.actualTotal : null,
+            hasData: Boolean(day?.actual?.length),
+            source: day?.source || null,
+            hourlyMap,
+        });
+    }
+
+    if (!Number.isFinite(minOpen)) {
+        minOpen = defaultOpen;
+        maxClose = defaultClose;
+    }
+
+    const hourColumns = [];
+    for (let h = minOpen; h < maxClose; h += 1) {
+        hourColumns.push({ hour: h, label: formatHourLabel(h) });
+    }
+
+    const rows = dayRows.map((day) => ({
+        date: day.date,
+        weekday: day.weekday,
+        weekdayLabel: day.weekdayLabel,
+        openHour: day.openHour,
+        closeHour: day.closeHour,
+        dayTotal: day.dayTotal,
+        hasData: day.hasData,
+        source: day.source,
+        values: hourColumns.map((col) => {
+            if (col.hour < day.openHour || col.hour >= day.closeHour) return null;
+            if (day.hourlyMap.has(col.hour)) return day.hourlyMap.get(col.hour);
+            return day.hasData ? 0 : null;
+        }),
+    }));
+
+    return {
+        storeNumber: store,
+        storeName: cfg.storeName || parsedStore?.storeName || store,
+        timeZone,
+        asOf: asOfIso,
+        weekStart,
+        weekEnd,
+        openHour: minOpen,
+        closeHour: maxClose,
+        hourColumns,
+        rows,
+        dayTotals: rows.map((r) => r.dayTotal),
+        gridType: 'week',
+    };
+}
+
 function importForecastHistory(payload, options = {}) {
     const force = Boolean(options.force);
     let imported = 0;
@@ -756,6 +868,8 @@ module.exports = {
     assessHistoryReadiness,
     buildHistoryCoverageForStores,
     buildHistoryHourGrid,
+    buildHistoryWeekGrid,
+    weekStartingMondayFromDate,
     importForecastHistory,
     normalizeHourlyEntry,
     weekdayForIso,

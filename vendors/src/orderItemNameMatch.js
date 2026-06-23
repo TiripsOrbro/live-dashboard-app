@@ -2,6 +2,7 @@
 
 const { normalizeItemCode } = require('./reportReader');
 const { allLookupKeys, canonicalItemCode, findInReportMap } = require('./itemCodes');
+const { stockCountDisplayName } = require('./stockCountDisplayNames');
 
 const MIN_NAME_MATCH_SCORE = 25;
 
@@ -306,6 +307,23 @@ function buildBuildToEntriesForVendor(vendorCfg, buildToLines, catalogItems, ite
  * Map build-to entries onto MMX order grid rows by name.
  * When several grid rows match the same entry, fill the second row (index 1).
  */
+function orderGridNameCandidates(entry) {
+    const names = [];
+    const catalogName = String(entry.catalogName || '').trim();
+    const description = String(entry.description || '').trim();
+    if (catalogName) names.push(catalogName);
+    if (description && description !== catalogName) names.push(description);
+    const displayName = stockCountDisplayName(entry.catalogItemCode, catalogName || description);
+    if (displayName && !names.includes(displayName)) names.push(displayName);
+    return names;
+}
+
+function entryAllowsOrderGridNameFallback(entry) {
+    if (entry.matchSource === 'code' || Number(entry.matchScore) >= 100) return true;
+    if (Number(entry.orderQty) <= 0) return false;
+    return Number(entry.matchScore || 0) >= MIN_NAME_MATCH_SCORE;
+}
+
 function linesFromOrderGridByName(grid, buildToEntries) {
     const usedInputIds = new Set();
     const lines = [];
@@ -342,22 +360,22 @@ function linesFromOrderGridByName(grid, buildToEntries) {
             continue;
         }
 
-        // 2) If code failed, only allow fallback name matching for high-confidence catalog matches.
-        const sourceScore = Number(entry.matchScore || 0);
-        if (sourceScore < 80) continue;
+        // 2) Name fallback when MMX grid code differs (e.g. Chocettes shown as "CHOC CHIPS").
+        if (!entryAllowsOrderGridNameFallback(entry)) continue;
 
+        const nameCandidates = orderGridNameCandidates(entry);
         const matches = rows
             .map((row, idx) => ({
                 row,
                 idx,
-                score: nameMatchScore(row.itemName || row.itemCode, entry.description),
+                score: bestNameMatchScore(row.itemName || row.itemCode, ...nameCandidates),
             }))
             .filter((m) => m.score >= MIN_NAME_MATCH_SCORE && !usedInputIds.has(m.row.inputId))
-            .sort((a, b) => a.idx - b.idx);
+            .sort((a, b) => b.score - a.score || a.idx - b.idx);
 
         if (!matches.length) continue;
 
-        const topScore = Math.max(...matches.map((m) => m.score));
+        const topScore = matches[0].score;
         const tied = matches.filter((m) => m.score >= topScore - 1);
         const pick = tied.length >= 2 ? tied[1] : tied[0];
 
@@ -366,7 +384,7 @@ function linesFromOrderGridByName(grid, buildToEntries) {
             itemCode: pick.row.itemCode,
             itemName: pick.row.itemName || pick.row.itemCode,
             quantity: entry.orderQty,
-            matchedFrom: entry.description || entry.catalogName,
+            matchedFrom: `name:${nameCandidates[0] || entry.catalogName || ''}`,
         });
     }
 
@@ -386,4 +404,6 @@ module.exports = {
     buildToLineMatchScore,
     buildBuildToEntriesForVendor,
     linesFromOrderGridByName,
+    orderGridNameCandidates,
+    entryAllowsOrderGridNameFallback,
 };

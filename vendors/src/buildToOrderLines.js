@@ -307,8 +307,9 @@ async function buildOrderLinesByVendorId(storeNumber, options = {}) {
                 catalogItemCode: line.itemCode,
                 description: line.description,
                 orderQty: line.orderQty,
-                iseItemCode: line.itemCode,
-                matchScore: 15,
+                iseItemCode: line.iseItemCode || line.itemCode,
+                matchScore: line.iseMatchSource === 'code' ? 100 : line.iseMatchSource === 'name' ? 60 : 30,
+                matchSource: line.iseMatchSource || 'report',
                 buildToSource: line.buildToSource || 'report',
             }));
 

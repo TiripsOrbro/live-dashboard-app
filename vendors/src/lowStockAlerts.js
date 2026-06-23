@@ -4,6 +4,7 @@ const { buildCatalogBuildToIndex } = require('./vendorCatalog');
 const { buildToOverridesForStore } = require('./buildToStoreOverrides');
 const { adminOverridesForStore, readOverridesDoc } = require('./buildToAdminOverrides');
 const { normalizeItemName } = require('./orderItemNameMatch');
+const { stockCountDisplayName } = require('./stockCountDisplayNames');
 
 const DEFAULT_STOCK_WARNING_DAYS = 5;
 const SUMMARY_CACHE_MS = Number(process.env.LOW_STOCK_SUMMARY_CACHE_MS || 15 * 60 * 1000);
@@ -78,10 +79,14 @@ function computeLowStockAlerts(lines, options = {}) {
                       adminOverrideMap
                   );
         if (daysOfStock >= threshold) continue;
+        const itemCode = line.itemCode || line.iseItemCode;
+        const description = line.description || '';
+        const displayName = stockCountDisplayName(itemCode, description) || description || itemCode;
         alerts.push({
-            itemCode: line.itemCode || line.iseItemCode,
+            itemCode,
             iseItemCode: line.iseItemCode || line.itemCode,
-            description: line.description || '',
+            description,
+            displayName,
             onHandCartons: onHand,
             onOrderCartons: onOrder,
             avgDaily,

@@ -315,13 +315,14 @@ const {
 } = require('./services/dfsc/dfscStore');
 const { buildDfscReportPdf, buildReportFilename } = require('./services/dfsc/dfscReport');
 const { buildCoreReportPdf } = require('./services/dfsc/dfscCoreReport');
-const { buildStatusForStores, getTargetForecastWeekStarts } = require('../dashboard/src/forecast/forecastStatusLedger');
+const { buildStatusForStores, getTargetForecastWeekStarts, resolveForecastTarget } = require('../dashboard/src/forecast/forecastStatusLedger');
 const {
     runForecastForStores,
     runLifeLenzForecastForStores,
     runCombinedForecastForStores,
     previewForecastForStore,
     previewForecastForStores,
+    forecastRunOptions,
 } = require('../dashboard/src/forecast/forecastRunner');
 const {
     readManualEntryPack,
@@ -330,6 +331,7 @@ const {
 const {
     buildHistoryCoverageForStores,
     buildHistoryHourGrid,
+    buildHistoryWeekGrid,
     recordForecastHistoryFromStore,
     importForecastHistory,
     upsertManualHistoryDay,
@@ -350,6 +352,11 @@ const {
     writeAutoSubmitSettings,
     buildAutoSubmitStatus,
 } = require('../dashboard/src/forecast/forecastAutoSubmitLedger');
+const {
+    writeStoreAutoSubmit,
+    buildStoreAutoSubmitStatus,
+    buildStoreAutoSubmitMap,
+} = require('../dashboard/src/forecast/forecastStoreAutoSubmitLedger');
 const {
     buildForecastUpdatesForStores,
     summarizeForecastUpdates,
@@ -3432,6 +3439,17 @@ app.get('/api/account/login-history', (req, res) => {
     res.json({ success: true, ...result });
 });
 
+function forecastTargetFromBody(body = {}) {
+    const targetScope = String(body.targetScope || body.scope || '').trim();
+    const weekStart = String(body.weekStart || '').trim();
+    const date = String(body.date || '').trim();
+    const out = {};
+    if (targetScope) out.targetScope = targetScope;
+    if (weekStart) out.weekStart = weekStart;
+    if (date) out.date = date;
+    return out;
+}
+
 app.get('/api/admin/forecast/status', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     if (!canUserAccessAdminMenu(user)) {
@@ -3441,20 +3459,29 @@ app.get('/api/admin/forecast/status', (req, res) => {
     const storeNumbers = getEffectiveStoresForUser(user).filter((s) => !isTestStore(s));
     const payload = buildStatusForStores(storeNumbers);
     const history = buildHistoryCoverageForStores(storeNumbers);
-    const weekStart = payload.targetWeeks?.[0] || getTargetForecastWeekStarts()[0];
-    const forecastUpdates = buildForecastUpdatesForStores(storeNumbers, weekStart);
-    const updatesSummary = {};
-    for (const store of storeNumbers) {
-        updatesSummary[String(store)] = summarizeForecastUpdates(forecastUpdates[String(store)]);
+    const forecastUpdatesByWeek = {};
+    const updatesSummaryByWeek = {};
+    for (const weekStart of payload.targetWeeks || []) {
+        const weekUpdates = buildForecastUpdatesForStores(storeNumbers, weekStart);
+        forecastUpdatesByWeek[weekStart] = weekUpdates;
+        updatesSummaryByWeek[weekStart] = {};
+        for (const store of storeNumbers) {
+            updatesSummaryByWeek[weekStart][String(store)] = summarizeForecastUpdates(weekUpdates[String(store)]);
+        }
     }
+    const defaultWeek = payload.targetWeeks?.[2] || payload.targetWeeks?.[0] || getTargetForecastWeekStarts()[0];
     const autoSubmit = buildAutoSubmitStatus();
+    const storeAutoSubmit = buildStoreAutoSubmitMap(storeNumbers);
     res.json({
         success: true,
         ...payload,
         history,
-        forecastUpdates,
-        updatesSummary,
+        forecastUpdates: forecastUpdatesByWeek[defaultWeek] || {},
+        forecastUpdatesByWeek,
+        updatesSummary: updatesSummaryByWeek[defaultWeek] || {},
+        updatesSummaryByWeek,
         autoSubmit,
+        storeAutoSubmit,
         canManageAutoSubmit: canUserEditGlobalBuildTo(user),
     });
 });
@@ -3465,9 +3492,10 @@ app.get('/api/admin/forecast/auto-submit', (req, res) => {
         res.status(403).json({ success: false, error: 'Admin menu access required.' });
         return;
     }
+    const storeNumbers = getEffectiveStoresForUser(user).filter((s) => !isTestStore(s));
     res.json({
         success: true,
-        ...buildAutoSubmitStatus(),
+        ...buildStoreAutoSubmitStatus(storeNumbers),
         canManage: canUserEditGlobalBuildTo(user),
     });
 });
@@ -3482,12 +3510,36 @@ app.put('/api/admin/forecast/auto-submit', (req, res) => {
         res.status(403).json({ success: false, error: 'Area Manager access or above required.' });
         return;
     }
+    const store = String(req.body?.store || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
     try {
         const enabled = !(req.body?.enabled === false || req.body?.enabled === 0 || req.body?.enabled === '0');
-        const doc = writeAutoSubmitSettings({ enabled }, user.username);
-        res.json({ success: true, ...buildAutoSubmitStatus(), settings: doc });
+        writeStoreAutoSubmit(store, enabled, user.username);
+        const storeNumbers = getEffectiveStoresForUser(user).filter((s) => !isTestStore(s));
+        res.json({ success: true, ...buildStoreAutoSubmitStatus(storeNumbers) });
     } catch (err) {
         res.status(400).json({ success: false, error: err.message || 'Could not save auto-submit setting.' });
+    }
+});
+
+app.put('/api/admin/forecast/store-auto-submit', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    if (!canUserEditGlobalBuildTo(user)) {
+        res.status(403).json({ success: false, error: 'Area Manager access or above required.' });
+        return;
+    }
+    const store = String(req.body?.store || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    try {
+        const enabled = !(req.body?.enabled === false || req.body?.enabled === 0 || req.body?.enabled === '0');
+        writeStoreAutoSubmit(store, enabled, user.username);
+        res.json({ success: true, store, enabled: Boolean(enabled) });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not save store auto-submit setting.' });
     }
 });
 
@@ -3499,6 +3551,11 @@ app.get('/api/admin/forecast/history-grid', (req, res) => {
     }
     const store = String(req.query.store || '').trim();
     if (!store || !assertStoreAccess(req, res, store)) return;
+    const weekStart = String(req.query.weekStart || '').trim();
+    if (weekStart && !/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+        res.status(400).json({ success: false, error: 'weekStart must be YYYY-MM-DD.' });
+        return;
+    }
     const weekdayRaw = req.query.weekday;
     const weekday = weekdayRaw === undefined || weekdayRaw === '' ? undefined : Number(weekdayRaw);
     if (weekdayRaw !== undefined && weekdayRaw !== '' && (!Number.isFinite(weekday) || weekday < 0 || weekday > 6)) {
@@ -3508,7 +3565,9 @@ app.get('/api/admin/forecast/history-grid', (req, res) => {
     const maxWeeks = Number(req.query.weeks) || 5;
     const includeForecast = req.query.includeForecast !== '0';
     try {
-        const grid = buildHistoryHourGrid(store, { weekday, maxWeeks });
+        const grid = weekStart || weekdayRaw === undefined || weekdayRaw === ''
+            ? buildHistoryWeekGrid(store, { weekStart: weekStart || undefined })
+            : buildHistoryHourGrid(store, { weekday, maxWeeks });
         let forecastWeek = null;
         if (includeForecast) {
             try {
@@ -3620,7 +3679,7 @@ app.put('/api/admin/forecast/adjustments', (req, res) => {
     if (!store || !assertStoreAccess(req, res, store)) return;
     try {
         const doc = writeAdjustments(store, weekStart, req.body?.rules || [], user.username);
-        const preview = previewForecastForStore(store);
+        const preview = previewForecastForStore(store, forecastTargetFromBody(req.body));
         res.json({
             success: true,
             adjustments: doc,
@@ -3649,7 +3708,7 @@ app.delete('/api/admin/forecast/adjustments', (req, res) => {
     if (!store || !assertStoreAccess(req, res, store)) return;
     try {
         const result = deleteAdjustments(store, weekStart);
-        const preview = previewForecastForStore(store);
+        const preview = previewForecastForStore(store, { weekStart, ...forecastTargetFromBody(req.body) });
         res.json({
             success: true,
             ...result,
@@ -3679,7 +3738,8 @@ app.post('/api/admin/forecast/preview', (req, res) => {
         res.status(400).json({ success: false, error: 'No valid stores selected.' });
         return;
     }
-    const previews = previewForecastForStores(storeNumbers);
+    const target = forecastTargetFromBody(req.body);
+    const previews = previewForecastForStores(storeNumbers, target);
     const ok = previews.filter((row) => row.ok);
     if (!ok.length) {
         res.status(400).json({
@@ -3692,6 +3752,9 @@ app.post('/api/admin/forecast/preview', (req, res) => {
     res.json({
         success: true,
         targetWeeks: ok[0]?.targetWeeks || getTargetForecastWeekStarts(),
+        targetScope: ok[0]?.targetScope,
+        weekStart: ok[0]?.weekStart,
+        targetDates: ok[0]?.targetDates,
         previews,
     });
 });
@@ -3784,7 +3847,10 @@ app.post('/api/admin/forecast/run', async (req, res) => {
         res.setHeader('Cache-Control', 'no-cache, no-transform');
         res.setHeader('Connection', 'keep-alive');
         res.flushHeaders?.();
-        writeSse('started', { storeNumbers, targetWeeks: getTargetForecastWeekStarts() });
+        writeSse('started', {
+            storeNumbers,
+            ...resolveForecastTarget(forecastRunOptions(forecastTargetFromBody(req.body))),
+        });
     }
 
     try {
@@ -3827,6 +3893,7 @@ app.post('/api/admin/forecast/run', async (req, res) => {
                     lifelenzCredentials,
                     keepBrowserOpen: headed && req.body?.keepBrowserOpen === true,
                     onProgress: (payload) => writeSse('progress', payload),
+                    ...forecastTargetFromBody(req.body),
                 });
 
                 const mmxResults = combined.mmxResults || [];

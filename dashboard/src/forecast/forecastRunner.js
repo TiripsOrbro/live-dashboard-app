@@ -1,6 +1,7 @@
 const { assessHistoryReadiness, dailyRowsFromHistory, sumHourly, formatHourLabel, WEEKDAY_LABELS } = require('./forecastHistoryLedger');
 const {
     getTargetForecastWeekStarts,
+    resolveForecastTarget,
     addDaysToIso,
     markStoreWeekPlatformComplete,
 } = require('./forecastStatusLedger');
@@ -203,37 +204,129 @@ function reshapeHourlyForTotal(day, newTotal) {
     return { ...day, forecastTotal: roundedTotal, hourly };
 }
 
+function applyAdjustmentValue(baseValue, rule) {
+    const base = Number(baseValue) || 0;
+    if (rule.mode === 'percent') {
+        return Math.round(base * (1 + Number(rule.value) / 100) * 100) / 100;
+    }
+    return Math.round((base + Number(rule.value)) * 100) / 100;
+}
+
+function lockedHourValuesFromRules(baseDay, hourRules) {
+    const locked = new Map();
+    for (const rule of hourRules || []) {
+        const slot = (baseDay.hourly || []).find((h) => h.hour === rule.hour);
+        const baseVal = slot != null ? Number(slot.forecast) || 0 : 0;
+        locked.set(rule.hour, applyAdjustmentValue(baseVal, rule));
+    }
+    return locked;
+}
+
+function reshapeHourlyRespectingLocks(day, newTotal, baseDay, lockedHours) {
+    const roundedTotal = Math.round(newTotal * 100) / 100;
+    if (!day.hourly?.length) {
+        return { ...day, forecastTotal: roundedTotal, hourly: [] };
+    }
+
+    const lockedSum = [...lockedHours.values()].reduce((sum, v) => sum + (Number(v) || 0), 0);
+    let remainder = Math.round((roundedTotal - lockedSum) * 100) / 100;
+
+    const unlocked = day.hourly.filter((slot) => !lockedHours.has(slot.hour));
+    const baseUnlockedTotal = unlocked.reduce((sum, slot) => {
+        const baseSlot = (baseDay.hourly || []).find((h) => h.hour === slot.hour);
+        return sum + (Number(baseSlot?.forecast) || 0);
+    }, 0);
+
+    const hourly = day.hourly.map((slot) => {
+        if (lockedHours.has(slot.hour)) {
+            return { hour: slot.hour, forecast: lockedHours.get(slot.hour) };
+        }
+        const baseSlot = (baseDay.hourly || []).find((h) => h.hour === slot.hour);
+        const baseVal = Number(baseSlot?.forecast) || 0;
+        let forecast;
+        if (unlocked.length <= 0) {
+            forecast = 0;
+        } else if (baseUnlockedTotal <= 0) {
+            forecast = Math.round((remainder / unlocked.length) * 100) / 100;
+        } else {
+            forecast = Math.round(remainder * (baseVal / baseUnlockedTotal) * 100) / 100;
+        }
+        return { hour: slot.hour, forecast };
+    });
+
+    const lastUnlockedIdx = hourly.map((s, i) => (!lockedHours.has(s.hour) ? i : -1)).filter((i) => i >= 0).pop();
+    const shapedTotal = Math.round(hourly.reduce((sum, row) => sum + row.forecast, 0) * 100) / 100;
+    const fix = Math.round((roundedTotal - shapedTotal) * 100) / 100;
+    if (lastUnlockedIdx != null && Math.abs(fix) >= 0.01) {
+        hourly[lastUnlockedIdx].forecast = Math.round((hourly[lastUnlockedIdx].forecast + fix) * 100) / 100;
+    }
+
+    return { ...day, forecastTotal: roundedTotal, hourly };
+}
+
+function applyHourOnlyAdjustments(day, baseDay, hourRules) {
+    if (!hourRules?.length) return day;
+    const hourly = (day.hourly || []).map((slot) => {
+        const rule = hourRules.find((r) => r.hour === slot.hour);
+        if (!rule) return { hour: slot.hour, forecast: Number(slot.forecast) || 0 };
+        const baseSlot = (baseDay.hourly || []).find((h) => h.hour === slot.hour);
+        const baseVal = baseSlot != null ? Number(baseSlot.forecast) || 0 : 0;
+        return { hour: slot.hour, forecast: applyAdjustmentValue(baseVal, rule) };
+    });
+    const forecastTotal = Math.round(hourly.reduce((sum, row) => sum + row.forecast, 0) * 100) / 100;
+    return { ...day, hourly, forecastTotal };
+}
+
 function applyForecastAdjustments(plan, rules) {
     if (!Array.isArray(plan) || !plan.length) return [];
     if (!Array.isArray(rules) || !rules.length) return plan.map(clonePlanDay);
 
+    const baseDays = plan.map(clonePlanDay);
     let days = plan.map(clonePlanDay);
 
-    for (const rule of rules) {
-        if (rule.scope === 'week') {
-            if (rule.mode === 'percent') {
-                const factor = 1 + Number(rule.value) / 100;
-                days = days.map((day) => reshapeHourlyForTotal(day, day.forecastTotal * factor));
-            } else if (rule.mode === 'dollar') {
-                const addPer = Math.round((Number(rule.value) / days.length) * 100) / 100;
-                days = days.map((day, idx) => {
-                    let add = addPer;
-                    if (idx === days.length - 1) {
-                        const sumPrior = addPer * (days.length - 1);
-                        add = Math.round((Number(rule.value) - sumPrior) * 100) / 100;
-                    }
-                    return reshapeHourlyForTotal(day, day.forecastTotal + add);
-                });
-            }
-        } else if (rule.scope === 'day') {
-            days = days.map((day) => {
-                if (day.date !== rule.date) return day;
-                if (rule.mode === 'percent') {
-                    const factor = 1 + Number(rule.value) / 100;
-                    return reshapeHourlyForTotal(day, day.forecastTotal * factor);
+    const weekRules = rules.filter((r) => r.scope === 'week');
+    const dayRules = rules.filter((r) => r.scope === 'day');
+    const hourRules = rules.filter((r) => r.scope === 'hour');
+
+    for (const rule of weekRules) {
+        if (rule.mode === 'percent') {
+            const factor = 1 + Number(rule.value) / 100;
+            days = days.map((day) => reshapeHourlyForTotal(day, day.forecastTotal * factor));
+        } else if (rule.mode === 'dollar') {
+            const addPer = Math.round((Number(rule.value) / days.length) * 100) / 100;
+            days = days.map((day, idx) => {
+                let add = addPer;
+                if (idx === days.length - 1) {
+                    const sumPrior = addPer * (days.length - 1);
+                    add = Math.round((Number(rule.value) - sumPrior) * 100) / 100;
                 }
-                return reshapeHourlyForTotal(day, day.forecastTotal + Number(rule.value));
+                return reshapeHourlyForTotal(day, day.forecastTotal + add);
             });
+        }
+    }
+
+    for (const day of days) {
+        const baseDay = baseDays.find((d) => d.date === day.date);
+        if (!baseDay) continue;
+
+        const dayHourRules = hourRules.filter((r) => r.date === day.date);
+        const dayDayRules = dayRules.filter((r) => r.date === day.date);
+        const locked = lockedHourValuesFromRules(baseDay, dayHourRules);
+
+        if (dayDayRules.length) {
+            let newTotal = day.forecastTotal;
+            for (const rule of dayDayRules) {
+                if (rule.mode === 'percent') {
+                    newTotal = newTotal * (1 + Number(rule.value) / 100);
+                } else {
+                    newTotal = newTotal + Number(rule.value);
+                }
+            }
+            const idx = days.findIndex((d) => d.date === day.date);
+            days[idx] = reshapeHourlyRespectingLocks(day, newTotal, baseDay, locked);
+        } else if (dayHourRules.length) {
+            const idx = days.findIndex((d) => d.date === day.date);
+            days[idx] = applyHourOnlyAdjustments(day, baseDay, dayHourRules);
         }
     }
 
@@ -243,23 +336,32 @@ function applyForecastAdjustments(plan, rules) {
 function buildForecastPlanForStore(storeNumber, options = {}) {
     const store = String(storeNumber || '').trim();
     const dailyRows = loadDailyRowsForStore(store);
-    const { targetWeeks, dates } = buildTargetForecastDates(options.fromDate);
+    const resolved = buildTargetForecastDates(options.fromDate, options);
+    const { targetWeeks, dates, weekStart, scope } = resolved;
     const basePlan = buildHourlyForecastPlan(dailyRows, dates, store);
-    if (!basePlan.length) return { targetWeeks, dates, basePlan: [], plan: [], rules: [] };
+    if (!basePlan.length) return { ...resolved, basePlan: [], plan: [], rules: [] };
 
-    const weekStart = targetWeeks[0];
-    const rules = options.adjustmentRules ?? loadAdjustmentRules(store, weekStart);
+    const adjustmentWeek = weekStart || targetWeeks[0];
+    const rules = options.adjustmentRules ?? loadAdjustmentRules(store, adjustmentWeek);
     const plan = applyForecastAdjustments(basePlan, rules);
-    return { targetWeeks, dates, basePlan, plan, rules };
+    return { targetWeeks, dates, weekStart: adjustmentWeek, scope, basePlan, plan, rules };
 }
 
-function buildTargetForecastDates(fromDate = new Date()) {
-    const targetWeeks = getTargetForecastWeekStarts(fromDate);
-    const dates = [];
-    for (const weekStart of targetWeeks) {
-        for (let i = 0; i < 7; i += 1) dates.push(addDaysToIso(weekStart, i));
+function buildTargetForecastDates(fromDate = new Date(), options = {}) {
+    return resolveForecastTarget({ fromDate, ...options });
+}
+
+function forecastRunOptions(options = {}) {
+    const target = {
+        targetScope: options.targetScope || options.scope,
+        weekStart: options.weekStart,
+        date: options.date,
+        fromDate: options.fromDate,
+    };
+    if (!target.targetScope && !target.weekStart && !target.date) {
+        target.targetScope = 'week-after';
     }
-    return { targetWeeks, dates };
+    return target;
 }
 
 function loadDailyRowsForStore(storeNumber) {
@@ -315,7 +417,7 @@ function previewForecastForStore(storeNumber, options = {}) {
 
     const cfg = getStoreConfig(store) || {};
     const dailyRows = loadDailyRowsForStore(store);
-    const { targetWeeks, basePlan, plan, rules } = buildForecastPlanForStore(store, options);
+    const { targetWeeks, basePlan, plan, rules, weekStart, scope, dates } = buildForecastPlanForStore(store, options);
     if (!plan.length) {
         throw new Error(`Could not build hourly forecast plan for store ${store}.`);
     }
@@ -331,6 +433,9 @@ function previewForecastForStore(storeNumber, options = {}) {
         daysSampled: dailyRows.length,
         forecastDays: plan.length,
         targetWeeks,
+        targetScope: scope,
+        weekStart,
+        targetDates: dates,
         history: readiness,
         basePlan,
         plan,
@@ -369,7 +474,8 @@ async function runForecastForStore(storeNumber, options = {}) {
 
     const cfg = getStoreConfig(store) || {};
     const dailyRows = loadDailyRowsForStore(store);
-    const { targetWeeks, plan } = buildForecastPlanForStore(store, options);
+    const runTarget = forecastRunOptions(options);
+    const { targetWeeks, plan } = buildForecastPlanForStore(store, { ...options, ...runTarget });
     if (!plan.length) {
         throw new Error(`Could not build hourly forecast plan for store ${store}.`);
     }
@@ -404,14 +510,14 @@ async function runForecastForStore(storeNumber, options = {}) {
 }
 
 async function runForecastForStores(storeNumbers, options = {}) {
-    const targetWeeks = getTargetForecastWeekStarts();
+    const runTarget = forecastRunOptions(options);
     const results = [];
     for (const storeNumber of storeNumbers || []) {
         try {
-            const result = await runForecastForStore(storeNumber, options);
+            const result = await runForecastForStore(storeNumber, { ...options, ...runTarget });
             results.push({ storeNumber, ok: true, ...result });
             if (options.markPlatformComplete !== false) {
-                for (const weekStart of targetWeeks) {
+                for (const weekStart of result.targetWeeks || []) {
                     markStoreWeekPlatformComplete(weekStart, storeNumber, 'mmx', {
                         completedBy: options.completedBy || null,
                     });
@@ -434,7 +540,7 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
     const { createAuthenticatedLifeLenzSession } = require('../../../lifelenz/src/lifelenzAuth');
     const { writeForecastPlanOnPage } = require('../../../lifelenz/src/lifelenzForecastScraper');
     const { closeBrowserQuietly } = require('../../../mmx/src/macromatixScraper');
-    const targetWeeks = getTargetForecastWeekStarts();
+    const runTarget = forecastRunOptions(options);
     const results = [];
 
     const byStore = credentials?.byStore && typeof credentials.byStore === 'object' ? credentials.byStore : null;
@@ -493,7 +599,7 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
         for (const storeNumber of storeNumbers || []) {
             const store = String(storeNumber || '').trim();
             try {
-                const preview = previewForecastForStore(store, options);
+                const preview = previewForecastForStore(store, { ...options, ...runTarget });
                 if (typeof options.onProgress === 'function') {
                     options.onProgress({
                         platform: 'lifelenz',
@@ -515,14 +621,14 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
                             },
                         },
                         {
-                            weekStart: targetWeeks[0],
+                            weekStart: preview.weekStart || preview.targetWeeks?.[0],
                             storeNumber: store,
                             completedBy: options.completedBy,
                         }
                     ),
                 });
                 if (options.markPlatformComplete !== false) {
-                    for (const weekStart of targetWeeks) {
+                    for (const weekStart of preview.targetWeeks || []) {
                         markStoreWeekPlatformComplete(weekStart, store, 'lifelenz', {
                             completedBy: options.completedBy || null,
                         });
@@ -567,11 +673,13 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
 }
 
 async function runCombinedForecastForStores(storeNumbers, options = {}) {
-    const targetWeeks = getTargetForecastWeekStarts();
+    const runTarget = forecastRunOptions(options);
+    const resolved = resolveForecastTarget(runTarget);
     const onProgress = options.onProgress;
 
     const mmxOptions = {
         ...options,
+        ...runTarget,
         onProgress: (payload) => onProgress?.({ platform: 'mmx', ...payload }),
     };
 
@@ -581,6 +689,7 @@ async function runCombinedForecastForStores(storeNumbers, options = {}) {
     if (options.lifelenzCredentials) {
         lifelenzPromise = runLifeLenzForecastForStores(storeNumbers, options.lifelenzCredentials, {
             ...options,
+            ...runTarget,
             onProgress: (payload) => onProgress?.({ platform: 'lifelenz', ...payload }),
         });
     }
@@ -593,8 +702,8 @@ async function runCombinedForecastForStores(storeNumbers, options = {}) {
                   storeNumbers,
                   mmxResults,
                   lifelenzResults,
-                  targetWeeks,
-                  (store) => previewForecastForStore(store, { force: options.force }).plan
+                  resolved.targetWeeks,
+                  (store) => previewForecastForStore(store, { ...runTarget, force: options.force }).plan
               )
             : [];
 
@@ -602,7 +711,10 @@ async function runCombinedForecastForStores(storeNumbers, options = {}) {
         mmxResults,
         lifelenzResults,
         lifelenzSkipped: !options.lifelenzCredentials,
-        targetWeeks,
+        targetWeeks: resolved.targetWeeks,
+        targetScope: resolved.scope,
+        weekStart: resolved.weekStart,
+        targetDates: resolved.dates,
         manualSaved,
     };
 }
@@ -612,6 +724,7 @@ module.exports = {
     buildDailyForecastPlan,
     buildHourlyForecastPlan,
     buildTargetForecastDates,
+    forecastRunOptions,
     loadDailyRowsForStore,
     buildForecastPreviewGrid,
     applyForecastAdjustments,

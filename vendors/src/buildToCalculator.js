@@ -415,7 +415,16 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
 
         let onHandHit = findInReportMap(onHandReport, reportItemCode, storeNumber);
         if (!onHandHit && catalogName) {
-            onHandHit = findInReportMapWithNameFallback(itemCode, catalogName, onHandReport, storeNumber);
+            const nameHit = findInReportMapWithNameFallback(
+                itemCode,
+                catalogName,
+                onHandReport,
+                storeNumber
+            );
+            // Loose name match (e.g. "CHOC CHIPS" vs "DESSERT CHOCETTES") can attach the wrong SOH row.
+            if (nameHit && Number(nameHit.matchScore) >= 80) {
+                onHandHit = nameHit;
+            }
         }
         const onHandRow = onHandHit?.row || null;
         const isePack = ise.packSize || packSizeFromUnit(ise.unit);
@@ -524,7 +533,6 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
     }
 
     for (const item of catalogItems) {
-        if (item.skipStockCount) continue;
         if (item.buildToFixed != null || item.buildToOrderManual) continue;
         if (lines.some((line) => lineCoversCatalogItem(line, item))) continue;
         const hit = findIseRowForCatalogItem(item, usage, usedIseCodes);

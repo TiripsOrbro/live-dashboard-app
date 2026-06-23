@@ -45,7 +45,9 @@ function readAdjustments(storeNumber, weekStart) {
 function validateRule(rule, weekStart) {
     if (!rule || typeof rule !== 'object') throw new Error('Invalid adjustment rule.');
     const scope = String(rule.scope || '').trim();
-    if (scope !== 'week' && scope !== 'day') throw new Error('Adjustment scope must be week or day.');
+    if (scope !== 'week' && scope !== 'day' && scope !== 'hour') {
+        throw new Error('Adjustment scope must be week, day, or hour.');
+    }
     const mode = String(rule.mode || '').trim();
     if (mode !== 'percent' && mode !== 'dollar') throw new Error('Adjustment mode must be percent or dollar.');
     const value = Number(rule.value);
@@ -58,12 +60,25 @@ function validateRule(rule, weekStart) {
         throw new Error(`Dollar adjustment must be between -$${MAX_DOLLAR} and $${MAX_DOLLAR}.`);
     }
 
-    if (scope === 'day') {
+    if (scope === 'day' || scope === 'hour') {
         const date = String(rule.date || '').trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Day adjustment requires a valid date.');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Day/hour adjustment requires a valid date.');
         const weekEnd = addDaysToIso(weekStart, 6);
         if (date < weekStart || date > weekEnd) {
             throw new Error(`Day date must fall within target week (${weekStart} to ${weekEnd}).`);
+        }
+        if (scope === 'hour') {
+            const hour = Number(rule.hour);
+            if (!Number.isFinite(hour) || hour < 0 || hour > 23) {
+                throw new Error('Hour adjustment requires hour 0–23.');
+            }
+            return {
+                scope: 'hour',
+                date,
+                hour: Math.floor(hour),
+                mode,
+                value: Math.round(value * 100) / 100,
+            };
         }
         return { scope: 'day', date, mode, value: Math.round(value * 100) / 100 };
     }

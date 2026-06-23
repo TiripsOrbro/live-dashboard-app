@@ -31,9 +31,67 @@ function getMelbourneWeekStart(date = new Date()) {
     return addDaysToIso(todayIso, -daysFromMonday);
 }
 
-function getTargetForecastWeekStarts(fromDate = new Date()) {
+/** Monday-start weeks: this week, next week, and the week after (Melbourne). */
+function getSelectableForecastWeekStarts(fromDate = new Date()) {
     const currentWeekStart = getMelbourneWeekStart(fromDate);
-    return [addDaysToIso(currentWeekStart, 14)];
+    return [
+        currentWeekStart,
+        addDaysToIso(currentWeekStart, 7),
+        addDaysToIso(currentWeekStart, 14),
+    ];
+}
+
+/** All weeks shown in the forecast tool status table. */
+function getTargetForecastWeekStarts(fromDate = new Date()) {
+    return getSelectableForecastWeekStarts(fromDate);
+}
+
+function datesForWeekStart(weekStart) {
+    const dates = [];
+    for (let i = 0; i < 7; i += 1) {
+        dates.push(addDaysToIso(weekStart, i));
+    }
+    return dates;
+}
+
+/**
+ * Resolve which calendar dates to forecast/submit.
+ * @param {object} options
+ * @param {string} [options.targetScope] - this-week | next-week | week-after | week | day
+ * @param {string} [options.weekStart] - for scope=week, first of 7 consecutive days
+ * @param {string} [options.date] - for scope=day
+ */
+function resolveForecastTarget(options = {}) {
+    const fromDate = options.fromDate || new Date();
+    const weeks = getSelectableForecastWeekStarts(fromDate);
+    const scope = String(options.targetScope || options.scope || 'week-after').trim();
+
+    if (scope === 'this-week') {
+        const weekStart = weeks[0];
+        return { scope, targetWeeks: [weekStart], dates: datesForWeekStart(weekStart), weekStart };
+    }
+    if (scope === 'next-week') {
+        const weekStart = weeks[1];
+        return { scope, targetWeeks: [weekStart], dates: datesForWeekStart(weekStart), weekStart };
+    }
+    if (scope === 'day') {
+        const date = String(options.date || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            throw new Error('date is required for single-day forecast (YYYY-MM-DD).');
+        }
+        const weekStart = getMelbourneWeekStart(new Date(`${date}T12:00:00`));
+        return { scope, targetWeeks: [weekStart], dates: [date], weekStart };
+    }
+    if (scope === 'week') {
+        const weekStart = String(options.weekStart || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+            throw new Error('weekStart is required for custom week forecast (YYYY-MM-DD).');
+        }
+        return { scope, targetWeeks: [weekStart], dates: datesForWeekStart(weekStart), weekStart };
+    }
+    // week-after (default; matches legacy 2-weeks-out behaviour)
+    const weekStart = weeks[2];
+    return { scope: 'week-after', targetWeeks: [weekStart], dates: datesForWeekStart(weekStart), weekStart };
 }
 
 function ledgerFilePath(weekStart) {
@@ -137,7 +195,10 @@ module.exports = {
     STATUS_DIR,
     getMelbourneWeekStart,
     getMelbourneTodayIso,
+    getSelectableForecastWeekStarts,
     getTargetForecastWeekStarts,
+    resolveForecastTarget,
+    datesForWeekStart,
     addDaysToIso,
     readLedger,
     writeLedger,

@@ -791,7 +791,7 @@ function buildMicStockShortfallListHtml(items) {
         .map(
             (item) => `
         <li class="mic-tile-stock-item">
-            <span class="mic-tile-stock-item-name" title="${escapeHtml(item.description || item.itemCode || '')}">${escapeHtml(item.description || item.itemCode || 'Item')}</span>
+            <span class="mic-tile-stock-item-name" title="${escapeHtml(item.displayName || item.description || item.itemCode || '')}">${escapeHtml(item.displayName || item.description || item.itemCode || 'Item')}</span>
             <span class="mic-tile-stock-item-meta">${escapeHtml(formatStockDaysLeft(item.daysOfStock))}</span>
         </li>`
         )

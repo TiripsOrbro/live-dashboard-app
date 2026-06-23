@@ -8,6 +8,7 @@
     let historyStoreNumber = null;
     let historyForecastWeek = null;
     let historyGridData = null;
+    let historyWeekStart = null;
     let historyDateBounds = null;
     let historyEditState = null;
     let pendingSubmitStores = [];
@@ -23,6 +24,10 @@
 
     const ADMIN_AREAS = ['Area 1', 'Area 2', 'Area 21', 'Area 22'];
     const FORECAST_AREA_STORAGE_KEY = 'admin-forecast-area';
+    const FORECAST_TARGET_SCOPE_KEY = 'admin-forecast-target-scope';
+    const FORECAST_TARGET_WEEK_KEY = 'admin-forecast-target-week';
+    const FORECAST_TARGET_DAY_KEY = 'admin-forecast-target-day';
+    const FORECAST_WEEK_LABELS = ['This week', 'Next week', 'Week after'];
 
     const WEEKDAYS = [
         { value: 1, label: 'Mon' },
@@ -33,6 +38,97 @@
         { value: 6, label: 'Sat' },
         { value: 0, label: 'Sun' },
     ];
+
+    function addDaysToIso(iso, days) {
+        const parts = String(iso || '').split('-').map(Number);
+        if (parts.length < 3) return iso;
+        const dt = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+        dt.setUTCDate(dt.getUTCDate() + Number(days) || 0);
+        return dt.toISOString().slice(0, 10);
+    }
+
+    function clampWeekStart(iso) {
+        if (!iso || !historyDateBounds) return iso;
+        let weekStart = iso;
+        const weekEnd = addDaysToIso(weekStart, 6);
+        if (weekEnd > historyDateBounds.newest) {
+            weekStart = addDaysToIso(historyDateBounds.newest, -6);
+        }
+        if (weekStart < historyDateBounds.oldest) weekStart = historyDateBounds.oldest;
+        return weekStart;
+    }
+
+    function syncForecastTargetFields(root, scope) {
+        if (!root) return;
+        const weekWrap = root.querySelector('#admin-forecast-target-week-wrap');
+        const dayWrap = root.querySelector('#admin-forecast-target-day-wrap');
+        if (weekWrap) weekWrap.hidden = scope !== 'week';
+        if (dayWrap) dayWrap.hidden = scope !== 'day';
+    }
+
+    function renderForecastTargetControls(root, payload) {
+        const scopeEl = root.querySelector('#admin-forecast-target-scope');
+        const weekStartEl = root.querySelector('#admin-forecast-target-week-start');
+        const dayEl = root.querySelector('#admin-forecast-target-day');
+        if (!scopeEl) return;
+
+        const weeks = payload?.targetWeeks || [];
+        const savedScope = sessionStorage.getItem(FORECAST_TARGET_SCOPE_KEY) || 'week-after';
+        scopeEl.value = savedScope;
+        syncForecastTargetFields(root, savedScope);
+
+        if (weekStartEl) {
+            weekStartEl.value =
+                sessionStorage.getItem(FORECAST_TARGET_WEEK_KEY) || weeks[0] || weekStartEl.value || '';
+        }
+        if (dayEl) {
+            dayEl.value = sessionStorage.getItem(FORECAST_TARGET_DAY_KEY) || dayEl.value || '';
+        }
+    }
+
+    function getForecastTargetPayload() {
+        const root = getRoot();
+        const scope = root?.querySelector('#admin-forecast-target-scope')?.value || 'week-after';
+        const payload = { targetScope: scope };
+        if (scope === 'week') {
+            payload.weekStart = String(root?.querySelector('#admin-forecast-target-week-start')?.value || '').trim();
+        } else if (scope === 'day') {
+            payload.date = String(root?.querySelector('#admin-forecast-target-day')?.value || '').trim();
+        }
+        return payload;
+    }
+
+    function validateForecastTarget() {
+        const payload = getForecastTargetPayload();
+        if (payload.targetScope === 'week' && !payload.weekStart) {
+            return 'Choose a week starting date for the custom week target.';
+        }
+        if (payload.targetScope === 'day' && !payload.date) {
+            return 'Choose a day for the single-day forecast target.';
+        }
+        return '';
+    }
+
+    function describeForecastTarget(payload) {
+        const target = payload || getForecastTargetPayload();
+        const weeks = statusPayload?.targetWeeks || [];
+        if (target.targetScope === 'this-week' && weeks[0]) {
+            return `This week (${formatShortDate(weeks[0])} – ${formatShortDate(addDaysToIso(weeks[0], 6))})`;
+        }
+        if (target.targetScope === 'next-week' && weeks[1]) {
+            return `Next week (${formatShortDate(weeks[1])} – ${formatShortDate(addDaysToIso(weeks[1], 6))})`;
+        }
+        if (target.targetScope === 'week-after' && weeks[2]) {
+            return `Week after (${formatShortDate(weeks[2])} – ${formatShortDate(addDaysToIso(weeks[2], 6))})`;
+        }
+        if (target.targetScope === 'week' && target.weekStart) {
+            return `Week starting ${formatShortDate(target.weekStart)} (7 days)`;
+        }
+        if (target.targetScope === 'day' && target.date) {
+            return `Single day ${formatShortDate(target.date)}`;
+        }
+        return 'Selected forecast target';
+    }
 
     function escapeHtml(text) {
         return String(text)
@@ -89,16 +185,29 @@
     const FORECAST_MODAL_HTML = `
             <div class="admin-modal admin-modal--wide" role="dialog" aria-modal="true">
                 <h2>Forecast tool</h2>
-                <p class="admin-accounts-meta">Uses 5 weeks of stored hourly sales (trimmed weekday averages + hourly shape), then writes one target week (Monday start, 2 weeks out) to Macromatix and LifeLenz when configured. History builds automatically after each trading day; add or edit history days manually for gaps. Adjustments in preview persist until cleared.</p>
+                <p class="admin-accounts-meta">Uses 5 weeks of stored hourly sales (trimmed weekday averages + hourly shape), then writes to Macromatix and LifeLenz when configured. Choose this week, next week, the week after, a custom week starting date, or a single day before preview/submit.</p>
                 <nav class="admin-area-tabs admin-forecast-area-tabs" id="admin-forecast-area-tabs" role="tablist" aria-label="Select area"></nav>
                 <div class="admin-modal-toolbar admin-forecast-toolbar">
+                    <div class="admin-forecast-target-wrap" id="admin-forecast-target-wrap">
+                        <label class="admin-forecast-target-scope-label">Forecast target
+                            <select id="admin-forecast-target-scope">
+                                <option value="this-week">This week</option>
+                                <option value="next-week">Next week</option>
+                                <option value="week-after" selected>Week after</option>
+                                <option value="week">Week starting…</option>
+                                <option value="day">Single day</option>
+                            </select>
+                        </label>
+                        <label class="admin-forecast-target-week-start-label" id="admin-forecast-target-week-wrap" hidden>Week starting
+                            <input type="date" id="admin-forecast-target-week-start" />
+                        </label>
+                        <label class="admin-forecast-target-day-label" id="admin-forecast-target-day-wrap" hidden>Day
+                            <input type="date" id="admin-forecast-target-day" />
+                        </label>
+                    </div>
                     <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-submit-all">Submit all in scope</button>
                     <button type="button" class="mic-settings-btn" id="admin-forecast-setup-lifelenz">Setup LifeLenz</button>
                     <span class="admin-forecast-lifelenz-status" id="admin-forecast-lifelenz-status">LifeLenz: checking…</span>
-                    <label class="admin-forecast-auto-submit" id="admin-forecast-auto-submit-wrap" hidden>
-                        <input type="checkbox" id="admin-forecast-auto-submit-toggle" />
-                        <span>Daily 5AM auto-submit</span>
-                    </label>
                     <span id="admin-forecast-busy" hidden>MMX busy…</span>
                 </div>
                 <div id="admin-forecast-body"></div>
@@ -118,8 +227,15 @@
         root.querySelector('#admin-forecast-setup-lifelenz')?.addEventListener('click', () => {
             void openLifeLenzSetup();
         });
-        root.querySelector('#admin-forecast-auto-submit-toggle')?.addEventListener('change', (event) => {
-            void saveAutoSubmitToggle(event.target.checked);
+        root.querySelector('#admin-forecast-target-scope')?.addEventListener('change', (event) => {
+            syncForecastTargetFields(getRoot(), event.target.value);
+            sessionStorage.setItem(FORECAST_TARGET_SCOPE_KEY, event.target.value);
+        });
+        root.querySelector('#admin-forecast-target-week-start')?.addEventListener('change', (event) => {
+            sessionStorage.setItem(FORECAST_TARGET_WEEK_KEY, event.target.value);
+        });
+        root.querySelector('#admin-forecast-target-day')?.addEventListener('change', (event) => {
+            sessionStorage.setItem(FORECAST_TARGET_DAY_KEY, event.target.value);
         });
         root.querySelector('#admin-forecast-area-tabs')?.addEventListener('click', (event) => {
             const tab = event.target.closest('[data-forecast-area]');
@@ -164,8 +280,12 @@
             <div class="admin-modal admin-modal--wide admin-modal--history" role="dialog" aria-modal="true">
                 <h2 id="admin-forecast-history-title">Sales history</h2>
                 <p class="admin-accounts-meta" id="admin-forecast-history-meta"></p>
-                <div class="admin-tabs admin-tabs--full" id="admin-forecast-history-weekdays"></div>
                 <div class="admin-forecast-history-toolbar" id="admin-forecast-history-toolbar">
+                    <label class="admin-forecast-week-start-label">Week starting
+                        <input type="date" id="admin-forecast-history-week-start" />
+                    </label>
+                    <button type="button" class="mic-settings-btn" id="admin-forecast-history-prev-week" title="Previous week">← Prev</button>
+                    <button type="button" class="mic-settings-btn" id="admin-forecast-history-next-week" title="Next week">Next →</button>
                     <button type="button" class="mic-settings-btn" id="admin-forecast-history-add">Add day</button>
                 </div>
                 <div id="admin-forecast-history-edit" class="admin-forecast-history-edit" hidden></div>
@@ -180,10 +300,21 @@
             if (event.target === historyBackdrop) closeHistory();
         });
         historyBackdrop.querySelector('#admin-forecast-history-close')?.addEventListener('click', closeHistory);
-        historyBackdrop.querySelector('#admin-forecast-history-weekdays')?.addEventListener('click', (event) => {
-            const tab = event.target.closest('[data-weekday]');
-            if (!tab || !historyStoreNumber) return;
-            void loadHistoryGrid(historyStoreNumber, Number(tab.getAttribute('data-weekday')));
+        historyBackdrop.querySelector('#admin-forecast-history-week-start')?.addEventListener('change', (event) => {
+            if (!historyStoreNumber) return;
+            historyWeekStart = clampWeekStart(event.target.value);
+            event.target.value = historyWeekStart;
+            void loadHistoryGrid(historyStoreNumber, historyWeekStart);
+        });
+        historyBackdrop.querySelector('#admin-forecast-history-prev-week')?.addEventListener('click', () => {
+            if (!historyStoreNumber || !historyWeekStart) return;
+            historyWeekStart = clampWeekStart(addDaysToIso(historyWeekStart, -7));
+            void loadHistoryGrid(historyStoreNumber, historyWeekStart);
+        });
+        historyBackdrop.querySelector('#admin-forecast-history-next-week')?.addEventListener('click', () => {
+            if (!historyStoreNumber || !historyWeekStart) return;
+            historyWeekStart = clampWeekStart(addDaysToIso(historyWeekStart, 7));
+            void loadHistoryGrid(historyStoreNumber, historyWeekStart);
         });
         historyBackdrop.querySelector('#admin-forecast-history-add')?.addEventListener('click', () => {
             openHistoryEditForm(null);
@@ -489,7 +620,7 @@
     }
 
     async function runStoresWithProgress(storeNumbers, onEvent) {
-        const body = { storeNumbers, streamProgress: true };
+        const body = { storeNumbers, streamProgress: true, ...getForecastTargetPayload() };
         if (sessionLifeLenzCredentials) {
             body.lifelenzCredentials = {
                 email: sessionLifeLenzCredentials.email,
@@ -1280,7 +1411,6 @@
             try {
                 statusPayload = await fetchStatus();
                 renderAreaTabs(surface);
-                renderAutoSubmitControl(surface, statusPayload);
                 renderTable(surface, statusPayload);
             } catch (_) {
                 /* ignore refresh errors after submit */
@@ -1324,6 +1454,7 @@
         historyStoreNumber = null;
         historyForecastWeek = null;
         historyGridData = null;
+        historyWeekStart = null;
         historyEditState = null;
         closeHistoryEditForm();
     }
@@ -1348,26 +1479,33 @@
         }
     }
 
-    function openHistoryEditForm(column) {
+    function openHistoryEditForm(dayRow) {
         const root = ensureHistoryBackdrop();
         const panel = root.querySelector('#admin-forecast-history-edit');
         if (!panel || !historyGridData) return;
 
-        const isEdit = Boolean(column?.date);
+        const isEdit = Boolean(dayRow?.date);
         historyEditState = {
-            date: column?.date || '',
-            source: column?.source || null,
-            openHour: historyGridData.openHour,
-            closeHour: historyGridData.closeHour,
+            date: dayRow?.date || '',
+            source: dayRow?.source || null,
+            openHour: dayRow?.openHour ?? historyGridData.openHour,
+            closeHour: dayRow?.closeHour ?? historyGridData.closeHour,
         };
 
-        const hourRows = (historyGridData.rows || []).map((row, idx) => {
-            const val = isEdit && column ? row.values[historyGridData.columns.findIndex((c) => c.date === column.date)] : '';
-            return `<label class="admin-forecast-history-hour-input">
-                <span>${escapeHtml(row.label)}</span>
-                <input type="number" min="0" step="0.01" data-hour-idx="${idx}" value="${val != null && val !== '' ? escapeHtml(val) : ''}" />
+        const hourColumns = historyGridData.hourColumns || [];
+        const hourRows = hourColumns
+            .map((col, idx) => {
+                if (isEdit && dayRow && (col.hour < dayRow.openHour || col.hour >= dayRow.closeHour)) {
+                    return '';
+                }
+                const val = isEdit && dayRow ? dayRow.values[idx] : '';
+                return `<label class="admin-forecast-history-hour-input">
+                <span>${escapeHtml(col.label)}</span>
+                <input type="number" min="0" step="0.01" data-hour-idx="${idx}" data-hour="${col.hour}" value="${val != null && val !== '' ? escapeHtml(val) : ''}" />
             </label>`;
-        }).join('');
+            })
+            .filter(Boolean)
+            .join('');
 
         const boundsHint = historyDateBounds
             ? `Allowed dates: ${historyDateBounds.oldest} to ${historyDateBounds.newest}`
@@ -1401,8 +1539,8 @@
         const payload = {
             store: historyStoreNumber,
             date,
-            openHour: historyGridData?.openHour,
-            closeHour: historyGridData?.closeHour,
+            openHour: historyEditState?.openHour ?? historyGridData?.openHour,
+            closeHour: historyEditState?.closeHour ?? historyGridData?.closeHour,
         };
 
         const values = [...form.querySelectorAll('[data-hour-idx]')].map((input) => Number(input.value) || 0);
@@ -1424,7 +1562,7 @@
             if (data.dateBounds) historyDateBounds = data.dateBounds;
             closeHistoryEditForm();
             historyForecastWeek = null;
-            await loadHistoryGrid(historyStoreNumber, historyGridData?.weekday);
+            await loadHistoryGrid(historyStoreNumber, historyGridData?.weekStart || historyWeekStart);
             if (statusPayload && getRoot()) {
                 const statusRes = await fetchStatus();
                 statusPayload = statusRes;
@@ -1460,7 +1598,7 @@
             if (!res.ok || !data.success) throw new Error(data.error || 'Could not delete history day.');
             closeHistoryEditForm();
             historyForecastWeek = null;
-            await loadHistoryGrid(historyStoreNumber, historyGridData?.weekday);
+            await loadHistoryGrid(historyStoreNumber, historyGridData?.weekStart || historyWeekStart);
             if (statusPayload && getRoot()) {
                 const statusRes = await fetchStatus();
                 statusPayload = statusRes;
@@ -1471,48 +1609,61 @@
         }
     }
 
-    function renderHistoryActualGrid(container, grid) {
-        if (!grid?.columns?.length) {
-            container.innerHTML = '<p>No history for this weekday.</p>';
+    function renderHistoryWeekGrid(container, grid) {
+        if (!grid?.rows?.length) {
+            container.innerHTML = '<p>No history for this week.</p>';
             return;
         }
-        const head = grid.columns
-            .map((col, colIdx) => {
-                const sourceLabel = col.source ? formatSourceLabel(col.source) : '';
-                const badge = sourceLabel
-                    ? `<span class="admin-forecast-history-source admin-forecast-history-source--${escapeHtml(String(col.source || '').replace(/[^a-z0-9-]/gi, ''))}">${escapeHtml(sourceLabel)}</span>`
-                    : '';
-                const editBtn =
-                    col.date && col.hasData
-                        ? `<button type="button" class="admin-forecast-history-col-edit" data-history-col="${colIdx}" title="Edit">Edit</button>`
-                        : col.date
-                          ? `<button type="button" class="admin-forecast-history-col-edit" data-history-col="${colIdx}" title="Add data">Fill</button>`
-                          : '';
-                return `<th><span class="admin-history-col-label">${escapeHtml(col.label || '')}</span><span class="admin-accounts-meta">${escapeHtml(col.date || '-')}</span>${badge}${editBtn}</th>`;
-            })
+        const hourHead = (grid.hourColumns || [])
+            .map((col) => `<th class="admin-history-hour-col">${escapeHtml(col.label)}</th>`)
             .join('');
         const rows = (grid.rows || [])
-            .map((row) => {
-                const cells = row.values.map((v) => `<td class="admin-history-num">${formatMoney(v)}</td>`).join('');
-                return `<tr><th scope="row" class="admin-history-hour">${escapeHtml(row.label)}</th>${cells}</tr>`;
+            .map((row, rowIdx) => {
+                const sourceLabel = row.source ? formatSourceLabel(row.source) : '';
+                const badge = sourceLabel
+                    ? `<span class="admin-forecast-history-source admin-forecast-history-source--${escapeHtml(String(row.source || '').replace(/[^a-z0-9-]/gi, ''))}">${escapeHtml(sourceLabel)}</span>`
+                    : '';
+                const rowClass = row.hasData ? '' : ' admin-history-week-row--missing';
+                const cells = (row.values || [])
+                    .map((v) => {
+                        const text = v == null ? '—' : formatMoney(v);
+                        return `<td class="admin-history-num">${text}</td>`;
+                    })
+                    .join('');
+                const totalText = row.dayTotal != null ? formatMoney(row.dayTotal) : '—';
+                const editLabel = row.hasData ? 'Edit' : 'Fill';
+                return `<tr class="admin-history-week-row${rowClass}" data-history-row="${rowIdx}">
+                    <th scope="row" class="admin-history-day-label">
+                        <span class="admin-history-col-label">${escapeHtml(row.weekdayLabel || '')}</span>
+                        <span class="admin-accounts-meta">${escapeHtml(formatShortDate(row.date))}</span>
+                        ${badge}
+                    </th>
+                    ${cells}
+                    <td class="admin-history-num admin-history-total">${totalText}</td>
+                    <td><button type="button" class="admin-forecast-history-col-edit" data-history-row="${rowIdx}">${escapeHtml(editLabel)}</button></td>
+                </tr>`;
             })
             .join('');
-        const totalCells = (grid.dayTotals || [])
-            .map((v) => `<td class="admin-history-num admin-history-total">${formatMoney(v)}</td>`)
-            .join('');
         container.innerHTML = `
-            <div class="admin-history-grid-wrap">
-                <table class="admin-table admin-history-grid">
-                    <thead><tr><th scope="col">Hour</th>${head}</tr></thead>
+            <div class="admin-history-grid-wrap admin-history-week-grid-wrap">
+                <table class="admin-table admin-history-grid admin-history-week-grid">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="admin-history-day-col">Day</th>
+                            ${hourHead}
+                            <th scope="col">Total</th>
+                            <th scope="col"></th>
+                        </tr>
+                    </thead>
                     <tbody>${rows}</tbody>
-                    <tfoot><tr><th scope="row">Day total</th>${totalCells}</tr></tfoot>
                 </table>
             </div>`;
-        container.querySelectorAll('[data-history-col]').forEach((btn) => {
+        container.querySelectorAll('[data-history-row]').forEach((btn) => {
+            if (btn.tagName !== 'BUTTON') return;
             btn.addEventListener('click', () => {
-                const idx = Number(btn.getAttribute('data-history-col'));
-                const col = grid.columns[idx];
-                openHistoryEditForm(col);
+                const idx = Number(btn.getAttribute('data-history-row'));
+                const row = grid.rows[idx];
+                openHistoryEditForm(row);
             });
         });
     }
@@ -1534,9 +1685,9 @@
         return data;
     }
 
-    async function fetchHistoryGrid(storeNumber, weekday, { includeForecast = true } = {}) {
-        const params = new URLSearchParams({ store: storeNumber, weeks: '5' });
-        if (Number.isFinite(weekday)) params.set('weekday', String(weekday));
+    async function fetchHistoryGrid(storeNumber, weekStart, { includeForecast = true } = {}) {
+        const params = new URLSearchParams({ store: storeNumber });
+        if (weekStart) params.set('weekStart', weekStart);
         if (!includeForecast) params.set('includeForecast', '0');
         const res = await fetch(`/api/admin/forecast/history-grid?${params}`, { credentials: 'same-origin' });
         const data = await res.json().catch(() => ({}));
@@ -1549,7 +1700,7 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
-            body: JSON.stringify({ storeNumbers }),
+            body: JSON.stringify({ storeNumbers, ...getForecastTargetPayload() }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) {
@@ -1590,42 +1741,56 @@
         return `<span class="admin-forecast-update-badge admin-forecast-update-badge--${escapeHtml(day.source || 'user')}">${escapeHtml(source)}${escapeHtml(who)} · ${escapeHtml(formatShortDateTime(day.updatedAt))}</span>`;
     }
 
-    function renderAutoSubmitControl(root, payload) {
-        const wrap = root.querySelector('#admin-forecast-auto-submit-wrap');
-        const toggle = root.querySelector('#admin-forecast-auto-submit-toggle');
-        if (!wrap || !toggle) return;
-        if (!payload?.canManageAutoSubmit) {
-            wrap.hidden = true;
-            return;
-        }
-        wrap.hidden = false;
-        toggle.checked = Boolean(payload?.autoSubmit?.enabled);
-        wrap.title =
-            'Runs daily at 5:00 AM Melbourne. Overwrites MMX/LifeLenz with the latest calculated forecast when enabled.';
-    }
-
-    async function saveAutoSubmitToggle(enabled) {
+    async function saveStoreAutoSubmit(storeNumber, enabled) {
         const root = getRoot();
         if (!root) return;
         root.querySelector('#admin-forecast-error').textContent = '';
         try {
-            const res = await fetch('/api/admin/forecast/auto-submit', {
+            const res = await fetch('/api/admin/forecast/store-auto-submit', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin',
-                body: JSON.stringify({ enabled }),
+                body: JSON.stringify({ store: storeNumber, enabled }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.success) throw new Error(data.error || 'Could not save auto-submit setting.');
             if (statusPayload) {
-                statusPayload.autoSubmit = data;
-                statusPayload.canManageAutoSubmit = true;
+                statusPayload.storeAutoSubmit = statusPayload.storeAutoSubmit || {};
+                statusPayload.storeAutoSubmit[String(storeNumber)] = Boolean(enabled);
             }
-            renderAutoSubmitControl(root, statusPayload || data);
         } catch (error) {
             root.querySelector('#admin-forecast-error').textContent = error.message;
-            renderAutoSubmitControl(root, statusPayload || { canManageAutoSubmit: true, autoSubmit: { enabled: !enabled } });
+            const input = root.querySelector(`[data-auto-submit-store="${storeNumber}"]`);
+            if (input) input.checked = !enabled;
         }
+    }
+
+    function transposePreviewGrid(grid) {
+        if (!grid?.columns?.length || !grid?.rows?.length) return null;
+        return {
+            hourColumns: grid.rows.map((r) => ({ hour: r.hour, label: r.label })),
+            rows: grid.columns.map((col, colIdx) => ({
+                date: col.date,
+                weekday: col.weekday,
+                weekdayLabel: col.weekdayLabel,
+                values: grid.rows.map((row) => row.values[colIdx]),
+                dayTotal: grid.dayTotals?.[colIdx],
+            })),
+            dayTotals: grid.dayTotals,
+            weekTotal: grid.weekTotal,
+        };
+    }
+
+    function overrideBadgeForCell(rules, date, hour) {
+        let rule;
+        if (hour != null) {
+            rule = (rules || []).find((r) => r.scope === 'hour' && r.date === date && r.hour === hour);
+        } else {
+            rule = (rules || []).find((r) => r.scope === 'day' && r.date === date);
+        }
+        if (!rule) return '';
+        const label = formatAdjustmentRuleLabel(rule, []);
+        return `<span class="admin-forecast-override-badge" title="${escapeHtml(label)}">±</span>`;
     }
 
     function renderForecastGrid(container, grid, options = {}) {
@@ -1685,6 +1850,166 @@
             </div>`;
     }
 
+    function renderPreviewWeekGrid(container, grid, options = {}) {
+        const transposed = transposePreviewGrid(grid);
+        if (!transposed?.rows?.length) {
+            container.innerHTML = `<p>${escapeHtml(options.emptyMessage || 'No forecast data.')}</p>`;
+            return;
+        }
+        const { forecastDayUpdates = {}, adjustments = [], onOverride } = options;
+        const hourHead = (transposed.hourColumns || [])
+            .map((col) => `<th class="admin-history-hour-col">${escapeHtml(col.label)}</th>`)
+            .join('');
+        const rows = transposed.rows
+            .map((row) => {
+                const updateBadge = row.date ? formatUpdateBadge(forecastDayUpdates[row.date]) : '';
+                const cells = (transposed.hourColumns || [])
+                    .map((col, idx) => {
+                        const val = row.values[idx];
+                        const badge = overrideBadgeForCell(adjustments, row.date, col.hour);
+                        const overrideBtn =
+                            onOverride != null
+                                ? `<button type="button" class="admin-forecast-override-btn" data-override-scope="hour" data-override-date="${escapeHtml(row.date)}" data-override-hour="${col.hour}" title="Override hour">±</button>`
+                                : '';
+                        return `<td class="admin-history-num admin-forecast-cell-with-override">${badge}${val != null ? formatMoney(val) : '—'}${overrideBtn}</td>`;
+                    })
+                    .join('');
+                const dayBadge = overrideBadgeForCell(adjustments, row.date, null);
+                const dayOverrideBtn =
+                    onOverride != null
+                        ? `<button type="button" class="admin-forecast-override-btn" data-override-scope="day" data-override-date="${escapeHtml(row.date)}" title="Override day">Override</button>`
+                        : '';
+                return `<tr>
+                    <th scope="row" class="admin-history-day-label">
+                        <span class="admin-history-col-label">${escapeHtml(row.weekdayLabel || '')}</span>
+                        <span class="admin-accounts-meta">${escapeHtml(formatShortDate(row.date))}</span>
+                        ${updateBadge}
+                    </th>
+                    ${cells}
+                    <td class="admin-history-num admin-history-total">${dayBadge}${row.dayTotal != null ? formatMoney(row.dayTotal) : '—'} ${dayOverrideBtn}</td>
+                </tr>`;
+            })
+            .join('');
+        const weekTotal = transposed.weekTotal ?? weekTotalForGrid(grid);
+        const adjustmentSummary =
+            options.baseWeekTotal != null && options.adjustmentDelta != null
+                ? `<div class="admin-forecast-preview-summary admin-forecast-preview-summary--adjustments">
+                    <span class="admin-forecast-week-total-label">Base ${formatMoney(options.baseWeekTotal)}</span>
+                    <span class="admin-forecast-week-total-label">Adjustments ${options.adjustmentDelta >= 0 ? '+' : ''}${formatMoney(options.adjustmentDelta)}</span>
+                    <span class="admin-forecast-week-total-value">Adjusted ${formatMoney(weekTotal)}</span>
+                </div>`
+                : `<div class="admin-forecast-preview-summary">
+                    <span class="admin-forecast-week-total-label">Week forecast total</span>
+                    <span class="admin-forecast-week-total-value">${formatMoney(weekTotal)}</span>
+                </div>`;
+        container.innerHTML = `
+            ${adjustmentSummary}
+            <div class="admin-history-grid-wrap admin-history-week-grid-wrap admin-forecast-preview-grid-wrap">
+                <table class="admin-table admin-history-grid admin-history-week-grid">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="admin-history-day-col">Day</th>
+                            ${hourHead}
+                            <th scope="col">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+        if (onOverride) {
+            container.querySelectorAll('[data-override-scope]').forEach((btn) => {
+                btn.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    onOverride({
+                        scope: btn.getAttribute('data-override-scope'),
+                        date: btn.getAttribute('data-override-date'),
+                        hour: btn.getAttribute('data-override-hour'),
+                        anchor: btn,
+                    });
+                });
+            });
+        }
+    }
+
+    let overridePopoverEl = null;
+
+    function closeOverridePopover() {
+        if (overridePopoverEl) {
+            overridePopoverEl.remove();
+            overridePopoverEl = null;
+        }
+    }
+
+    function openOverridePopover({ scope, date, hour, anchor }, storeNumber) {
+        closeOverridePopover();
+        const pop = document.createElement('div');
+        pop.className = 'admin-forecast-override-popover';
+        pop.innerHTML = `
+            <p class="admin-forecast-override-popover-title">${scope === 'hour' ? 'Hour override' : 'Day override'}</p>
+            <fieldset class="admin-forecast-adjustments-mode">
+                <label><input type="radio" name="overrideMode" value="percent" checked> %</label>
+                <label><input type="radio" name="overrideMode" value="dollar"> $</label>
+            </fieldset>
+            <label>Value
+                <input type="number" name="overrideValue" step="any" placeholder="e.g. 10 or -200" />
+            </label>
+            <div class="admin-forecast-override-popover-actions">
+                <button type="button" class="mic-settings-btn" data-override-action="cancel">Cancel</button>
+                <button type="button" class="mic-settings-btn admin-btn-primary" data-override-action="apply">Apply</button>
+            </div>`;
+        document.body.appendChild(pop);
+        overridePopoverEl = pop;
+        const rect = anchor.getBoundingClientRect();
+        pop.style.top = `${rect.bottom + window.scrollY + 4}px`;
+        pop.style.left = `${Math.min(rect.left + window.scrollX, window.innerWidth - 220)}px`;
+
+        pop.querySelector('[data-override-action="cancel"]')?.addEventListener('click', closeOverridePopover);
+        pop.querySelector('[data-override-action="apply"]')?.addEventListener('click', () => {
+            void applyOverrideFromPopover(pop, { scope, date, hour: hour != null ? Number(hour) : undefined }, storeNumber);
+        });
+        setTimeout(() => {
+            document.addEventListener(
+                'click',
+                function onDocClick(ev) {
+                    if (!pop.contains(ev.target) && ev.target !== anchor) {
+                        closeOverridePopover();
+                        document.removeEventListener('click', onDocClick);
+                    }
+                },
+                { once: true }
+            );
+        }, 0);
+    }
+
+    async function applyOverrideFromPopover(pop, target, storeNumber) {
+        const mode = pop.querySelector('[name="overrideMode"]:checked')?.value || 'percent';
+        const value = Number(pop.querySelector('[name="overrideValue"]')?.value);
+        if (!Number.isFinite(value)) {
+            const errEl = previewBackdrop?.querySelector('#admin-forecast-preview-error');
+            if (errEl) errEl.textContent = 'Enter a valid override value.';
+            return;
+        }
+        closeOverridePopover();
+        const preview = getPreviewForStore(storeNumber);
+        const rules = (preview?.adjustments || []).slice();
+        const rule = { scope: target.scope, mode, value, date: target.date };
+        if (target.scope === 'hour') rule.hour = target.hour;
+        const existingIdx = rules.findIndex((r) => {
+            if (r.scope !== target.scope || r.date !== target.date) return false;
+            if (target.scope === 'hour') return r.hour === target.hour;
+            return true;
+        });
+        if (existingIdx >= 0) rules[existingIdx] = rule;
+        else rules.push(rule);
+        try {
+            await savePreviewAdjustments(storeNumber, rules);
+            renderPreviewStore(storeNumber);
+        } catch (error) {
+            const errEl = previewBackdrop?.querySelector('#admin-forecast-preview-error');
+            if (errEl) errEl.textContent = error.message;
+        }
+    }
+
     function renderAreaTabs(root) {
         const nav = root.querySelector('#admin-forecast-area-tabs');
         if (!nav) return;
@@ -1708,6 +2033,9 @@
         if (rule.scope === 'week') return `Whole week ${valueLabel}`;
         const day = (planDays || []).find((d) => d.date === rule.date);
         const dayLabel = day?.weekdayLabel || formatShortDate(rule.date);
+        if (rule.scope === 'hour') {
+            return `${dayLabel} ${rule.hour != null ? `hr ${rule.hour}` : ''} ${valueLabel}`;
+        }
         return `${dayLabel} ${valueLabel}`;
     }
 
@@ -1835,13 +2163,6 @@
 
         const weekStart = preview.targetWeeks?.[0] || '';
         const planDays = preview.grid?.columns || preview.plan || [];
-        const dayOptions = planDays
-            .map((col) => {
-                const date = col.date;
-                const label = col.weekdayLabel || formatShortDate(date);
-                return `<option value="${escapeHtml(date)}">${escapeHtml(label)} (${escapeHtml(formatShortDate(date))})</option>`;
-            })
-            .join('');
 
         const rules = preview.adjustments || [];
         const rulesList = rules.length
@@ -1853,38 +2174,13 @@
             : '<p class="admin-accounts-meta">No adjustments applied. Saved adjustments also apply to scheduled auto-submit.</p>';
 
         panel.innerHTML = `
-            <h3 class="admin-forecast-history-heading">Adjustments</h3>
-            <div class="admin-forecast-adjustments-form">
-                <fieldset class="admin-forecast-adjustments-scope">
-                    <legend>Scope</legend>
-                    <label><input type="radio" name="adjustScope" value="week" checked> Whole week</label>
-                    <label><input type="radio" name="adjustScope" value="day"> Single day</label>
-                    <label class="admin-forecast-adjust-day-select" hidden>Day
-                        <select name="adjustDate">${dayOptions}</select>
-                    </label>
-                </fieldset>
-                <fieldset class="admin-forecast-adjustments-mode">
-                    <legend>Type</legend>
-                    <label><input type="radio" name="adjustMode" value="percent" checked> Percent</label>
-                    <label><input type="radio" name="adjustMode" value="dollar"> Dollar</label>
-                </fieldset>
-                <label>Value
-                    <input type="number" name="adjustValue" step="any" placeholder="e.g. 10 or -200" />
-                </label>
-                <div class="admin-forecast-adjustments-actions">
-                    <button type="button" class="mic-settings-btn admin-btn-primary" data-adjust-action="add">Add adjustment</button>
-                    <button type="button" class="mic-settings-btn" data-adjust-action="clear">Clear all</button>
-                </div>
+            <h3 class="admin-forecast-history-heading">Overrides</h3>
+            <p class="admin-accounts-meta">Use Override on a day or hour in the grid below. Day changes keep hourly spread unless an hour is overridden.</p>
+            <div class="admin-forecast-adjustments-actions">
+                <button type="button" class="mic-settings-btn" data-adjust-action="clear">Clear all overrides</button>
             </div>
             ${rulesList}
-            <p class="admin-accounts-meta">Target week starting ${escapeHtml(formatShortDate(weekStart))}. Adjustments persist until cleared.</p>`;
-
-        panel.querySelectorAll('[name="adjustScope"]').forEach((radio) => {
-            radio.addEventListener('change', () => {
-                const daySelect = panel.querySelector('.admin-forecast-adjust-day-select');
-                if (daySelect) daySelect.hidden = panel.querySelector('[name="adjustScope"]:checked')?.value !== 'day';
-            });
-        });
+            <p class="admin-accounts-meta">Target week starting ${escapeHtml(formatShortDate(weekStart))}. Overrides persist until cleared.</p>`;
     }
 
     function renderPreviewStore(storeNumber) {
@@ -1901,10 +2197,13 @@
         }
         root.querySelector('#admin-forecast-preview-title').textContent =
             `Forecast preview - ${preview.storeNumber}${preview.storeName ? ' ' + preview.storeName : ''}`;
-        const weeks = (preview.targetWeeks || previewData?.targetWeeks || []).join(', ');
-        meta.textContent = weeks
-            ? `Week starting ${weeks} (Monday, 2 weeks out). Trimmed weekday averages + hourly shape. Review before submitting to Macromatix${hasLifeLenzForSubmit() ? ' and LifeLenz' : ''}.`
-            : `Trimmed weekday averages + hourly shape. Review before submitting to Macromatix${hasLifeLenzForSubmit() ? ' and LifeLenz' : ''}.`;
+        const targetDesc = describeForecastTarget({
+            targetScope: preview.targetScope || previewData?.targetScope,
+            weekStart: preview.weekStart,
+            date: preview.targetDates?.length === 1 ? preview.targetDates[0] : undefined,
+        });
+        const dayCount = preview.forecastDays || preview.plan?.length || preview.targetDates?.length || 0;
+        meta.textContent = `${targetDesc} (${dayCount} day${dayCount === 1 ? '' : 's'}). Trimmed weekday averages + hourly shape. Review before submitting to Macromatix${hasLifeLenzForSubmit() ? ' and LifeLenz' : ''}.`;
         const noteEl = root.querySelector('#admin-forecast-preview-lifelenz-note');
         if (noteEl) {
             noteEl.hidden = false;
@@ -1925,13 +2224,17 @@
             tabs.innerHTML = '';
         }
         renderPreviewAdjustmentsPanel(root, preview);
-        const weekStart = preview.targetWeeks?.[0] || statusPayload?.targetWeeks?.[0] || '';
-        const forecastDayUpdates = statusPayload?.forecastUpdates?.[storeNumber]?.days || {};
-        renderForecastGrid(body, preview.grid, {
-            mode: 'preview',
+        const weekStart = preview.weekStart || preview.targetWeeks?.[0] || '';
+        const forecastDayUpdates =
+            statusPayload?.forecastUpdatesByWeek?.[weekStart]?.[storeNumber]?.days ||
+            statusPayload?.forecastUpdates?.[storeNumber]?.days ||
+            {};
+        renderPreviewWeekGrid(body, preview.grid, {
             baseWeekTotal: preview.baseWeekTotal,
             adjustmentDelta: preview.adjustmentDelta,
             forecastDayUpdates,
+            adjustments: preview.adjustments || [],
+            onOverride: (target) => openOverridePopover(target, storeNumber),
         });
     }
 
@@ -1944,6 +2247,13 @@
     async function openPreview(storeNumbers, { focusSubmit = false } = {}) {
         pendingSubmitStores = storeNumbers.slice();
         const root = ensurePreviewBackdrop();
+        const mainRoot = getRoot();
+        if (mainRoot) mainRoot.querySelector('#admin-forecast-error').textContent = '';
+        const targetErr = validateForecastTarget();
+        if (targetErr) {
+            if (mainRoot) mainRoot.querySelector('#admin-forecast-error').textContent = targetErr;
+            return;
+        }
         root.hidden = false;
         root.querySelector('#admin-forecast-preview-error').textContent = '';
         root.querySelector('#admin-forecast-preview-body').innerHTML = '<p>Loading preview…</p>';
@@ -2006,7 +2316,7 @@
     function renderHistoryGrid(root, grid, forecastWeek) {
         const body = root.querySelector('#admin-forecast-history-body');
         const meta = root.querySelector('#admin-forecast-history-meta');
-        const tabs = root.querySelector('#admin-forecast-history-weekdays');
+        const weekPicker = root.querySelector('#admin-forecast-history-week-start');
         const weekLabel = forecastWeek?.targetWeeks?.length
             ? forecastWeek.targetWeeks.map((w) => formatShortDate(w)).join(', ')
             : '';
@@ -2014,35 +2324,33 @@
         root.querySelector('#admin-forecast-history-title').textContent =
             `Sales history & forecast - ${grid.storeNumber}${grid.storeName ? ' ' + grid.storeName : ''}`;
 
-        meta.textContent = weekLabel
-            ? `${grid.weekdayLabel} actual sales (5 weeks, oldest → newest). Target forecast week starting ${weekLabel}.`
-            : `${grid.weekdayLabel} hourly actual sales. Week starting Monday; columns oldest → newest.`;
+        historyWeekStart = grid.weekStart || historyWeekStart;
+        if (weekPicker && historyWeekStart) {
+            weekPicker.min = historyDateBounds?.oldest || '';
+            weekPicker.max = historyDateBounds?.newest || '';
+            weekPicker.value = historyWeekStart;
+        }
 
-        tabs.innerHTML = WEEKDAYS.map((wd) => {
-            const active = wd.value === grid.weekday ? ' is-active' : '';
-            return `<button type="button" class="admin-tab${active}" data-weekday="${wd.value}">${wd.label}</button>`;
-        }).join('');
+        meta.textContent = weekLabel
+            ? `Actual sales ${formatShortDate(grid.weekStart)} – ${formatShortDate(grid.weekEnd)}. Target forecast week starting ${weekLabel}.`
+            : `Actual sales ${formatShortDate(grid.weekStart)} – ${formatShortDate(grid.weekEnd)}.`;
 
         body.innerHTML =
             '<section class="admin-forecast-history-section" id="admin-forecast-history-actual" aria-label="Historical actual sales"></section>' +
             '<section class="admin-forecast-history-section" id="admin-forecast-history-forecast" aria-label="Target forecast week"></section>';
 
         const actualSection = body.querySelector('#admin-forecast-history-actual');
-        actualSection.innerHTML = '<h3 class="admin-forecast-history-heading">Actual sales - selected weekday</h3>';
+        actualSection.innerHTML = '<h3 class="admin-forecast-history-heading">Actual sales</h3>';
         const actualGrid = document.createElement('div');
         actualSection.appendChild(actualGrid);
-        renderHistoryActualGrid(actualGrid, grid);
+        renderHistoryWeekGrid(actualGrid, grid);
 
         const forecastSection = body.querySelector('#admin-forecast-history-forecast');
         if (forecastWeek?.grid) {
             forecastSection.innerHTML = `<h3 class="admin-forecast-history-heading">Forecast week${weekLabel ? ` - starting ${escapeHtml(weekLabel)}` : ''}</h3>`;
             const forecastGrid = document.createElement('div');
             forecastSection.appendChild(forecastGrid);
-            renderForecastGrid(forecastGrid, forecastWeek.grid, {
-                mode: 'preview',
-                baseWeekTotal: forecastWeek.baseWeekTotal,
-                adjustmentDelta: forecastWeek.adjustmentDelta,
-            });
+            renderForecastGrid(forecastGrid, forecastWeek.grid, { mode: 'preview' });
         } else if (forecastWeek?.error) {
             forecastSection.innerHTML = `<h3 class="admin-forecast-history-heading">Forecast week</h3><p class="admin-accounts-meta">${escapeHtml(forecastWeek.error)}</p>`;
         } else {
@@ -2050,19 +2358,20 @@
         }
     }
 
-    async function loadHistoryGrid(storeNumber, weekday) {
+    async function loadHistoryGrid(storeNumber, weekStart) {
         const root = ensureHistoryBackdrop();
-        const isWeekdaySwitch = historyStoreNumber === storeNumber && historyForecastWeek != null;
+        const isWeekSwitch = historyStoreNumber === storeNumber && historyForecastWeek != null;
         root.querySelector('#admin-forecast-history-error').textContent = '';
-        if (!isWeekdaySwitch) {
+        if (!isWeekSwitch) {
             root.querySelector('#admin-forecast-history-body').innerHTML = '<p>Loading…</p>';
             closeHistoryEditForm();
         }
         try {
-            const data = await fetchHistoryGrid(storeNumber, weekday, { includeForecast: !isWeekdaySwitch });
+            const data = await fetchHistoryGrid(storeNumber, weekStart, { includeForecast: !isWeekSwitch });
             if (data.forecastWeek) historyForecastWeek = data.forecastWeek;
             historyGridData = data.grid;
             if (data.dateBounds) historyDateBounds = data.dateBounds;
+            historyWeekStart = data.grid?.weekStart || weekStart || historyWeekStart;
             renderHistoryGrid(root, data.grid, historyForecastWeek);
         } catch (error) {
             root.querySelector('#admin-forecast-history-error').textContent = error.message;
@@ -2070,20 +2379,34 @@
         }
     }
 
-    async function openHistory(storeNumber) {
+    async function openHistory(storeNumber, { weekStart, focusManual } = {}) {
         historyStoreNumber = storeNumber;
         historyForecastWeek = null;
+        historyWeekStart = weekStart || null;
         const root = ensureHistoryBackdrop();
         root.hidden = false;
         root.querySelector('#admin-forecast-history-error').textContent = '';
-        await loadHistoryGrid(storeNumber);
+        await loadHistoryGrid(storeNumber, historyWeekStart);
+        if (focusManual && historyGridData?.rows) {
+            const firstGap = historyGridData.rows.find((row) => !row.hasData);
+            if (firstGap) {
+                firstGap._highlight = true;
+                openHistoryEditForm(firstGap);
+            }
+        }
+    }
+
+    async function openManualUpdate(storeNumber) {
+        await openHistory(storeNumber, { focusManual: true });
+        const root = ensureHistoryBackdrop();
+        const title = root.querySelector('#admin-forecast-history-title');
+        if (title) title.textContent = `Manual Update - ${storeNumber}`;
     }
 
     function renderTable(root, payload) {
         const body = root.querySelector('#admin-forecast-body');
         const weeks = payload.targetWeeks || [];
         const history = payload.history?.stores || {};
-        const updatesSummary = payload.updatesSummary || {};
         const stores = storesInActiveArea(
             Object.keys(payload.stores || {}).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
         );
@@ -2091,7 +2414,15 @@
             body.innerHTML = `<p>No stores in ${escapeHtml(activeArea || 'this area')}.</p>`;
             return;
         }
-        const head = weeks.map((w) => `<th>${escapeHtml(w)}</th>`).join('');
+        const canManageAuto = payload.canManageAutoSubmit;
+        const storeAutoSubmit = payload.storeAutoSubmit || {};
+        const updatesByWeek = payload.updatesSummaryByWeek || {};
+        const head = weeks
+            .map((w, idx) => {
+                const label = FORECAST_WEEK_LABELS[idx] || w;
+                return `<th><span class="admin-history-col-label">${escapeHtml(label)}</span><span class="admin-accounts-meta">${escapeHtml(formatShortDate(w))}</span></th>`;
+            })
+            .join('');
         const rows = stores
             .map((storeNumber) => {
                 const hist = history[storeNumber] || {};
@@ -2107,7 +2438,7 @@
                 const weekCells = weeks
                     .map((weekStart) => {
                         const row = payload.stores[storeNumber]?.[weekStart] || {};
-                        const upd = updatesSummary[storeNumber];
+                        const upd = updatesByWeek[weekStart]?.[storeNumber];
                         const updNote = upd?.lastUpdatedAt
                             ? `<span class="admin-accounts-meta">${upd.daysUpdated || 0}/7 · ${upd.lastSource === 'auto' ? 'Auto' : 'User'} ${escapeHtml(formatShortDateTime(upd.lastUpdatedAt))}</span>`
                             : '';
@@ -2123,11 +2454,21 @@
                         return `<td>${dot(false)} Pending</td>`;
                     })
                     .join('');
-                const manualBtn = `<button type="button" class="mic-settings-btn" data-manual-history-store="${escapeHtml(storeNumber)}">Manual</button>`;
+                const autoEnabled = Boolean(storeAutoSubmit[storeNumber]);
+                const autoCell = canManageAuto
+                    ? `<td class="admin-forecast-auto-cell">
+                        <label class="mic-toggle-switch" title="Daily 5 AM auto-submit for this store">
+                            <input type="checkbox" role="switch" aria-label="5 AM auto-submit store ${escapeHtml(storeNumber)}" data-auto-submit-store="${escapeHtml(storeNumber)}"${autoEnabled ? ' checked' : ''} />
+                            <span class="mic-toggle-slider" aria-hidden="true"></span>
+                        </label>
+                    </td>`
+                    : `<td><span class="admin-accounts-meta">${autoEnabled ? 'On' : 'Off'}</span></td>`;
+                const manualBtn = `<button type="button" class="mic-settings-btn" data-manual-update-store="${escapeHtml(storeNumber)}">Manual Update</button>`;
                 return `<tr>
                     <td>${escapeHtml(storeNumber)}<span class="admin-accounts-meta">${histLabel}</span></td>
                     <td>${dot(hist.ready, !hist.ready && hist.daysRecorded > 0)} ${hist.ready ? 'Ready' : 'Not ready'}</td>
                     ${weekCells}
+                    ${autoCell}
                     <td class="admin-forecast-actions">
                         <button type="button" class="mic-settings-btn" data-history-store="${escapeHtml(storeNumber)}">History</button>
                         ${manualBtn}
@@ -2139,7 +2480,7 @@
         body.innerHTML = `
             <table class="admin-table">
                 <thead>
-                    <tr><th>Store</th><th>History</th>${head}<th></th></tr>
+                    <tr><th>Store</th><th>History</th>${head}<th>5 AM auto</th><th></th></tr>
                 </thead>
                 <tbody>${rows}</tbody>
             </table>`;
@@ -2153,231 +2494,19 @@
                 void openHistory(btn.getAttribute('data-history-store'));
             });
         });
-        body.querySelectorAll('[data-manual-history-store]').forEach((btn) => {
+        body.querySelectorAll('[data-manual-update-store]').forEach((btn) => {
             btn.addEventListener('click', () => {
-                void openManualHistoryEntry(btn.getAttribute('data-manual-history-store'));
+                void openManualUpdate(btn.getAttribute('data-manual-update-store'));
             });
         });
-    }
-
-    let manualHistoryBackdrop = null;
-    let manualHistoryStoreNumber = null;
-    let manualHistoryEntry = null;
-
-    function ensureManualHistoryBackdrop() {
-        if (manualHistoryBackdrop) return manualHistoryBackdrop;
-        manualHistoryBackdrop = document.createElement('div');
-        manualHistoryBackdrop.className = 'admin-modal-backdrop admin-modal-backdrop--stacked';
-        manualHistoryBackdrop.hidden = true;
-        manualHistoryBackdrop.innerHTML = `
-            <div class="admin-modal admin-modal--wide admin-modal--forecast-manual-history" role="dialog" aria-modal="true">
-                <h2 id="admin-forecast-manual-history-title">Manual history entry</h2>
-                <p class="admin-accounts-meta" id="admin-forecast-manual-history-meta"></p>
-                <div id="admin-forecast-manual-history-body"></div>
-                <p id="admin-forecast-manual-history-error" class="admin-modal-error" role="alert"></p>
-                <div class="admin-modal-actions admin-modal-actions--split">
-                    <button type="button" class="mic-settings-btn" id="admin-forecast-manual-history-delete" hidden>Delete day</button>
-                    <span class="admin-forecast-history-form-actions">
-                        <button type="button" class="mic-settings-btn" id="admin-forecast-manual-history-cancel">Cancel</button>
-                        <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-manual-history-save">Save</button>
-                    </span>
-                </div>
-            </div>`;
-        document.body.appendChild(manualHistoryBackdrop);
-        manualHistoryBackdrop.addEventListener('click', (event) => {
-            if (event.target === manualHistoryBackdrop) closeManualHistoryEntry();
-        });
-        manualHistoryBackdrop.querySelector('#admin-forecast-manual-history-cancel')?.addEventListener('click', closeManualHistoryEntry);
-        manualHistoryBackdrop.querySelector('#admin-forecast-manual-history-save')?.addEventListener('click', () => {
-            void saveManualHistoryEntry();
-        });
-        manualHistoryBackdrop.querySelector('#admin-forecast-manual-history-delete')?.addEventListener('click', () => {
-            void deleteManualHistoryEntry();
-        });
-        manualHistoryBackdrop.querySelector('#admin-forecast-manual-history-body')?.addEventListener('change', (event) => {
-            if (event.target?.matches('[name="historyDate"]')) {
-                void loadManualHistoryDay(event.target.value);
-            }
-        });
-        manualHistoryBackdrop.querySelector('#admin-forecast-manual-history-body')?.addEventListener('input', (event) => {
-            if (event.target?.matches('[data-hour-value]')) updateManualHistoryDayTotal();
-        });
-        return manualHistoryBackdrop;
-    }
-
-    function closeManualHistoryEntry() {
-        if (manualHistoryBackdrop) manualHistoryBackdrop.hidden = true;
-        manualHistoryStoreNumber = null;
-        manualHistoryEntry = null;
-    }
-
-    function updateManualHistoryDayTotal() {
-        const root = manualHistoryBackdrop;
-        if (!root) return;
-        const totalEl = root.querySelector('#admin-forecast-manual-history-total');
-        if (!totalEl) return;
-        const sum = [...root.querySelectorAll('[data-hour-value]')].reduce(
-            (acc, input) => acc + (Number(input.value) || 0),
-            0
-        );
-        totalEl.textContent = formatMoney(Math.round(sum * 100) / 100);
-    }
-
-    function renderManualHistoryForm(entry) {
-        const root = ensureManualHistoryBackdrop();
-        const body = root.querySelector('#admin-forecast-manual-history-body');
-        const deleteBtn = root.querySelector('#admin-forecast-manual-history-delete');
-        if (!body || !entry) return;
-
-        manualHistoryEntry = entry;
-        const bounds = entry.dateBounds || {};
-        const min = bounds.oldest || '';
-        const max = bounds.newest || '';
-        const sourceLabel = entry.source ? formatSourceLabel(entry.source) : '';
-
-        root.querySelector('#admin-forecast-manual-history-meta').textContent =
-            `Enter hourly actual sales for each trading hour. Dates ${min} to ${max}.${sourceLabel ? ` Current source: ${sourceLabel}.` : ''}`;
-
-        const hourFields = (entry.hours || [])
-            .map(
-                (slot) => `<label class="admin-forecast-history-hour-input">
-                <span>${escapeHtml(slot.label)}</span>
-                <input type="number" min="0" step="0.01" data-hour-value data-hour="${slot.hour}" value="${slot.value != null ? escapeHtml(slot.value) : ''}" placeholder="0" />
-            </label>`
-            )
-            .join('');
-
-        body.innerHTML = `
-            <form class="admin-forecast-history-form" id="admin-forecast-manual-history-form" onsubmit="return false">
-                <label>Date
-                    <input type="date" name="historyDate" required min="${escapeHtml(min)}" max="${escapeHtml(max)}" value="${escapeHtml(entry.date || '')}" />
-                </label>
-                <div class="admin-forecast-history-hour-grid">${hourFields}</div>
-                <p class="admin-forecast-manual-history-total">Day total: <strong id="admin-forecast-manual-history-total">${formatMoney(entry.actualTotal)}</strong></p>
-            </form>`;
-
-        if (deleteBtn) {
-            deleteBtn.hidden = !entry.hasExisting;
-        }
-        updateManualHistoryDayTotal();
-    }
-
-    async function fetchManualHistoryDay(storeNumber, date) {
-        const params = new URLSearchParams({ store: storeNumber });
-        if (date) params.set('date', date);
-        const res = await fetch(`/api/admin/forecast/history/day?${params}`, { credentials: 'same-origin' });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.success) throw new Error(data.error || 'Could not load history day.');
-        return data.entry;
-    }
-
-    async function loadManualHistoryDay(date) {
-        const root = ensureManualHistoryBackdrop();
-        if (!manualHistoryStoreNumber) return;
-        root.querySelector('#admin-forecast-manual-history-error').textContent = '';
-        try {
-            const entry = await fetchManualHistoryDay(manualHistoryStoreNumber, date);
-            renderManualHistoryForm(entry);
-        } catch (error) {
-            root.querySelector('#admin-forecast-manual-history-error').textContent = error.message;
-        }
-    }
-
-    async function openManualHistoryEntry(storeNumber) {
-        manualHistoryStoreNumber = String(storeNumber || '').trim();
-        const root = ensureManualHistoryBackdrop();
-        root.hidden = false;
-        root.querySelector('#admin-forecast-manual-history-error').textContent = '';
-        root.querySelector('#admin-forecast-manual-history-body').innerHTML = '<p>Loading…</p>';
-        root.querySelector('#admin-forecast-manual-history-title').textContent = `Manual history - ${manualHistoryStoreNumber}`;
-        root.querySelector('#admin-forecast-manual-history-delete').hidden = true;
-        try {
-            const entry = await fetchManualHistoryDay(manualHistoryStoreNumber);
-            renderManualHistoryForm(entry);
-        } catch (error) {
-            root.querySelector('#admin-forecast-manual-history-error').textContent = error.message;
-            root.querySelector('#admin-forecast-manual-history-body').innerHTML = '';
-        }
-    }
-
-    async function saveManualHistoryEntry() {
-        const root = ensureManualHistoryBackdrop();
-        const form = root.querySelector('#admin-forecast-manual-history-form');
-        if (!form || !manualHistoryStoreNumber) return;
-        root.querySelector('#admin-forecast-manual-history-error').textContent = '';
-
-        const date = String(form.querySelector('[name="historyDate"]')?.value || '').trim();
-        const actual = [...form.querySelectorAll('[data-hour-value]')].map((input) => Number(input.value) || 0);
-        if (!date) {
-            root.querySelector('#admin-forecast-manual-history-error').textContent = 'Select a date.';
-            return;
-        }
-        if (!actual.some((v) => v > 0)) {
-            root.querySelector('#admin-forecast-manual-history-error').textContent = 'Enter at least one hourly value.';
-            return;
-        }
-
-        const saveBtn = root.querySelector('#admin-forecast-manual-history-save');
-        if (saveBtn) saveBtn.disabled = true;
-        try {
-            const res = await fetch('/api/admin/forecast/history', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({
-                    store: manualHistoryStoreNumber,
-                    date,
-                    actual,
-                    openHour: manualHistoryEntry?.openHour,
-                    closeHour: manualHistoryEntry?.closeHour,
-                }),
+        body.querySelectorAll('[data-auto-submit-store]').forEach((input) => {
+            input.addEventListener('change', (event) => {
+                void saveStoreAutoSubmit(
+                    event.target.getAttribute('data-auto-submit-store'),
+                    event.target.checked
+                );
             });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data.success) throw new Error(data.error || 'Could not save history day.');
-            closeManualHistoryEntry();
-            if (statusPayload && getRoot()) {
-                statusPayload = await fetchStatus();
-                renderTable(getRoot(), statusPayload);
-            }
-        } catch (error) {
-            root.querySelector('#admin-forecast-manual-history-error').textContent = error.message;
-        } finally {
-            if (saveBtn) saveBtn.disabled = false;
-        }
-    }
-
-    async function deleteManualHistoryEntry() {
-        const root = ensureManualHistoryBackdrop();
-        const form = root.querySelector('#admin-forecast-manual-history-form');
-        if (!form || !manualHistoryStoreNumber) return;
-        const date = String(form.querySelector('[name="historyDate"]')?.value || '').trim();
-        if (!date) return;
-
-        const source = manualHistoryEntry?.source;
-        const confirmed =
-            source === 'live-scrape'
-                ? global.confirm('Delete live-scraped history for this day?')
-                : global.confirm('Delete this history day?');
-        if (!confirmed) return;
-
-        root.querySelector('#admin-forecast-manual-history-error').textContent = '';
-        try {
-            const params = new URLSearchParams({ store: manualHistoryStoreNumber, date });
-            if (source === 'live-scrape') params.set('force', '1');
-            const res = await fetch(`/api/admin/forecast/history?${params}`, {
-                method: 'DELETE',
-                credentials: 'same-origin',
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data.success) throw new Error(data.error || 'Could not delete history day.');
-            await loadManualHistoryDay(date);
-            if (statusPayload && getRoot()) {
-                statusPayload = await fetchStatus();
-                renderTable(getRoot(), statusPayload);
-            }
-        } catch (error) {
-            root.querySelector('#admin-forecast-manual-history-error').textContent = error.message;
-        }
+        });
     }
 
     let manualGuideBackdrop = null;
@@ -2524,19 +2653,29 @@
             sessionStorage.setItem(FORECAST_AREA_STORAGE_KEY, activeArea);
         }
         renderAreaTabs(root);
-        renderAutoSubmitControl(root, statusPayload);
+        renderForecastTargetControls(root, statusPayload);
         renderTable(root, statusPayload);
     }
 
     async function submitOne(storeNumber) {
         const root = ensureBackdrop();
         root.querySelector('#admin-forecast-error').textContent = '';
+        const targetErr = validateForecastTarget();
+        if (targetErr) {
+            root.querySelector('#admin-forecast-error').textContent = targetErr;
+            return;
+        }
         await openPreview([storeNumber], { focusSubmit: true });
     }
 
     async function runAll() {
         const root = ensureBackdrop();
         root.querySelector('#admin-forecast-error').textContent = '';
+        const targetErr = validateForecastTarget();
+        if (targetErr) {
+            root.querySelector('#admin-forecast-error').textContent = targetErr;
+            return;
+        }
         const data = statusPayload || (await fetchStatus());
         const storeNumbers = storesInActiveArea(
             Object.entries(data.history?.stores || {})

@@ -1560,6 +1560,12 @@ body.stock-count-mmx-wait-active {
     color: color-mix(in srgb, var(--tb-purple, #702082) 75%, var(--charcoal, #231e1f));
 }
 
+.stock-count-mmx-progress-heartbeat {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: color-mix(in srgb, var(--tb-purple, #702082) 55%, var(--charcoal, #231e1f));
+}
+
 @keyframes stock-count-mmx-progress-enter {
     from {
         opacity: 0;

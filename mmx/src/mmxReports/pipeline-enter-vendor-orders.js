@@ -167,7 +167,7 @@ async function typeQuantityIntoInput(page, inputId, quantity) {
 
 const { normalizeItemCode } = require('../../../vendors/src/reportReader');
 
-async function fillOrderLineQuantities(page, lines, existingGrid = null) {
+async function fillOrderLineQuantities(page, lines, existingGrid = null, options = {}) {
     const grid = existingGrid || (await scrapeOrderGridByItemCode(page));
     if (!grid.tableFound || !grid.rows.length) {
         throw new Error('Order items grid (Item Code / Quantity columns) not found after Create');
@@ -175,13 +175,20 @@ async function fillOrderLineQuantities(page, lines, existingGrid = null) {
 
     const byCode = new Map(grid.rows.map((r) => [normalizeItemCode(r.itemCode), r]));
     const results = [];
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+    const progressEvery = Math.max(1, Number(options.progressEvery) || 8);
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
         const key = normalizeItemCode(line.itemCode);
         const row = byCode.get(key);
         if (!row?.inputId) {
             results.push({ itemCode: line.itemCode, quantity: line.quantity, filled: false });
             continue;
+        }
+
+        if (onProgress && (i === 0 || (i + 1) % progressEvery === 0 || i === lines.length - 1)) {
+            await onProgress(i + 1, lines.length);
         }
 
         await typeQuantityIntoInput(page, row.inputId, line.quantity);
@@ -281,8 +288,14 @@ function buildOrderQueue(parsed, vendorOrdersCfg, buildToByVendorId, { vendorIdF
     return queue;
 }
 
+async function orderStep(settings, label) {
+    if (settings.onOrderStep) await settings.onOrderStep(String(label || '').trim());
+}
+
 async function processOneVendorOrder(page, settings, vendor, buildToEntries) {
+    await orderStep(settings, `${vendor.label}: opening order form`);
     await clickCreateForVendorRow(page, vendor);
+    await orderStep(settings, `${vendor.label}: loading order items`);
     await waitForOrderItemsGrid(page);
 
     const grid = await scrapeOrderGridByItemCode(page);
@@ -293,6 +306,7 @@ async function processOneVendorOrder(page, settings, vendor, buildToEntries) {
     await withPageContextRetry(page, `fill order ${vendor.id}`, async () => {
         const hasExistingQty = grid.rows.some((row) => row.hasQuantity);
         if (hasExistingQty) {
+            await orderStep(settings, `${vendor.label}: clearing existing quantities`);
             await clickClearQuantities(page, settings.vendorOrders.orderEntry);
         } else {
             log.info(`${vendor.label}: order grid empty - skipping Clear Quantities`);
@@ -314,7 +328,16 @@ async function processOneVendorOrder(page, settings, vendor, buildToEntries) {
             log.info(`${vendor.label}: no name-matched build-to quantities - saving cleared order`);
         }
 
-        await fillOrderLineQuantities(page, lines, gridAfterClear);
+        if (lines.length) {
+            await orderStep(settings, `${vendor.label}: filling ${lines.length} item(s)`);
+        }
+        await fillOrderLineQuantities(page, lines, gridAfterClear, {
+            progressEvery: 8,
+            onProgress: async (done, total) => {
+                await orderStep(settings, `${vendor.label}: filled ${done}/${total} items`);
+            },
+        });
+        await orderStep(settings, `${vendor.label}: saving order`);
         await clickUpdateOnly(page, settings.vendorOrders.orderEntry);
     });
 }
@@ -327,6 +350,7 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
     const vendorIdFilter = opts.vendorId || process.env.MMX_ORDER_VENDOR_ID || undefined;
     const storeContext = settings.storeContext || { storeName: settings.storeName, storeNumber: settings.storeNumber };
 
+    await orderStep(settings, 'Opening scheduled orders page');
     await openScheduledOrders(
         page,
         vendorOrdersCfg.scheduledOrdersUrl,
@@ -334,6 +358,7 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
         vendorOrdersCfg,
         storeContext
     );
+    await orderStep(settings, 'Reading scheduled order list');
     const table = await scrapeScheduledOrders(page);
     const buildToByVendorId =
         settings.orderLinesByVendorId ||
@@ -351,15 +376,19 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
     }
 
     log.info(`Order queue: ${queue.length} - ${queue.map((q) => q.vendor.label).join(' → ')}`);
+    await orderStep(
+        settings,
+        queue.length
+            ? `Placing ${queue.length} scheduled order(s): ${queue.map((q) => q.vendor.label).join(', ')}`
+            : 'No scheduled orders found'
+    );
 
     const processed = [];
     for (let i = 0; i < queue.length; i++) {
         const { vendor, buildToEntries } = queue[i];
         log.info(`--- Order ${i + 1}/${queue.length}: ${vendor.label} ---`);
         refreshScrapePauseTimeout();
-        if (settings.onOrderStep) {
-            await settings.onOrderStep(`Placing order - ${vendor.label} (${i + 1}/${queue.length})`);
-        }
+        await orderStep(settings, `Order ${i + 1}/${queue.length}: ${vendor.label}`);
 
         if (i > 0) {
             await returnToScheduledOrders(page, vendorOrdersCfg, settings.navTimeoutMs, storeContext);

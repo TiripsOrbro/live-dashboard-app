@@ -405,9 +405,10 @@ async function runVendorOrdersForStore(page, storeNumber, dateKey, orderPack = n
             selectStore: async (p) => selectStore(p, storeNumber),
         },
         orderLinesByVendorId: byVendorId,
-        onOrderStep: (label) => touchPipelineStep(storeNumber, label),
+        onOrderStep: async (label) => touchPipelineStep(storeNumber, label),
     };
 
+    await touchPipelineStep(storeNumber, 'Opening scheduled orders in Macromatix');
     log.info(`Store ${storeNumber}: scheduled order entry only - no report downloads or other MMX tasks`);
     const orderPipelineResult = await runVendorOrderEntry(page, settings, { continueOnError: true });
     orderPipelineResult.buildToSummary = {
@@ -681,6 +682,7 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
             noOrderRounding: options.noOrderRounding,
             preferReportOnHand: true,
         };
+        await touchPipelineStep(storeNumber, 'Calculating order quantities from reports');
         const buildTo = await timeStoreStage(storeNumber, 'build-to-calc', () =>
             calculateBuildToOrders(storeNumber, buildToOpts)
         );
@@ -717,6 +719,16 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
         );
 
         const orderPack = await buildOrderLinesByVendorId(storeNumber, buildToOpts);
+        const vendorOrderCount = Object.values(orderPack.byVendorId || {}).filter(
+            (v) => (v?.buildToEntries || []).some((e) => Number(e.orderQty) > 0)
+        ).length;
+        const totalCartons = (buildTo.orderLines || []).reduce((s, l) => s + Number(l.orderQty || 0), 0);
+        await touchPipelineStep(
+            storeNumber,
+            vendorOrderCount
+                ? `Built orders for ${vendorOrderCount} vendor(s) (${totalCartons} carton${totalCartons === 1 ? '' : 's'})`
+                : 'Order quantities calculated - opening scheduled orders'
+        );
         const dryManual = (orderPack.byVendorId['americold-dry']?.buildToEntries || []).filter(
             (e) => e.buildToSource === 'count-manual'
         );

@@ -35,6 +35,9 @@ let mmxProcessingDetail = '';
 let mmxLastPipelineStep = '';
 let mmxPipelineManualOnly = false;
 let mmxActivityLog = [];
+let mmxLastPolledStepLabel = '';
+let mmxLastPolledStepAt = 0;
+let mmxStepHeartbeatText = '';
 let mmxLastKnownServerInProgress = false;
 let mmxPollInFlight = null;
 let mmxProgressPercent = 0;
@@ -104,7 +107,7 @@ const MMX_STEP_EXPECTED_MS = {
     variances: 3000,
     apply: 15000,
     reports: 90000,
-    orders: 45000,
+    orders: 120000,
 };
 
 function dashboardPath() {
@@ -1419,7 +1422,12 @@ function updateMmxProgressBarDom() {
 
 function startMmxProgressTicker() {
     stopMmxProgressTicker();
-    mmxProgressTicker = setInterval(updateMmxProgressBarDom, 250);
+    mmxProgressTicker = setInterval(() => {
+        updateMmxProgressBarDom();
+        if (!processing || mmxProcessingSuccess) return;
+        updateMmxStepHeartbeat();
+        syncMmxProgressHeartbeatDom();
+    }, 250);
 }
 
 function stopMmxProgressTicker() {
@@ -1450,7 +1458,10 @@ function resolveMmxStepIdFromStatus(status) {
         /download|downloaded|inventory special|stock on hand|stock on order|scm - items|build-to reports|calculating order/i.test(
             detail
         );
-    const orderWork = /placing order -|placing scheduled orders in macromatix/i.test(detail);
+    const orderWork =
+        /placing order|order \d+\/|opening order form|filling \d+|filled \d+|scheduled order|clearing existing|saving order|reading scheduled/i.test(
+            detail
+        );
 
     if (orderWork && !reportWork) return 'orders';
     if (reportWork) return 'reports';
@@ -1468,9 +1479,57 @@ function resolveMmxStepIdFromLabel(label) {
     return resolveMmxStepIdFromStatus({ stage: 'preparing', stepLabel: label });
 }
 
+function formatMmxElapsed(seconds) {
+    const s = Math.max(0, Math.floor(Number(seconds) || 0));
+    const mins = Math.floor(s / 60);
+    const secs = s % 60;
+    return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+}
+
+function noteMmxPolledStep(label) {
+    const text = String(label || '').trim();
+    if (!text) return;
+    if (text !== mmxLastPolledStepLabel) {
+        mmxLastPolledStepLabel = text;
+        mmxLastPolledStepAt = Date.now();
+        mmxStepHeartbeatText = '';
+    }
+}
+
+function updateMmxStepHeartbeat() {
+    if (!processing || mmxProcessingSuccess || mmxProcessingError) {
+        mmxStepHeartbeatText = '';
+        return;
+    }
+    if (!mmxLastPolledStepAt) return;
+    const stalledSec = Math.floor((Date.now() - mmxLastPolledStepAt) / 1000);
+    if (stalledSec < 12) {
+        mmxStepHeartbeatText = '';
+        return;
+    }
+    mmxStepHeartbeatText = `Still working (${formatMmxElapsed(stalledSec)})`;
+}
+
+function syncMmxProgressHeartbeatDom() {
+    const current = document.querySelector('.stock-count-mmx-progress-line--current');
+    if (!current) return;
+    let hb = current.querySelector('.stock-count-mmx-progress-heartbeat');
+    if (!mmxStepHeartbeatText) {
+        hb?.remove();
+        return;
+    }
+    if (!hb) {
+        hb = document.createElement('span');
+        hb.className = 'stock-count-mmx-progress-heartbeat';
+        current.appendChild(hb);
+    }
+    hb.textContent = ` — ${mmxStepHeartbeatText}`;
+}
+
 function applyPipelineStatusToUi(status) {
     if (!status) return;
     const label = status.stepLabel || pipelineStageLabel(status.stage);
+    noteMmxPolledStep(label);
     mmxProcessingDetail = status.stepLabel || '';
     mmxLastPipelineStep = label || mmxLastPipelineStep;
     mmxProcessingStepId = advanceMmxStepId(resolveMmxStepIdFromStatus(status));
@@ -1572,7 +1631,11 @@ async function pollStockCountPipelineUntilDone() {
 
         if ((status.stage && status.stage !== 'idle') || status.stepLabel) {
             applyPipelineStatusToUi(status);
+            updateMmxStepHeartbeat();
             render();
+        } else if (pipelineLooksInProgress(status)) {
+            updateMmxStepHeartbeat();
+            syncMmxProgressHeartbeatDom();
         }
 
         const pipelineFail = pipelineFailureFromStatus(status);
@@ -2341,11 +2404,17 @@ function buildMmxProgressHtml({ showHeading = true } = {}) {
             const detail =
                 state === 'current' &&
                 mmxProcessingDetail &&
-                mmxProcessingDetail !== entry.text
+                mmxProcessingDetail !== entry.text &&
+                !mmxStepHeartbeatText
                     ? `<span class="stock-count-mmx-progress-detail">${escapeHtml(mmxProcessingDetail)}</span>`
                     : '';
 
-            return `<p class="stock-count-mmx-progress-line stock-count-mmx-progress-line--${state}">${escapeHtml(entry.text)}${detail}</p>`;
+            const heartbeat =
+                state === 'current' && mmxStepHeartbeatText
+                    ? `<span class="stock-count-mmx-progress-heartbeat"> — ${escapeHtml(mmxStepHeartbeatText)}</span>`
+                    : '';
+
+            return `<p class="stock-count-mmx-progress-line stock-count-mmx-progress-line--${state}">${escapeHtml(entry.text)}${heartbeat}${detail}</p>`;
         })
         .join('');
 
@@ -2457,6 +2526,9 @@ function beginMmxProcessing(stageLabel) {
     mmxLastPipelineStep = processingStageLabel;
     mmxProcessingDetail = '';
     mmxActivityLog = [];
+    mmxLastPolledStepLabel = '';
+    mmxLastPolledStepAt = Date.now();
+    mmxStepHeartbeatText = '';
     mmxProgressPercent = 0;
     mmxProgressStepSeen = '';
     mmxStepStartedAt = Date.now();

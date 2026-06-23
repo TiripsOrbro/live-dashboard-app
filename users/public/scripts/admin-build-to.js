@@ -178,7 +178,10 @@
     async function loadScopeTree() {
         if (!global.AdminScopePicker) throw new Error('Store picker not available.');
         const raw = await global.AdminScopePicker.loadScopeTree();
-        scopeTree = global.AdminScopePicker.filterScopeTreeForStores(raw, storeList);
+        const rows = global.AdminScopePicker.asStoreRows
+            ? global.AdminScopePicker.asStoreRows(storeList)
+            : storeList;
+        scopeTree = global.AdminScopePicker.filterScopeTreeForStores(raw, rows);
         return scopeTree;
     }
 
@@ -252,7 +255,11 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) throw new Error(data.error || 'Could not load build-to catalog.');
         catalogCache = data;
-        renderRows();
+        try {
+            renderRows();
+        } catch (error) {
+            throw new Error(error.message || 'Could not render build-to catalog.');
+        }
     }
 
     function allItems() {

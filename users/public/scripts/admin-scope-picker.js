@@ -20,7 +20,39 @@
         return escapeHtml(value);
     }
 
+    function asStoreRows(storeRows) {
+        if (!storeRows) return [];
+        if (Array.isArray(storeRows)) return storeRows;
+        if (typeof storeRows === 'object') return Object.values(storeRows);
+        return [storeRows];
+    }
+
+    function normalizeScopeTree(tree) {
+        if (!tree || typeof tree !== 'object') {
+            return { markets: [], areasByMarket: {}, storesByArea: {}, defaults: {} };
+        }
+        const areasByMarket = {};
+        if (tree.areasByMarket && typeof tree.areasByMarket === 'object') {
+            for (const [market, areas] of Object.entries(tree.areasByMarket)) {
+                areasByMarket[market] = Array.isArray(areas) ? areas : [];
+            }
+        }
+        const storesByArea = {};
+        if (tree.storesByArea && typeof tree.storesByArea === 'object') {
+            for (const [area, stores] of Object.entries(tree.storesByArea)) {
+                storesByArea[area] = Array.isArray(stores) ? stores : [];
+            }
+        }
+        return {
+            markets: Array.isArray(tree.markets) ? tree.markets : [],
+            areasByMarket,
+            storesByArea,
+            defaults: tree.defaults && typeof tree.defaults === 'object' ? tree.defaults : {},
+        };
+    }
+
     function resolveBrowseScope(tree, selections = {}, preferredStore = '') {
+        tree = normalizeScopeTree(tree);
         let market = selections.market || '';
         let area = selections.area || '';
         let storeNumber = selections.storeNumber || '';
@@ -64,18 +96,14 @@
     }
 
     function filterScopeTreeForStores(tree, storeRows) {
+        tree = normalizeScopeTree(tree);
         const allowed = new Set(
-            (storeRows || []).map((row) => String(row.storeNumber || row).trim()).filter(Boolean)
+            asStoreRows(storeRows)
+                .map((row) => String(row.storeNumber || row).trim())
+                .filter(Boolean)
         );
-        if (!tree || !allowed.size) {
-            if (!tree) return tree;
-            return {
-                ...tree,
-                markets: tree.markets || [],
-                areasByMarket: tree.areasByMarket || {},
-                storesByArea: tree.storesByArea || {},
-                defaults: tree.defaults || {},
-            };
+        if (!allowed.size) {
+            return tree;
         }
 
         const storesByArea = {};
@@ -137,6 +165,7 @@
     }
 
     function buildNavigatorRows(tree, scope, scopePrefix = 'browse') {
+        tree = normalizeScopeTree(tree);
         const resolved = resolveBrowseScope(tree, scope, scope.storeNumber || '');
         const rows = [];
 
@@ -200,7 +229,7 @@
         if (!host || !tree) return null;
 
         let scope = { market: '', area: '', storeNumber: '', ...initialScope };
-        let treeRef = tree;
+        let treeRef = normalizeScopeTree(tree);
 
         function render() {
             if (preferredStore && !scope.storeNumber) {
@@ -244,7 +273,7 @@
                 render();
             },
             setTree(nextTree) {
-                treeRef = nextTree;
+                treeRef = normalizeScopeTree(nextTree);
                 render();
             },
         };
@@ -325,7 +354,7 @@
                 if (!data.success || !data.scopeTree) {
                     throw new Error(data.error || 'Could not load store list.');
                 }
-                scopeTree = data.scopeTree;
+                scopeTree = normalizeScopeTree(data.scopeTree);
                 return scopeTree;
             })
             .finally(() => {
@@ -379,5 +408,7 @@
         storesMatchingScope,
         resolveBrowseScope,
         mountInline,
+        normalizeScopeTree,
+        asStoreRows,
     };
 })(window);

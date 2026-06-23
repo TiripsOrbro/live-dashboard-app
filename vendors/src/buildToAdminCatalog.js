@@ -192,7 +192,11 @@ function buildAdminBuildToCatalog(options = {}) {
             items.push(effectiveRuleForCatalogItem(item, vendor.slug, store, scope));
         }
         if (items.length) {
-            vendors.push({ slug: vendor.slug, label: vendor.label || vendor.slug, items });
+            vendors.push({
+                slug: vendor.slug,
+                label: vendor.label || vendor.slug,
+                items: Array.isArray(items) ? items : [],
+            });
         }
     }
     return {

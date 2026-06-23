@@ -3947,6 +3947,7 @@ app.get('/api/admin/build-to/catalog', (req, res) => {
         }
         res.json({ success: true, ...buildAdminBuildToCatalog({ level: 'global' }) });
     } catch (err) {
+        console.error('[build-to catalog]', err);
         res.status(500).json({ success: false, error: err.message || 'Could not load build-to catalog.' });
     }
 });

@@ -54,12 +54,18 @@
         global.dispatchEvent(new CustomEvent('admin-store-view-change'));
     }
 
+    function asStoreNumbers(list) {
+        if (!list) return [];
+        if (Array.isArray(list)) return list.map(String);
+        return [String(list)];
+    }
+
     function resolveStoreForOverview(profile) {
         if (!canUse(profile)) return '';
         if (!isEnabled()) return '';
         const store = getSelectedStore();
         if (!store) return '';
-        const allowed = new Set((profile?.effectiveStores || []).map(String));
+        const allowed = new Set(asStoreNumbers(profile?.effectiveStores));
         if (allowed.size && !allowed.has(String(store))) return '';
         return store;
     }
@@ -151,7 +157,7 @@
     }
 
     async function loadStoreOptions() {
-        const allowed = new Set((meProfile?.effectiveStores || []).map(String));
+        const allowed = new Set(asStoreNumbers(meProfile?.effectiveStores));
         try {
             const tree = await global.AdminScopePicker?.loadScopeTree?.();
             if (tree) {

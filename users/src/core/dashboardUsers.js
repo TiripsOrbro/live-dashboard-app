@@ -1130,7 +1130,7 @@ function getCreateAccountOptions(actor) {
         areas = [...new Set(markets.flatMap((market) => getAreasForMarket(market)))];
     }
 
-    const scopeTree = buildCreateAccountScopeTree(actor);
+    const scopeTree = normalizeScopeTreeForClient(buildCreateAccountScopeTree(actor));
     const levelChoices = CREATE_ACCOUNT_LEVEL_ORDER.filter((level) => assignableLevels.includes(level));
 
     return {
@@ -2283,7 +2283,12 @@ function nologinCookieClearOptions() {
 
 function userProfileForClient(user) {
     if (isNologinUser(user)) {
-        const stores = user.stores === '*' ? [] : user.stores.map(String);
+        const stores =
+            user.stores === '*'
+                ? []
+                : (Array.isArray(user.stores) ? user.stores : user.stores != null ? [user.stores] : []).map(
+                      String
+                  );
         const store = stores[0] || '';
         const displayName = String(user.displayName || '').trim();
         return {
@@ -2340,9 +2345,9 @@ function userProfileForClient(user) {
         welcomeName,
         role: user.role,
         overviewScope,
-        accessibleAreas,
-        accessibleMarkets: scope.markets,
-        effectiveStores,
+        accessibleAreas: Array.isArray(accessibleAreas) ? accessibleAreas : [],
+        accessibleMarkets: Array.isArray(scope.markets) ? scope.markets : [],
+        effectiveStores: Array.isArray(effectiveStores) ? effectiveStores : [],
         stores,
         skipStorePicker,
         defaultPath: setupPath || getMicOverviewPath(),
@@ -2370,20 +2375,38 @@ function userProfileForClient(user) {
     };
 }
 
+function normalizeScopeTreeForClient(tree) {
+    if (!tree || typeof tree !== 'object') {
+        return { markets: [], areasByMarket: {}, storesByArea: {}, defaults: {} };
+    }
+    const areasByMarket = {};
+    if (tree.areasByMarket && typeof tree.areasByMarket === 'object') {
+        for (const [market, areas] of Object.entries(tree.areasByMarket)) {
+            areasByMarket[market] = Array.isArray(areas) ? areas : [];
+        }
+    }
+    const storesByArea = {};
+    if (tree.storesByArea && typeof tree.storesByArea === 'object') {
+        for (const [area, stores] of Object.entries(tree.storesByArea)) {
+            storesByArea[area] = Array.isArray(stores) ? stores : [];
+        }
+    }
+    return {
+        markets: Array.isArray(tree.markets) ? tree.markets : [],
+        areasByMarket,
+        storesByArea,
+        defaults: tree.defaults && typeof tree.defaults === 'object' ? tree.defaults : {},
+    };
+}
+
 function getStoreScopeTreeForUser(user) {
     if (!user) return null;
     if (!hasMultiStoreScope(user) && !canUserManageStoreLogins(user)) return null;
     try {
-        const tree = buildCreateAccountScopeTree(user);
-        return {
-            markets: tree?.markets || [],
-            areasByMarket: tree?.areasByMarket || {},
-            storesByArea: tree?.storesByArea || {},
-            defaults: tree?.defaults || {},
-        };
+        return normalizeScopeTreeForClient(buildCreateAccountScopeTree(user));
     } catch (err) {
         console.error('[Auth] buildCreateAccountScopeTree failed:', err);
-        return { markets: [], areasByMarket: {}, storesByArea: {}, defaults: {} };
+        return normalizeScopeTreeForClient(null);
     }
 }
 

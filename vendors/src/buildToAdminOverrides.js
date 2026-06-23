@@ -156,7 +156,7 @@ function applyAdminCatalogOverrides(catalog, storeNumber) {
     if (!store) return catalog;
     return {
         ...catalog,
-        items: catalog.items.map((item) => ({
+        items: (catalog.items || []).map((item) => ({
             ...item,
             skipStockCount: effectiveSkipStockCount(item, store),
             skipKeyItemCount: effectiveSkipKeyItemCount(item, store),

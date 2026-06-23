@@ -2146,7 +2146,7 @@ function combineAreaHourly(stores) {
 
 function filterSalesSliceForUser(slice, user) {
     if (!slice || isSuperAdminUser(user)) return slice;
-    const allowed = new Set(getEffectiveStoresForUser(user).map(String));
+    const allowed = new Set((getEffectiveStoresForUser(user) || []).map(String));
     if (!allowed.size) return slice;
     return {
         ...slice,
@@ -3671,7 +3671,7 @@ app.post('/api/admin/forecast/preview', (req, res) => {
         res.status(403).json({ success: false, error: 'Admin menu access required.' });
         return;
     }
-    const allowed = new Set(getEffectiveStoresForUser(user).map(String));
+    const allowed = new Set((getEffectiveStoresForUser(user) || []).map(String));
     const requested = Array.isArray(req.body?.storeNumbers) ? req.body.storeNumbers.map(String) : [];
     const storeNumbers = requested.filter((s) => allowed.has(String(s)) && !isTestStore(s));
     if (!storeNumbers.length) {
@@ -3763,7 +3763,7 @@ app.post('/api/admin/forecast/run', async (req, res) => {
         res.status(403).json({ success: false, error: 'Admin menu access required.' });
         return;
     }
-    const allowed = new Set(getEffectiveStoresForUser(user).map(String));
+    const allowed = new Set((getEffectiveStoresForUser(user) || []).map(String));
     const requested = Array.isArray(req.body?.storeNumbers) ? req.body.storeNumbers.map(String) : [];
     const storeNumbers = requested.filter((s) => allowed.has(String(s)) && !isTestStore(s));
     if (!storeNumbers.length) {
@@ -3973,7 +3973,7 @@ app.put('/api/admin/build-to/overrides', (req, res) => {
         res.status(403).json({ success: false, error: 'Admin menu access required.' });
         return;
     }
-    const allowedStores = new Set(getEffectiveStoresForUser(user).map(String));
+    const allowedStores = new Set((getEffectiveStoresForUser(user) || []).map(String));
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const patch = { stores: {} };
 

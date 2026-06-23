@@ -147,7 +147,15 @@
     }
 
     function formatFallbackCodes(codes) {
-        return (codes || []).filter(Boolean).join(', ');
+        if (Array.isArray(codes)) return codes.filter(Boolean).join(', ');
+        if (codes == null || codes === '') return '';
+        return String(codes).trim();
+    }
+
+    function asStoreNumbers(list) {
+        if (!list) return [];
+        if (Array.isArray(list)) return list.map(String);
+        return [String(list)];
     }
 
     function getOverrideScope() {
@@ -185,7 +193,10 @@
 
         const onScopeChange = (scope) => {
             browseScope = { ...scope };
-            void loadCatalog();
+            void loadCatalog().catch((error) => {
+                const root = ensureBackdrop();
+                root.querySelector('#admin-buildto-error').textContent = error.message || 'Could not load catalog.';
+            });
         };
 
         if (!scopeNavigator) {
@@ -221,7 +232,10 @@
             const data = await res.json().catch(() => ({}));
             return (data.stores || []).filter((s) => !s.testStore);
         }
-        const nums = me.stores === '*' ? [] : (me.effectiveStores || me.stores || []).map(String);
+        const nums =
+            me.stores === '*'
+                ? []
+                : asStoreNumbers(me.effectiveStores || me.stores);
         return nums.map((storeNumber) => ({ storeNumber, storeName: storeNumber }));
     }
 
@@ -244,7 +258,9 @@
     function allItems() {
         const items = [];
         for (const vendor of catalogCache?.vendors || []) {
-            for (const item of vendor.items || []) items.push({ ...item, vendorSlug: vendor.slug, vendorLabel: vendor.label });
+            for (const item of vendor.items || []) {
+                items.push({ ...item, vendorSlug: vendor.slug, vendorLabel: vendor.label });
+            }
         }
         return items;
     }

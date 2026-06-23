@@ -1015,8 +1015,8 @@ function buildCreateAccountParentFromUser(user, via = 'session') {
 const CREATE_ACCOUNT_LEVEL_ORDER = ['market', 'area', 'manager', 'mic', 'tm'];
 
 function buildCreateAccountScopeTree(actor) {
-    const accessibleAreas = new Set(getAccessibleAreasForUser(actor).map(normalizeAreaLabel));
-    const effectiveStoreNums = new Set(getEffectiveStoresForUser(actor).map(String));
+    const accessibleAreas = new Set((getAccessibleAreasForUser(actor) || []).map(normalizeAreaLabel));
+    const effectiveStoreNums = new Set((getEffectiveStoresForUser(actor) || []).map(String));
     const scope = getUserAccessScope(actor);
     const actorLevel = getAccountLevel(actor);
 
@@ -1120,7 +1120,7 @@ function getCreateAccountOptions(actor) {
             storeNumber: String(row.storeNumber),
             storeName: String(row.storeName || row.storeNumber).trim(),
         }));
-    const effectiveStoreKeys = new Set(getEffectiveStoresForUser(actor).map(String));
+    const effectiveStoreKeys = new Set((getEffectiveStoresForUser(actor) || []).map(String));
     const stores = allStores.filter((row) => effectiveStoreKeys.has(String(row.storeNumber)));
 
     let areas = getAccessibleAreasForUser(actor);
@@ -1416,7 +1416,7 @@ function updateManagedStoreAccount(actor, storeNumber, targetUsername, patch = {
     }
 
     if (Array.isArray(nextStoresRaw)) {
-        const allowed = new Set(getEffectiveStoresForUser(actor).map(String));
+        const allowed = new Set((getEffectiveStoresForUser(actor) || []).map(String));
         const cleaned = [...new Set(nextStoresRaw.map((s) => normalizeStoreKey(s)).filter(Boolean))];
         if (!cleaned.length) {
             return { ok: false, error: 'At least one store is required.' };
@@ -2056,7 +2056,19 @@ function getUserAccessScope(user) {
         type,
         markets: [...new Set((user.markets || []).map(normalizeMarketLabel))],
         areas: [...new Set((user.areas || []).map(normalizeAreaLabel))],
-        stores: user.stores === '*' ? [] : [...new Set((user.stores || []).map(String))],
+        stores:
+            user.stores === '*'
+                ? []
+                : [
+                      ...new Set(
+                          (Array.isArray(user.stores)
+                              ? user.stores
+                              : user.stores != null && user.stores !== ''
+                                ? [user.stores]
+                                : []
+                          ).map(String)
+                      ),
+                  ],
     };
 }
 
@@ -2076,7 +2088,11 @@ function getAccessibleAreasForUser(user) {
     if (scope.type === 'area') {
         return Array.isArray(scope.areas) ? scope.areas.map(normalizeAreaLabel) : [];
     }
-    const storeNums = new Set(getEffectiveStoresForUser(user));
+    const storeNums = new Set(
+        scope.type === 'store'
+            ? (Array.isArray(scope.stores) ? scope.stores : []).map(String)
+            : getEffectiveStoresForUser(user).map(String)
+    );
     return [
         ...new Set(
             getStoreList()
@@ -2093,13 +2109,30 @@ function getEffectiveStoresForUser(user) {
     }
     const scope = getUserAccessScope(user);
     if (scope.type === 'store') {
-        return scope.stores;
+        return Array.isArray(scope.stores) ? scope.stores.map(String) : [];
     }
-    const allowedAreas = new Set(getAccessibleAreasForUser(user));
-    if (!allowedAreas.size) return [];
-    return getStoreList()
-        .filter((s) => allowedAreas.has(areaNameFromStoreEntry(s)))
-        .map((s) => String(s.storeNumber));
+    if (scope.type === 'area') {
+        const allowedAreas = new Set(
+            (Array.isArray(scope.areas) ? scope.areas : []).map(normalizeAreaLabel)
+        );
+        if (!allowedAreas.size) return [];
+        return getStoreList()
+            .filter((s) => allowedAreas.has(areaNameFromStoreEntry(s)))
+            .map((s) => String(s.storeNumber));
+    }
+    if (scope.type === 'market') {
+        const allowedAreas = new Set();
+        for (const market of scope.markets || []) {
+            for (const area of getAreasForMarket(market)) {
+                allowedAreas.add(normalizeAreaLabel(area));
+            }
+        }
+        if (!allowedAreas.size) return [];
+        return getStoreList()
+            .filter((s) => allowedAreas.has(areaNameFromStoreEntry(s)))
+            .map((s) => String(s.storeNumber));
+    }
+    return Array.isArray(scope.stores) ? scope.stores.map(String) : [];
 }
 
 function userCanAccessMarket(user, marketLabel) {
@@ -2152,7 +2185,7 @@ function userCanAccessStore(user, storeNumber) {
 
 function filterStoresForUser(user, stores) {
     if (!user || isSuperAdminUser(user)) return stores;
-    const allowed = new Set(getEffectiveStoresForUser(user).map(String));
+    const allowed = new Set((getEffectiveStoresForUser(user) || []).map(String));
     return stores.filter((s) => allowed.has(String(s.storeNumber)));
 }
 
@@ -2339,10 +2372,19 @@ function userProfileForClient(user) {
 
 function getStoreScopeTreeForUser(user) {
     if (!user) return null;
-    if (hasMultiStoreScope(user) || canUserManageStoreLogins(user)) {
-        return buildCreateAccountScopeTree(user);
+    if (!hasMultiStoreScope(user) && !canUserManageStoreLogins(user)) return null;
+    try {
+        const tree = buildCreateAccountScopeTree(user);
+        return {
+            markets: tree?.markets || [],
+            areasByMarket: tree?.areasByMarket || {},
+            storesByArea: tree?.storesByArea || {},
+            defaults: tree?.defaults || {},
+        };
+    } catch (err) {
+        console.error('[Auth] buildCreateAccountScopeTree failed:', err);
+        return { markets: [], areasByMarket: {}, storesByArea: {}, defaults: {} };
     }
-    return null;
 }
 
 module.exports = {

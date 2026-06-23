@@ -44,7 +44,7 @@
         if (!market && (tree.markets || []).length === 1) market = tree.markets[0];
         if (!market && tree.defaults?.market) market = tree.defaults.market;
 
-        const areas = market ? tree.areasByMarket[market] || [] : [];
+        const areas = market ? (tree.areasByMarket || {})[market] || [] : [];
         if (area && !areas.includes(area)) area = '';
         if (!area && areas.length === 1) area = areas[0];
         if (!area && tree.defaults?.area && areas.includes(tree.defaults.area)) area = tree.defaults.area;
@@ -147,12 +147,12 @@
             );
         }
 
-        const areas = resolved.market ? tree.areasByMarket[resolved.market] || [] : [];
+        const areas = resolved.market ? (tree.areasByMarket || {})[resolved.market] || [] : [];
         if (areas.length >= 1) {
             rows.push(renderBrowseScopeRow(`${scopePrefix}-area`, 'Area', areas, resolved.area, (row) => row));
         }
 
-        const stores = resolved.area ? tree.storesByArea[resolved.area] || [] : [];
+        const stores = resolved.area ? (tree.storesByArea || {})[resolved.area] || [] : [];
         if (stores.length >= 1) {
             rows.push(
                 renderBrowseScopeRow(
@@ -186,9 +186,9 @@
         const allowed = new Set();
         if (area && tree?.storesByArea?.[area]) {
             tree.storesByArea[area].forEach((row) => allowed.add(String(row.storeNumber)));
-        } else if (market && tree?.areasByMarket?.[market]) {
-            for (const areaName of tree.areasByMarket[market]) {
-                (tree.storesByArea[areaName] || []).forEach((row) => allowed.add(String(row.storeNumber)));
+        } else if (market && (tree.areasByMarket || {})[market]) {
+            for (const areaName of (tree.areasByMarket || {})[market]) {
+                ((tree.storesByArea || {})[areaName] || []).forEach((row) => allowed.add(String(row.storeNumber)));
             }
         } else {
             return list;

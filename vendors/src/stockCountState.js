@@ -342,6 +342,24 @@ async function markMmxSent(storeNumber, vendorSlug, dateKey = melbourneDateKey()
     return day.mmxSentAt;
 }
 
+/** Create a minimal day record when skip-count ordering completes without a draft. */
+async function ensureMmxSentRecord(storeNumber, vendorSlug, dateKey = melbourneDateKey()) {
+    const all = await getStateAll();
+    const sk = storeKey(storeNumber);
+    const vk = vendorSlugKey(vendorSlug);
+    if (!all.stores[sk]) all.stores[sk] = {};
+    if (!all.stores[sk][vk]) all.stores[sk][vk] = {};
+    if (!all.stores[sk][vk][dateKey]) {
+        all.stores[sk][vk][dateKey] = { locations: {} };
+    }
+    const day = all.stores[sk][vk][dateKey];
+    day.mmxSentAt = new Date().toISOString();
+    day.updatedAt = day.mmxSentAt;
+    stateCache = all;
+    await writeStateFile(all);
+    return day.mmxSentAt;
+}
+
 async function getMmxSentVendorSlugs(storeNumber, dateKey = melbourneDateKey()) {
     const all = await getStateAll();
     const sk = storeKey(storeNumber);
@@ -420,6 +438,7 @@ module.exports = {
     submitStockCount,
     reopenStockCount,
     markMmxSent,
+    ensureMmxSentRecord,
     getMmxSentVendorSlugs,
     getSubmittedVendorSlugs,
     getStockCountQueueStatus,

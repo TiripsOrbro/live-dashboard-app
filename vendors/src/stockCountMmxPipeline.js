@@ -6,6 +6,7 @@ const {
     getDraft,
     submitStockCount,
     markMmxSent,
+    ensureMmxSentRecord,
     getMmxSentVendorSlugs,
     getSubmittedVendorSlugs,
     getStockCountQueueStatus,
@@ -248,19 +249,28 @@ async function getStockCountSendPlan(storeNumber, vendorSlug, options = {}) {
 
 /**
  * Submitted counts are manual / manual= only - skip KIC, use counts for scheduled orders.
+ * When reportsOnly is set (skip count & order), no draft is required - orders use SOH reports only.
  */
 async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options = {}) {
-    for (const row of toSend) {
-        await markMmxSent(storeNumber, row.slug, dateKey);
+    const reportsOnly = Boolean(options.reportsOnly);
+    if (!reportsOnly) {
+        for (const row of toSend) {
+            await markMmxSent(storeNumber, row.slug, dateKey);
+        }
     }
 
-    await beginStockCountMmxWork(`manual counts → orders (store ${storeNumber})`, storeNumber);
+    await beginStockCountMmxWork(
+        reportsOnly ? `skip KIC → orders (store ${storeNumber})` : `manual counts → orders (store ${storeNumber})`,
+        storeNumber
+    );
     let browser;
     let page;
     try {
         ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
         log.info(
-            `Store ${storeNumber}: manual-only stock count - skipping Key Item Count; downloading ISE, SOH, and SOO, then filling scheduled orders from app counts`
+            reportsOnly
+                ? `Store ${storeNumber}: skip count - no Key Item Count; downloading ISE, SOH, and SOO, then filling scheduled orders from reports`
+                : `Store ${storeNumber}: manual-only stock count - skipping Key Item Count; downloading ISE, SOH, and SOO, then filling scheduled orders from app counts`
         );
         await updateCheckpoint(storeNumber, {
             stage: 'downloading-reports',
@@ -279,6 +289,11 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
         });
         const orders = cycle.orders;
         if (ordersAllSuccessful(orders)) {
+            if (reportsOnly) {
+                for (const row of toSend) {
+                    await ensureMmxSentRecord(storeNumber, row.slug, dateKey);
+                }
+            }
             await runStoreOrdersCompleteCleanup(storeNumber, dateKey);
         }
         const orderFailures = formatOrderFailures(orders);
@@ -835,19 +850,24 @@ async function runScheduledOrdersOnly(storeNumber, options = {}) {
 async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
     return withStoreLock(storeNumber, async () => {
         const { dateKey, toSend } = await resolveToSend(storeNumber, vendorSlug, options);
+        resetStageTimings(storeNumber);
+
+        if (options.skipKeyItemCount) {
+            log.info(
+                `Store ${storeNumber}: Key Item Count skipped by request (Area Manager+) - ordering from reports only`
+            );
+            return runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, {
+                ...options,
+                reportsOnly: true,
+            });
+        }
+
         const vendorEntries = await buildVendorEntries(storeNumber, toSend, dateKey);
         logStockCountMmxPlan(storeNumber, vendorEntries);
-        resetStageTimings(storeNumber);
 
         await beginStockCountMmxWork(`stock count prepare (store ${storeNumber})`, storeNumber);
         await discardStockCountMmxWork(storeNumber, 'replaced', { releaseMicSlot: false });
 
-        if (options.skipKeyItemCount) {
-            log.info(
-                `Store ${storeNumber}: Key Item Count skipped by request (Area Manager+) - ordering from counts and reports`
-            );
-            return runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options);
-        }
         if (!vendorEntriesNeedKeyItemCount(vendorEntries)) {
             return runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options);
         }

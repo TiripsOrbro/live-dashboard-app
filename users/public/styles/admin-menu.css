@@ -1559,6 +1559,30 @@ html.mic-dark-mode .admin-forecast-update-badge--user {
 
 .admin-modal--forecast-manual-history .admin-forecast-history-hour-grid {
     margin-top: 0.75rem;
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.3rem;
+}
+
+.admin-modal--forecast-manual-history .admin-forecast-history-hour-input {
+    flex: 1 1 0;
+    min-width: 0;
+    gap: 0.15rem;
+}
+
+.admin-modal--forecast-manual-history .admin-forecast-history-hour-input span {
+    font-size: 0.62rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.admin-modal--forecast-manual-history .admin-forecast-history-hour-input input {
+    max-width: none;
+    width: 100%;
+    min-width: 0;
+    padding: 0.28rem 0.2rem;
+    font-size: 0.8rem;
 }
 
 .admin-forecast-preview-summary--adjustments {

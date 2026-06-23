@@ -363,7 +363,7 @@ function validateStoreReports(storeNumber, files, options = {}) {
         }
     }
 
-    const minOnOrderRows = Number(options.minOnOrderRows) || 3;
+    const minOnOrderRows = options.minOnOrderRows != null ? Number(options.minOnOrderRows) : 0;
 
     if (!files?.stockOnOrder) {
         issues.push('missing stock-on-order');
@@ -474,7 +474,7 @@ function validateReportId(storeNumber, files, reportId, options = {}) {
     const { melbourneDateKey } = require('./stockCountState');
     const today = options.dateKey || melbourneDateKey();
     const minOnHandRows = Number(options.minOnHandRows) || 10;
-    const minOnOrderRows = Number(options.minOnOrderRows) || 3;
+    const minOnOrderRows = options.minOnOrderRows != null ? Number(options.minOnOrderRows) : 0;
     const fileKey = REPORT_FILE_KEYS[reportId];
     if (!fileKey) return [`unknown report id ${reportId}`];
 

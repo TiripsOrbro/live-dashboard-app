@@ -339,6 +339,7 @@ function buildHistoryHourGrid(storeNumber, options = {}) {
             date: date || null,
             dayTotal: day?.actualTotal != null ? day.actualTotal : null,
             hasData: Boolean(day?.actual?.length),
+            source: day?.source || null,
             hourly,
         });
     }
@@ -368,13 +369,14 @@ function buildHistoryHourGrid(storeNumber, options = {}) {
         openHour: open,
         closeHour: close,
         maxWeeks,
-        columns: columns.map(({ weeksAgo, label, weekStart, date, dayTotal, hasData }) => ({
+        columns: columns.map(({ weeksAgo, label, weekStart, date, dayTotal, hasData, source }) => ({
             weeksAgo,
             label,
             weekStart,
             date,
             dayTotal,
             hasData,
+            source,
         })),
         rows: rowHours,
         dayTotals,
@@ -430,6 +432,191 @@ function importForecastHistory(payload, options = {}) {
     };
 }
 
+function trimWeekdayDayRows(rows) {
+    if (!rows?.length || rows.length < 3) return [];
+    const sorted = [...rows].sort((a, b) => (Number(a.total) || 0) - (Number(b.total) || 0));
+    return sorted.length >= 5 ? sorted.slice(1, -1) : sorted;
+}
+
+function hourlySharesForWeekday(storeNumber, weekday, excludeDate) {
+    const rows = dailyRowsFromHistory(storeNumber).filter(
+        (row) => row.weekday === weekday && row.date !== excludeDate && Array.isArray(row.actual) && row.actual.length
+    );
+    const trimmed = trimWeekdayDayRows(rows);
+    if (!trimmed.length) return null;
+
+    const hourCount = Math.max(...trimmed.map((r) => r.actual.length));
+    const shareSums = new Array(hourCount).fill(0);
+    let used = 0;
+    for (const day of trimmed) {
+        const total = Number(day.total) || sumHourly(day.actual);
+        if (total <= 0) continue;
+        used += 1;
+        for (let i = 0; i < day.actual.length; i += 1) {
+            shareSums[i] += (Number(day.actual[i]) || 0) / total;
+        }
+    }
+    if (!used) return null;
+
+    let shares = shareSums.map((s) => s / used);
+    const shareTotal = shares.reduce((sum, v) => sum + v, 0) || 1;
+    shares = shares.map((s) => s / shareTotal);
+    const ref = trimmed[0];
+    return {
+        openHour: ref.openHour,
+        closeHour: ref.closeHour,
+        shares,
+    };
+}
+
+function distributeDayTotalToHourly(total, weekday, storeNumber, options = {}) {
+    const doc = readStoreHistory(storeNumber);
+    const openHour = Number.isFinite(options.openHour) ? options.openHour : doc.defaultOpenHour;
+    const closeHour = Number.isFinite(options.closeHour) ? options.closeHour : doc.defaultCloseHour;
+    const hourCount = closeHour - openHour;
+    if (hourCount <= 0) throw new Error('Invalid trading hours.');
+
+    const mix = hourlySharesForWeekday(storeNumber, weekday, options.excludeDate);
+    const shares = mix?.shares?.length === hourCount ? mix.shares : new Array(hourCount).fill(1 / hourCount);
+    const resolvedOpen = mix?.openHour ?? openHour;
+    const resolvedClose = mix?.closeHour ?? closeHour;
+
+    const actual = shares.map((share) => Math.round(total * share * 100) / 100);
+    const shaped = Math.round(sumHourly(actual) * 100) / 100;
+    const remainder = Math.round((total - shaped) * 100) / 100;
+    if (actual.length && Math.abs(remainder) >= 0.01) {
+        actual[actual.length - 1] = Math.round((actual[actual.length - 1] + remainder) * 100) / 100;
+    }
+
+    return {
+        openHour: resolvedOpen,
+        closeHour: resolvedClose,
+        actual,
+        actualTotal: Math.round(total * 100) / 100,
+    };
+}
+
+function historyDateBounds(timeZone) {
+    const asOfIso = new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date());
+    const oldest = addDaysToIso(asOfIso, -(HISTORY_DAYS - 1));
+    return { asOfIso, oldest, newest: asOfIso };
+}
+
+function validateHistoryDate(dateKey, storeNumber) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey || ''))) {
+        throw new Error('date must be YYYY-MM-DD.');
+    }
+    const doc = readStoreHistory(storeNumber);
+    const { oldest, newest } = historyDateBounds(doc.timeZone);
+    if (dateKey < oldest || dateKey > newest) {
+        throw new Error(`date must be within the last ${HISTORY_DAYS} days (${oldest} to ${newest}).`);
+    }
+    return doc;
+}
+
+function upsertManualHistoryDay(storeNumber, dateKey, payload = {}, options = {}) {
+    const store = String(storeNumber || '').trim();
+    const date = String(dateKey || '').trim();
+    const doc = validateHistoryDate(date, store);
+    const timeZone = doc.timeZone;
+    const weekday = weekdayForIso(date, timeZone);
+
+    let entry = { ...payload };
+    const hasHourly = Array.isArray(payload.actual) && payload.actual.length;
+    const hasTotal = Number.isFinite(Number(payload.actualTotal)) && payload.actualTotal >= 0;
+
+    if (!hasHourly && hasTotal) {
+        const distributed = distributeDayTotalToHourly(Number(payload.actualTotal), weekday, store, {
+            openHour: payload.openHour,
+            closeHour: payload.closeHour,
+            excludeDate: date,
+        });
+        entry = { ...distributed, ...payload, actual: distributed.actual };
+    } else if (!hasHourly && !hasTotal) {
+        throw new Error('actualTotal or actual hourly array is required.');
+    }
+
+    const force = Boolean(options.force || payload.force);
+    const row = recordForecastHistoryDay(store, date, { ...entry, timeZone }, {
+        force,
+        finalized: true,
+        source: options.source || 'manual-ui',
+    });
+    if (!row) throw new Error('Could not save history day (total must be greater than zero).');
+    return row;
+}
+
+function buildHistoryDayEntry(storeNumber, dateKey) {
+    const store = String(storeNumber || '').trim();
+    const doc = readStoreHistory(store);
+    const cfg = getStoreConfig(store) || {};
+    const timeZone = String(doc.timeZone || cfg.timeZone || 'Australia/Melbourne').trim();
+    const bounds = historyDateBounds(timeZone);
+    const date = String(dateKey || bounds.newest || '').trim();
+    if (!date) throw new Error('date is required.');
+
+    validateHistoryDate(date, store);
+
+    const parsedStore = loadParsedStore(store);
+    const refDate = new Date(`${date}T12:00:00`);
+    const hoursResolved = parsedStore
+        ? resolveHours(parsedStore, refDate)
+        : {
+              openHour: Number.isFinite(cfg.openHour) ? cfg.openHour : doc.defaultOpenHour,
+              closeHour: Number.isFinite(cfg.closeHour) ? cfg.closeHour : doc.defaultCloseHour,
+          };
+    const openHour = hoursResolved.openHour;
+    const closeHour = hoursResolved.closeHour;
+    const existing = doc.days?.[date] || null;
+    const dayOpen = Number.isFinite(existing?.openHour) ? existing.openHour : openHour;
+
+    const hours = [];
+    for (let h = openHour; h < closeHour; h += 1) {
+        const idx = h - dayOpen;
+        hours.push({
+            hour: h,
+            label: formatHourLabel(h),
+            value:
+                existing?.actual && idx >= 0 && idx < existing.actual.length
+                    ? Math.round((Number(existing.actual[idx]) || 0) * 100) / 100
+                    : null,
+        });
+    }
+
+    return {
+        storeNumber: store,
+        storeName: cfg.storeName || parsedStore?.storeName || store,
+        date,
+        timeZone,
+        dateBounds: bounds,
+        openHour,
+        closeHour,
+        hours,
+        actualTotal: existing?.actualTotal ?? null,
+        source: existing?.source ?? null,
+        hasExisting: Boolean(existing),
+    };
+}
+
+function deleteHistoryDay(storeNumber, dateKey, options = {}) {
+    const store = String(storeNumber || '').trim();
+    const date = String(dateKey || '').trim();
+    if (!store || !date) throw new Error('store and date are required.');
+
+    const doc = readStoreHistory(store);
+    const existing = doc.days?.[date];
+    if (!existing) throw new Error('History day not found.');
+
+    const source = String(existing.source || '').trim();
+    if (source === 'live-scrape' && !options.force) {
+        throw new Error('Live-scraped days cannot be deleted without confirmation.');
+    }
+
+    delete doc.days[date];
+    writeStoreHistory(doc);
+    return { storeNumber: store, date, removed: true };
+}
+
 module.exports = {
     HISTORY_DIR,
     HISTORY_DAYS,
@@ -452,4 +639,10 @@ module.exports = {
     WEEKDAY_LABELS,
     weekColumnLabel,
     formatHourLabel,
+    distributeDayTotalToHourly,
+    upsertManualHistoryDay,
+    deleteHistoryDay,
+    buildHistoryDayEntry,
+    historyDateBounds,
+    validateHistoryDate,
 };

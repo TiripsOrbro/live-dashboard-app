@@ -4,7 +4,9 @@ const {
     addDaysToIso,
     markStoreWeekPlatformComplete,
 } = require('./forecastStatusLedger');
-const { saveManualEntryPacksForRun } = require('./forecastManualPack');const { getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../../../stores/src/storeList');
+const { saveManualEntryPacksForRun } = require('./forecastManualPack');
+const { loadAdjustmentRules } = require('./forecastAdjustmentsLedger');
+const { getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../../../stores/src/storeList');
 
 /**
  * Trim highest and lowest weekday totals from up to 5 weeks, average the remaining three.
@@ -143,6 +145,92 @@ function buildHourlyForecastPlan(dailyRows, targetDates, storeNumber) {
     return plan;
 }
 
+function clonePlanDay(day) {
+    return {
+        ...day,
+        hourly: (day.hourly || []).map((slot) => ({ ...slot })),
+    };
+}
+
+function reshapeHourlyForTotal(day, newTotal) {
+    const oldTotal = Number(day.forecastTotal) || 0;
+    const roundedTotal = Math.round(newTotal * 100) / 100;
+    if (!day.hourly?.length) {
+        return { ...day, forecastTotal: roundedTotal, hourly: [] };
+    }
+    if (oldTotal <= 0) {
+        const perHour = Math.round((roundedTotal / day.hourly.length) * 100) / 100;
+        const hourly = day.hourly.map((slot) => ({ hour: slot.hour, forecast: perHour }));
+        const shaped = Math.round(hourly.reduce((sum, row) => sum + row.forecast, 0) * 100) / 100;
+        const remainder = Math.round((roundedTotal - shaped) * 100) / 100;
+        if (hourly.length && Math.abs(remainder) >= 0.01) {
+            hourly[hourly.length - 1].forecast = Math.round((hourly[hourly.length - 1].forecast + remainder) * 100) / 100;
+        }
+        return { ...day, forecastTotal: roundedTotal, hourly };
+    }
+
+    const hourly = day.hourly.map((slot) => ({
+        hour: slot.hour,
+        forecast: Math.round(roundedTotal * ((Number(slot.forecast) || 0) / oldTotal) * 100) / 100,
+    }));
+    const shapedTotal = Math.round(hourly.reduce((sum, row) => sum + row.forecast, 0) * 100) / 100;
+    const remainder = Math.round((roundedTotal - shapedTotal) * 100) / 100;
+    if (hourly.length && Math.abs(remainder) >= 0.01) {
+        hourly[hourly.length - 1].forecast = Math.round((hourly[hourly.length - 1].forecast + remainder) * 100) / 100;
+    }
+    return { ...day, forecastTotal: roundedTotal, hourly };
+}
+
+function applyForecastAdjustments(plan, rules) {
+    if (!Array.isArray(plan) || !plan.length) return [];
+    if (!Array.isArray(rules) || !rules.length) return plan.map(clonePlanDay);
+
+    let days = plan.map(clonePlanDay);
+
+    for (const rule of rules) {
+        if (rule.scope === 'week') {
+            if (rule.mode === 'percent') {
+                const factor = 1 + Number(rule.value) / 100;
+                days = days.map((day) => reshapeHourlyForTotal(day, day.forecastTotal * factor));
+            } else if (rule.mode === 'dollar') {
+                const addPer = Math.round((Number(rule.value) / days.length) * 100) / 100;
+                days = days.map((day, idx) => {
+                    let add = addPer;
+                    if (idx === days.length - 1) {
+                        const sumPrior = addPer * (days.length - 1);
+                        add = Math.round((Number(rule.value) - sumPrior) * 100) / 100;
+                    }
+                    return reshapeHourlyForTotal(day, day.forecastTotal + add);
+                });
+            }
+        } else if (rule.scope === 'day') {
+            days = days.map((day) => {
+                if (day.date !== rule.date) return day;
+                if (rule.mode === 'percent') {
+                    const factor = 1 + Number(rule.value) / 100;
+                    return reshapeHourlyForTotal(day, day.forecastTotal * factor);
+                }
+                return reshapeHourlyForTotal(day, day.forecastTotal + Number(rule.value));
+            });
+        }
+    }
+
+    return days;
+}
+
+function buildForecastPlanForStore(storeNumber, options = {}) {
+    const store = String(storeNumber || '').trim();
+    const dailyRows = loadDailyRowsForStore(store);
+    const { targetWeeks, dates } = buildTargetForecastDates(options.fromDate);
+    const basePlan = buildHourlyForecastPlan(dailyRows, dates, store);
+    if (!basePlan.length) return { targetWeeks, dates, basePlan: [], plan: [], rules: [] };
+
+    const weekStart = targetWeeks[0];
+    const rules = options.adjustmentRules ?? loadAdjustmentRules(store, weekStart);
+    const plan = applyForecastAdjustments(basePlan, rules);
+    return { targetWeeks, dates, basePlan, plan, rules };
+}
+
 function buildTargetForecastDates(fromDate = new Date()) {
     const targetWeeks = getTargetForecastWeekStarts(fromDate);
     const dates = [];
@@ -205,11 +293,15 @@ function previewForecastForStore(storeNumber, options = {}) {
 
     const cfg = getStoreConfig(store) || {};
     const dailyRows = loadDailyRowsForStore(store);
-    const { targetWeeks, dates } = buildTargetForecastDates();
-    const plan = buildHourlyForecastPlan(dailyRows, dates, store);
+    const { targetWeeks, basePlan, plan, rules } = buildForecastPlanForStore(store, options);
     if (!plan.length) {
         throw new Error(`Could not build hourly forecast plan for store ${store}.`);
     }
+
+    const baseGrid = buildForecastPreviewGrid(basePlan);
+    const grid = buildForecastPreviewGrid(plan);
+    const baseWeekTotal = baseGrid.weekTotal;
+    const adjustedWeekTotal = grid.weekTotal;
 
     return {
         storeNumber: store,
@@ -218,8 +310,14 @@ function previewForecastForStore(storeNumber, options = {}) {
         forecastDays: plan.length,
         targetWeeks,
         history: readiness,
+        basePlan,
         plan,
-        grid: buildForecastPreviewGrid(plan),
+        adjustments: rules,
+        baseGrid,
+        grid,
+        baseWeekTotal,
+        adjustedWeekTotal,
+        adjustmentDelta: Math.round((adjustedWeekTotal - baseWeekTotal) * 100) / 100,
     };
 }
 
@@ -249,8 +347,7 @@ async function runForecastForStore(storeNumber, options = {}) {
 
     const cfg = getStoreConfig(store) || {};
     const dailyRows = loadDailyRowsForStore(store);
-    const { targetWeeks, dates } = buildTargetForecastDates();
-    const plan = buildHourlyForecastPlan(dailyRows, dates, store);
+    const { targetWeeks, plan } = buildForecastPlanForStore(store, options);
     if (!plan.length) {
         throw new Error(`Could not build hourly forecast plan for store ${store}.`);
     }
@@ -478,6 +575,8 @@ module.exports = {
     buildTargetForecastDates,
     loadDailyRowsForStore,
     buildForecastPreviewGrid,
+    applyForecastAdjustments,
+    buildForecastPlanForStore,
     previewForecastForStore,
     previewForecastForStores,
     runForecastForStore,

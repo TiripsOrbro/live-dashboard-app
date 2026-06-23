@@ -331,7 +331,17 @@ const {
     buildHistoryHourGrid,
     recordForecastHistoryFromStore,
     importForecastHistory,
+    upsertManualHistoryDay,
+    deleteHistoryDay,
+    buildHistoryDayEntry,
+    historyDateBounds,
+    readStoreHistory,
 } = require('../dashboard/src/forecast/forecastHistoryLedger');
+const {
+    readAdjustments,
+    writeAdjustments,
+    deleteAdjustments,
+} = require('../dashboard/src/forecast/forecastAdjustmentsLedger');
 const { buildAdminDfscStatus } = require('../tacaudit/audits/Daily Food Safety Check/dfscAdmin');
 const { buildAdminBuildToCatalog, filterOverridesForActor, readOverridesDoc } = require('../vendors/src/buildToAdminCatalog');
 const { patchOverrides } = require('../vendors/src/buildToAdminOverrides');
@@ -3400,9 +3410,148 @@ app.get('/api/admin/forecast/history-grid', (req, res) => {
                 forecastWeek = { error: err.message || 'Could not build forecast preview.' };
             }
         }
-        res.json({ success: true, grid, forecastWeek });
+        res.json({
+            success: true,
+            grid,
+            forecastWeek,
+            dateBounds: historyDateBounds(readStoreHistory(store).timeZone),
+        });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message || 'Could not build history grid.' });
+    }
+});
+
+app.get('/api/admin/forecast/history/day', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const store = String(req.query.store || '').trim();
+    const date = String(req.query.date || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    try {
+        const entry = buildHistoryDayEntry(store, date || undefined);
+        res.json({ success: true, entry });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not load history day.' });
+    }
+});
+
+app.post('/api/admin/forecast/history', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const store = String(req.body?.store || req.body?.storeNumber || '').trim();
+    const date = String(req.body?.date || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    if (!date) {
+        res.status(400).json({ success: false, error: 'date is required (YYYY-MM-DD).' });
+        return;
+    }
+    try {
+        const row = upsertManualHistoryDay(store, date, req.body || {}, {
+            force: req.body?.force === true,
+            source: 'manual-ui',
+        });
+        const readiness = buildHistoryCoverageForStores([store]).stores[store];
+        res.json({ success: true, day: row, readiness });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not save history day.' });
+    }
+});
+
+app.delete('/api/admin/forecast/history', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const store = String(req.query?.store || req.body?.store || '').trim();
+    const date = String(req.query?.date || req.body?.date || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    if (!date) {
+        res.status(400).json({ success: false, error: 'date is required.' });
+        return;
+    }
+    try {
+        const force = req.query?.force === '1' || req.body?.force === true;
+        const result = deleteHistoryDay(store, date, { force });
+        const readiness = buildHistoryCoverageForStores([store]).stores[store];
+        res.json({ success: true, ...result, readiness });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not delete history day.' });
+    }
+});
+
+app.get('/api/admin/forecast/adjustments', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const store = String(req.query.store || '').trim();
+    const weekStart = String(req.query.weekStart || getTargetForecastWeekStarts()[0] || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    res.json({ success: true, adjustments: readAdjustments(store, weekStart) });
+});
+
+app.put('/api/admin/forecast/adjustments', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const store = String(req.body?.store || req.body?.storeNumber || '').trim();
+    const weekStart = String(req.body?.weekStart || getTargetForecastWeekStarts()[0] || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    try {
+        const doc = writeAdjustments(store, weekStart, req.body?.rules || [], user.username);
+        const preview = previewForecastForStore(store);
+        res.json({
+            success: true,
+            adjustments: doc,
+            preview: {
+                storeNumber: preview.storeNumber,
+                baseWeekTotal: preview.baseWeekTotal,
+                adjustedWeekTotal: preview.adjustedWeekTotal,
+                adjustmentDelta: preview.adjustmentDelta,
+                grid: preview.grid,
+                baseGrid: preview.baseGrid,
+            },
+        });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not save adjustments.' });
+    }
+});
+
+app.delete('/api/admin/forecast/adjustments', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const store = String(req.query?.store || req.body?.store || '').trim();
+    const weekStart = String(req.query?.weekStart || req.body?.weekStart || getTargetForecastWeekStarts()[0] || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    try {
+        const result = deleteAdjustments(store, weekStart);
+        const preview = previewForecastForStore(store);
+        res.json({
+            success: true,
+            ...result,
+            preview: {
+                storeNumber: preview.storeNumber,
+                baseWeekTotal: preview.baseWeekTotal,
+                adjustedWeekTotal: preview.adjustedWeekTotal,
+                adjustmentDelta: preview.adjustmentDelta,
+                grid: preview.grid,
+            },
+        });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not clear adjustments.' });
     }
 });
 
@@ -4516,6 +4665,8 @@ app.post('/api/stock-count/check-stock-levels', async (req, res) => {
             });
             return;
         }
+
+        if (!assertStockCountUserMmxLogin(req, res)) return;
 
         console.log(`[StockCount] Check stock levels - store ${store} (async)`);
         res.json({ success: true, accepted: true, storeNumber: String(store) });

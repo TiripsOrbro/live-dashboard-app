@@ -1322,6 +1322,183 @@ html.mic-dark-mode .admin-buildto-close-btn:hover {
     letter-spacing: 0.02em;
 }
 
+.admin-forecast-history-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.75rem 0 0.5rem;
+}
+
+.admin-forecast-history-edit {
+    margin: 0.75rem 0;
+    padding: 0.85rem 1rem;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.admin-forecast-history-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+.admin-forecast-history-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+}
+
+.admin-forecast-history-form input[type='date'],
+.admin-forecast-history-form input[type='number'],
+.admin-forecast-history-form select {
+    max-width: 16rem;
+    padding: 0.35rem 0.5rem;
+}
+
+.admin-forecast-history-entry-mode,
+.admin-forecast-adjustments-scope,
+.admin-forecast-adjustments-mode {
+    border: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    align-items: center;
+}
+
+.admin-forecast-history-entry-mode legend,
+.admin-forecast-adjustments-scope legend,
+.admin-forecast-adjustments-mode legend {
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0;
+    margin: 0 0.5rem 0 0;
+}
+
+.admin-forecast-history-hour-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+    gap: 0.5rem;
+}
+
+.admin-forecast-history-hour-input span {
+    font-size: 0.75rem;
+    color: rgba(0, 0, 0, 0.55);
+}
+
+.admin-forecast-history-form-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.admin-forecast-history-source {
+    display: inline-block;
+    margin-top: 0.15rem;
+    padding: 0.05rem 0.35rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.06);
+}
+
+.admin-forecast-history-source--manual-ui {
+    background: rgba(59, 130, 246, 0.15);
+    color: #1d4ed8;
+}
+
+.admin-forecast-history-source--live-scrape {
+    background: rgba(34, 197, 94, 0.15);
+    color: #15803d;
+}
+
+.admin-forecast-history-col-edit {
+    display: block;
+    margin-top: 0.2rem;
+    padding: 0;
+    border: none;
+    background: none;
+    font-size: 0.72rem;
+    color: #2563eb;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.admin-forecast-preview-adjustments {
+    margin: 0.75rem 0 1rem;
+    padding: 0.85rem 1rem;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.admin-forecast-adjustments-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    align-items: flex-end;
+    margin-bottom: 0.75rem;
+}
+
+.admin-forecast-adjustments-form label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+}
+
+.admin-forecast-adjustments-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.admin-forecast-adjustments-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.admin-forecast-adjustments-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+}
+
+.admin-forecast-adjust-remove {
+    padding: 0.15rem 0.5rem;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+    background: #fff;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.admin-forecast-manual-history-total {
+    margin: 0.5rem 0 0;
+    font-size: 0.95rem;
+}
+
+.admin-modal--forecast-manual-history .admin-forecast-history-hour-grid {
+    margin-top: 0.75rem;
+}
+
+.admin-forecast-preview-summary--adjustments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    align-items: baseline;
+}
+
 .admin-modal--history .admin-forecast-preview-summary {
     margin: 0 0 0.5rem;
 }
@@ -1499,6 +1676,22 @@ html.mic-dark-mode .admin-history-grid-wrap {
 html.mic-dark-mode .admin-history-grid thead th,
 html.mic-dark-mode .admin-history-hour {
     background: #1e1e24;
+}
+
+html.mic-dark-mode .admin-forecast-history-edit,
+html.mic-dark-mode .admin-forecast-preview-adjustments {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.mic-dark-mode .admin-forecast-history-hour-input span {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+html.mic-dark-mode .admin-forecast-adjust-remove {
+    background: #1e1e24;
+    border-color: rgba(255, 255, 255, 0.15);
+    color: inherit;
 }
 
 .admin-modal--forecast-progress {

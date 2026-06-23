@@ -37,7 +37,6 @@ let mmxPipelineManualOnly = false;
 let mmxActivityLog = [];
 let mmxLastKnownServerInProgress = false;
 let mmxPollInFlight = null;
-let mmxLoginSession = null;
 let stockCountToastTimer = null;
 let lowStockAlerts = [];
 let lowStockPanelOpen = false;
@@ -1556,12 +1555,15 @@ async function waitForPipelinePrepareComplete() {
 }
 
 function mmxLoginRequestBody() {
-    if (!mmxLoginSession?.mmxUsername || !mmxLoginSession?.mmxPassword) return {};
-    return {
-        mmxUsername: mmxLoginSession.mmxUsername,
-        mmxPassword: mmxLoginSession.mmxPassword,
-        remember: false,
-    };
+    return window.MmxUserLoginPrompt?.loginRequestBody?.() || {};
+}
+
+async function ensureMmxUserLoginBeforeSend() {
+    return window.MmxUserLoginPrompt.ensureBeforeMmx(STORE_NUMBER, { purpose: 'send' });
+}
+
+async function ensureMmxUserLoginBeforeLevelsCheck() {
+    return window.MmxUserLoginPrompt.ensureBeforeMmx(STORE_NUMBER, { purpose: 'check-levels' });
 }
 
 function showStockCountToast(title, body, kind = 'info') {
@@ -1590,94 +1592,6 @@ function showVarianceAttention(varianceCount) {
             ? `There ${count === 1 ? 'is' : 'are'} ${count} variance${count === 1 ? '' : 's'} to review before placing orders.`
             : 'No red variances. Confirm below to place scheduled orders.';
     showStockCountToast(title, body, count > 0 ? 'warn' : 'ok');
-}
-
-function showMmxUserLoginModal(maskedUsername = '') {
-    return new Promise((resolve) => {
-        const backdrop = document.createElement('div');
-        backdrop.className = 'stock-count-processing stock-count-processing--fullscreen';
-        backdrop.setAttribute('role', 'dialog');
-        backdrop.setAttribute('aria-modal', 'true');
-        backdrop.innerHTML = `
-            <div class="stock-count-processing-card stock-count-processing-card--wait stock-count-processing-card--fullscreen stock-count-mmx-login-card">
-                <h2 class="stock-count-processing-label">Your Macromatix login</h2>
-                <p class="stock-count-mmx-wait-body">Counts are sent under <strong>your</strong> Macromatix user so Key Item Count shows who entered them.${maskedUsername ? ` Last saved: <strong>${escapeHtml(maskedUsername)}</strong>.` : ''}</p>
-                <label class="stock-count-mmx-login-field">MMX username
-                    <input type="text" id="sc-mmx-login-user" class="stock-count-input" autocomplete="username" />
-                </label>
-                <label class="stock-count-mmx-login-field">MMX password
-                    <input type="password" id="sc-mmx-login-pass" class="stock-count-input" autocomplete="current-password" />
-                </label>
-                <label class="stock-count-mmx-login-remember">
-                    <input type="checkbox" id="sc-mmx-login-remember" checked />
-                    Remember my Macromatix login on this account
-                </label>
-                <p id="sc-mmx-login-error" class="stock-count-mmx-login-error" hidden></p>
-                <div class="stock-count-mmx-login-actions">
-                    <button type="button" class="stock-count-btn stock-count-btn--secondary" id="sc-mmx-login-cancel">Cancel</button>
-                    <button type="button" class="stock-count-btn stock-count-btn--primary" id="sc-mmx-login-submit">Continue</button>
-                </div>
-            </div>`;
-        document.body.appendChild(backdrop);
-        const userInput = backdrop.querySelector('#sc-mmx-login-user');
-        const passInput = backdrop.querySelector('#sc-mmx-login-pass');
-        const errEl = backdrop.querySelector('#sc-mmx-login-error');
-        const finish = (value) => {
-            backdrop.remove();
-            resolve(value);
-        };
-        backdrop.querySelector('#sc-mmx-login-cancel')?.addEventListener('click', () => finish(null));
-        backdrop.querySelector('#sc-mmx-login-submit')?.addEventListener('click', async () => {
-            const mmxUsername = String(userInput?.value || '').trim();
-            const mmxPassword = String(passInput?.value || '');
-            const remember = Boolean(backdrop.querySelector('#sc-mmx-login-remember')?.checked);
-            if (!mmxUsername || !mmxPassword) {
-                if (errEl) {
-                    errEl.textContent = 'Enter your Macromatix username and password.';
-                    errEl.hidden = false;
-                }
-                return;
-            }
-            if (remember) {
-                const { res, data } = await fetchJson(apiQuery('/api/stock-count/mmx-user-login'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ mmxUsername, mmxPassword, remember: true }),
-                });
-                if (!res.ok || !data.success) {
-                    if (errEl) {
-                        errEl.textContent = data.error || 'Macromatix login failed.';
-                        errEl.hidden = false;
-                    }
-                    return;
-                }
-                finish({ mmxUsername, mmxPassword, remember: true });
-                return;
-            }
-            finish({ mmxUsername, mmxPassword, remember: false });
-        });
-        userInput?.focus();
-    });
-}
-
-async function ensureMmxUserLoginBeforeSend() {
-    const { res, data } = await fetchJson(apiQuery('/api/stock-count/mmx-user-login'));
-    if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Could not check Macromatix login status.');
-    }
-    if (!data.required || data.configured) {
-        mmxLoginSession = null;
-        return;
-    }
-    const creds = await showMmxUserLoginModal(data.maskedUsername || '');
-    if (!creds) {
-        throw new Error('Macromatix login is required to send counts.');
-    }
-    if (!creds.remember) {
-        mmxLoginSession = creds;
-    } else {
-        mmxLoginSession = null;
-    }
 }
 
 async function acceptSendToMmx() {
@@ -2882,7 +2796,15 @@ async function pollStockLevelsCheckComplete() {
         );
         if (!res.ok) continue;
         if (status.stage === 'check-levels-failed') {
-            throw new Error(status.lastError || 'Stock level check failed.');
+            const errMsg = status.lastError || 'Stock level check failed.';
+            if (window.MmxUserLoginPrompt?.isLoginRequiredError?.(errMsg)) {
+                await ensureMmxUserLoginBeforeLevelsCheck();
+                const retry = await postCheckStockLevels();
+                if (retry.res.ok && (retry.data.success || retry.data.accepted)) {
+                    continue;
+                }
+            }
+            throw new Error(errMsg);
         }
         if (status.stage === 'checking-stock-levels' || status.inProgress) {
             if (status.stepLabel) {
@@ -2898,15 +2820,28 @@ async function pollStockLevelsCheckComplete() {
     throw new Error('Stock level check timed out - try again in a minute.');
 }
 
+async function postCheckStockLevels() {
+    return fetchJson(
+        `${window.location.origin}/api/stock-count/check-stock-levels?store=${encodeURIComponent(STORE_NUMBER)}`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(mmxLoginRequestBody()),
+        }
+    );
+}
+
 async function runLevelsCheck() {
     if (levelsChecking) return;
     levelsChecking = true;
     renderLevelsView();
     try {
-        const { res, data } = await fetchJson(
-            `${window.location.origin}/api/stock-count/check-stock-levels?store=${encodeURIComponent(STORE_NUMBER)}`,
-            { method: 'POST' }
-        );
+        await ensureMmxUserLoginBeforeLevelsCheck();
+        let { res, data } = await postCheckStockLevels();
+        if (res.status === 403 && data?.needsMmxUserLogin) {
+            await ensureMmxUserLoginBeforeLevelsCheck();
+            ({ res, data } = await postCheckStockLevels());
+        }
         if (res.status === 409) {
             throw new Error(data.error || 'Stock count pipeline is busy - try again shortly.');
         }
@@ -2925,10 +2860,15 @@ async function runLevelsCheck() {
             lowStockPanelOpen = lowStockAlerts.length > 0;
         }
     } catch (error) {
-        statusMessage = shouldRecoverGatewayError(error.message)
-            ? 'Check is still running on the server - wait a minute and refresh.'
-            : error.message || 'Could not check stock levels.';
-        statusKind = 'error';
+        if (error.message === 'Macromatix login is required to continue.') {
+            statusMessage = '';
+            statusKind = '';
+        } else {
+            statusMessage = shouldRecoverGatewayError(error.message)
+                ? 'Check is still running on the server - wait a minute and refresh.'
+                : error.message || 'Could not check stock levels.';
+            statusKind = 'error';
+        }
     } finally {
         levelsChecking = false;
         renderLevelsView();

@@ -804,20 +804,32 @@ function renderStockLevelsTile(data, { tabbed = false, inRow = false } = {}) {
         </article>`;
 }
 
+async function postCheckStockLevels(storeNumber) {
+    const body = window.MmxUserLoginPrompt?.loginRequestBody?.() || {};
+    return fetch(`/api/stock-count/check-stock-levels?store=${encodeURIComponent(storeNumber)}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+    });
+}
+
 async function runStockLevelsCheck() {
     if (stockLevelsChecking || !STORE_NUMBER) return;
     stockLevelsChecking = true;
     if (micData) renderTiles(micData);
     try {
-        const res = await fetch(
-            `/api/stock-count/check-stock-levels?store=${encodeURIComponent(STORE_NUMBER)}`,
-            {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { Accept: 'application/json' },
-            }
-        );
-        const data = await res.json().catch(() => ({}));
+        await window.MmxUserLoginPrompt?.ensureBeforeMmx?.(STORE_NUMBER, { purpose: 'check-levels' });
+        let res = await postCheckStockLevels(STORE_NUMBER);
+        let data = await res.json().catch(() => ({}));
+        if (res.status === 403 && data?.needsMmxUserLogin) {
+            await window.MmxUserLoginPrompt.ensureBeforeMmx(STORE_NUMBER, { purpose: 'check-levels' });
+            res = await postCheckStockLevels(STORE_NUMBER);
+            data = await res.json().catch(() => ({}));
+        }
         if (res.status === 409) {
             throw new Error(data.error || 'Stock count pipeline is busy - try again shortly.');
         }
@@ -828,6 +840,9 @@ async function runStockLevelsCheck() {
             await pollStockLevelsCheckComplete(STORE_NUMBER);
         }
     } catch (error) {
+        if (error.message === 'Macromatix login is required to continue.') {
+            return;
+        }
         const msg = /524|502|503|504|gateway|timed out|timeout/i.test(String(error.message || ''))
             ? 'Check is still running on the server - wait a minute and refresh the page.'
             : error.message || 'Could not check stock levels.';
@@ -853,7 +868,16 @@ async function pollStockLevelsCheckComplete(storeNumber) {
         );
         const status = await statusRes.json().catch(() => ({}));
         if (status.stage === 'check-levels-failed') {
-            throw new Error(status.lastError || 'Stock level check failed.');
+            const errMsg = status.lastError || 'Stock level check failed.';
+            if (window.MmxUserLoginPrompt?.isLoginRequiredError?.(errMsg)) {
+                await window.MmxUserLoginPrompt.ensureBeforeMmx(storeNumber, { purpose: 'check-levels' });
+                const retryRes = await postCheckStockLevels(storeNumber);
+                const retryData = await retryRes.json().catch(() => ({}));
+                if (retryRes.ok && (retryData.success || retryData.accepted)) {
+                    continue;
+                }
+            }
+            throw new Error(errMsg);
         }
         if (status.stage === 'checking-stock-levels' || status.inProgress) {
             continue;

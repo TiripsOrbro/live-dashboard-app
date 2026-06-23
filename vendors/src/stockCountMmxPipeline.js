@@ -45,10 +45,12 @@ const STAGE_STEP_LABELS = {
     applying: 'Applying count in Macromatix',
     'applied-orders-pending': 'Preparing scheduled orders',
     'downloading-reports': 'Downloading stock reports',
+    'checking-stock-levels': 'Checking stock levels',
     'filling-orders': 'Placing scheduled orders',
     completed: 'Complete',
     'prepare-failed': 'Key Item Count prepare failed',
     'apply-failed': 'Apply or orders failed',
+    'check-levels-failed': 'Stock level check failed',
 };
 
 function defaultStepLabel(stage) {
@@ -414,7 +416,8 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
     };
     const mmxOpts = withStoreMmxOptions(storeNumber, options);
     const useParallel =
-        parallelReportDownloadEnabled(downloadOpts) && idsToDownload.length >= 2;
+        parallelReportDownloadEnabled(downloadOpts) &&
+        (idsToDownload.length >= 2 || downloadOpts.parallelReportDownload || downloadOpts.forceDownload);
 
     if (useParallel) {
         log.info(
@@ -907,6 +910,7 @@ const PIPELINE_IN_PROGRESS_STAGES = new Set([
     'applying',
     'applied-orders-pending',
     'downloading-reports',
+    'checking-stock-levels',
     'filling-orders',
 ]);
 
@@ -915,6 +919,7 @@ const PIPELINE_ACTIVE_WORK_STAGES = new Set([
     'applying',
     'applied-orders-pending',
     'downloading-reports',
+    'checking-stock-levels',
     'filling-orders',
 ]);
 
@@ -1247,6 +1252,16 @@ async function cancelStockCountSession(storeNumber, sessionId) {
     return { success: true, cancelled };
 }
 
+async function recordStockCountCheckFailure(storeNumber, error) {
+    const cp = await getCheckpoint(storeNumber);
+    if (!cp || cp.stage === 'completed') return;
+    await updateCheckpoint(storeNumber, {
+        stage: 'check-levels-failed',
+        lastError: error?.message || String(error || 'Stock level check failed'),
+        failedAtStep: cp?.stepLabel || defaultStepLabel('checking-stock-levels'),
+    });
+}
+
 async function checkStockLevelsForStore(storeNumber, options = {}) {
     const {
         computeLowStockAlerts,
@@ -1260,20 +1275,24 @@ async function checkStockLevelsForStore(storeNumber, options = {}) {
     return withStoreLock(storeNumber, async () => {
         await beginStockCountMmxWork(`check stock levels (store ${storeNumber})`, storeNumber);
         try {
+            await updateCheckpoint(storeNumber, {
+                stage: 'checking-stock-levels',
+                stepLabel: 'Downloading Macromatix reports (3 parallel browsers)…',
+                lastError: null,
+                failedAtStep: null,
+            });
             invalidateLowStockSummaryCache(storeNumber);
-            let browser;
-            let page;
-            try {
-                ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
-                await ensureReportsForOrders(storeNumber, {
-                    page,
-                    browser,
-                    forceDownload: true,
-                    dateKey: options.dateKey,
-                });
-            } finally {
-                await closeBrowserQuietly(browser, 'check stock levels');
-            }
+
+            await ensureReportsForOrders(storeNumber, {
+                forceDownload: true,
+                parallelReportDownload: true,
+                dateKey: options.dateKey,
+                ...withStoreMmxOptions(storeNumber, options),
+            });
+
+            await updateCheckpoint(storeNumber, {
+                stepLabel: 'Calculating stock shortfalls…',
+            });
 
             const buildTo = await calculateBuildToOrders(storeNumber, {
                 dateKey: options.dateKey,
@@ -1284,10 +1303,21 @@ async function checkStockLevelsForStore(storeNumber, options = {}) {
                 thresholdDays: defaultStockWarningDays(),
             });
             setLowStockSummaryCache(storeNumber, summary, options.dateKey);
+            await updateCheckpoint(storeNumber, {
+                stage: 'idle',
+                stepLabel: defaultStepLabel('idle'),
+                lastError: null,
+                failedAtStep: null,
+                lowStockAlerts: summary.items || [],
+                lowStockCount: summary.count || 0,
+            });
             log.info(
                 `Stock levels checked for store ${storeNumber}: ${summary.count} shortfall(s) under ${summary.thresholdDays} days`
             );
             return summary;
+        } catch (error) {
+            await recordStockCountCheckFailure(storeNumber, error);
+            throw error;
         } finally {
             await endStockCountMmxWork(storeNumber, `check stock levels finished (store ${storeNumber})`);
         }
@@ -1310,6 +1340,7 @@ module.exports = {
     getStockCountPipelineStatus,
     isStockCountPipelineBusy,
     recordStockCountPrepareFailure,
+    recordStockCountCheckFailure,
     resetStalePipelineCheckpointsOnStartup,
     runScheduledOrdersOnly,
     runStoreBuildToCycle,

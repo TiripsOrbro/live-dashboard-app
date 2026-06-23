@@ -27,6 +27,18 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.9.8 – June 2026
+
+**Fixed**
+
+- **Check stock levels** — no longer hits Cloudflare 524 timeouts; the check runs in the background and the UI polls for completion.
+- **Report downloads** — stock level checks and force refreshes use **3 parallel browsers** (SOH, SOO, ISE at once) by default instead of one slow sequential session.
+
+**What you need to do**
+
+- On the Pi: `git pull origin Version-0.4 && pm2 restart dashboard`
+- Hard refresh after deploy. “Check stock levels” may take 1–2 minutes but should no longer fail with 524.
+
 ### Version 0.4.9.7 – June 2026
 
 **Fixed**

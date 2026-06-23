@@ -350,8 +350,9 @@ async function downloadReportsForStores(options = {}) {
 function parallelReportDownloadEnabled(options = {}) {
     if (options.parallelReportDownload === false) return false;
     if (process.env.MMX_PARALLEL_BUILD_TO_REPORTS === '0') return false;
-    if (options.afterCountApply) return true;
     if (options.parallelReportDownload === true) return true;
+    if (options.afterCountApply) return true;
+    if (options.forceDownload) return true;
     if (Array.isArray(options.onlyReportIds) && options.onlyReportIds.length >= 2) return true;
     return process.env.MMX_PARALLEL_BUILD_TO_REPORTS === '1';
 }

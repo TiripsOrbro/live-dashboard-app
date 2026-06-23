@@ -756,15 +756,57 @@ async function runStockLevelsCheck() {
             }
         );
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.success) {
+        if (res.status === 409) {
+            throw new Error(data.error || 'Stock count pipeline is busy - try again shortly.');
+        }
+        if (!res.ok || (!data.success && !data.accepted)) {
             throw new Error(data.error || `Check failed (${res.status})`);
         }
+        if (data.accepted) {
+            await pollStockLevelsCheckComplete(STORE_NUMBER);
+        }
     } catch (error) {
-        window.alert(error.message || 'Could not check stock levels.');
+        const msg = /524|502|503|504|gateway|timed out|timeout/i.test(String(error.message || ''))
+            ? 'Check is still running on the server - wait a minute and refresh the page.'
+            : error.message || 'Could not check stock levels.';
+        window.alert(msg);
     } finally {
         stockLevelsChecking = false;
         await loadMicData();
     }
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollStockLevelsCheckComplete(storeNumber) {
+    const maxWaitMs = 12 * 60 * 1000;
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < maxWaitMs) {
+        await sleep(3000);
+        const statusRes = await fetch(
+            `/api/stock-count/pipeline-status?store=${encodeURIComponent(storeNumber)}`,
+            { credentials: 'same-origin', headers: { Accept: 'application/json' } }
+        );
+        const status = await statusRes.json().catch(() => ({}));
+        if (status.stage === 'check-levels-failed') {
+            throw new Error(status.lastError || 'Stock level check failed.');
+        }
+        if (status.stage === 'checking-stock-levels' || status.inProgress) {
+            continue;
+        }
+        const summaryRes = await fetch(
+            `/api/stock-count/low-stock-summary?store=${encodeURIComponent(storeNumber)}`,
+            { credentials: 'same-origin', headers: { Accept: 'application/json' } }
+        );
+        const summary = await summaryRes.json().catch(() => ({}));
+        if (summary.success && summary.stockLevelsChecked) {
+            return summary;
+        }
+        if (!status.inProgress) return summary;
+    }
+    throw new Error('Stock level check timed out - try again in a minute.');
 }
 
 function bindStockLevelsCheck() {

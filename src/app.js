@@ -106,6 +106,7 @@ const {
     getStockCountPipelineStatus,
     isStockCountPipelineBusy,
     recordStockCountPrepareFailure,
+    recordStockCountCheckFailure,
     resetStalePipelineCheckpointsOnStartup,
 } = require('./services/stockCountMmxPipeline');
 const { buildDailyStockCountCatalog } = require('./services/dailyStockCountCatalog');
@@ -4411,34 +4412,26 @@ app.post('/api/stock-count/check-stock-levels', async (req, res) => {
         const store = stockCountStoreFromQuery(req);
         if (!store || !assertStoreAccess(req, res, store)) return;
 
-        if (isStockCountPipelineBusy((await getStockCountPipelineStatus(store))?.stage)) {
+        const pipeline = await getStockCountPipelineStatus(store);
+        if (isStockCountPipelineBusy(pipeline.stage)) {
             res.status(409).json({
                 success: false,
                 error: 'Stock count pipeline is running - try again when it finishes.',
+                inProgress: true,
+                stage: pipeline.stage,
             });
             return;
         }
 
-        console.log(`[StockCount] Check stock levels - store ${store}`);
-        const summary = await checkStockLevelsForStore(
-            store,
-            mmxAutomationOptions(req, store, {})
-        );
-        res.json({
-            success: true,
-            storeNumber: String(store),
-            lowStockCount: summary.count,
-            lowStockItems: summary.items || [],
-            lowStockAlerts: summary.alerts || summary.items || [],
-            stockLevelsSub: summary.count
-                ? `${summary.count} item${summary.count === 1 ? '' : 's'} under ${summary.thresholdDays} days stock`
-                : `No stock shortfalls (under ${summary.thresholdDays} days)`,
-            stockLevelsChecked: true,
-            stockLevelsCheckedAt: summary.checkedAt,
-            thresholdDays: summary.thresholdDays,
+        console.log(`[StockCount] Check stock levels - store ${store} (async)`);
+        res.json({ success: true, accepted: true, storeNumber: String(store) });
+
+        void checkStockLevelsForStore(store, mmxAutomationOptions(req, store, {})).catch(async (error) => {
+            console.error('API: Error checking stock levels:', error);
+            await recordStockCountCheckFailure(store, error);
         });
     } catch (error) {
-        console.error('API: Error checking stock levels:', error);
+        console.error('API: Error starting stock level check:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });

@@ -1178,17 +1178,30 @@ function uniqueSortedLabels(rawVendors) {
     return [...labels].sort((a, b) => a.localeCompare(b));
 }
 
+function rethrowIfSalesScrapeAborted(err) {
+    if (err?.aborted) throw err;
+    if (isSalesScrapeAbortRequested()) {
+        throw new MmxWorkAbortedError('Sales scrape aborted - stock count / orders in progress');
+    }
+}
+
 /** Full page reload after postback can replace the JS context while we scrape; retry after load settles. */
 async function withPageContextRetry(page, label, fn) {
     const backoffMs = [450, 900, 1600];
     let lastErr;
     for (let attempt = 0; attempt <= backoffMs.length; attempt++) {
+        throwIfSalesScrapeAborted();
         try {
             return await fn();
         } catch (e) {
             lastErr = e;
+            rethrowIfSalesScrapeAborted(e);
             const msg = String(e && e.message ? e.message : e);
-            const retriable = /Execution context was destroyed|Target closed|Protocol error|most likely because of a navigation/i.test(
+            const sessionDead = /Session closed|Target closed/i.test(msg);
+            if (sessionDead) {
+                throw e;
+            }
+            const retriable = /Execution context was destroyed|Protocol error|most likely because of a navigation/i.test(
                 msg
             );
             if (!retriable || attempt === backoffMs.length) {
@@ -1208,6 +1221,7 @@ async function withPageContextRetry(page, label, fn) {
  * or Pending / Unprocessed status) and no numeric order # → vendor names.
  */
 async function scrapePendingVendors(page, opts = {}) {
+    throwIfSalesScrapeAborted();
     await page.goto(SCHEDULED_ORDERS_URL, GOTO_OPTS);
     await page.waitForTimeout(700);
 
@@ -1411,6 +1425,7 @@ async function probePendingOrdersForStores(page, stores, options = {}) {
  * When skipStoreSelect is true (single-store login mode), the session is already bound to that store.
  */
 async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
+    throwIfSalesScrapeAborted();
     const { todayKey, testScheduledOrdersPick, pickYmd, skipScheduledPersistence } = ctx;
     const skipStoreSelect = Boolean(scrapeOpts.skipStoreSelect);
     const storeNumber = String(store.storeNumber || '').trim();
@@ -1461,6 +1476,7 @@ async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
             recordScheduledOrdersResult(storeNumber, todayKey, pendingVendors);
         }
     } catch (vendorErr) {
+        rethrowIfSalesScrapeAborted(vendorErr);
         console.warn(`[Macromatix] Store ${label} scheduled orders scrape failed:`, vendorErr.message);
         pendingVendors = getLastKnownPendingVendors(storeNumber, todayKey);
     }
@@ -2134,6 +2150,7 @@ function attachSssgToResult(result, _todayKey) {
  * SSSG Last Year is scraped in one shared SPA pass after all stores (see runBatchSssgLyScrape).
  */
 async function scrapeSingleStoreSession(page, store, ctx, credentials) {
+    throwIfSalesScrapeAborted();
     const storeNumber = String(store.storeNumber || '').trim();
 
     const pick = await selectStoreAfterLogin(page, storeNumber, credentials);
@@ -2412,6 +2429,7 @@ async function scrapeStoreWithCredentialCandidates(browser, store, ctx, candidat
     let lastErr;
 
     for (let attempt = 0; attempt < tries.length; attempt++) {
+        throwIfSalesScrapeAborted();
         const resolved = tries[attempt];
         const storeCreds = { username: resolved.username, password: resolved.password };
         const accessible = await getAccessibleStoreNumbersForCredentials(browser, storeCreds);
@@ -2445,6 +2463,7 @@ async function scrapeStoreWithCredentialCandidates(browser, store, ctx, candidat
             };
         } catch (err) {
             lastErr = err;
+            rethrowIfSalesScrapeAborted(err);
             const hasMore = attempt < tries.length - 1;
             if (!isStoreInaccessibleError(err) || hasMore) {
                 console.warn(

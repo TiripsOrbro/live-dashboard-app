@@ -11,6 +11,7 @@ async function scrapeData(options = {}) {
         message: 'Macromatix',
         timestamp: mm.timestamp,
         stores: Array.isArray(mm.stores) ? mm.stores : [],
+        scrapeSkipped: Boolean(mm.scrapeSkipped),
     };
 }
 

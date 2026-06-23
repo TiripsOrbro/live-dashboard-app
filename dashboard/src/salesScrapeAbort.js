@@ -28,12 +28,12 @@ function clearSalesScrapeBrowser(browser) {
 }
 
 function requestSalesScrapeAbort(reason) {
+    if (abortRequested) return true;
     abortRequested = true;
-    const browser = activeBrowser;
-    if (!browser) return false;
     console.log(`[MMX Resource] Aborting in-flight sales scrape - ${reason}`);
-    activeBrowser = null;
-    browser.close().catch(() => {});
+    // Cooperative abort: scrape checks the flag and closes its own browser. Forcing
+    // browser.close() here races workers mid-page.evaluate and causes "Session closed"
+    // retry storms instead of a clean handoff to MIC stock-count work.
     return true;
 }
 

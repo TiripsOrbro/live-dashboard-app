@@ -257,6 +257,21 @@
     font-weight: var(--font-weight-clock);
 }
 
+.mic-sales-scrape-hint {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.62rem;
+    font-weight: var(--font-weight-ui-label);
+    line-height: 1.2;
+    opacity: 0.5;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.mic-sales-scrape-hint.is-updating {
+    opacity: 0.72;
+}
+
 .mic-account-btn,
 .mic-link-btn {
     border: var(--cell-border) var(--charcoal);

@@ -83,6 +83,7 @@ const {
     resetScheduledOrdersForNewDay,
     resetSssgForNewDay,
     getCachedSssgLy,
+    storeHasMmxCredentials,
 } = require('./services/macromatixScraper');
 const { computeSssgPercent } = require('./services/sssg/sssgCalc');
 const {
@@ -143,6 +144,12 @@ const SALES_REFRESH_SECONDS = Number(process.env.SALES_REFRESH_SECONDS || 240);
 /** Full Macromatix run (login + every store's labour + scheduled orders). ~1 min/store, so allow plenty for a slow Pi. */
 const SCRAPE_TIMEOUT_MS = Number(process.env.SCRAPE_TIMEOUT_MS || 900000);
 const SCRAPE_RETRIES = Number(process.env.SCRAPE_RETRIES || 1);
+const SCRAPE_INTERVAL_SECONDS = Math.max(30, Number(process.env.SCRAPE_FAST_INTERVAL_SECONDS || 120));
+const SCRAPE_BATCH_SIZE = Math.max(1, Number(process.env.SCRAPE_BATCH_SIZE || 4));
+const STORE_SCRAPE_STALE_MS = Math.max(
+    60_000,
+    Number(process.env.STORE_SCRAPE_STALE_MS || SCRAPE_INTERVAL_SECONDS * 1000 * 0.85)
+);
 /** Store shown at `/` (no store in the path). Empty = first store the scrape returns. */
 const DASHBOARD_DEFAULT_STORE = String(process.env.DASHBOARD_DEFAULT_STORE || '').trim();
 const AUDIT_STATE_FILE = process.env.AUDIT_STATE_FILE || path.join(paths.tacaudit.data, 'audit-state.json');
@@ -495,6 +502,9 @@ onStoreOrdersComplete((storeNumber) => {
     patchSalesCachePendingVendors(storeNumber, []);
 });
 let salesInFlight = null;
+/** Per-store last successful scrape (epoch ms) — drives batched interval scrapes in per-store login mode. */
+const storeLastScrapedAt = new Map();
+let lastSalesScrapeCompletedAt = null;
 let auditStateCache = null;
 /** Last scrape phase per store - drives idle wipe and new-day order-check reset. */
 const lastScrapePhaseByStore = new Map();
@@ -1148,9 +1158,70 @@ function isSalesCacheFresh() {
 }
 
 function getSalesUpdatedAt() {
+    if (lastSalesScrapeCompletedAt) return String(lastSalesScrapeCompletedAt);
     if (salesCache?.timestamp) return String(salesCache.timestamp);
     if (salesCacheAt) return new Date(salesCacheAt).toISOString();
     return null;
+}
+
+function noteStoreScrapeSuccess(storeNumber, when = Date.now()) {
+    const key = String(storeNumber || '').trim();
+    if (!key) return;
+    storeLastScrapedAt.set(key, when);
+}
+
+function countMeaningfulScrapeStores(stores) {
+    if (!Array.isArray(stores)) return 0;
+    return stores.filter((s) => storeHasMeaningfulData(s) && !s.error).length;
+}
+
+/** Pick stores due for the next interval tick (per-store logins are slow — rotate batches). */
+function pickStoresForIntervalScrape(now = Date.now()) {
+    const listed = getStoreList().filter((s) => getStoreScrapePhase(s, now) === 'active');
+    const withCreds = listed.filter((s) => storeHasMmxCredentials(s.storeNumber));
+    const due = withCreds
+        .filter((s) => {
+            const last = storeLastScrapedAt.get(String(s.storeNumber)) || 0;
+            return now - last >= STORE_SCRAPE_STALE_MS;
+        })
+        .sort(
+            (a, b) =>
+                (storeLastScrapedAt.get(String(a.storeNumber)) || 0) -
+                (storeLastScrapedAt.get(String(b.storeNumber)) || 0)
+        );
+    if (!due.length) return [];
+    return due.slice(0, SCRAPE_BATCH_SIZE).map((s) => String(s.storeNumber));
+}
+
+function prepareSalesScrapeOptions(options = {}) {
+    const reason = String(options.scrapeReason || '').trim();
+    if (reason === 'interval' && !options.storeNumbers?.length && !options.storeNumber) {
+        const batch = pickStoresForIntervalScrape();
+        if (!batch.length) return { ...options, skipScrape: true };
+        return { ...options, storeNumbers: batch };
+    }
+    return options;
+}
+
+function getSalesScrapeStatus(user) {
+    const tz = process.env.DASHBOARD_TIME_ZONE || process.env.MMX_TIME_ZONE || 'Australia/Melbourne';
+    let stores = getStoreList();
+    if (user) stores = filterStoresForUser(user, stores);
+    const storeNums = new Set(stores.map((s) => String(s.storeNumber)));
+    const credentialed = stores.filter((s) => storeHasMmxCredentials(s.storeNumber));
+    const activeCredentialed = credentialed.filter((s) => getStoreScrapePhase(s) === 'active');
+    const withData = (salesCache?.stores || []).filter(
+        (s) => storeNums.has(String(s.storeNumber)) && storeHasMeaningfulData(s)
+    );
+    return {
+        salesUpdatedAt: getSalesUpdatedAt(),
+        inFlight: Boolean(salesInFlight),
+        deferred: salesScrapeShouldDefer(),
+        credentialedStores: credentialed.length,
+        activeCredentialedStores: activeCredentialed.length,
+        storesWithSalesData: withData.length,
+        timeZone: tz,
+    };
 }
 
 function logDashboardScrapeComplete(payload) {
@@ -1619,24 +1690,46 @@ function runScrapeIntoCache(options = {}) {
                 return salesCache;
             }
 
-            logScrapeStart(options);
-            const scrapeOpts = { ...options };
+            const scrapeOpts = prepareSalesScrapeOptions({ ...options });
+            if (scrapeOpts.skipScrape) {
+                return salesCache || buildCacheShellFromStoreList();
+            }
+
+            logScrapeStart(scrapeOpts);
             const result = await runWithPriority(PRIORITY.SCRAPE, {
                 type: 'sales-scrape',
-                label: `sales scrape (${options.scrapeReason || 'manual'})`,
+                label: `sales scrape (${scrapeOpts.scrapeReason || 'manual'})`,
                 run: () => scrapeWithRetry(scrapeOpts),
             });
+            const scrapedStores = Array.isArray(result.stores) ? result.stores : [];
+            const meaningfulCount = countMeaningfulScrapeStores(scrapedStores);
+            const scrapeSkipped = Boolean(result.scrapeSkipped) && meaningfulCount === 0;
+
+            if (!scrapeSkipped && meaningfulCount > 0) {
+                const when = Date.now();
+                for (const store of scrapedStores) {
+                    if (storeHasMeaningfulData(store) && !store.error) {
+                        noteStoreScrapeSuccess(store.storeNumber, when);
+                    }
+                }
+                lastSalesScrapeCompletedAt = result.timestamp || new Date(when).toISOString();
+            }
+
             const fresh = {
                 success: true,
-                timestamp: result.timestamp,
-                stores: Array.isArray(result.stores) ? result.stores : [],
+                timestamp: scrapeSkipped
+                    ? salesCache?.timestamp || result.timestamp
+                    : result.timestamp || lastSalesScrapeCompletedAt,
+                stores: scrapedStores,
             };
             salesCache = {
                 success: true,
                 timestamp: fresh.timestamp,
                 stores: mergeStoresPreservingGood(salesCache, fresh),
             };
-            salesCacheAt = Date.now();
+            if (!scrapeSkipped && meaningfulCount > 0) {
+                salesCacheAt = Date.now();
+            }
             for (const store of salesCache.stores) {
                 if (storeHasMeaningfulData(store)) {
                     syncSssgWeeklyForStore(store, { finalize: false });
@@ -1685,6 +1778,7 @@ function queueStoreLoginBootstrapScrape(storeNumber) {
         runScrapeIntoCache({
             scrapeReason: 'store-login-setup',
             bypassScrapeSchedule: true,
+            storeNumbers: stores,
         }).catch((error) => {
             console.error('[Dashboard] Bootstrap sales scrape failed:', error.message);
             notifyScrapeFailure(error, 'store login bootstrap scrape').catch(() => {});
@@ -4736,15 +4830,14 @@ app.get('/api/sales', async (req, res) => {
 
         fullPayload = await getSalesDataCached();
         const testPending = wantsTestStockCountPending(req);
-        res.json(
-            await enrichSalesSliceWithStockCount(
-                filterSalesSliceForUser(
-                    storeSliceFromPayload(fullPayload, requestedStore),
-                    req.dashboardUser || getRequestUser(req)
-                ),
+        const user = req.dashboardUser || getRequestUser(req);
+        res.json({
+            ...(await enrichSalesSliceWithStockCount(
+                filterSalesSliceForUser(storeSliceFromPayload(fullPayload, requestedStore), user),
                 { testPending }
-            )
-        );
+            )),
+            salesScrapeStatus: getSalesScrapeStatus(user),
+        });
     } catch (error) {
         console.error('API: Error fetching sales data:', error);
         if (salesCache) {
@@ -4807,7 +4900,7 @@ async function handleOverviewApi(req, res) {
                 return;
             }
             const { ok, ...payload } = result;
-            res.json({ success: true, salesUpdatedAt: getSalesUpdatedAt(), ...payload });
+            res.json({ success: true, salesScrapeStatus: getSalesScrapeStatus(user), ...payload });
             return;
         }
 
@@ -4839,7 +4932,11 @@ async function handleOverviewApi(req, res) {
             return;
         }
         const { ok, ...body } = result;
-        res.json({ success: true, ...body });
+        res.json({
+            success: true,
+            salesScrapeStatus: getSalesScrapeStatus(user),
+            ...body,
+        });
     } catch (error) {
         console.error('API: Error loading overview:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -6551,11 +6648,11 @@ app.get('/api/admin/dfsc/audit/:sessionId', (req, res) => {
 
 app.get('/api/admin/overview/status', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
-    if (!isRealDashboardUser(user) || getOverviewScope(user) === 'store') {
-        res.status(403).json({ success: false, error: 'Overview status is not available for this account.' });
+    if (!isRealDashboardUser(user)) {
+        res.status(403).json({ success: false, error: 'Login required.' });
         return;
     }
-    res.json({ success: true, salesUpdatedAt: getSalesUpdatedAt() });
+    res.json({ success: true, ...getSalesScrapeStatus(user) });
 });
 
 app.get('/api/admin/overview', handleOverviewApi);
@@ -7002,6 +7099,13 @@ function primeSalesCacheFromDisk() {
     applyScrapeScheduleToCache(salesCache);
     const retained = (salesCache.stores || []).filter((s) => storeHasMeaningfulData(s)).length;
     if (retained) {
+        const when = Date.now();
+        for (const store of salesCache.stores || []) {
+            if (storeHasMeaningfulData(store)) noteStoreScrapeSuccess(store.storeNumber, when);
+        }
+        if (!lastSalesScrapeCompletedAt) {
+            lastSalesScrapeCompletedAt = salesCache.timestamp || new Date(when).toISOString();
+        }
         console.log(`[Dashboard] Restored sales data for ${retained} store(s) from cache/snapshots`);
     }
 }

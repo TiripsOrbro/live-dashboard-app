@@ -4,6 +4,7 @@ let STORE_NUMBER =
 
 const app = document.getElementById('app');
 const REFRESH_MS = 2 * 60 * 1000;
+const SCRAPE_POLL_MS = 15 * 1000;
 const TIME_ZONE = 'Australia/Melbourne';
 const MULTIPLIER_NOTHING_LABEL = 'Nothing Yet...';
 
@@ -13,7 +14,67 @@ let pickerEscHandler = null;
 let micCanViewAdminAuditSummary = false;
 let stockLevelsChecking = false;
 
-const VOC_PLACEHOLDER = { count: 30, osatPercent: 83, accuracyPercent: 90 };
+function formatSalesScrapeHint(status) {
+    if (!status) return { text: '', title: '' };
+    const tz = status.timeZone || TIME_ZONE;
+    const parts = [];
+    if (status.credentialedStores != null) {
+        parts.push(`${status.storesWithSalesData ?? 0}/${status.credentialedStores} stores with live sales`);
+    }
+    if (status.deferred) parts.push('MMX busy — scrape queued');
+    if (status.inFlight) parts.push('Scrape in progress');
+    if (status.salesUpdatedAt) {
+        try {
+            const when = new Date(status.salesUpdatedAt).toLocaleString('en-AU', {
+                timeZone: tz,
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+            });
+            parts.push(`Last scrape ${when}`);
+        } catch {
+            parts.push(`Last scrape ${status.salesUpdatedAt}`);
+        }
+    } else if (!status.inFlight) {
+        parts.push('No successful scrape yet today');
+    }
+    const title = parts.join(' · ');
+    if (status.inFlight) return { text: 'Sales · updating', title };
+    if (!status.salesUpdatedAt) return { text: 'Sales · —', title };
+    try {
+        const time = new Date(status.salesUpdatedAt).toLocaleTimeString('en-AU', {
+            timeZone: tz,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        });
+        return { text: `Sales · ${time}`, title };
+    } catch {
+        return { text: 'Sales · —', title };
+    }
+}
+
+function updateSalesScrapeHint(status) {
+    const el = document.getElementById('mic-sales-scrape-hint');
+    if (!el) return;
+    const { text, title } = formatSalesScrapeHint(status);
+    el.textContent = text;
+    el.title = title;
+    el.hidden = !text;
+    el.classList.toggle('is-updating', Boolean(status?.inFlight));
+}
+
+async function pollSalesScrapeStatus() {
+    try {
+        const res = await fetch('/api/admin/overview/status', { credentials: 'same-origin' });
+        const data = await res.json();
+        if (!res.ok || !data.success) return;
+        updateSalesScrapeHint(data);
+    } catch {
+        /* ignore */
+    }
+}
+
 const SMG_REPORTING_URL = 'https://reporting.smg.com/Index.aspx';
 
 const CURRENT_PROMO = {
@@ -125,6 +186,7 @@ function renderShell() {
                     <div class="mic-clock">
                         <span class="mic-clock-label">Current time</span>
                         <span class="mic-clock-value" id="mic-clock">${formatTime(new Date())}</span>
+                        <span class="mic-sales-scrape-hint" id="mic-sales-scrape-hint" hidden>Sales · —</span>
                     </div>
                 </div>
             </header>
@@ -1120,6 +1182,7 @@ async function loadMicData() {
         return;
     }
     micData = await enrichMicSalesHourly(data);
+    updateSalesScrapeHint(data.salesScrapeStatus);
     window.MicSettings?.setStoreContext?.({
         storeNumber: STORE_NUMBER || '',
         reportEmail: micData.reportEmail || '',
@@ -1216,6 +1279,7 @@ async function initStoreOverview(me) {
     }, 1000);
     window.setInterval(refreshMiniDashboard, 60 * 1000);
     window.setInterval(loadMicData, REFRESH_MS);
+    window.setInterval(pollSalesScrapeStatus, SCRAPE_POLL_MS);
     window.addEventListener('resize', () => {
         syncMicLayoutMode();
         requestAnimationFrame(syncSalesHourlyScroll);

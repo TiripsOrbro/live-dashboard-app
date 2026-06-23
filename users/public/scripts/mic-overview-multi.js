@@ -59,8 +59,54 @@
         };
     }
 
-    function formatMoney(value) {
-        return `$${(Number(value) || 0).toLocaleString('en-AU')}`;
+    function formatSalesScrapeHint(status) {
+        if (!status) return { text: '', title: '' };
+        const tz = status.timeZone || TIME_ZONE;
+        const parts = [];
+        if (status.credentialedStores != null) {
+            parts.push(`${status.storesWithSalesData ?? 0}/${status.credentialedStores} stores with live sales`);
+        }
+        if (status.deferred) parts.push('MMX busy — scrape queued');
+        if (status.inFlight) parts.push('Scrape in progress');
+        if (status.salesUpdatedAt) {
+            try {
+                const when = new Date(status.salesUpdatedAt).toLocaleString('en-AU', {
+                    timeZone: tz,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                });
+                parts.push(`Last scrape ${when}`);
+            } catch {
+                parts.push(`Last scrape ${status.salesUpdatedAt}`);
+            }
+        } else if (!status.inFlight) {
+            parts.push('No successful scrape yet today');
+        }
+        const title = parts.join(' · ');
+        if (status.inFlight) return { text: 'Sales · updating', title };
+        if (!status.salesUpdatedAt) return { text: 'Sales · —', title };
+        try {
+            const time = new Date(status.salesUpdatedAt).toLocaleTimeString('en-AU', {
+                timeZone: tz,
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false,
+            });
+            return { text: `Sales · ${time}`, title };
+        } catch {
+            return { text: 'Sales · —', title };
+        }
+    }
+
+    function updateSalesScrapeHint(status) {
+        const el = document.getElementById('mic-sales-scrape-hint');
+        if (!el) return;
+        const { text, title } = formatSalesScrapeHint(status);
+        el.textContent = text;
+        el.title = title;
+        el.hidden = !text;
+        el.classList.toggle('is-updating', Boolean(status?.inFlight));
     }
 
     function escapeHtml(value) {
@@ -1130,6 +1176,7 @@
                     <div class="mic-clock">
                         <span class="mic-clock-label">Current time</span>
                         <span class="mic-clock-value" id="mic-clock">${formatTime(new Date())}</span>
+                        <span class="mic-sales-scrape-hint" id="mic-sales-scrape-hint" hidden>Sales · —</span>
                     </div>
                 </div>
             </header>
@@ -1181,6 +1228,7 @@
                 return;
             }
             if (data.salesUpdatedAt) lastSalesUpdatedAt = data.salesUpdatedAt;
+            updateSalesScrapeHint(data.salesScrapeStatus || { salesUpdatedAt: data.salesUpdatedAt });
             overviewData = data;
             const areas = data.areas || [];
             const isFirstLoad = !document.getElementById('mic-grid');
@@ -1198,6 +1246,7 @@
             const res = await fetch('/api/admin/overview/status', { credentials: 'same-origin' });
             const data = await res.json();
             if (!res.ok || !data.success) return;
+            updateSalesScrapeHint(data);
             const updatedAt = data.salesUpdatedAt || null;
             if (!updatedAt) return;
             if (!lastSalesUpdatedAt) {

@@ -27,6 +27,25 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.9.9 – June 2026
+
+**Fixed**
+
+- **Per-store sales scrapes** — interval ticks now rotate batches of stores (default 4) instead of trying all credentialed stores every 2 minutes, which was timing out on the Pi.
+- **Sales scrape abort** — stock count no longer force-closes the browser mid-scrape (fewer “Session closed” retry storms).
+- **Bootstrap scrape** — saving a new store MMX login targets only those stores, not the full market.
+- **Last-scrape timestamp** — only updates when a scrape actually returns sales data.
+
+**Added**
+
+- **MIC overview** — small `Sales · HH:MM` hint under the clock (hover for stores with data / in-flight status).
+
+**What you need to do**
+
+- On the Pi: `git checkout -- package-lock.json && git pull origin Version-0.4 && pm2 restart dashboard`
+- Optional Pi `.env`: `SCRAPER_CONCURRENCY=2` if browsers still struggle.
+- Hard refresh MIC overview (Ctrl+F5).
+
 ### Version 0.4.9.8 – June 2026
 
 **Fixed**

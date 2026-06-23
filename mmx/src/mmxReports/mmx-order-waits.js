@@ -98,7 +98,7 @@ function pageHasScheduledOrderRows() {
 }
 
 async function waitForScheduledOrdersTableReady(page, timeoutMs = 12000) {
-    await page.waitForFunction(() => pageHasScheduledOrderRows(), { timeout: timeoutMs, polling: 100 });
+    await page.waitForFunction(pageHasScheduledOrderRows, { timeout: timeoutMs, polling: 100 });
 }
 
 async function waitAfterOrderUpdate(page, timeoutMs = 20000) {

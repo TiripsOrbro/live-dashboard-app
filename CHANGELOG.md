@@ -27,6 +27,16 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ## Release history
 
 
+### Version 0.4.9.5 – June 2026
+
+**Fixed**
+
+- **Stock count / scheduled orders** — Macromatix “prepare for count” no longer fails with `pageHasScheduledOrderRows is not defined` when waiting for the orders table to load.
+
+**What you need to do**
+
+- On the Pi: `git pull origin Version-0.4 && pm2 restart dashboard`
+
 ### Version 0.4.9.4 – June 2026
 
 **Added**

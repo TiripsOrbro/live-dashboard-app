@@ -33,7 +33,7 @@ function pageHasScheduledOrderRows() {
 }
 
 async function waitForScheduledOrdersTable(page, timeoutMs = SCHEDULED_TABLE_WAIT_MS) {
-    await page.waitForFunction(() => pageHasScheduledOrderRows(), { timeout: timeoutMs }).catch(() => null);
+    await page.waitForFunction(pageHasScheduledOrderRows, { timeout: timeoutMs }).catch(() => null);
 }
 
 async function isListDateAlready(page, display) {

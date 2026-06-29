@@ -734,34 +734,45 @@ function updateAuditScheduleBanner(show, message) {
     el.textContent = message;
 }
 
-async function loadAuditSchedule() {
-    try {
-        const url = AUDIT_SCHEDULE_URL;
-        const res = await fetch(url, { credentials: 'include' });
-        if (!res.ok) throw new Error(`Audit schedule responded with ${res.status}`);
-        const data = await res.json();
-        if (!data.success) throw new Error(data.error || 'Audit schedule returned unsuccessful response');
-        cachedAuditSchedule = data;
-        auditScheduleFetchedOkOnce = true;
-        updateAuditScheduleBanner(false, '');
-    } catch (err) {
-        console.warn('Failed to load audit schedule:', err);
-        if (!cachedAuditSchedule) {
-            const k = clientMelbourneMondayWeekKey();
-            cachedAuditSchedule = {
-                periodKey: k,
-                weekKey: k,
-                auditListItems: [...AUDIT_FALLBACK_ITEMS],
-                squareSlot: 0,
-                timeZone: DASHBOARD_TIME_ZONE,
-            };
+let auditScheduleInFlight = null;
+function loadAuditSchedule() {
+    // Several boot paths request the schedule near-simultaneously (sales load, audit state,
+    // boot sequence). Share a single in-flight fetch so the same schedule isn't fetched in
+    // parallel; the result is identical, just without redundant requests.
+    if (auditScheduleInFlight) return auditScheduleInFlight;
+    auditScheduleInFlight = (async () => {
+        try {
+            const url = AUDIT_SCHEDULE_URL;
+            const res = await fetch(url, { credentials: 'include' });
+            if (!res.ok) throw new Error(`Audit schedule responded with ${res.status}`);
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Audit schedule returned unsuccessful response');
+            cachedAuditSchedule = data;
+            auditScheduleFetchedOkOnce = true;
+            updateAuditScheduleBanner(false, '');
+        } catch (err) {
+            console.warn('Failed to load audit schedule:', err);
+            if (!cachedAuditSchedule) {
+                const k = clientMelbourneMondayWeekKey();
+                cachedAuditSchedule = {
+                    periodKey: k,
+                    weekKey: k,
+                    auditListItems: [...AUDIT_FALLBACK_ITEMS],
+                    squareSlot: 0,
+                    timeZone: DASHBOARD_TIME_ZONE,
+                };
+            }
+            const msg = auditScheduleFetchedOkOnce
+                ? 'Could not refresh the audit checklist schedule from the server. The checklist still reflects the last successful load.'
+                : 'Could not load the audit checklist schedule from the server. Using an offline fallback (Melbourne Monday week) until it is available.';
+            updateAuditScheduleBanner(true, msg);
         }
-        const msg = auditScheduleFetchedOkOnce
-            ? 'Could not refresh the audit checklist schedule from the server. The checklist still reflects the last successful load.'
-            : 'Could not load the audit checklist schedule from the server. Using an offline fallback (Melbourne Monday week) until it is available.';
-        updateAuditScheduleBanner(true, msg);
-    }
-    syncAuditPeriodState();
+        syncAuditPeriodState();
+    })();
+    auditScheduleInFlight.finally(() => {
+        auditScheduleInFlight = null;
+    });
+    return auditScheduleInFlight;
 }
 
 function getVisibleAudits() {

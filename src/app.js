@@ -138,6 +138,8 @@ const {
     loadAuditRecurrenceConfigSync,
 } = require('./utils/auditRecurrence');
 const app = express();
+const compression = require('compression');
+app.use(compression());
 const PORT = process.env.PORT || 3000;
 /** Multi-store scrapes take minutes (≈45-60s per store), so cache the whole cycle for a while. */
 const SALES_CACHE_SECONDS = Number(process.env.SALES_CACHE_SECONDS || 300);
@@ -1190,16 +1192,92 @@ app.use(dashboardAuthMiddleware);
 app.use(accountSetupMiddleware);
 app.use(scrapePresenceMiddleware);
 
+// Deploy-stable asset version used for cache-busting served HTML. Unlike `bootId` (which
+// changes on every process restart), this only changes when an asset file actually changes,
+// so long-cached browsers keep assets across restarts but re-fetch after a real deploy.
+const ASSET_VERSION = (function computeAssetVersion() {
+    const crypto = require('crypto');
+    const pkgVersion = (function () {
+        try {
+            return require('../package.json').version || '0';
+        } catch {
+            return '0';
+        }
+    })();
+    let maxMtime = 0;
+    const dirs = [
+        paths.sharedPublic,
+        paths.dashboard.public,
+        paths.vendors.public,
+        paths.users.public,
+        paths.tacaudit.public,
+        paths.legacy.public,
+    ];
+    const visit = (dir) => {
+        let entries;
+        try {
+            entries = fsSync.readdirSync(dir, { withFileTypes: true });
+        } catch {
+            return;
+        }
+        for (const entry of entries) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                visit(full);
+            } else {
+                try {
+                    const mtime = fsSync.statSync(full).mtimeMs;
+                    if (mtime > maxMtime) maxMtime = mtime;
+                } catch {
+                    /* ignore unreadable files */
+                }
+            }
+        }
+    };
+    try {
+        for (const dir of dirs) visit(dir);
+    } catch {
+        /* fall through to time-based fallback */
+    }
+    const seed = `${pkgVersion}:${Math.round(maxMtime)}`;
+    return crypto.createHash('sha1').update(seed).digest('hex').slice(0, 12);
+})();
+
+/**
+ * Append `?v=ASSET_VERSION` to local script `src` and stylesheet `href` references so they
+ * can be safely served with long, immutable cache headers. Only rewrites root-relative URLs
+ * that don't already carry a query string, preserving existing behavior (e.g. kiosk params).
+ */
+function injectAssetVersion(html, version = ASSET_VERSION) {
+    return html.replace(
+        /(\s(?:src|href))="(\/[^"?]+\.(?:js|css))"/g,
+        (_, attr, url) => `${attr}="${url}?v=${version}"`
+    );
+}
+
+// Cache policy for static assets: versioned requests (carrying `?v=`) are immutable and can be
+// cached for a year; un-versioned requests get a short cache window while still revalidating via
+// ETag/Last-Modified. Content is unchanged - only transfer/caching behavior improves.
+function staticCacheHeaders(res, _filePath, _stat) {
+    const reqUrl = res.req && res.req.url ? res.req.url : '';
+    if (reqUrl.includes('v=')) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else {
+        res.setHeader('Cache-Control', 'public, max-age=300');
+    }
+}
+const STATIC_OPTIONS = { index: false, setHeaders: staticCacheHeaders };
+
 // Middleware to serve static files. `index: false` so `/` is handled by our store-picker route below
 // rather than being auto-served from public/index.html (the per-store dashboard).
-app.use('/shared', express.static(paths.sharedPublic, { index: false }));
+app.use('/shared', express.static(paths.sharedPublic, STATIC_OPTIONS));
 // Also serve shared assets at the root so legacy references like /scripts/app-paths.js keep working.
-app.use(express.static(paths.sharedPublic, { index: false }));
-app.use(express.static(paths.dashboard.public, { index: false }));
-app.use(express.static(paths.vendors.public, { index: false }));
-app.use(express.static(paths.users.public, { index: false }));
-app.use(express.static(paths.tacaudit.public, { index: false }));
-app.use(express.static(paths.legacy.public, { index: false }));
+app.use(express.static(paths.sharedPublic, STATIC_OPTIONS));
+app.use(express.static(paths.dashboard.public, STATIC_OPTIONS));
+app.use(express.static(paths.vendors.public, STATIC_OPTIONS));
+app.use(express.static(paths.users.public, STATIC_OPTIONS));
+app.use(express.static(paths.tacaudit.public, STATIC_OPTIONS));
+app.use(express.static(paths.legacy.public, STATIC_OPTIONS));
 app.use(require('../smg/src/routes'));
 app.use(require('../nsf/src/routes'));
 
@@ -2631,9 +2709,8 @@ function sendAdminSettingsPage(req, res) {
         return;
     }
     if (sendShellOrLegacy(req, res, null, 'Settings')) return;
-    const bootId = getDashboardMeta().bootId;
     let html = fsSync.readFileSync(path.join(paths.users.public, 'admin.html'), 'utf8');
-    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    html = injectAssetVersion(html);
     res.type('html').send(html);
 }
 
@@ -2690,10 +2767,9 @@ app.get(/^\/admin\/teststore\/?$/i, requireMultiStoreScope, (_req, res) => {
 });
 
 function sendAppShell(res, title = 'Dashboard') {
-    const bootId = getDashboardMeta().bootId;
     let html = fsSync.readFileSync(path.join(paths.sharedPublic, 'app.html'), 'utf8');
     html = html.replace(/<title>[^<]*<\/title>/i, `<title>${title}</title>`);
-    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    html = injectAssetVersion(html);
     res.type('html').send(html);
 }
 
@@ -2731,9 +2807,8 @@ function sendOverviewPage(req, res) {
         if (!store || !assertStoreAccess(req, res, store)) return;
     }
     if (sendShellOrLegacy(req, res)) return;
-    const bootId = getDashboardMeta().bootId;
     let html = fsSync.readFileSync(path.join(paths.users.public, 'mic.html'), 'utf8');
-    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    html = injectAssetVersion(html);
     res.type('html').send(html);
 }
 
@@ -2858,10 +2933,9 @@ app.get(/^\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)\/?$/i, (req, res) => 
 function sendDailyStockCountPage(req, res, storeNumber) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
     if (sendShellOrLegacy(req, res, null, 'Daily Stock Count')) return;
-    const bootId = getDashboardMeta().bootId;
     const htmlPath = path.join(paths.vendors.public, 'daily-stock-count.html');
     let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    html = injectAssetVersion(html);
     res.type('html').send(html);
 }
 
@@ -2910,10 +2984,9 @@ function assertDailyCountMmxAccess(req, res) {
 function sendDfscPage(req, res, storeNumber) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
     if (!assertDfscAccess(req, res)) return;
-    const bootId = getDashboardMeta().bootId;
     const htmlPath = path.join(paths.tacaudit.public, 'dfsc.html');
     let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    html = injectAssetVersion(html);
     res.type('html').send(html);
 }
 
@@ -2930,10 +3003,9 @@ app.get(/^\/(teststore|\d{3,6})\/dfsc\/audit\/?$/i, (req, res) => {
 function sendPestWalkPage(req, res, storeNumber) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
     if (!assertDfscAccess(req, res)) return;
-    const bootId = getDashboardMeta().bootId;
     const htmlPath = path.join(paths.tacaudit.public, 'pest-walk.html');
     let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    html = injectAssetVersion(html);
     res.type('html').send(html);
 }
 
@@ -2950,10 +3022,9 @@ app.get(/^\/(teststore|\d{3,6})\/pest-walk\/audit\/?$/i, (req, res) => {
 function sendRgmCleaningPage(req, res, storeNumber) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
     if (!assertDfscAccess(req, res)) return;
-    const bootId = getDashboardMeta().bootId;
     const htmlPath = path.join(paths.tacaudit.public, 'rgm-cleaning.html');
     let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    html = injectAssetVersion(html);
     res.type('html').send(html);
 }
 
@@ -2970,10 +3041,9 @@ app.get(/^\/(teststore|\d{3,6})\/rgm-cleaning\/audit\/?$/i, (req, res) => {
 function sendPsiPage(req, res, storeNumber) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
     if (!assertDfscAccess(req, res)) return;
-    const bootId = getDashboardMeta().bootId;
     const htmlPath = path.join(paths.tacaudit.public, 'psi.html');
     let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    html = injectAssetVersion(html);
     res.type('html').send(html);
 }
 
@@ -2990,10 +3060,9 @@ app.get(/^\/(teststore|\d{3,6})\/psi\/audit\/?$/i, (req, res) => {
 function sendSquareOnePage(req, res, storeNumber) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
     if (!assertDfscAccess(req, res)) return;
-    const bootId = getDashboardMeta().bootId;
     const htmlPath = path.join(paths.tacaudit.public, 'square-one.html');
     let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    html = injectAssetVersion(html);
     res.type('html').send(html);
 }
 
@@ -3013,12 +3082,9 @@ function sendPeriodAuditPage(req, res, storeNumber, auditType) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
     if (!assertDfscAccess(req, res)) return;
     if (['visit-coach', 'visit-customer'].includes(auditType) && !assertCoachAuditAccess(req, res)) return;
-    const bootId = getDashboardMeta().bootId;
     const htmlPath = path.join(paths.tacaudit.public, 'period-audit.html');
     let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = html
-        .replace(/__AUDIT_TYPE__/g, auditType)
-        .replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    html = injectAssetVersion(html.replace(/__AUDIT_TYPE__/g, auditType));
     res.type('html').send(html);
 }
 
@@ -3032,10 +3098,9 @@ for (const auditType of PERIOD_AUDIT_PAGE_TYPES) {
 
 function sendTacauditHtml(req, res) {
     if (sendShellOrLegacy(req, res, null, 'TacAudit')) return;
-    const bootId = getDashboardMeta().bootId;
     const htmlPath = path.join(paths.tacaudit.public, 'tacaudit.html');
     let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    html = injectAssetVersion(html);
     res.type('html').send(html);
 }
 

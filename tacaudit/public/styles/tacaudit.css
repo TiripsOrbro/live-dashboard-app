@@ -725,7 +725,7 @@ html.mic-dark-mode .tacaudit-summary-table td {
     scrollbar-width: thin;
     padding: 0.1rem 0.1rem 0.45rem;
     cursor: grab;
-    touch-action: pan-y;
+    touch-action: pan-x;
 }
 
 .tacaudit-launch-row.is-drag-scroll {

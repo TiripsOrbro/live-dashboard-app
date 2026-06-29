@@ -451,15 +451,16 @@ function bindLaunchRowDragScroll() {
     const row = document.querySelector('.tacaudit-launch-row');
     if (!row) return;
 
+    let pointerDown = false;
     let dragging = false;
     let didDrag = false;
     let startX = 0;
     let startScrollLeft = 0;
     let activePointerId = null;
 
-    function endDrag() {
-        if (!dragging) return;
+    function clearDragState() {
         dragging = false;
+        pointerDown = false;
         row.classList.remove('is-drag-scroll');
         if (activePointerId != null && row.hasPointerCapture(activePointerId)) {
             row.releasePointerCapture(activePointerId);
@@ -480,27 +481,44 @@ function bindLaunchRowDragScroll() {
 
     row.addEventListener('pointerdown', (e) => {
         if (e.button !== 0) return;
-        dragging = true;
+        pointerDown = true;
+        dragging = false;
         didDrag = false;
         startX = e.clientX;
         startScrollLeft = row.scrollLeft;
         activePointerId = e.pointerId;
-        row.classList.add('is-drag-scroll');
-        row.setPointerCapture(e.pointerId);
     });
 
     row.addEventListener('pointermove', (e) => {
-        if (!dragging || e.pointerId !== activePointerId) return;
+        if (!pointerDown || e.pointerId !== activePointerId) return;
         const delta = e.clientX - startX;
-        if (Math.abs(delta) > 4) didDrag = true;
-        if (!didDrag) return;
+        if (!dragging && Math.abs(delta) > 8) {
+            dragging = true;
+            didDrag = true;
+            row.classList.add('is-drag-scroll');
+            row.setPointerCapture(e.pointerId);
+        }
+        if (!dragging) return;
         e.preventDefault();
         row.scrollLeft = startScrollLeft - delta;
     });
 
-    row.addEventListener('pointerup', endDrag);
-    row.addEventListener('pointercancel', endDrag);
-    row.addEventListener('lostpointercapture', endDrag);
+    row.addEventListener('pointerup', () => {
+        if (!didDrag) clearDragState();
+        else {
+            pointerDown = false;
+            dragging = false;
+            row.classList.remove('is-drag-scroll');
+            if (activePointerId != null && row.hasPointerCapture(activePointerId)) {
+                row.releasePointerCapture(activePointerId);
+            }
+            activePointerId = null;
+        }
+    });
+    row.addEventListener('pointercancel', clearDragState);
+    row.addEventListener('lostpointercapture', () => {
+        if (!pointerDown) row.classList.remove('is-drag-scroll');
+    });
 }
 
 function resumeAuditUrl(audit, storeNumber = STORE_NUMBER) {

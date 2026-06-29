@@ -45,14 +45,20 @@
         return app;
     }
 
-    function loadScript(src) {
+    function scriptSrc(url, { bust } = {}) {
+        const sep = url.includes('?') ? '&' : '?';
+        const token = bust || bootId || String(Date.now());
+        return `${url}${sep}v=${encodeURIComponent(token)}`;
+    }
+
+    function loadScript(src, { force = false, bust } = {}) {
         const url = String(src || '').trim();
         if (!url) return Promise.resolve();
-        if (scriptCache.has(url)) return scriptCache.get(url);
+        if (!force && scriptCache.has(url)) return scriptCache.get(url);
+        if (force) scriptCache.delete(url);
         const promise = new Promise((resolve, reject) => {
             const el = document.createElement('script');
-            const sep = url.includes('?') ? '&' : '?';
-            el.src = bootId ? `${url}${sep}v=${encodeURIComponent(bootId)}` : url;
+            el.src = scriptSrc(url, { bust });
             el.async = false;
             el.onload = () => resolve();
             el.onerror = () => {
@@ -145,7 +151,6 @@
         '/scripts/audit-preferences.js',
         '/scripts/mic-settings.js',
         '/scripts/admin-scope-picker.js',
-        '/scripts/tacaudit.js',
     ];
 
     function ensureTacauditShellChrome() {
@@ -254,18 +259,40 @@
         }
     }
 
+    async function ensureTacauditViewLoaded() {
+        await loadScriptChain(SHARED_TACAUDIT_SCRIPTS);
+        if (!global.TacauditView?.mount) {
+            await loadScript('/scripts/tacaudit.js');
+        }
+        return Boolean(global.TacauditView?.mount);
+    }
+
+    function fallbackToLegacyTacauditPage() {
+        const url = new URL(global.location.href);
+        if (url.searchParams.get('noshell') === '1') return false;
+        url.searchParams.set('noshell', '1');
+        global.location.replace(url.toString());
+        return true;
+    }
+
     async function mountTacauditSummary() {
         document.body.classList.add('dfsc-page', 'tacaudit-page');
         ensureTacauditShellChrome();
-        await loadScriptChain(SHARED_TACAUDIT_SCRIPTS);
-        if (global.TacauditView?.mount) {
+        try {
+            const ready = await ensureTacauditViewLoaded();
+            if (!ready) {
+                if (fallbackToLegacyTacauditPage()) return;
+                throw new Error('TacauditView did not register');
+            }
             await global.TacauditView.mount(getAppEl());
-            return;
+        } catch (err) {
+            console.error('[AppShell] TacAudit mount failed:', err);
+            if (fallbackToLegacyTacauditPage()) return;
+            const app = getAppEl();
+            app.classList.remove('app-boot-loading');
+            app.removeAttribute('aria-busy');
+            app.textContent = err?.message || 'TacAudit failed to load.';
         }
-        const app = getAppEl();
-        app.classList.remove('app-boot-loading');
-        app.removeAttribute('aria-busy');
-        app.textContent = 'TacAudit failed to load.';
     }
 
     async function mountLegacyPage(url) {
@@ -480,10 +507,17 @@
 
     async function boot() {
         try {
-            const meta = await fetch('/api/dashboard-meta', { credentials: 'same-origin' }).then((r) =>
-                r.json()
-            );
-            bootId = meta.bootId || '';
+            if (global.DashboardMeta?.fetchMeta) {
+                const meta = await global.DashboardMeta.fetchMeta();
+                bootId = meta.bootId || '';
+            } else {
+                const res = await fetch('/api/dashboard/meta', {
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                });
+                const meta = await res.json().catch(() => ({}));
+                bootId = meta.bootId || '';
+            }
         } catch {
             bootId = '';
         }

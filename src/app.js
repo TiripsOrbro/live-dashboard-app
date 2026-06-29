@@ -2617,7 +2617,7 @@ function sendAdminSettingsPage(req, res) {
         sendForbidden(req, res, 'Settings are not available on no-login links.');
         return;
     }
-    if (sendShellOrLegacy(res, null, 'Settings')) return;
+    if (sendShellOrLegacy(req, res, null, 'Settings')) return;
     const bootId = getDashboardMeta().bootId;
     let html = fsSync.readFileSync(path.join(paths.users.public, 'admin.html'), 'utf8');
     html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
@@ -2637,12 +2637,12 @@ app.get(/^\/Admin\/A(\d+)\/?$/i, requireMultiStoreScope, (req, res) => {
         res.redirect(302, buildAdminAreaPath(slug));
         return;
     }
-    if (sendShellOrLegacy(res, null, 'Sales Dashboard')) return;
+    if (sendShellOrLegacy(req, res, null, 'Sales Dashboard')) return;
     res.sendFile(path.join(paths.dashboard.public, 'index.html'));
 });
 
 app.get(/^\/Admin\/(qld-1|vic-1|wa-1)\/?$/i, requireMultiStoreScope, (req, res) => {
-    if (sendShellOrLegacy(res, null, 'Sales Dashboard')) return;
+    if (sendShellOrLegacy(req, res, null, 'Sales Dashboard')) return;
     res.sendFile(path.join(paths.dashboard.public, 'index.html'));
 });
 
@@ -2684,8 +2684,9 @@ function sendAppShell(res, title = 'Dashboard') {
     res.type('html').send(html);
 }
 
-function sendShellOrLegacy(res, legacyFn, title = 'Dashboard') {
-    if (SHELL_NAV_ENABLED) {
+function sendShellOrLegacy(req, res, legacyFn, title = 'Dashboard') {
+    const noshell = /^(1|true|yes|on)$/i.test(String(req?.query?.noshell ?? ''));
+    if (SHELL_NAV_ENABLED && !noshell) {
         sendAppShell(res, title);
         return true;
     }
@@ -2716,7 +2717,7 @@ function sendOverviewPage(req, res) {
         const store = singleStoreForUser(user);
         if (!store || !assertStoreAccess(req, res, store)) return;
     }
-    if (sendShellOrLegacy(res)) return;
+    if (sendShellOrLegacy(req, res)) return;
     const bootId = getDashboardMeta().bootId;
     let html = fsSync.readFileSync(path.join(paths.users.public, 'mic.html'), 'utf8');
     html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
@@ -2746,7 +2747,7 @@ app.get(/^\/MIC\/(\d{3,6})\/?$/i, (req, res) => {
         return;
     }
     if (!assertStoreAccess(req, res, storeNumber)) return;
-    if (sendShellOrLegacy(res, null, 'Sales Dashboard')) return;
+    if (sendShellOrLegacy(req, res, null, 'Sales Dashboard')) return;
     res.sendFile(path.join(paths.dashboard.public, 'index.html'));
 });
 
@@ -2826,13 +2827,13 @@ app.get(/^\/(area\/[a-z0-9-]+|a\d+)\/?$/i, (req, res) => {
             return;
         }
     }
-    if (sendShellOrLegacy(res, null, 'Area Dashboard')) return;
+    if (sendShellOrLegacy(req, res, null, 'Area Dashboard')) return;
     res.sendFile(path.join(paths.users.public, 'area.html'));
 });
 
 function sendStockCountPage(req, res, storeNumber) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
-    if (sendShellOrLegacy(res, null, 'Stock Count')) return;
+    if (sendShellOrLegacy(req, res, null, 'Stock Count')) return;
     res.sendFile(path.join(paths.vendors.public, 'stock-count.html'));
 }
 
@@ -2843,7 +2844,7 @@ app.get(/^\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)\/?$/i, (req, res) => 
 
 function sendDailyStockCountPage(req, res, storeNumber) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
-    if (sendShellOrLegacy(res, null, 'Daily Stock Count')) return;
+    if (sendShellOrLegacy(req, res, null, 'Daily Stock Count')) return;
     const bootId = getDashboardMeta().bootId;
     const htmlPath = path.join(paths.vendors.public, 'daily-stock-count.html');
     let html = fsSync.readFileSync(htmlPath, 'utf8');
@@ -3016,8 +3017,8 @@ for (const auditType of PERIOD_AUDIT_PAGE_TYPES) {
     });
 }
 
-function sendTacauditHtml(res) {
-    if (sendShellOrLegacy(res, null, 'Audits')) return;
+function sendTacauditHtml(req, res) {
+    if (sendShellOrLegacy(req, res, null, 'TacAudit')) return;
     const bootId = getDashboardMeta().bootId;
     const htmlPath = path.join(paths.tacaudit.public, 'tacaudit.html');
     let html = fsSync.readFileSync(htmlPath, 'utf8');
@@ -3028,7 +3029,7 @@ function sendTacauditHtml(res) {
 function sendTacauditPage(req, res, storeNumber) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
     if (!assertDfscAccess(req, res)) return;
-    sendTacauditHtml(res);
+    sendTacauditHtml(req, res);
 }
 
 function sendTacauditSummaryPage(req, res) {
@@ -3045,7 +3046,7 @@ function sendTacauditSummaryPage(req, res) {
         sendForbidden(req, res, 'Area audit summary is not available for this account.');
         return;
     }
-    sendTacauditHtml(res);
+    sendTacauditHtml(req, res);
 }
 
 app.get(/^\/tacaudit\/summary\/?$/i, sendTacauditSummaryPage);

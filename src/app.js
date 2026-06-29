@@ -105,7 +105,8 @@ const {
     checkStockLevelsForStore,
     getStockCountSendPlan,
     getStockCountPipelineStatus,
-    isStockCountPipelineBusy,
+    isStockCountExclusiveActive,
+    isStockCountLightweightActive,
     recordStockCountPrepareFailure,
     clearStockCountPipelineFailure,
     recordStockCountCheckFailure,
@@ -4803,7 +4804,7 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
         if (!assertStockCountUserMmxLogin(req, res)) return;
 
         const pipeline = await getStockCountPipelineStatus(store);
-        if (isStockCountPipelineBusy(pipeline.stage)) {
+        if (isStockCountExclusiveActive(pipeline, store)) {
             console.log(
                 `[StockCount] Send to MMX already in progress - store ${store} stage ${pipeline.stage}`
             );
@@ -4964,10 +4965,19 @@ app.post('/api/stock-count/check-stock-levels', async (req, res) => {
         if (!store || !assertStoreAccess(req, res, store)) return;
 
         const pipeline = await getStockCountPipelineStatus(store);
-        if (isStockCountPipelineBusy(pipeline.stage)) {
+        if (isStockCountExclusiveActive(pipeline, store)) {
             res.status(409).json({
                 success: false,
                 error: 'Stock count pipeline is running - try again when it finishes.',
+                inProgress: true,
+                stage: pipeline.stage,
+            });
+            return;
+        }
+        if (isStockCountLightweightActive(pipeline)) {
+            res.status(409).json({
+                success: false,
+                error: 'Stock level check is already running for this store.',
                 inProgress: true,
                 stage: pipeline.stage,
             });

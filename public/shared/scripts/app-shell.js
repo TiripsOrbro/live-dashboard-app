@@ -239,7 +239,7 @@
     }
 
     async function mountTacauditSummary() {
-        document.body.classList.add('tacaudit-page');
+        document.body.classList.add('dfsc-page', 'tacaudit-page');
         await loadScriptChain(SHARED_TACAUDIT_SCRIPTS);
         if (global.TacauditView?.mount) {
             await global.TacauditView.mount(getAppEl());
@@ -255,7 +255,7 @@
         app.className = 'app-boot-loading';
         app.setAttribute('aria-busy', 'true');
         app.innerHTML = '<p class="app-boot-loading__message">Loading…</p>';
-        document.body.classList.remove('stock-count-page', 'tacaudit-page', 'admin-page');
+        document.body.classList.remove('stock-count-page', 'tacaudit-page', 'dfsc-page', 'admin-page');
 
         switch (route.id) {
             case 'overview':
@@ -276,6 +276,9 @@
             case 'tacaudit-store':
                 await mountTacauditSummary();
                 break;
+            case 'tacaudit-audit':
+                await mountLegacyPage(`${shellPathname()}${shellSearch()}${global.location.hash || ''}`);
+                return;
             case 'changelog':
                 await mountLegacyPage('/changelog');
                 return;
@@ -390,6 +393,7 @@
             'stock-count': () => global.StockCountView?.unmount?.(),
             'daily-stock-count': () => global.DailyStockCountView?.unmount?.(),
             'tacaudit-summary': () => global.TacauditView?.unmount?.(),
+            'tacaudit-store': () => global.TacauditView?.unmount?.(),
         };
         return map[viewId] || null;
     }
@@ -399,6 +403,7 @@
         if (route.id === 'sales-dashboard') return 'Sales Dashboard';
         if (route.id === 'admin-settings') return 'Admin Settings';
         if (route.id === 'stock-count') return 'Stock Count';
+        if (route.id === 'tacaudit-store' || route.id === 'tacaudit-summary') return 'TacAudit';
         return 'Dashboard';
     }
 

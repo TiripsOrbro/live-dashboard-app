@@ -747,35 +747,23 @@
 
     function countAdminContentRows(auditTiles) {
         let rows = 2;
-        if ((auditTiles || []).length > 0) rows += 1;
-        rows += 1;
+        if ((auditTiles || []).length > 0 || tacauditAdminHubHref()) rows += 1;
         return rows;
     }
 
-    function adminHasAuditTiles(auditTiles) {
-        return (auditTiles || []).length > 0;
-    }
-
-    function renderTacauditHubTile({ rowAfterAudits = true, tabbed = false } = {}) {
-        const href =
+    function tacauditAdminHubHref() {
+        return (
             tacauditHrefForTile() ||
             global.AppPaths?.tacauditAdminHub?.({ area: tacauditAreaQuery() }) ||
-            '/tacaudit/summary';
+            '/tacaudit/summary'
+        );
+    }
+
+    function renderTacauditHubLink({ tabbed = false } = {}) {
+        const href = tacauditAdminHubHref();
         if (!href) return '';
-        if (tabbed) {
-            return `<a class="mic-tacaudit-hub mic-tacaudit-hub--tabbed" href="${escapeHtml(href)}" aria-label="Go to TacAudit landing page"><span class="mic-tile-tacaudit-hub-btn">Go to TacAudit</span></a>`;
-        }
-        const rowClass = rowAfterAudits
-            ? ' mic-tile--pos-tacaudit-hub-row--after-audits'
-            : ' mic-tile--pos-tacaudit-hub-row--solo';
-        return `
-        <a
-            class="mic-tile mic-tile--link mic-tile--tacaudit-hub mic-tile--pos-tacaudit-hub-row${rowClass}"
-            href="${escapeHtml(href)}"
-            aria-label="Go to TacAudit landing page"
-        >
-            <span class="mic-tile-tacaudit-hub-btn">Go to TacAudit</span>
-        </a>`;
+        const tabbedClass = tabbed ? ' mic-tacaudit-hub-link--tabbed' : '';
+        return `<a class="mic-tacaudit-hub-link${tabbedClass}" href="${escapeHtml(href)}" aria-label="Go to TacAudit landing page">Go to TacAudit</a>`;
     }
 
     function formatStoreStatsSub(stats = {}) {
@@ -981,10 +969,22 @@
         </${tag}>`;
     }
 
-    function renderAdminAuditTilesOnly(tiles, { tabbed = false, rowNum = 2 } = {}) {
+    function renderAdminAuditTilesOnly(tiles, { tabbed = false, rowNum = 2, includeHub = false } = {}) {
         const picked = (tiles || []).map((tile) => renderAdminAuditTile(tile));
+        const hub = includeHub ? renderTacauditHubLink({ tabbed }) : '';
+        if (!picked.length && !hub) return '';
+        if (tabbed) {
+            const row = picked.length ? renderEqualWidthRow(picked, { tabbed: true }) : '';
+            return `${row}${hub}`;
+        }
+        if (includeHub) {
+            const colCount = picked.length || 1;
+            const auditRow = picked.length
+                ? `<div class="mic-tacaudit-access-audits mic-grid-equal-row mic-grid-equal-row--cols-${colCount}">${picked.join('')}</div>`
+                : '';
+            return `<div class="mic-tacaudit-access mic-grid-equal-row--row-${rowNum} mic-tile--pos-weekly-audit-row">${auditRow}${hub}</div>`;
+        }
         if (!picked.length) return '';
-        if (tabbed) return renderEqualWidthRow(picked, { tabbed: true });
         return renderEqualWidthRow(picked, {
             rowNum,
             extraClass: 'mic-tile--pos-weekly-audit-row',
@@ -1035,13 +1035,11 @@
         const displayArea = currentDisplayArea();
         const vocRaw = useMicStyleTiles() ? VOC_PLACEHOLDER : currentVoc() || {};
         const auditTiles = auditTilesForDisplay();
-        const hasAudits = adminHasAuditTiles(auditTiles);
         return `
         ${renderAreaStoresTile(displayArea)}
         ${renderAdminTopRow(vocRaw)}
         ${renderAdminMiddleRow()}
-        ${renderAdminAuditTilesOnly(auditTiles)}
-        ${renderTacauditHubTile({ rowAfterAudits: hasAudits })}`;
+        ${renderAdminAuditTilesOnly(auditTiles, { includeHub: true })}`;
     }
 
     function renderMobileTabbedTiles() {
@@ -1052,7 +1050,7 @@
         ${renderMicTabPanel('sales', renderAreaStoresTile(displayArea, { tabbed: true }))}
         ${renderMicTabPanel('results', `${renderVocTile(vocRaw, { tabbed: true })}${renderCoreCountdownTile({ tabbed: true })}${renderSssgTile(displayArea, { tabbed: true })}`)}
         ${renderMicTabPanel('orders', renderMobileOrdersTab())}
-        ${renderMicTabPanel('audits', `${renderDfscAdminTile({ tabbed: true })}${renderAdminAuditTilesOnly(auditTiles, { tabbed: true })}${renderTacauditHubTile({ tabbed: true })}`)}`;
+        ${renderMicTabPanel('audits', `${renderDfscAdminTile({ tabbed: true })}${renderAdminAuditTilesOnly(auditTiles, { tabbed: true, includeHub: true })}`)}`;
     }
 
     function bindStorePickerTiles() {

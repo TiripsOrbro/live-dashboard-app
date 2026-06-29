@@ -33,7 +33,7 @@ const {
     releasePrioritySlot,
     getLocalHoldCount,
 } = require('../../mmx/src/mmxTaskQueue');
-const { refreshScrapePauseTimeout, isMmxResourceBusy } = require('../../mmx/src/mmxResourceGate');
+const { refreshScrapePauseTimeout, isMmxResourceBusy, isLightweightMmxResourceBusy, acquireLightweightMmxResource, releaseLightweightMmxResource } = require('../../mmx/src/mmxResourceGate');
 const { setCheckpoint, getCheckpoint, clearCheckpoint, listAllCheckpoints } = require('../../mmx/src/mmxPipelineCheckpoint');
 const { timeStage, formatTimings } = require('../../mmx/src/mmxStageTimer');
 
@@ -118,6 +118,7 @@ async function discardStockCountMmxWork(storeNumber, reason = 'discarded', optio
 const { runStoreOrdersCompleteCleanup } = require('./storeOrdersCompleteCleanup');
 const log = require('../../mmx/src/mmxReports/util-logging');
 const runLockByStore = new Map();
+const lightweightLockByStore = new Map();
 
 function storeSelectorLabel(store) {
     const num = String(store.storeNumber || '').trim();
@@ -142,8 +143,14 @@ async function selectStoreInMacromatix(page, storeNumber) {
 }
 
 async function withStoreLock(storeNumber, fn) {
+    return withExclusiveStoreLock(storeNumber, fn);
+}
+
+async function withExclusiveStoreLock(storeNumber, fn) {
     const key = String(storeNumber);
-    const prev = runLockByStore.get(key) || Promise.resolve();
+    const prevExclusive = runLockByStore.get(key) || Promise.resolve();
+    const prevLightweight = lightweightLockByStore.get(key) || Promise.resolve();
+    const prev = Promise.all([prevExclusive, prevLightweight]).then(() => {});
     let release;
     const gate = new Promise((resolve) => {
         release = resolve;
@@ -156,6 +163,35 @@ async function withStoreLock(storeNumber, fn) {
         release();
         if (runLockByStore.get(key) === gate) runLockByStore.delete(key);
     }
+}
+
+/** Stock level checks — wait for order/count work on this store, but not other stores or global MIC slot. */
+async function withLightweightStoreLock(storeNumber, fn) {
+    const key = String(storeNumber);
+    await (runLockByStore.get(key) || Promise.resolve());
+    const prev = lightweightLockByStore.get(key) || Promise.resolve();
+    let release;
+    const gate = new Promise((resolve) => {
+        release = resolve;
+    });
+    lightweightLockByStore.set(key, prev.then(() => gate));
+    await prev;
+    try {
+        return await fn();
+    } finally {
+        release();
+        if (lightweightLockByStore.get(key) === gate) lightweightLockByStore.delete(key);
+    }
+}
+
+async function beginLightweightStockLevelsWork(storeNumber, reason) {
+    void storeNumber;
+    acquireLightweightMmxResource(reason);
+}
+
+async function endLightweightStockLevelsWork(storeNumber, reason) {
+    void storeNumber;
+    releaseLightweightMmxResource(reason);
 }
 
 async function shouldRunOrderPipeline(storeNumber, dateKey) {
@@ -1007,17 +1043,37 @@ const PIPELINE_IN_PROGRESS_STAGES = new Set([
     'filling-orders',
 ]);
 
-const PIPELINE_ACTIVE_WORK_STAGES = new Set([
+const PIPELINE_EXCLUSIVE_STAGES = new Set([
     'preparing',
     'applying',
     'applied-orders-pending',
     'downloading-reports',
-    'checking-stock-levels',
     'filling-orders',
 ]);
 
 /** Active MMX work must hold the resource gate; if not, the checkpoint is stale after this grace. */
 const PIPELINE_ACTIVE_STALE_MS = Number(process.env.MMX_PIPELINE_ACTIVE_STALE_MS || 90 * 1000);
+
+function isStockCountExclusiveBusy(stage, checkpoint, storeNumber) {
+    const s = String(stage || '').trim();
+    if (s === 'prepared') {
+        return preparedCheckpointHasLiveSession(storeNumber, checkpoint);
+    }
+    return PIPELINE_EXCLUSIVE_STAGES.has(s);
+}
+
+function isStockCountLightweightBusy(stage) {
+    return String(stage || '').trim() === 'checking-stock-levels';
+}
+
+function isStockCountExclusiveBusyFromStatus(status, storeNumber) {
+    if (!status) return false;
+    const checkpoint =
+        status.sessionId && status.stage === 'prepared'
+            ? { stage: status.stage, sessionId: status.sessionId }
+            : { stage: status.stage };
+    return isStockCountExclusiveBusy(status.stage, checkpoint, storeNumber);
+}
 
 function checkpointAgeMs(checkpoint) {
     if (!checkpoint?.updatedAt) return Number.POSITIVE_INFINITY;
@@ -1039,9 +1095,13 @@ function isCheckpointStale(storeNumber, checkpoint, { onStartup = false } = {}) 
         return !preparedCheckpointHasLiveSession(storeNumber, checkpoint);
     }
 
-    if (!PIPELINE_ACTIVE_WORK_STAGES.has(stage)) return false;
+    if (!PIPELINE_EXCLUSIVE_STAGES.has(stage) && stage !== 'checking-stock-levels') return false;
 
-    if (isMmxResourceBusy()) return false;
+    if (stage === 'checking-stock-levels') {
+        if (isLightweightMmxResourceBusy()) return false;
+    } else if (isMmxResourceBusy()) {
+        return false;
+    }
     if (onStartup) return true;
     return checkpointAgeMs(checkpoint) >= PIPELINE_ACTIVE_STALE_MS;
 }
@@ -1052,7 +1112,11 @@ async function clearStaleCheckpoint(storeNumber, checkpoint, reason) {
     );
     await destroySessionsForStore(storeNumber, 'stale-checkpoint');
     await clearCheckpoint(storeNumber);
-    await endStockCountMmxWork(storeNumber, `stale checkpoint (${reason})`);
+    if (checkpoint?.stage === 'checking-stock-levels') {
+        await endLightweightStockLevelsWork(storeNumber, `stale checkpoint (${reason})`);
+    } else {
+        await endStockCountMmxWork(storeNumber, `stale checkpoint (${reason})`);
+    }
 }
 
 async function reconcileStaleCheckpoint(storeNumber) {
@@ -1068,8 +1132,11 @@ function pipelineWorkIsLive(storeNumber, checkpoint) {
     if (stage === 'prepared') {
         return preparedCheckpointHasLiveSession(storeNumber, checkpoint);
     }
-    if (PIPELINE_ACTIVE_WORK_STAGES.has(stage)) {
+    if (PIPELINE_EXCLUSIVE_STAGES.has(stage)) {
         return isMmxResourceBusy();
+    }
+    if (stage === 'checking-stock-levels') {
+        return isLightweightMmxResourceBusy();
     }
     return false;
 }
@@ -1150,8 +1217,21 @@ async function getStockCountPipelineStatus(storeNumber) {
     return payload;
 }
 
-function isStockCountPipelineBusy(stage) {
-    return PIPELINE_ACTIVE_WORK_STAGES.has(stage);
+function isStockCountExclusiveActive(status, storeNumber) {
+    if (!status?.workLive) return false;
+    return isStockCountExclusiveBusyFromStatus(status, storeNumber);
+}
+
+function isStockCountLightweightActive(status) {
+    return Boolean(status?.workLive && isStockCountLightweightBusy(status.stage));
+}
+
+function isStockCountPipelineBusy(stage, checkpoint, storeNumber, workLive) {
+    if (workLive === false) return false;
+    return (
+        isStockCountExclusiveBusy(stage, checkpoint, storeNumber) ||
+        isStockCountLightweightBusy(stage)
+    );
 }
 
 const PIPELINE_TERMINAL_FAIL_STAGES = new Set(['prepare-failed', 'apply-failed', 'check-levels-failed']);
@@ -1377,9 +1457,12 @@ async function checkStockLevelsForStore(storeNumber, options = {}) {
     } = require('./lowStockAlerts');
     const { calculateBuildToOrders } = require('./buildToCalculator');
 
-    return withStoreLock(storeNumber, async () => {
+    return withLightweightStoreLock(storeNumber, async () => {
         const onHandOnly = Boolean(options.onHandOnly);
-        await beginStockCountMmxWork(`check stock levels (store ${storeNumber})`, storeNumber);
+        await beginLightweightStockLevelsWork(
+            storeNumber,
+            `check stock levels (store ${storeNumber})`
+        );
         try {
             await updateCheckpoint(storeNumber, {
                 stage: 'checking-stock-levels',
@@ -1427,7 +1510,10 @@ async function checkStockLevelsForStore(storeNumber, options = {}) {
             await recordStockCountCheckFailure(storeNumber, error);
             throw error;
         } finally {
-            await endStockCountMmxWork(storeNumber, `check stock levels finished (store ${storeNumber})`);
+            await endLightweightStockLevelsWork(
+                storeNumber,
+                `check stock levels finished (store ${storeNumber})`
+            );
         }
     });
 }
@@ -1447,6 +1533,11 @@ module.exports = {
     getStockCountSendPlan,
     getStockCountPipelineStatus,
     isStockCountPipelineBusy,
+    isStockCountExclusiveBusy,
+    isStockCountExclusiveBusyFromStatus,
+    isStockCountExclusiveActive,
+    isStockCountLightweightBusy,
+    isStockCountLightweightActive,
     recordStockCountPrepareFailure,
     clearStockCountPipelineFailure,
     recordStockCountCheckFailure,

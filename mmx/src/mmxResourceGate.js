@@ -1,6 +1,7 @@
 ﻿/** Blocks dashboard sales scraping while Macromatix stock count / order entry holds a browser session. */
 
 let holdCount = 0;
+let lightweightHoldCount = 0;
 const idleWaiters = [];
 const abortHandlers = new Set();
 let pauseTimer = null;
@@ -62,9 +63,30 @@ function releaseMmxResource(reason) {
     clearPauseTimeout();
     if (holdCount <= 0) return;
     holdCount--;
-    if (holdCount === 0) {
+    if (holdCount === 0 && lightweightHoldCount === 0) {
         console.log(
             `[MMX Resource] Sales scrape may resume${reason ? ` (${reason})` : ''}`
+        );
+        while (idleWaiters.length) {
+            idleWaiters.shift()();
+        }
+    }
+}
+
+/** Parallel report downloads / stock-level checks — do not pause sales scrape. */
+function acquireLightweightMmxResource(reason) {
+    lightweightHoldCount++;
+    if (reason && lightweightHoldCount === 1) {
+        console.log(`[MMX Resource] Lightweight MMX work started - ${reason}`);
+    }
+}
+
+function releaseLightweightMmxResource(reason) {
+    if (lightweightHoldCount <= 0) return;
+    lightweightHoldCount--;
+    if (lightweightHoldCount === 0 && holdCount === 0) {
+        console.log(
+            `[MMX Resource] Lightweight MMX work finished${reason ? ` (${reason})` : ''}`
         );
         while (idleWaiters.length) {
             idleWaiters.shift()();
@@ -76,6 +98,14 @@ function isMmxResourceBusy() {
     return holdCount > 0;
 }
 
+function isLightweightMmxResourceBusy() {
+    return lightweightHoldCount > 0;
+}
+
+function isAnyMmxResourceBusy() {
+    return holdCount > 0 || lightweightHoldCount > 0;
+}
+
 function waitUntilMmxResourceIdle() {
     if (!isMmxResourceBusy()) return Promise.resolve();
     return new Promise((resolve) => idleWaiters.push(resolve));
@@ -84,8 +114,12 @@ function waitUntilMmxResourceIdle() {
 module.exports = {
     acquireMmxResource,
     releaseMmxResource,
+    acquireLightweightMmxResource,
+    releaseLightweightMmxResource,
     refreshScrapePauseTimeout,
     isMmxResourceBusy,
+    isLightweightMmxResourceBusy,
+    isAnyMmxResourceBusy,
     waitUntilMmxResourceIdle,
     registerMmxAbortHandler,
     abortCompetingMmxWork,

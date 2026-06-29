@@ -639,13 +639,14 @@ function renderSquareOneTile(tile, { tabbed = false } = {}) {
 
 function countMicContentRows(data) {
     let rows = 2;
-    if (storeWeeklyAuditsForTiles(data).length > 0 || dueSquareOneTiles(data).length > 0) rows += 1;
-    rows += 1;
+    if (
+        storeWeeklyAuditsForTiles(data).length > 0 ||
+        dueSquareOneTiles(data).length > 0 ||
+        tacauditStoreHubHref()
+    ) {
+        rows += 1;
+    }
     return rows;
-}
-
-function storeHasDueAuditTiles(data) {
-    return storeWeeklyAuditsForTiles(data).length > 0 || dueSquareOneTiles(data).length > 0;
 }
 
 function tacauditStoreHubHref() {
@@ -653,23 +654,11 @@ function tacauditStoreHubHref() {
     return window.AppPaths?.tacaudit?.(STORE_NUMBER) || `/${STORE_NUMBER}/tacaudit`;
 }
 
-function renderTacauditHubTile({ rowAfterAudits = true, tabbed = false } = {}) {
+function renderTacauditHubLink({ tabbed = false } = {}) {
     const href = tacauditStoreHubHref();
     if (!href) return '';
-    if (tabbed) {
-        return `<a class="mic-tacaudit-hub mic-tacaudit-hub--tabbed" href="${escapeHtml(href)}" aria-label="Go to TacAudit landing page"><span class="mic-tile-tacaudit-hub-btn">Go to TacAudit</span></a>`;
-    }
-    const rowClass = rowAfterAudits
-        ? ' mic-tile--pos-tacaudit-hub-row--after-audits'
-        : ' mic-tile--pos-tacaudit-hub-row--solo';
-    return `
-        <a
-            class="mic-tile mic-tile--link mic-tile--tacaudit-hub mic-tile--pos-tacaudit-hub-row${rowClass}"
-            href="${escapeHtml(href)}"
-            aria-label="Go to TacAudit landing page"
-        >
-            <span class="mic-tile-tacaudit-hub-btn">Go to TacAudit</span>
-        </a>`;
+    const tabbedClass = tabbed ? ' mic-tacaudit-hub-link--tabbed' : '';
+    return `<a class="mic-tacaudit-hub-link${tabbedClass}" href="${escapeHtml(href)}" aria-label="Go to TacAudit landing page">Go to TacAudit</a>`;
 }
 
 function renderEqualWidthRow(tileHtmlList, { rowNum, tabbed = false, extraClass = '' } = {}) {
@@ -774,15 +763,27 @@ function renderWeeklyAuditTile(audit, index, { tabbed = false } = {}) {
     return `<article class="mic-tile mic-tile--weekly-audit${doneClass}">${body}</article>`;
 }
 
-function renderWeeklyAuditTiles(data, { tabbed = false, rowNum = 2 } = {}) {
+function renderWeeklyAuditTiles(data, { tabbed = false, rowNum = 2, includeHub = false } = {}) {
     const squareDue = dueSquareOneTiles(data);
     const weekly = storeWeeklyAuditsForTiles(data);
     const tiles = [
         ...squareDue.slice(0, 2).map((tile) => renderSquareOneTile(tile, { tabbed })),
         ...weekly.map((audit, index) => renderWeeklyAuditTile(audit, index, { tabbed })),
     ];
+    const hub = includeHub ? renderTacauditHubLink({ tabbed }) : '';
+    if (!tiles.length && !hub) return '';
+    if (tabbed) {
+        const row = tiles.length ? renderEqualWidthRow(tiles, { tabbed: true }) : '';
+        return `${row}${hub}`;
+    }
+    if (includeHub) {
+        const colCount = tiles.length || 1;
+        const auditRow = tiles.length
+            ? `<div class="mic-tacaudit-access-audits mic-grid-equal-row mic-grid-equal-row--cols-${colCount}">${tiles.join('')}</div>`
+            : '';
+        return `<div class="mic-tacaudit-access mic-grid-equal-row--row-${rowNum} mic-tile--pos-weekly-audit-row">${auditRow}${hub}</div>`;
+    }
     if (!tiles.length) return '';
-    if (tabbed) return renderEqualWidthRow(tiles, { tabbed: true });
     return renderEqualWidthRow(tiles, {
         rowNum,
         extraClass: 'mic-tile--pos-weekly-audit-row',
@@ -1116,20 +1117,16 @@ function renderMobileAuditsTab(data) {
     const parts = [];
     const dfscHtml = renderDfscTile(data, { tabbed: true });
     if (dfscHtml) parts.push(dfscHtml);
-    const auditRow = renderWeeklyAuditTiles(data, { tabbed: true });
-    if (auditRow) parts.push(auditRow);
-    parts.push(renderTacauditHubTile({ tabbed: true }));
-    return parts.join('');
+    parts.push(renderWeeklyAuditTiles(data, { tabbed: true, includeHub: true }));
+    return parts.filter(Boolean).join('');
 }
 
 function renderDesktopTiles(data) {
-    const hasAudits = storeHasDueAuditTiles(data);
     return `
         ${renderStoreSalesTile(data)}
         ${renderStoreTopRow(data)}
         ${renderDesktopMiddleRow(data)}
-        ${renderWeeklyAuditTiles(data)}
-        ${renderTacauditHubTile({ rowAfterAudits: hasAudits })}
+        ${renderWeeklyAuditTiles(data, { includeHub: true })}
     `;
 }
 

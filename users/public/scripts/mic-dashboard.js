@@ -640,7 +640,36 @@ function renderSquareOneTile(tile, { tabbed = false } = {}) {
 function countMicContentRows(data) {
     let rows = 2;
     if (storeWeeklyAuditsForTiles(data).length > 0 || dueSquareOneTiles(data).length > 0) rows += 1;
+    rows += 1;
     return rows;
+}
+
+function storeHasDueAuditTiles(data) {
+    return storeWeeklyAuditsForTiles(data).length > 0 || dueSquareOneTiles(data).length > 0;
+}
+
+function tacauditStoreHubHref() {
+    if (!STORE_NUMBER) return '';
+    return window.AppPaths?.tacaudit?.(STORE_NUMBER) || `/${STORE_NUMBER}/tacaudit`;
+}
+
+function renderTacauditHubTile({ rowAfterAudits = true, tabbed = false } = {}) {
+    const href = tacauditStoreHubHref();
+    if (!href) return '';
+    if (tabbed) {
+        return `<a class="mic-tacaudit-hub mic-tacaudit-hub--tabbed" href="${escapeHtml(href)}" aria-label="Go to TacAudit landing page"><span class="mic-tile-tacaudit-hub-btn">Go to TacAudit</span></a>`;
+    }
+    const rowClass = rowAfterAudits
+        ? ' mic-tile--pos-tacaudit-hub-row--after-audits'
+        : ' mic-tile--pos-tacaudit-hub-row--solo';
+    return `
+        <a
+            class="mic-tile mic-tile--link mic-tile--tacaudit-hub mic-tile--pos-tacaudit-hub-row${rowClass}"
+            href="${escapeHtml(href)}"
+            aria-label="Go to TacAudit landing page"
+        >
+            <span class="mic-tile-tacaudit-hub-btn">Go to TacAudit</span>
+        </a>`;
 }
 
 function renderEqualWidthRow(tileHtmlList, { rowNum, tabbed = false, extraClass = '' } = {}) {
@@ -1089,18 +1118,18 @@ function renderMobileAuditsTab(data) {
     if (dfscHtml) parts.push(dfscHtml);
     const auditRow = renderWeeklyAuditTiles(data, { tabbed: true });
     if (auditRow) parts.push(auditRow);
-    if (!parts.length) {
-        return '<p class="mic-tile-empty mic-tile-empty--audits">All audits complete for this week</p>';
-    }
+    parts.push(renderTacauditHubTile({ tabbed: true }));
     return parts.join('');
 }
 
 function renderDesktopTiles(data) {
+    const hasAudits = storeHasDueAuditTiles(data);
     return `
         ${renderStoreSalesTile(data)}
         ${renderStoreTopRow(data)}
         ${renderDesktopMiddleRow(data)}
         ${renderWeeklyAuditTiles(data)}
+        ${renderTacauditHubTile({ rowAfterAudits: hasAudits })}
     `;
 }
 

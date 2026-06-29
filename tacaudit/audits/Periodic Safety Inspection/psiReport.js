@@ -1,4 +1,4 @@
-﻿const puppeteer = require('puppeteer');
+﻿const { launchPdfBrowser } = require('../../src/core/puppeteerPdf');
 const { formatContributionLine } = require('../../src/audit/auditContributions');
 const {
     PSI_SECTIONS,
@@ -362,10 +362,7 @@ function buildPsiReportHtml(session) {
 
 async function buildPsiReportPdf(session) {
     const html = buildPsiReportHtml(session);
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    const browser = await launchPdfBrowser();
     try {
         const page = await browser.newPage();
         await page.setContent(html, { waitUntil: 'networkidle0' });

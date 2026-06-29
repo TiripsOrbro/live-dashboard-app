@@ -1,4 +1,4 @@
-﻿const puppeteer = require('puppeteer');
+﻿const { launchPdfBrowser } = require('../../src/core/puppeteerPdf');
 const { formatContributionLine } = require('../../src/audit/auditContributions');
 const {
     RGM_CLEANING_SECTIONS,
@@ -373,10 +373,7 @@ function buildRgmCleaningReportHtml(session) {
 
 async function buildRgmCleaningReportPdf(session) {
     const html = buildRgmCleaningReportHtml(session);
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    const browser = await launchPdfBrowser();
     try {
         const page = await browser.newPage();
         await page.setContent(html, { waitUntil: 'networkidle0' });

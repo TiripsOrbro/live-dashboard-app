@@ -698,6 +698,30 @@
       "finalized": true,
       "capturedAt": "2026-06-23T18:22:02.076Z",
       "source": "live-scrape"
+    },
+    "2026-06-29": {
+      "date": "2026-06-29",
+      "weekday": 1,
+      "openHour": 10,
+      "closeHour": 22,
+      "actual": [
+        202.77,
+        390.13,
+        725.13,
+        215.9,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "actualTotal": 1533.93,
+      "finalized": true,
+      "capturedAt": "2026-06-29T00:47:30.756Z",
+      "source": "live-scrape"
     }
   }
 }

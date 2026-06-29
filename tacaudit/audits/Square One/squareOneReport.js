@@ -1,4 +1,4 @@
-﻿const puppeteer = require('puppeteer');
+﻿const { launchPdfBrowser } = require('../../src/core/puppeteerPdf');
 const { formatContributionLine } = require('../../src/audit/auditContributions');
 const {
     SQUARE_ONE_SECTIONS,
@@ -127,10 +127,7 @@ ${session.signOff?.signatureDataUrl ? `<img class="signature" src="${session.sig
 
 async function buildSquareOneReportPdf(session) {
     const html = buildSquareOneReportHtml(session);
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    const browser = await launchPdfBrowser();
     try {
         const page = await browser.newPage();
         await page.setContent(html, { waitUntil: 'networkidle0' });

@@ -12,7 +12,7 @@ let schema = null;
 let currentSectionIndex = 0;
 let statusMessage = '';
 let statusKind = '';
-let saving = false;
+const autosave = window.AuditSessionSave?.createSaveRunner?.();
 let saveTimer = null;
 let timerInterval = null;
 let signaturePads = new Map();
@@ -550,32 +550,35 @@ function scheduleSave() {
 }
 
 async function saveSession() {
-    if (!session?.id || session.status === 'completed') return;
-    saving = true;
-    try {
-        const data = await fetchJson(apiUrl('/api/dfsc/session'), {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                store: STORE_NUMBER,
-                sessionId: session.id,
-                dateKey: session.dateKey,
-                answers: session.answers,
-                sectionSkips: session.sectionSkips,
-                actions: session.actions,
-                notes: session.notes,
-                signOff: session.signOff,
-                clientMeta: session.clientMeta || buildClientMeta(),
+    if (!session?.id || !autosave) return;
+    await autosave.runSave({
+        getSession: () => session,
+        setSession: (next) => {
+            session = next;
+        },
+        isBlocked: (s) => s.status === 'completed',
+        save: (s) =>
+            fetchJson(apiUrl('/api/dfsc/session'), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    store: STORE_NUMBER,
+                    sessionId: s.id,
+                    dateKey: s.dateKey,
+                    answers: s.answers,
+                    sectionSkips: s.sectionSkips,
+                    actions: s.actions,
+                    notes: s.notes,
+                    signOff: s.signOff,
+                    clientMeta: s.clientMeta || buildClientMeta(),
+                }),
             }),
-        });
-        session = data.session;
-    } catch (err) {
-        statusMessage = err.message;
-        statusKind = 'error';
-        render();
-    } finally {
-        saving = false;
-    }
+        onError: (err) => {
+            statusMessage = err.message;
+            statusKind = 'error';
+            render();
+        },
+    });
 }
 
 function dfscReminderStorageKey(sessionId, questionId) {

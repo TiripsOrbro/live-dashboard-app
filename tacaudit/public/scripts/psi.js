@@ -12,7 +12,7 @@ let schema = null;
 let currentSectionIndex = 0;
 let statusMessage = '';
 let statusKind = '';
-let saving = false;
+const autosave = window.AuditSessionSave?.createSaveRunner?.();
 let saveTimer = null;
 const signaturePads = new Map();
 const expandedNotes = new Set();
@@ -139,29 +139,32 @@ function scheduleSave() {
 }
 
 async function saveSession() {
-    if (!session || session.status === 'completed' || saving) return;
-    saving = true;
-    try {
-        const data = await fetchJson(apiUrl(`${API_PREFIX}/session`), {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                store: STORE_NUMBER,
-                sessionId: session.id,
-                periodKey: session.periodKey,
-                answers: session.answers,
-                notes: session.notes,
-                signOff: session.signOff,
+    if (!autosave) return;
+    await autosave.runSave({
+        getSession: () => session,
+        setSession: (next) => {
+            session = next;
+        },
+        isBlocked: (s) => s.status === 'completed',
+        save: (s) =>
+            fetchJson(apiUrl(`${API_PREFIX}/session`), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    store: STORE_NUMBER,
+                    sessionId: s.id,
+                    periodKey: s.periodKey,
+                    answers: s.answers,
+                    notes: s.notes,
+                    signOff: s.signOff,
+                }),
             }),
-        });
-        session = data.session;
-    } catch (err) {
-        statusMessage = err.message;
-        statusKind = 'error';
-        renderStatusBar();
-    } finally {
-        saving = false;
-    }
+        onError: (err) => {
+            statusMessage = err.message;
+            statusKind = 'error';
+            renderStatusBar();
+        },
+    });
 }
 
 function setAnswer(questionId, value) {

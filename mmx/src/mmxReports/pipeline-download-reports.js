@@ -2,7 +2,7 @@
 const fs = require('fs');
 const { GOTO_OPTS } = require('./mmx-browser');
 const { withPageContextRetry } = require('./mmx-context-retry');
-const { ensureDir, waitForNewDownload, timestampSlug, clearMacromatixDefaultExports } = require('./util-files');
+const { ensureDir, waitForNewDownload, timestampSlug, clearMacromatixDefaultExports, moveFileResilient, moveFileResilientSync } = require('./util-files');
 const log = require('./util-logging');
 const { navigateToSupplyChainReports } = require('./mmx-navigation');
 const { refreshScrapePauseTimeout } = require('../mmxResourceGate');
@@ -89,7 +89,7 @@ function normalizeMacromatixExportsForStore(storeDir, reportIds = [], options = 
         const dest = path.join(storeDir, `${timestampSlug()}-${basename}${hint.ext}`);
         if (path.basename(source) !== path.basename(dest)) {
             if (fs.existsSync(dest)) fs.unlinkSync(dest);
-            fs.renameSync(source, dest);
+            moveFileResilientSync(source, dest);
         } else {
             continue;
         }
@@ -203,6 +203,57 @@ function buildDownloadDest(report, settings, downloaded) {
     return path.join(dir, `${slug}-${base}${ext}`);
 }
 
+async function adoptDownloadedReport(report, settings, downloaded) {
+    const dest = buildDownloadDest(report, settings, downloaded);
+    if (downloaded === dest) return dest;
+
+    if (settings.deferDownloadRename) {
+        settings.pendingDownloadRenames = settings.pendingDownloadRenames || [];
+        settings.pendingDownloadRenames.push({ report, downloaded, dest });
+        return downloaded;
+    }
+
+    await moveFileResilient(downloaded, dest);
+
+    if (report.storeNumber && (report.id === 'report1' || report.id === 'report2')) {
+        const filterResult = filterSpreadsheetByStoreColumn(dest, report.storeNumber, 2);
+        if (filterResult.skipped) {
+            log.warn(`${report.label || report.id}: no rows for store ${report.storeNumber} in ${path.basename(dest)}`);
+        } else if (filterResult.removed) {
+            log.info(
+                `${report.label || report.id} filtered to store ${report.storeNumber}: ${filterResult.kept} row(s) kept, ${filterResult.removed} removed`
+            );
+        }
+    }
+
+    return dest;
+}
+
+async function flushDeferredDownloadRenames(settings) {
+    const pending = settings.pendingDownloadRenames || [];
+    settings.pendingDownloadRenames = [];
+    const paths = {};
+    for (const entry of pending) {
+        const { report, downloaded, dest } = entry;
+        await moveFileResilient(downloaded, dest);
+
+        if (report.storeNumber && (report.id === 'report1' || report.id === 'report2')) {
+            const filterResult = filterSpreadsheetByStoreColumn(dest, report.storeNumber, 2);
+            if (filterResult.skipped) {
+                log.warn(`${report.label || report.id}: no rows for store ${report.storeNumber} in ${path.basename(dest)}`);
+            } else if (filterResult.removed) {
+                log.info(
+                    `${report.label || report.id} filtered to store ${report.storeNumber}: ${filterResult.kept} row(s) kept, ${filterResult.removed} removed`
+                );
+            }
+        }
+
+        paths[report.id] = dest;
+        log.info(`Saved ${report.id} → ${path.basename(dest)}`);
+    }
+    return paths;
+}
+
 async function waitForReportDownload(downloadDir, timeoutMs, preferredExt, pollHooks = {}) {
     const acceptSinceMs = Number(pollHooks.acceptSinceMs || 0);
     const order = preferredExt
@@ -307,21 +358,7 @@ async function downloadSupplyChainReport(page, report, settings) {
                 (stray.length ? `; also saw ${stray.map((f) => path.basename(f)).join(', ')}` : '')
         );
     }
-    const dest = buildDownloadDest(report, settings, downloaded);
-    if (downloaded !== dest) {
-        fs.renameSync(downloaded, dest);
-    }
-
-    if (report.storeNumber && (report.id === 'report1' || report.id === 'report2')) {
-        const filterResult = filterSpreadsheetByStoreColumn(dest, report.storeNumber, 2);
-        if (filterResult.skipped) {
-            log.warn(`${report.label || report.id}: no rows for store ${report.storeNumber} in ${path.basename(dest)}`);
-        } else if (filterResult.removed) {
-            log.info(
-                `${report.label || report.id} filtered to store ${report.storeNumber}: ${filterResult.kept} row(s) kept, ${filterResult.removed} removed`
-            );
-        }
-    }
+    const dest = await adoptDownloadedReport(report, settings, downloaded);
 
     log.info(`Saved ${report.id} → ${path.basename(dest)}`);
     if (typeof settings.onReportStep === 'function') {
@@ -371,10 +408,7 @@ async function downloadStoreReport(page, report, settings) {
             throw err;
         }
     }
-    const dest = buildDownloadDest(report, settings, downloaded);
-    if (downloaded !== dest) {
-        fs.renameSync(downloaded, dest);
-    }
+    const dest = await adoptDownloadedReport(report, settings, downloaded);
     log.info(`Saved ${report.id} → ${path.basename(dest)}`);
     if (report.id === 'report3' && report.storeNumber) {
         logIseSpotCheck(dest, ['37876', '37909', '37609'], (msg) => log.info(msg));
@@ -464,10 +498,11 @@ async function downloadReports(page, settings) {
             });
 
             const downloaded = await waitForReportDownload(getReportDownloadDir(settings), settings.downloadWaitMs);
-            const dest = buildDownloadDest(report, settings, downloaded);
-            if (downloaded !== dest) {
-                fs.renameSync(downloaded, dest);
-            }
+            const dest = await adoptDownloadedReport(
+                { ...report, outputBasename: report.outputBasename || report.id },
+                settings,
+                downloaded
+            );
             paths[report.id] = dest;
             log.info(`Saved ${report.id} → ${path.basename(dest)}`);
         } catch (err) {
@@ -504,4 +539,5 @@ module.exports = {
     waitForReportDownload,
     findFreshMacromatixExport,
     normalizeMacromatixExportsForStore,
+    flushDeferredDownloadRenames,
 };

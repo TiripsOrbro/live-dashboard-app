@@ -2,10 +2,10 @@
 const fs = require('fs');
 const { getStoreList, getStoreConfig } = require('../../stores/src/storeList');
 const { openMacromatixBrowser, closeBrowserQuietly } = require('./macromatixScraper');
-const { downloadReports, configureDownloadPath } = require('./mmxReports/pipeline-download-reports');
+const { downloadReports, configureDownloadPath, flushDeferredDownloadRenames } = require('./mmxReports/pipeline-download-reports');
 const { isSupplyChainReport } = require('./mmxReports/pipeline-supply-chain-reports');
 const { splitSpreadsheetByStoreColumn, resolveStoreReports } = require('../../vendors/src/reportReader');
-const { ensureDir, timestampSlug } = require('./mmxReports/util-files');
+const { ensureDir, timestampSlug, moveFileResilientSync } = require('./mmxReports/util-files');
 const log = require('./mmxReports/util-logging');
 
 const paths = require('../../src/paths');
@@ -120,7 +120,7 @@ async function retryScmReportPerStore(page, pipeline, store, report, runSlug, st
     const target = path.join(storeDir, `${runSlug}-${basename}${ext}`);
     if (path.basename(dest) !== path.basename(target)) {
         if (fs.existsSync(target)) fs.unlinkSync(target);
-        fs.renameSync(dest, target);
+        moveFileResilientSync(dest, target);
         dest = target;
     }
     return dest;
@@ -368,9 +368,10 @@ async function downloadOneBuildToReportForStore(store, reportId, options = {}) {
         options.reportDownloadDir || path.join(REPORTS_DIR, store.storeNumber, '_parallel', reportId);
     ensureDir(storeDir);
 
+    const label = report.label || reportId;
     let browser;
     let page;
-    const label = report.label || reportId;
+    let settings;
     try {
         log.info(`[parallel] Store ${store.storeNumber}: opening browser for ${label}`);
         ({ browser, page } = await openMacromatixBrowser({ ...options, storeNumber: store.storeNumber }));
@@ -378,23 +379,37 @@ async function downloadOneBuildToReportForStore(store, reportId, options = {}) {
             reportNavigation: pipeline.reportNavigation,
             reports,
         };
-        const settings = buildSettings(storePipeline, storeDir);
+        settings = buildSettings(storePipeline, storeDir);
         settings.downloadWaitMs = Number(report.downloadWaitMs || settings.downloadWaitMs);
         settings.chainReports = false;
+        settings.deferDownloadRename = true;
         if (typeof options.onReportStep === 'function') {
             settings.onReportStep = (step) => options.onReportStep(reportId, step);
         }
         await configureDownloadPath(page, storeDir);
         const paths = await downloadReports(page, settings);
         const filePath = paths[reportId];
-        if (!filePath || !fs.existsSync(filePath)) {
+        if (!filePath) {
             throw new Error(`${label} did not produce a file in ${storeDir}`);
         }
-        log.info(`[parallel] Store ${store.storeNumber}: ${label} → ${path.basename(filePath)}`);
-        return { reportId, filePath, storeDir };
+        return { reportId, filePath, storeDir, settings, storeNumber: store.storeNumber, label };
     } finally {
         await closeBrowserQuietly(browser, `parallel ${reportId}`);
     }
+}
+
+async function finalizeParallelDownloadResult(result) {
+    const { reportId, storeDir, settings, storeNumber, label } = result;
+    let filePath = result.filePath;
+    if (settings?.pendingDownloadRenames?.length) {
+        const adopted = await flushDeferredDownloadRenames(settings);
+        filePath = adopted[reportId] || filePath;
+    }
+    if (!filePath || !fs.existsSync(filePath)) {
+        throw new Error(`${label || reportId} did not produce a file in ${storeDir}`);
+    }
+    log.info(`[parallel] Store ${storeNumber || '?'}: ${label || reportId} → ${path.basename(filePath)}`);
+    return { reportId, filePath, storeDir };
 }
 
 function promoteParallelFile(mainDir, filePath) {
@@ -403,7 +418,7 @@ function promoteParallelFile(mainDir, filePath) {
     const dest = path.join(mainDir, path.basename(filePath));
     if (path.resolve(filePath) === path.resolve(dest)) return dest;
     if (fs.existsSync(dest)) fs.unlinkSync(dest);
-    fs.copyFileSync(filePath, dest);
+    moveFileResilientSync(filePath, dest);
     return dest;
 }
 
@@ -432,7 +447,7 @@ async function downloadBuildToReportsParallel(storeNumber, options = {}) {
         return downloadOneBuildToReportForStore(store, reportId, {
             ...options,
             reportDownloadDir: workDir,
-        });
+        }).then(finalizeParallelDownloadResult);
     });
 
     const settled = await Promise.allSettled(tasks);

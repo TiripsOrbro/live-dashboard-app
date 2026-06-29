@@ -10,6 +10,74 @@ function copyFileSafe(src, dest) {
     fs.copyFileSync(src, dest);
 }
 
+const MOVE_RETRY_CODES = new Set(['EBUSY', 'EPERM', 'EACCES']);
+
+function moveFileResilientSync(source, dest) {
+    if (path.resolve(source) === path.resolve(dest)) return dest;
+    ensureDir(path.dirname(dest));
+    if (fs.existsSync(dest)) fs.unlinkSync(dest);
+    try {
+        fs.renameSync(source, dest);
+        return dest;
+    } catch (err) {
+        if (!MOVE_RETRY_CODES.has(err?.code)) throw err;
+        copyFileSafe(source, dest);
+        try {
+            fs.unlinkSync(source);
+        } catch {
+            /* dest is valid */
+        }
+        return dest;
+    }
+}
+
+/**
+ * Rename a freshly downloaded report file. On Windows, Chromium may still hold the
+ * file handle briefly — retry with backoff and fall back to copy+unlink.
+ */
+async function moveFileResilient(source, dest, options = {}) {
+    if (!source || !dest) {
+        throw new Error('moveFileResilient requires source and dest paths');
+    }
+    if (path.resolve(source) === path.resolve(dest)) return dest;
+
+    ensureDir(path.dirname(dest));
+    if (fs.existsSync(dest)) fs.unlinkSync(dest);
+
+    const maxAttempts = Number(options.maxAttempts || 16);
+    const delayMs = Number(options.delayMs || 200);
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            fs.renameSync(source, dest);
+            return dest;
+        } catch (err) {
+            lastError = err;
+            const code = err?.code;
+            if (!MOVE_RETRY_CODES.has(code) && attempt === 1) break;
+            if (attempt < maxAttempts) await sleep(delayMs * Math.min(attempt, 6));
+        }
+    }
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            fs.copyFileSync(source, dest);
+            try {
+                fs.unlinkSync(source);
+            } catch {
+                /* dest is valid even if the browser still has source open */
+            }
+            return dest;
+        } catch (err) {
+            lastError = err;
+            if (attempt < maxAttempts) await sleep(delayMs * Math.min(attempt, 6));
+        }
+    }
+
+    throw lastError || new Error(`Could not move ${source} → ${dest}`);
+}
+
 function timestampSlug() {
     const d = new Date();
     const pad = (n) => String(n).padStart(2, '0');
@@ -211,6 +279,8 @@ function clearChromeProfileSingletonLocks(userDataDir) {
 module.exports = {
     ensureDir,
     copyFileSafe,
+    moveFileResilient,
+    moveFileResilientSync,
     timestampSlug,
     listFiles,
     listDownloadCandidates,

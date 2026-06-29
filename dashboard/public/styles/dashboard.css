@@ -35,7 +35,10 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    height: auto;
+    background: color-mix(in srgb, var(--grey) 88%, white);
 }
 
 .app-boot-loading__message {

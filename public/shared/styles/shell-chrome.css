@@ -16,7 +16,28 @@
 
 .app-shell-view {
     min-height: 100vh;
+    min-height: 100dvh;
     box-sizing: border-box;
+}
+
+.app-shell-view #app.app-boot-loading,
+html.mic-overview-page .app-shell-view #app.app-boot-loading,
+html.admin-overview-page .app-shell-view #app.app-boot-loading,
+html.dfsc-page .app-shell-view #app.app-boot-loading,
+body.dfsc-page .app-shell-view #app.app-boot-loading,
+body.tacaudit-page .app-shell-view #app.app-boot-loading {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    height: auto;
+    max-height: none;
+    box-sizing: border-box;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--grey) 88%, white);
 }
 
 .app-shell-view--exiting {

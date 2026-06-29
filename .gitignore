@@ -48,6 +48,8 @@ dashboard/data/sssg/grid-debug.json
 dashboard/data/sssg-weekly/*.json
 !dashboard/data/sssg-weekly/import-template.json
 !dashboard/data/feature-requests.json
+!dashboard/data/bug-reports.json
+dashboard/data/bug-reports/photos/
 
 # Stores runtime data
 stores/data/mic/*.json

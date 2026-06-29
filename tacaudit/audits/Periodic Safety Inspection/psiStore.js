@@ -15,6 +15,11 @@ const {
     inCompleteAccessError,
 } = require('../../src/audit/auditSessionAccess');
 const { applyCollaborativeUpdates } = require('../../src/audit/auditContributions');
+const {
+    promoteSessionActionsOnSubmit,
+    syncUpdatedActionsToRegistry,
+    getDefaultActionDueDate,
+} = require('../../src/core/storeActionsStore');
 const { safePathSegment } = require('../../src/audit/auditPathSafety');
 const {
     buildSchemaPayload,
@@ -233,6 +238,7 @@ function getContext(storeNumber, options = {}) {
         periodCompleted: getCompletedSessions(store, periodKey).map(summarizeCompletedAudit),
         canCompleteAudits: access.canCompleteAudits,
         canStartAudits: access.canStartAudits,
+        defaultActionDueDate: getDefaultActionDueDate(store),
         schema: buildSchemaPayload(psiRotation.psiWeek),
     };
 }
@@ -324,6 +330,9 @@ function updateSession(storeNumber, sessionId, updates = {}, access = {}) {
         getQuestionById: (questionId) => getQuestionById(questionId, session.psiWeek),
         normalizeActionUpdate,
     });
+    syncUpdatedActionsToRegistry(store, 'psi', session, updates, access, (questionId) =>
+        getQuestionById(questionId, session.psiWeek)
+    );
     if (updates.signOff && typeof updates.signOff === 'object') {
         session.signOff = { ...session.signOff, ...updates.signOff };
     }
@@ -388,6 +397,7 @@ function submitSession(storeNumber, sessionId, signOff = {}, access = {}) {
     session.completedAt = new Date().toISOString();
     session.nonCompliant = collectNonCompliant(session);
     session.score = scoreSession(session);
+    promoteSessionActionsOnSubmit(store, 'psi', session, collectNonCompliant, access);
     saveSession(session);
     clearActivePointer(store);
     afterAuditSubmit({ storeNumber: store, auditType: 'psi', session });

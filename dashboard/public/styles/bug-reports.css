@@ -1,0 +1,144 @@
+/* Bug reports — Reddit-style upvotes, shared list in Settings */
+
+.bug-reports-view .requests-form-wrap.is-open {
+    max-height: 520px;
+}
+
+.bug-reports-photo-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.bug-reports-photo-input {
+    font: inherit;
+    font-size: 0.85rem;
+}
+
+.bug-reports-photo-hint {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--dfsc-text-muted, #6b7280);
+}
+
+.bug-reports-photo-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.bug-reports-photo-thumb {
+    position: relative;
+    width: 4.5rem;
+    height: 4.5rem;
+    border: var(--cell-border, 1px solid) var(--charcoal, #2b2b2b);
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--white, #fff);
+}
+
+.bug-reports-photo-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.bug-reports-item {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.65rem;
+    align-items: start;
+}
+
+.bug-reports-upvote {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    min-width: 2.5rem;
+    padding: 0.35rem 0.25rem;
+    border: var(--cell-border, 1px solid) var(--charcoal, #2b2b2b);
+    border-radius: 8px;
+    background: var(--white, #fff);
+    cursor: pointer;
+    font: inherit;
+    color: var(--charcoal, #2b2b2b);
+}
+
+.bug-reports-upvote:hover:not(:disabled),
+.bug-reports-upvote:focus-visible {
+    border-color: var(--tb-purple-light, #9b59d0);
+    outline: none;
+}
+
+.bug-reports-upvote.is-active {
+    background: color-mix(in srgb, var(--tb-purple, #702082) 12%, var(--white, #fff));
+    border-color: var(--tb-purple, #702082);
+    color: var(--tb-purple, #702082);
+}
+
+.bug-reports-upvote:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.bug-reports-upvote-icon {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.bug-reports-upvote-count {
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.bug-reports-item-main {
+    min-width: 0;
+}
+
+.bug-reports-item-meta {
+    margin: 0.35rem 0 0;
+    font-size: 0.78rem;
+    color: var(--dfsc-text-muted, #6b7280);
+}
+
+.bug-reports-item-photos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.65rem;
+}
+
+.bug-reports-item-photo-link {
+    display: block;
+    width: 5.5rem;
+    height: 5.5rem;
+    border: var(--cell-border, 1px solid) color-mix(in srgb, var(--charcoal, #2b2b2b) 25%, white);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.bug-reports-item-photo-link img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.bug-reports-admin-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid color-mix(in srgb, var(--charcoal, #2b2b2b) 12%, white);
+}
+
+.bug-reports-admin-row label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+}

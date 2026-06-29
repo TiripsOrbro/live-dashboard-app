@@ -215,7 +215,13 @@
         const areaSelect = getSelect(formRoot, 'area');
         const areaWrap = getFieldWrap(formRoot, 'area');
         if (levelNeedsArea(level) && areas.length) {
-            setSelectOptions(areaSelect, areas, selections.area, (row) => row);
+            setSelectOptions(
+                areaSelect,
+                areas,
+                selections.area,
+                (row) => row,
+                (row) => window.AreaDisplay?.label?.(row) ?? String(row).replace(/-1$/i, '')
+            );
             areaSelect.disabled = areas.length <= 1;
             if (areaWrap) areaWrap.hidden = false;
         } else if (areaWrap) {

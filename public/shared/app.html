@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="/styles/fonts.css">
     <link rel="stylesheet" href="/styles/design-tokens.css">
     <link rel="stylesheet" href="/styles/brand-mark.css">
+    <link rel="stylesheet" href="/styles/loading-dots.css">
     <link rel="stylesheet" href="/styles/dashboard.css">
     <link rel="stylesheet" href="/styles/mic.css">
     <link rel="stylesheet" href="/styles/account-modal.css">
@@ -20,6 +21,7 @@
     <link rel="stylesheet" href="/styles/tacaudit.css">
     <link rel="stylesheet" href="/styles/admin-menu.css">
     <link rel="stylesheet" href="/styles/requests.css">
+    <link rel="stylesheet" href="/styles/bug-reports.css">
     <link rel="stylesheet" href="/styles/login.css">
     <link rel="stylesheet" href="/styles/shell-chrome.css">
     <link rel="stylesheet" href="/styles/shell-transition.css">
@@ -30,13 +32,18 @@
 </head>
 <body class="app-shell-root">
     <script src="/scripts/brand-mark.js"></script>
+    <script src="/scripts/loading-dots.js"></script>
     <script src="/scripts/app-paths.js"></script>
     <script src="/scripts/area-display.js"></script>
     <script src="/scripts/scope-popup.js"></script>
     <div class="app-shell-viewport" id="app-shell-viewport">
         <div class="app-shell-view app-shell-view--entering" id="app-shell-view">
             <div id="app" class="app-boot-loading" aria-busy="true">
-                <p class="app-boot-loading__message">Loading…</p>
+                <div class="loading-dots loading-dots--lg" role="status" aria-label="Loading">
+                    <span class="loading-dots__dot" aria-hidden="true"></span>
+                    <span class="loading-dots__dot" aria-hidden="true"></span>
+                    <span class="loading-dots__dot" aria-hidden="true"></span>
+                </div>
             </div>
         </div>
     </div>

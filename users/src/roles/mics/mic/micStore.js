@@ -21,7 +21,7 @@ const ROTATE_INTERVAL_MS = 8000;
 /** Shown on MIC when no daily item multiplier is configured for today. */
 const MULTIPLIER_NOTHING_LABEL = 'Nothing Yet...';
 /** Shown on MIC until live VOC data is wired up. */
-const MIC_VOC_PLACEHOLDER = { count: 30, osatPercent: 83, accuracyPercent: 90 };
+const MIC_VOC_PLACEHOLDER = { count: 'TBD', osatPercent: null, accuracyPercent: null };
 
 function melbourneTodayIso() {
     return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(new Date());

@@ -15,6 +15,11 @@ const {
     inCompleteAccessError,
 } = require('../../src/audit/auditSessionAccess');
 const { applyCollaborativeUpdates } = require('../../src/audit/auditContributions');
+const {
+    promoteSessionActionsOnSubmit,
+    syncUpdatedActionsToRegistry,
+    getDefaultActionDueDate,
+} = require('../../src/core/storeActionsStore');
 const { safePathSegment } = require('../../src/audit/auditPathSafety');
 const {
     buildSchemaPayload,
@@ -187,10 +192,24 @@ function buildPeriodSummary(storeNumber, periodKey) {
 function loadSquareOnePhotoCandidates(storeNumber, periodKey) {
     try {
         const { listPhotoCandidatesForPeriod } = require('../Square One/squareOneStore');
-        return listPhotoCandidatesForPeriod(storeNumber, periodKey);
+        const sourcePeriodKey = periodKeyWeeksAgo(1, periodKey || getDismissalPeriodKey());
+        return listPhotoCandidatesForPeriod(storeNumber, sourcePeriodKey);
     } catch {
         return [];
     }
+}
+
+function liveSquareOnePhotoCandidates(session) {
+    if (!session || session.status !== 'in_progress') {
+        return getSquareOnePhotoCandidates(session, {
+            squareOnePhotoCandidates: session?.squareOnePhotoCandidates,
+        });
+    }
+    const live = loadSquareOnePhotoCandidates(session.storeNumber, session.periodKey);
+    if (live.length) return live;
+    return getSquareOnePhotoCandidates(session, {
+        squareOnePhotoCandidates: session.squareOnePhotoCandidates,
+    });
 }
 
 function getContext(storeNumber, options = {}) {
@@ -240,6 +259,7 @@ function getContext(storeNumber, options = {}) {
         squareOnePhotoCandidates,
         canCompleteAudits: access.canCompleteAudits,
         canStartAudits: access.canStartAudits,
+        defaultActionDueDate: getDefaultActionDueDate(store),
         schema: buildSchemaPayload(),
     };
 }
@@ -323,11 +343,20 @@ function updateSession(storeNumber, sessionId, updates = {}, access = {}) {
         getQuestionById: (questionId) => getQuestionById(questionId),
         normalizeActionUpdate,
     });
+    syncUpdatedActionsToRegistry(store, 'rgm-cleaning', session, updates, access, (questionId) =>
+        getQuestionById(questionId)
+    );
     if (updates.signOff && typeof updates.signOff === 'object') {
         session.signOff = { ...session.signOff, ...updates.signOff };
     }
     if (updates.clientMeta && typeof updates.clientMeta === 'object' && !session.clientMeta) {
         session.clientMeta = updates.clientMeta;
+    }
+    if (session.status === 'in_progress') {
+        const live = loadSquareOnePhotoCandidates(store, session.periodKey);
+        if (live.length || !Array.isArray(session.squareOnePhotoCandidates) || !session.squareOnePhotoCandidates.length) {
+            session.squareOnePhotoCandidates = live;
+        }
     }
     session.updatedAt = new Date().toISOString();
     saveSession(session);
@@ -373,9 +402,7 @@ function submitSession(storeNumber, sessionId, signOff = {}, access = {}) {
     };
 
     const photoOptions = {
-        squareOnePhotoCandidates: getSquareOnePhotoCandidates(session, {
-            squareOnePhotoCandidates: session.squareOnePhotoCandidates,
-        }),
+        squareOnePhotoCandidates: liveSquareOnePhotoCandidates(session),
     };
     const validation = validateSessionComplete(session, photoOptions);
     if (!validation.ok) return { ok: false, error: validation.error };
@@ -384,6 +411,7 @@ function submitSession(storeNumber, sessionId, signOff = {}, access = {}) {
     session.completedAt = new Date().toISOString();
     session.nonCompliant = collectNonCompliant(session);
     session.score = scoreSession(session);
+    promoteSessionActionsOnSubmit(store, 'rgm-cleaning', session, collectNonCompliant, access);
     saveSession(session);
     clearActivePointer(store);
     afterAuditSubmit({ storeNumber: store, auditType: 'rgm-cleaning', session });
@@ -397,9 +425,7 @@ function validateSessionSection(storeNumber, sessionId, sectionId, access = {}) 
         return { ok: false, error: inProgressAccessError(true) };
     }
     const photoOptions = {
-        squareOnePhotoCandidates: getSquareOnePhotoCandidates(session, {
-            squareOnePhotoCandidates: session.squareOnePhotoCandidates,
-        }),
+        squareOnePhotoCandidates: liveSquareOnePhotoCandidates(session),
     };
     return validateSection(session, sectionId, photoOptions);
 }

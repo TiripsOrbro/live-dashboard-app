@@ -14,6 +14,7 @@
     </script>
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/styles/brand-mark.css">
+    <link rel="stylesheet" href="/styles/loading-dots.css">
     <link rel="stylesheet" href="/styles/dashboard.css">
     <link rel="stylesheet" href="/styles/mic.css">
     <link rel="stylesheet" href="/styles/account-modal.css">
@@ -25,6 +26,7 @@
 </head>
 <body>
     <script src="/scripts/brand-mark.js"></script>
+    <script src="/scripts/loading-dots.js"></script>
     <script src="/scripts/page-transition.js"></script>
     <script src="/scripts/welcome-overlay.js"></script>
     <script src="/scripts/area-picker-overlay.js"></script>
@@ -32,7 +34,13 @@
         DashboardPageTransition.initStoresEnterFade();
     </script>
     <script src="/scripts/app-paths.js"></script>
-    <div id="app">Loading MIC overview...</div>
+    <div id="app" class="app-boot-loading" aria-busy="true">
+        <div class="loading-dots loading-dots--lg" role="status" aria-label="Loading overview">
+            <span class="loading-dots__dot" aria-hidden="true"></span>
+            <span class="loading-dots__dot" aria-hidden="true"></span>
+            <span class="loading-dots__dot" aria-hidden="true"></span>
+        </div>
+    </div>
     <script src="/scripts/account-modal.js"></script>
     <script src="/scripts/admin-menu.js"></script>
     <script src="/scripts/create-account-form.js"></script>
@@ -50,6 +58,7 @@
     <script src="/scripts/admin-store-picker.js"></script>
     <script src="/scripts/admin-scope-picker.js"></script>
     <script src="/scripts/admin-store-view.js"></script>
+    <script src="/scripts/dashboard-data-cache.js"></script>
     <script src="/scripts/mic-mini-dashboard.js"></script>
     <script src="/scripts/core-countdown.js"></script>
     <script src="/scripts/mic-overview-multi.js"></script>

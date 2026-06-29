@@ -8,6 +8,29 @@
     let activeSettingsTab = 'account';
     let bindOptions = {};
     let savingReportEmail = false;
+    let settingsCogClickBound = false;
+
+    function settingsBasePath() {
+        return (global.AdminMenu?.ADMIN_PAGE_PATH || '/Admin/Settings').replace(/\/+$/, '') || '/Admin/Settings';
+    }
+
+    function isOnSettingsPage() {
+        const current = (global.location.pathname || '').replace(/\/+$/, '') || '/';
+        return current.toLowerCase() === settingsBasePath().toLowerCase();
+    }
+
+    function ensureSettingsCogClickBound() {
+        if (settingsCogClickBound) return;
+        settingsCogClickBound = true;
+        document.addEventListener('click', (event) => {
+            const btn = event.target.closest('.mic-settings-cog');
+            if (!btn) return;
+            event.preventDefault();
+            void navigateToSettingsPage('', {
+                storeNumber: bindOptions.storeNumber,
+            });
+        });
+    }
 
     function renderCog() {
         return `
@@ -55,6 +78,16 @@
                                 </label>
                             </div>
                             <p class="mic-settings-pref-hint">${darkHint}</p>
+                        </div>
+                        <div class="mic-settings-pref-block">
+                            <div class="mic-settings-toggle-row">
+                                <span class="mic-settings-toggle-label" id="mic-rounded-tiles-label">Rounded tiles</span>
+                                <label class="mic-toggle-switch">
+                                    <input type="checkbox" id="mic-rounded-tiles-toggle" role="switch" aria-labelledby="mic-rounded-tiles-label" checked />
+                                    <span class="mic-toggle-slider" aria-hidden="true"></span>
+                                </label>
+                            </div>
+                            <p class="mic-settings-pref-hint">White cards with soft drop shadows on dashboard tiles. Turn off for square bordered tiles.</p>
                         </div>
                         <div class="mic-settings-pref-block">
                             <div class="mic-settings-toggle-row">
@@ -107,6 +140,8 @@
                     }
                     <div class="mic-settings-tabpanel" data-settings-panel="general" role="tabpanel" hidden>
                         <div class="mic-settings-actions">
+                            <button type="button" class="mic-settings-btn" data-action="feature-requests" hidden>Feature requests</button>
+                            <button type="button" class="mic-settings-btn" data-action="bug-reports">Report a bug</button>
                             <button type="button" class="mic-settings-btn" data-action="changelog">What's new</button>
                             <button type="button" class="mic-settings-btn" data-action="hard-refresh">Refresh page</button>
                         </div>
@@ -149,6 +184,12 @@
         if (theme) theme.setAttribute('content', on ? '#161616' : '#7a3eb1');
     }
 
+    function applyMicRoundedTiles(enabled) {
+        const rounded = enabled !== false;
+        document.body.classList.toggle('mic-flat-tiles', !rounded);
+        document.documentElement.classList.toggle('mic-flat-tiles', !rounded);
+    }
+
     function switchSettingsTab(tabId) {
         activeSettingsTab = tabId;
         const picker = document.getElementById('mic-settings-picker');
@@ -176,17 +217,20 @@
     async function loadMicPreferences() {
         try {
             const res = await fetch('/api/me', { credentials: 'same-origin' });
-            if (!res.ok) return { colorBlind: false, micDarkMode: false, auditAutoCollapse: true };
+            if (!res.ok) return { colorBlind: false, micDarkMode: false, auditAutoCollapse: true, micRoundedTiles: true };
             const me = await res.json();
             const colorBlind = Boolean(me.success && me.colorBlind);
             const micDarkMode = Boolean(me.success && me.micDarkMode);
             const auditAutoCollapse = me.auditAutoCollapse !== false;
+            const micRoundedTiles = me.micRoundedTiles !== false;
             applyColourBlindMode(colorBlind);
             applyMicDarkMode(micDarkMode);
+            applyMicRoundedTiles(micRoundedTiles);
             global.AuditPreferences?.setAutoCollapseEnabled?.(auditAutoCollapse);
-            return { colorBlind, micDarkMode, auditAutoCollapse };
+            return { colorBlind, micDarkMode, auditAutoCollapse, micRoundedTiles };
         } catch {
-            return { colorBlind: false, micDarkMode: false, auditAutoCollapse: true };
+            applyMicRoundedTiles(true);
+            return { colorBlind: false, micDarkMode: false, auditAutoCollapse: true, micRoundedTiles: true };
         }
     }
 
@@ -209,6 +253,13 @@
 
     function updateAuditAutoCollapseToggle(enabled) {
         const input = document.getElementById('mic-audit-auto-collapse-toggle');
+        if (!input) return;
+        input.checked = enabled !== false;
+        input.disabled = false;
+    }
+
+    function updateMicRoundedTilesToggle(enabled) {
+        const input = document.getElementById('mic-rounded-tiles-toggle');
         if (!input) return;
         input.checked = enabled !== false;
         input.disabled = false;
@@ -262,6 +313,34 @@
                 updateAuditAutoCollapseToggle(input.checked);
             }
             alert(err.message || 'Could not save audit section setting.');
+            return null;
+        } finally {
+            if (input) input.disabled = false;
+        }
+    }
+
+    async function saveMicRoundedTiles(enabled) {
+        const input = document.getElementById('mic-rounded-tiles-toggle');
+        if (input) input.disabled = true;
+        try {
+            const res = await fetch('/api/account/mic-rounded-tiles', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ enabled: Boolean(enabled) }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) throw new Error(data.error || 'Could not save preference.');
+            const rounded = data.micRoundedTiles !== false;
+            applyMicRoundedTiles(rounded);
+            updateMicRoundedTilesToggle(rounded);
+            return rounded;
+        } catch (err) {
+            if (input) {
+                input.checked = !enabled;
+                updateMicRoundedTilesToggle(input.checked);
+            }
+            alert(err.message || 'Could not save rounded tile setting.');
             return null;
         } finally {
             if (input) input.disabled = false;
@@ -368,9 +447,20 @@
             targetSection = await resolveDefaultSettingsSection();
         }
         const url = buildSettingsUrl(targetSection, q);
+        const parsed = new URL(url, global.location.origin);
+
+        if (isOnSettingsPage() && global.AdminSettingsPage?.showSection) {
+            const nextUrl = `${parsed.pathname}${parsed.search || ''}${parsed.hash || ''}`;
+            const currentUrl = `${global.location.pathname}${global.location.search || ''}${global.location.hash || ''}`;
+            if (nextUrl !== currentUrl) {
+                global.history.pushState(null, '', nextUrl);
+            }
+            await global.AdminSettingsPage.showSection(targetSection);
+            return;
+        }
+
         if (global.AppShell?.navigate) {
-            const parsed = new URL(url, global.location.origin);
-            global.AppShell.navigate(parsed.pathname, { search: parsed.search, hash: parsed.hash });
+            await global.AppShell.navigate(parsed.pathname, { search: parsed.search, hash: parsed.hash });
             return;
         }
         global.location.href = url;
@@ -390,7 +480,7 @@
         }
         if (sectionId === 'preferences') {
             return `
-                <div class="mic-settings-tabpanel" data-settings-panel="preferences">
+                <div class="mic-settings-page-prefs">
                 <div class="mic-settings-pref-block">
                     <div class="mic-settings-toggle-row">
                         <span class="mic-settings-toggle-label" id="mic-dark-mode-label">Dark mode</span>
@@ -400,6 +490,16 @@
                         </label>
                     </div>
                     <p class="mic-settings-pref-hint">${darkHint}</p>
+                </div>
+                <div class="mic-settings-pref-block">
+                    <div class="mic-settings-toggle-row">
+                        <span class="mic-settings-toggle-label" id="mic-rounded-tiles-label">Rounded tiles</span>
+                        <label class="mic-toggle-switch">
+                            <input type="checkbox" id="mic-rounded-tiles-toggle" role="switch" aria-labelledby="mic-rounded-tiles-label" checked />
+                            <span class="mic-toggle-slider" aria-hidden="true"></span>
+                        </label>
+                    </div>
+                    <p class="mic-settings-pref-hint">White cards with soft drop shadows on dashboard tiles. Turn off for square bordered tiles.</p>
                 </div>
                 <div class="mic-settings-pref-block">
                     <div class="mic-settings-toggle-row">
@@ -449,6 +549,8 @@
         if (sectionId === 'general') {
             return `
                 <div class="mic-settings-actions">
+                    <button type="button" class="mic-settings-btn" data-action="feature-requests" hidden>Feature requests</button>
+                    <button type="button" class="mic-settings-btn" data-action="bug-reports">Report a bug</button>
                     <button type="button" class="mic-settings-btn" data-action="changelog">What's new</button>
                     <button type="button" class="mic-settings-btn" data-action="hard-refresh">Refresh page</button>
                 </div>`;
@@ -456,9 +558,48 @@
         return '';
     }
 
+    function applyFeatureRequestLinkVisibility(root, data) {
+        if (!root || !data) return;
+        const btn = root.querySelector('[data-action="feature-requests"]');
+        if (!btn) return;
+        let canView = false;
+        if (global.AdminMenu?.profileCanViewFeatureRequests) {
+            canView = global.AdminMenu.profileCanViewFeatureRequests(data);
+        } else if (data.canViewFeatureRequests === true) {
+            canView = true;
+        } else if (data.canViewFeatureRequests !== false) {
+            if (data.isSuperAdmin) {
+                canView = true;
+            } else {
+                const rank = { it: 100, market: 80, area: 60, store: 40, manager: 40, mic: 20, tm: 10 };
+                const level = String(data.accountLevel || 'manager').toLowerCase();
+                canView = (rank[level] ?? 40) >= rank.mic;
+            }
+        }
+        btn.hidden = !canView;
+    }
+
+    async function syncFeatureRequestLinkVisibility(root) {
+        if (!root?.querySelector('[data-action="feature-requests"]')) return;
+        try {
+            const res = await fetch('/api/me', { credentials: 'same-origin' });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) return;
+            applyFeatureRequestLinkVisibility(root, data);
+        } catch {
+            /* ignore */
+        }
+    }
+
     function wirePageSection(host, sectionId) {
         host.querySelector('[data-action="change-password"]')?.addEventListener('click', () => {
             global.DashboardAccount?.openChangePasswordModal?.();
+        });
+        host.querySelector('[data-action="feature-requests"]')?.addEventListener('click', () => {
+            void navigateToSettingsPage('feature-requests');
+        });
+        host.querySelector('[data-action="bug-reports"]')?.addEventListener('click', () => {
+            void navigateToSettingsPage('bug-reports');
         });
         host.querySelector('[data-action="changelog"]')?.addEventListener('click', () => {
             if (global.AppShell?.navigate) global.AppShell.navigate('/changelog');
@@ -474,6 +615,9 @@
         host.querySelector('[data-action="logout"]')?.addEventListener('click', () => {
             global.location.href = '/logout';
         });
+        if (sectionId === 'general') {
+            void syncFeatureRequestLinkVisibility(host);
+        }
         host.querySelector('#mic-save-report-email-btn')?.addEventListener('click', () => {
             void saveReportEmail();
         });
@@ -497,10 +641,17 @@
                 global.AuditPreferences?.setAutoCollapseEnabled?.(input.checked);
                 saveAuditAutoCollapse(input.checked);
             });
+            host.querySelector('#mic-rounded-tiles-toggle')?.addEventListener('change', (event) => {
+                const input = event.currentTarget;
+                updateMicRoundedTilesToggle(input.checked);
+                applyMicRoundedTiles(input.checked);
+                saveMicRoundedTiles(input.checked);
+            });
             loadMicPreferences().then((prefs) => {
                 updateColourBlindToggle(prefs.colorBlind);
                 updateMicDarkToggle(prefs.micDarkMode);
                 updateAuditAutoCollapseToggle(prefs.auditAutoCollapse);
+                updateMicRoundedTilesToggle(prefs.micRoundedTiles);
             });
         }
 
@@ -534,6 +685,7 @@
             updateColourBlindToggle(prefs.colorBlind);
             updateMicDarkToggle(prefs.micDarkMode);
             updateAuditAutoCollapseToggle(prefs.auditAutoCollapse);
+            updateMicRoundedTilesToggle(prefs.micRoundedTiles);
         });
         global.AdminStoreView?.mountSettingsBlock?.();
         global.AdminStoreView?.syncSettingsUi?.();
@@ -555,16 +707,7 @@
 
     function bind(options = {}) {
         bindOptions = { ...bindOptions, ...options };
-        const btn = document.getElementById('mic-settings-btn');
-        if (!btn) return;
-        if (!btn.dataset.micSettingsBound) {
-            btn.dataset.micSettingsBound = '1';
-            btn.addEventListener('click', () => {
-                void navigateToSettingsPage('', {
-                    storeNumber: bindOptions.storeNumber,
-                });
-            });
-        }
+        ensureSettingsCogClickBound();
 
         const picker = document.getElementById('mic-settings-picker');
         if (!picker || settingsPanelBound) return;
@@ -587,6 +730,18 @@
         picker.querySelector('[data-action="change-password"]')?.addEventListener('click', () => {
             closeSettingsPanel();
             global.DashboardAccount?.openChangePasswordModal?.();
+        });
+        picker.querySelector('[data-action="feature-requests"]')?.addEventListener('click', () => {
+            closeSettingsPanel();
+            void navigateToSettingsPage('feature-requests', {
+                storeNumber: bindOptions.storeNumber,
+            });
+        });
+        picker.querySelector('[data-action="bug-reports"]')?.addEventListener('click', () => {
+            closeSettingsPanel();
+            void navigateToSettingsPage('bug-reports', {
+                storeNumber: bindOptions.storeNumber,
+            });
         });
         picker.querySelector('[data-action="changelog"]')?.addEventListener('click', () => {
             closeSettingsPanel();
@@ -619,6 +774,7 @@
                     if (adminBtn && (data.canAccessAdminMenu || data.canManageStoreLogins)) {
                         adminBtn.hidden = false;
                     }
+                    applyFeatureRequestLinkVisibility(picker, data);
                     global.AdminMenu?.bind?.({
                         getViewAccountsOptions:
                             typeof bindOptions.getViewAccountsOptions === 'function'
@@ -635,6 +791,12 @@
             updateMicDarkToggle(input.checked);
             applyMicDarkMode(input.checked);
             saveMicDarkMode(input.checked);
+        });
+        picker.querySelector('#mic-rounded-tiles-toggle')?.addEventListener('change', (event) => {
+            const input = event.currentTarget;
+            updateMicRoundedTilesToggle(input.checked);
+            applyMicRoundedTiles(input.checked);
+            saveMicRoundedTiles(input.checked);
         });
         picker.querySelector('#mic-colour-blind-toggle')?.addEventListener('change', (event) => {
             const input = event.currentTarget;
@@ -658,6 +820,7 @@
             updateColourBlindToggle(prefs.colorBlind);
             updateMicDarkToggle(prefs.micDarkMode);
             updateAuditAutoCollapseToggle(prefs.auditAutoCollapse);
+            updateMicRoundedTilesToggle(prefs.micRoundedTiles);
             return prefs;
         });
     }

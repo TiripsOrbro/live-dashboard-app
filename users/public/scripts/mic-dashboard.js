@@ -7,6 +7,14 @@ function isMicOverviewPath() {
     return /^\/overview\/?$/i.test(shellPathname());
 }
 
+function canMaintainMicStoreOverview() {
+    if (!isMicOverviewPath()) return false;
+    if (window.__APP_SHELL__ && window.AppShell?.matchRoute) {
+        return window.AppShell.matchRoute(shellPathname())?.id === 'overview';
+    }
+    return true;
+}
+
 let STORE_NUMBER = (shellPathname().match(/^\/MIC\/(teststore|\d{3,6})\/?$/i) || [])[1] || '';
 
 function getAppRoot() {
@@ -85,6 +93,7 @@ function updateSalesScrapeHint(status) {
 }
 
 async function pollSalesScrapeStatus() {
+    if (!canMaintainMicStoreOverview()) return;
     try {
         const res = await fetch('/api/admin/overview/status', { credentials: 'same-origin' });
         const data = await res.json();
@@ -111,16 +120,20 @@ const MIC_OVERVIEW_TABS = [
     { id: 'audits', label: 'Audits' },
 ];
 const MIC_TAB_STORAGE_KEY = 'mic-overview-active-tab';
+const MIC_LAST_STORE_KEY = 'mic-last-store';
 
 let activeMicTab = sessionStorage.getItem(MIC_TAB_STORAGE_KEY) || 'sales';
 let micOverviewTabsBound = false;
 
+const VOC_PLACEHOLDER = { count: 'TBD', osatPercent: null, accuracyPercent: null };
+
 function formatVocDisplay(voc = {}) {
     if (voc.placeholder) {
         return {
-            count: voc.count ?? VOC_PLACEHOLDER.count,
-            osat: voc.osatPercent ?? VOC_PLACEHOLDER.osatPercent,
-            acc: voc.accuracyPercent ?? VOC_PLACEHOLDER.accuracyPercent,
+            placeholder: true,
+            count: 'TBD',
+            osat: null,
+            acc: null,
         };
     }
     return {
@@ -190,6 +203,7 @@ function renderPromoBanner() {
 }
 
 function renderShell() {
+    if (!canMaintainMicStoreOverview()) return;
     document.documentElement?.classList?.add('mic-overview-page');
     document.body?.classList?.add('mic-overview-page');
     app.innerHTML = `
@@ -230,7 +244,78 @@ function renderShell() {
         -->`;
 }
 
+let micSalesFetchInFlight = false;
+let salesWaitPollTimer = null;
+let micOverviewIntervals = [];
+let micOverviewResizeHandler = null;
+
+function stopMicStoreOverviewLoops() {
+    for (const id of micOverviewIntervals) {
+        window.clearInterval(id);
+    }
+    micOverviewIntervals = [];
+    if (salesWaitPollTimer) {
+        window.clearInterval(salesWaitPollTimer);
+        salesWaitPollTimer = null;
+    }
+    if (micOverviewResizeHandler) {
+        window.removeEventListener('resize', micOverviewResizeHandler);
+        micOverviewResizeHandler = null;
+    }
+}
+
+function salesHasMeaningfulTable(sales = {}) {
+    if (!sales || typeof sales !== 'object') return false;
+    const resolved = window.MicMiniDashboard?.resolveHourly?.(sales);
+    if (resolved?.actuals?.length || resolved?.forecasts?.length) {
+        const actualSum = (resolved.actuals || []).reduce((sum, v) => sum + (Number(v) || 0), 0);
+        const forecastSum = (resolved.forecasts || []).reduce((sum, v) => sum + (Number(v) || 0), 0);
+        return actualSum > 0 || forecastSum > 0;
+    }
+    return Number(sales.actual) > 0 || Number(sales.forecast) > 0;
+}
+
+function salesPlaceholderState(sales = {}) {
+    if (micSalesFetchInFlight || sales.pending) return { show: true, animated: true };
+    if (salesHasMeaningfulTable(sales)) return null;
+    return { show: true, animated: true };
+}
+
+function renderSalesTileLoadingBody() {
+    if (window.LoadingDots?.tileBody) {
+        return window.LoadingDots.tileBody({ animated: true });
+    }
+    return `<div class="mic-sales-tile-loading" role="status" aria-live="polite" aria-busy="true">
+        <div class="loading-dots loading-dots--md mic-sales-tile-loading__dots" aria-hidden="true">
+            <span class="loading-dots__dot" aria-hidden="true"></span>
+            <span class="loading-dots__dot" aria-hidden="true"></span>
+            <span class="loading-dots__dot" aria-hidden="true"></span>
+        </div>
+        <p class="mic-sales-tile-loading__message">Waiting for sales data</p>
+    </div>`;
+}
+
+function syncSalesWaitPolling() {
+    const waiting = salesPlaceholderState(micData?.salesToday)?.show;
+    if (waiting && !salesWaitPollTimer) {
+        salesWaitPollTimer = window.setInterval(() => {
+            if (!salesPlaceholderState(micData?.salesToday)?.show) {
+                window.clearInterval(salesWaitPollTimer);
+                salesWaitPollTimer = null;
+                return;
+            }
+            void loadMicData();
+        }, SCRAPE_POLL_MS);
+    } else if (!waiting && salesWaitPollTimer) {
+        window.clearInterval(salesWaitPollTimer);
+        salesWaitPollTimer = null;
+    }
+}
+
 function renderSalesStack(sales) {
+    if (salesPlaceholderState(sales)?.show) {
+        return '<div class="mic-store-lead-sales-stack mic-store-lead-sales-stack--pending" aria-hidden="true"></div>';
+    }
     const actual = Number(sales?.actual) || 0;
     const forecast = Number(sales?.forecast) || 0;
     const progress = sales?.progress || {};
@@ -319,6 +404,9 @@ function syncMicLayoutMode() {
 }
 
 function renderMiniDashboard(sales) {
+    if (salesPlaceholderState(sales)?.show) {
+        return `<div class="mic-mini-dashboard mic-mini-dashboard--loading">${renderSalesTileLoadingBody()}</div>`;
+    }
     const mobile = isMicMobileView();
     if (mobile) {
         const totalsHtml = window.MicMiniDashboard?.renderMobileMealTotals?.(sales) || '';
@@ -348,7 +436,8 @@ function renderMiniDashboard(sales) {
 }
 
 function refreshMiniDashboard() {
-    if (!micData?.salesToday) return;
+    if (!canMaintainMicStoreOverview()) return;
+    if (!micData?.salesToday || salesPlaceholderState(micData.salesToday)?.show) return;
     const host = document.querySelector('.mic-mini-dashboard');
     if (!host) return;
     host.outerHTML = renderMiniDashboard(micData.salesToday);
@@ -425,8 +514,8 @@ function renderSssgTile(sales = {}, { tabbed = false } = {}) {
 function renderVocTile(voc, { tabbed = false, wide = false, inRow = false } = {}) {
     const posClass =
         tabbed || inRow ? '' : ` mic-tile--pos-voc${wide ? ' mic-tile--pos-voc-wide' : ''}`;
-    const osatText = voc.osat == null ? '—' : `${voc.osat}%`;
-    const accText = voc.acc == null ? '—' : `${voc.acc}%`;
+    const osatText = voc.placeholder ? 'TBD%' : voc.osat == null ? '—' : `${voc.osat}%`;
+    const accText = voc.placeholder ? 'TBD%' : voc.acc == null ? '—' : `${voc.acc}%`;
     return `
         <a
             class="mic-tile mic-tile--link mic-tile--voc mic-tile--metric-card${posClass}"
@@ -1076,6 +1165,26 @@ function renderSquareOneMiddleTile(data, { inRow = false } = {}) {
     });
 }
 
+function renderOpenActionsTile(data, { tabbed = false, inRow = false } = {}) {
+    const hub = tacauditStoreHubHref();
+    if (!hub || !STORE_NUMBER) return '';
+    const summary = data?.actionsSummary || { open: 0, overdue: 0, dueSoon: 0 };
+    const open = Number(summary.open) || 0;
+    const overdue = Number(summary.overdue) || 0;
+    const href = `${hub}/actions`;
+    const posClass = tabbed || inRow ? '' : ' mic-tile--pos-open-actions';
+    const alertClass = overdue > 0 ? ' mic-tile--actions-overdue' : '';
+    const sub =
+        open === 0 ? 'All complete' : overdue > 0 ? `${overdue} overdue` : `${summary.dueSoon || 0} due soon`;
+    const body = `
+            <div class="mic-tile-body">
+                <div class="mic-tile-label">Open actions</div>
+                <div class="mic-tile-metric">${open}</div>
+                <div class="mic-tile-sub">${escapeHtml(sub)}</div>
+            </div>`;
+    return `<a class="mic-tile mic-tile--link${posClass}${alertClass}" href="${escapeHtml(href)}" aria-label="Open actions - ${open}">${body}</a>`;
+}
+
 function renderCoreCountdownTile({ tabbed = false, inRow = false } = {}) {
     return window.CoreCountdown?.renderTileHtml?.({ tabbed, inRow }) || '';
 }
@@ -1093,6 +1202,7 @@ function renderStoreTopRow(data) {
 
 function renderDesktopMiddleRow(data) {
     const tiles = [
+        renderOpenActionsTile(data, { inRow: true }),
         renderSquareOneMiddleTile(data, { inRow: true }),
         renderDailyCountTile(data, { inRow: true }),
     ].filter(Boolean);
@@ -1115,6 +1225,8 @@ function renderMobileOrdersTab(data) {
 
 function renderMobileAuditsTab(data) {
     const parts = [];
+    const actionsHtml = renderOpenActionsTile(data, { tabbed: true });
+    if (actionsHtml) parts.push(actionsHtml);
     const dfscHtml = renderDfscTile(data, { tabbed: true });
     if (dfscHtml) parts.push(dfscHtml);
     parts.push(renderWeeklyAuditTiles(data, { tabbed: true, includeHub: true }));
@@ -1289,6 +1401,29 @@ async function enrichMicSalesHourly(data) {
         return data;
     }
 
+    const trim = window.MicMiniDashboard?.trimHourlyToTradingWindow;
+    const rawActual = Array.isArray(sales.rawActual) ? sales.rawActual : [];
+    const rawForecast = Array.isArray(sales.rawForecast) ? sales.rawForecast : [];
+    if (trim && (rawActual.length || rawForecast.length)) {
+        const trimmed = trim(
+            rawActual,
+            rawForecast,
+            sales.openHour,
+            sales.closeHour
+        );
+        if (trimmed.actual.length || trimmed.forecast.length) {
+            data.salesToday = {
+                ...sales,
+                rawActual,
+                rawForecast,
+                actualHourly: trimmed.actual,
+                forecastHourly: trimmed.forecast,
+                hours: Math.max(trimmed.actual.length, trimmed.forecast.length) || sales.hours,
+            };
+            return data;
+        }
+    }
+
     try {
         const res = await fetch(`/api/sales?store=${encodeURIComponent(STORE_NUMBER)}`, {
             credentials: 'same-origin',
@@ -1317,23 +1452,58 @@ async function enrichMicSalesHourly(data) {
     return data;
 }
 
-async function loadMicData() {
-    const storeParam = STORE_NUMBER ? `?store=${encodeURIComponent(STORE_NUMBER)}` : '';
-    const res = await fetch(`/api/overview${storeParam}`, {
-        credentials: 'same-origin',
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) {
-        app.textContent = data.error || 'Could not load MIC overview.';
-        return;
+function buildPlaceholderMicData() {
+    return {
+        success: true,
+        storeNumber: STORE_NUMBER,
+        storeName: micData?.storeName || '',
+        salesToday: { actual: 0, forecast: 0, hours: 0, pending: true },
+        voc: { placeholder: true, ...VOC_PLACEHOLDER },
+        stockCount: {
+            active: false,
+            message: 'All orders are placed for today',
+            stockLevelsSub: 'Stock levels not checked today',
+        },
+        dailyStockCount: { configured: false, message: 'No daily items tagged yet' },
+        weeklyAudits: { auditTiles: weeklyAuditFallbackTiles() },
+        squareOneTiles: [{ label: 'Square One', tileLabel: 'Square One', done: false, sub: 'Due this week' }],
+        actionsSummary: { open: 0, overdue: 0, dueSoon: 0 },
+    };
+}
+
+function renderPlaceholderTiles() {
+    if (!canMaintainMicStoreOverview()) return;
+    if (!document.getElementById('mic-grid')) renderShell();
+    micData = buildPlaceholderMicData();
+    const label = document.getElementById('mic-store-label');
+    if (label) {
+        label.textContent = micData.storeName
+            ? `${micData.storeName} · ${STORE_NUMBER}`
+            : `Store ${STORE_NUMBER}`;
     }
-    micData = await enrichMicSalesHourly(data);
-    await patchStockLevelsForMode();
-    updateSalesScrapeHint(data.salesScrapeStatus);
-    window.MicSettings?.setStoreContext?.({
-        storeNumber: STORE_NUMBER || '',
-        reportEmail: micData.reportEmail || '',
-    });
+    const grid = document.getElementById('mic-grid');
+    if (grid) grid.classList.remove('mic-grid--loading');
+    renderTiles(micData);
+    syncSalesWaitPolling();
+}
+
+function persistMicOverview(data) {
+    if (!STORE_NUMBER || !data?.success) return;
+    window.DashboardDataCache?.writeOverview?.(STORE_NUMBER, data);
+    try {
+        sessionStorage.setItem(MIC_LAST_STORE_KEY, STORE_NUMBER);
+    } catch {
+        /* ignore */
+    }
+}
+
+function restoreCachedMicOverview() {
+    if (!canMaintainMicStoreOverview()) return false;
+    if (!STORE_NUMBER) return false;
+    const entry = window.DashboardDataCache?.readOverview?.(STORE_NUMBER);
+    if (!entry?.data || !window.DashboardDataCache?.hasMeaningfulMicOverview?.(entry.data)) return false;
+
+    micData = entry.data;
     const label = document.getElementById('mic-store-label');
     if (label) {
         label.textContent = micData.storeName
@@ -1342,6 +1512,86 @@ async function loadMicData() {
     }
     if (!document.getElementById('mic-grid')) renderShell();
     renderTiles(micData);
+    updateSalesScrapeHint({
+        inFlight: true,
+        salesUpdatedAt: entry.data.salesToday?.updatedAt || entry.data.timestamp || null,
+        timeZone: entry.data.salesToday?.timeZone || TIME_ZONE,
+    });
+    return true;
+}
+
+let micDataLoadPromise = null;
+
+async function loadMicData() {
+    if (!canMaintainMicStoreOverview()) return null;
+    if (micDataLoadPromise) return micDataLoadPromise;
+    micDataLoadPromise = loadMicDataInner().finally(() => {
+        micDataLoadPromise = null;
+    });
+    return micDataLoadPromise;
+}
+
+async function loadMicDataInner() {
+    if (!canMaintainMicStoreOverview()) return;
+    const storeParam = STORE_NUMBER ? `?store=${encodeURIComponent(STORE_NUMBER)}` : '';
+    const showingMeaningfulSales = salesHasMeaningfulTable(micData?.salesToday);
+    micSalesFetchInFlight = true;
+    try {
+        if (!showingMeaningfulSales) {
+            micData = {
+                ...(micData || buildPlaceholderMicData()),
+                salesToday: {
+                    ...(micData?.salesToday || {}),
+                    actual: 0,
+                    forecast: 0,
+                    hours: 0,
+                    pending: true,
+                },
+            };
+            if (!document.getElementById('mic-grid')) renderShell();
+            renderTiles(micData);
+        }
+        const res = await fetch(`/api/overview${storeParam}`, {
+            credentials: 'same-origin',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+            if (!micData) {
+                app.textContent = data.error || 'Could not load MIC overview.';
+            }
+            return;
+        }
+        micData = await enrichMicSalesHourly(data);
+        if (micData.salesToday && 'pending' in micData.salesToday) {
+            const { pending, ...salesToday } = micData.salesToday;
+            micData.salesToday = salesToday;
+        }
+        persistMicOverview(micData);
+        updateSalesScrapeHint(data.salesScrapeStatus);
+        window.MicSettings?.setStoreContext?.({
+            storeNumber: STORE_NUMBER || '',
+            reportEmail: micData.reportEmail || '',
+        });
+        const label = document.getElementById('mic-store-label');
+        if (label) {
+            label.textContent = micData.storeName
+                ? `${micData.storeName} · ${STORE_NUMBER}`
+                : `Store ${STORE_NUMBER}`;
+        }
+        if (!document.getElementById('mic-grid')) renderShell();
+        const grid = document.getElementById('mic-grid');
+        if (grid) grid.classList.remove('mic-grid--loading');
+        renderTiles(micData);
+        void patchStockLevelsForMode().then(() => {
+            if (micData) renderTiles(micData);
+        });
+    } finally {
+        micSalesFetchInFlight = false;
+        syncSalesWaitPolling();
+        if (salesPlaceholderState(micData?.salesToday)?.show) {
+            renderTiles(micData);
+        }
+    }
 }
 
 async function resolveMicStoreNumber() {
@@ -1388,7 +1638,40 @@ function clearBrokenStoreViewMode() {
     }
 }
 
-async function initStoreOverview(me) {
+function readMicLastStore() {
+    try {
+        return String(sessionStorage.getItem(MIC_LAST_STORE_KEY) || '').toLowerCase();
+    } catch {
+        return '';
+    }
+}
+
+function resolveStoreForUserProfile(me) {
+    const viewAs = window.AdminStoreView?.resolveStoreForOverview?.(me) || '';
+    if (viewAs) return String(viewAs).toLowerCase();
+    const scope = me?.overviewScope || 'store';
+    if (scope !== 'store') return '';
+    const stores = me.stores === '*' ? [] : Array.isArray(me.stores) ? me.stores.map(String) : [];
+    if (stores.length === 1) return stores[0].toLowerCase();
+    const fromUser = String(me.username || '').match(/(\d{3,6})/);
+    if (fromUser) return fromUser[1].toLowerCase();
+    return '';
+}
+
+function paintOverviewShellEarly() {
+    if (!app || !isMicOverviewPath()) return false;
+    const earlyStore = readMicLastStore();
+    if (!earlyStore) return false;
+    STORE_NUMBER = earlyStore;
+    app.classList.remove('app-boot-loading');
+    app.removeAttribute('aria-busy');
+    renderShell();
+    if (!restoreCachedMicOverview()) renderPlaceholderTiles();
+    void loadMicData();
+    return true;
+}
+
+async function initStoreOverview(me, { skipShell = false } = {}) {
     if (!STORE_NUMBER && isMicOverviewPath()) {
         STORE_NUMBER = await resolveMicStoreNumber();
     }
@@ -1397,7 +1680,11 @@ async function initStoreOverview(me) {
         return;
     }
     window.MicOverviewScale?.bind?.();
-    renderShell();
+    if (!skipShell) {
+        renderShell();
+        const hadCachedOverview = restoreCachedMicOverview();
+        if (!hadCachedOverview) renderPlaceholderTiles();
+    }
     syncMicLayoutMode();
     if (!micCanViewAdminAuditSummary) {
         const profile = me || (await fetchMeProfile());
@@ -1418,19 +1705,31 @@ async function initStoreOverview(me) {
     window.AdminAccounts?.maybeOpenFromQuery?.();
     window.MicSettings?.initPreferences?.();
     window.AdminStoreView?.afterShellRendered?.(me);
-    await window.CoreCountdown?.init?.();
-    loadMicData();
-    window.setInterval(() => {
-        const clock = document.getElementById('mic-clock');
-        if (clock) clock.textContent = formatTime(new Date());
-    }, 1000);
-    window.setInterval(refreshMiniDashboard, 60 * 1000);
-    window.setInterval(loadMicData, REFRESH_MS);
-    window.setInterval(pollSalesScrapeStatus, SCRAPE_POLL_MS);
-    window.addEventListener('resize', () => {
+    if (!skipShell || !micDataLoadPromise) {
+        loadMicData();
+    }
+    void window.CoreCountdown?.init?.();
+    stopMicStoreOverviewLoops();
+    micOverviewIntervals.push(
+        window.setInterval(() => {
+            if (!canMaintainMicStoreOverview()) return;
+            const clock = document.getElementById('mic-clock');
+            if (clock) clock.textContent = formatTime(new Date());
+        }, 1000)
+    );
+    micOverviewIntervals.push(window.setInterval(refreshMiniDashboard, 60 * 1000));
+    micOverviewIntervals.push(window.setInterval(loadMicData, REFRESH_MS));
+    micOverviewIntervals.push(window.setInterval(pollSalesScrapeStatus, SCRAPE_POLL_MS));
+    syncSalesWaitPolling();
+    if (micOverviewResizeHandler) {
+        window.removeEventListener('resize', micOverviewResizeHandler);
+    }
+    micOverviewResizeHandler = () => {
+        if (!canMaintainMicStoreOverview()) return;
         syncMicLayoutMode();
         requestAnimationFrame(syncSalesHourlyScroll);
-    });
+    };
+    window.addEventListener('resize', micOverviewResizeHandler);
 }
 
 async function init() {
@@ -1439,6 +1738,7 @@ async function init() {
         return;
     }
     try {
+        const overviewPaintedEarly = paintOverviewShellEarly();
         const me = await fetchMeProfile();
         if (!me) {
             app.textContent = 'Could not load your profile. Redirecting to sign in…';
@@ -1471,8 +1771,11 @@ async function init() {
             window.AdminStoreView?.afterShellRendered?.(me);
             return;
         }
-        if (viewAs) STORE_NUMBER = String(viewAs).toLowerCase();
-        await initStoreOverview(me);
+        const resolvedStore = viewAs || resolveStoreForUserProfile(me);
+        if (resolvedStore) STORE_NUMBER = String(resolvedStore).toLowerCase();
+        const canReuseEarlyPaint =
+            overviewPaintedEarly && STORE_NUMBER && STORE_NUMBER === readMicLastStore();
+        await initStoreOverview(me, { skipShell: canReuseEarlyPaint });
     } catch (err) {
         console.error('[MIC overview] Init failed:', err);
         app.textContent = err?.message || 'Could not load MIC overview.';
@@ -1484,6 +1787,24 @@ window.MicOverviewView = {
         await init();
     },
     unmount() {
+        stopMicStoreOverviewLoops();
+        window.MicOverviewMulti?.stop?.();
+        document.documentElement?.classList?.remove(
+            'mic-overview-page',
+            'mic-overview--mobile',
+            'mic-overview-tab--sales',
+            'mic-overview-tab--results',
+            'mic-overview-tab--orders',
+            'mic-overview-tab--audits'
+        );
+        document.body?.classList?.remove(
+            'mic-overview-page',
+            'mic-overview--mobile',
+            'mic-overview-tab--sales',
+            'mic-overview-tab--results',
+            'mic-overview-tab--orders',
+            'mic-overview-tab--audits'
+        );
         const root = getAppRoot();
         if (root) root.innerHTML = '';
     },

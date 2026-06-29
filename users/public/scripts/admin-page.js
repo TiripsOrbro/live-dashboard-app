@@ -1,4 +1,15 @@
 (function (global) {
+    const ACCOUNT_LEVEL_RANK = { it: 100, market: 80, area: 60, store: 40, manager: 40, mic: 20, tm: 10 };
+
+    function profileCanViewFeatureRequests(data) {
+        if (!data) return false;
+        if (data.canViewFeatureRequests === true) return true;
+        if (data.canViewFeatureRequests === false) return false;
+        if (data.isSuperAdmin) return true;
+        const level = String(data.accountLevel || 'manager').toLowerCase();
+        return (ACCOUNT_LEVEL_RANK[level] ?? 40) >= ACCOUNT_LEVEL_RANK.mic;
+    }
+
     const ADMIN_SECTIONS = [
         {
             id: 'accounts-create',
@@ -48,14 +59,6 @@
             mount: (host, opts) => global.AdminBuildTo?.mount?.(host, opts),
             activate: () => global.AdminBuildTo?.setInlineHost?.(sectionPanels.get('build-to')?.host),
         },
-        {
-            id: 'feature-requests',
-            label: 'Feature requests',
-            group: 'admin',
-            visible: (p) => p.isSuperAdmin,
-            mount: (host, opts) => global.FeatureRequestsView?.mount?.(host, opts),
-            activate: () => {},
-        },
     ];
 
     const USER_SECTIONS = [
@@ -89,6 +92,22 @@
             group: 'user',
             visible: () => true,
             mount: (host, opts) => global.MicSettings?.mountPageSection?.('general', host, opts),
+            activate: () => {},
+        },
+        {
+            id: 'feature-requests',
+            label: 'Feature requests',
+            group: 'user',
+            visible: (p) => profileCanViewFeatureRequests(p),
+            mount: (host, opts) => global.FeatureRequestsView?.mount?.(host, opts),
+            activate: () => {},
+        },
+        {
+            id: 'bug-reports',
+            label: 'Report bug',
+            group: 'user',
+            visible: () => true,
+            mount: (host, opts) => global.BugReportsView?.mount?.(host, opts),
             activate: () => {},
         },
     ];
@@ -322,12 +341,13 @@
 
             const host = contentHost();
             if (host) {
-                host.innerHTML = '<p class="admin-settings-loading">Loading settings…</p>';
+                host.innerHTML =
+                    '<div class="admin-settings-loading-panel" aria-live="polite"><p class="admin-settings-loading">Loading settings…</p></div>';
             }
 
             const requested = sectionFromLocation() || defaultSectionId(data);
             await preloadAllSections(data);
-            host?.querySelector('.admin-settings-loading')?.remove();
+            host?.querySelector('.admin-settings-loading-panel')?.remove();
 
             await showSection(requested);
         } catch {

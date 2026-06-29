@@ -19,6 +19,95 @@ let statusKind = '';
 const autosave = window.AuditSessionSave?.createSaveRunner?.();
 let saveTimer = null;
 const signaturePads = new Map();
+const expandedActions = new Set();
+
+function isScoredQuestion(question) {
+    return ['yes_no_points', 'yes_no_na', 'standard_rating', 'compliant_nc', 'select', 'overall_result'].includes(
+        question?.type
+    );
+}
+
+function isNcAnswer(question, value) {
+    const raw = String(value || '').toLowerCase();
+    if (question.type === 'yes_no_points' || question.type === 'yes_no_na') return raw === 'no';
+    if (question.type === 'standard_rating') return raw === 'significant' || raw === 'secondary';
+    if (question.type === 'compliant_nc') return raw.includes('non');
+    return false;
+}
+
+function getActionEntry(questionId) {
+    const raw = session?.actions?.[questionId];
+    if (!raw) return { text: '', submittedAt: null, dueDate: null };
+    return {
+        text: String(raw.text || ''),
+        submittedAt: raw.submittedAt || null,
+        dueDate: raw.dueDate || null,
+    };
+}
+
+function isActionSubmitted(questionId) {
+    const entry = getActionEntry(questionId);
+    return Boolean(entry.submittedAt && entry.text.trim());
+}
+
+function renderActionForm(questionId) {
+    const entry = getActionEntry(questionId);
+    const submitted = isActionSubmitted(questionId);
+    const open = expandedActions.has(questionId) || !submitted;
+    if (submitted && !open) {
+        const dueLine = entry.dueDate ? `<p class="dfsc-action-due-display">Due ${escapeHtml(entry.dueDate)}</p>` : '';
+        return `
+            <div class="dfsc-inline-action dfsc-inline-action--submitted">
+                <div class="dfsc-action-submitted-label">Action submitted</div>
+                <p class="dfsc-action-submitted-text">${escapeHtml(entry.text)}</p>
+                ${dueLine}
+                <button type="button" class="dfsc-qcard-link" data-edit-action="${escapeHtml(questionId)}">Edit action</button>
+            </div>`;
+    }
+    const dueField = window.AuditActionForm?.renderDueDateField?.(questionId, entry, context) || '';
+    return `
+        <div class="dfsc-inline-action dfsc-qcard-strip">
+            <textarea class="dfsc-textarea" rows="3" data-action-qid="${escapeHtml(questionId)}"
+                placeholder="Describe corrective action taken">${escapeHtml(entry.text)}</textarea>
+            ${dueField}
+            <button type="button" class="dfsc-btn dfsc-btn-primary dfsc-action-submit" data-submit-action="${escapeHtml(questionId)}">
+                Submit action
+            </button>
+        </div>`;
+}
+
+function setActionDraft(questionId, value) {
+    session.actions = session.actions || {};
+    const prev = getActionEntry(questionId);
+    const dueDate = window.AuditActionForm?.readDueDateFromDom?.(questionId) || prev.dueDate;
+    session.actions[questionId] = { text: value, submittedAt: prev.submittedAt, dueDate };
+    scheduleSave();
+}
+
+async function submitAction(questionId) {
+    const textarea = document.querySelector(`[data-action-qid="${questionId}"]`);
+    const text = String(textarea?.value || getActionEntry(questionId).text || '').trim();
+    if (!text) {
+        statusMessage = 'Enter an action before submitting.';
+        statusKind = 'error';
+        renderStatusBar();
+        return;
+    }
+    const dueDate =
+        window.AuditActionForm?.readDueDateFromDom?.(questionId) ||
+        window.AuditActionForm?.defaultDueDate?.(context) ||
+        '';
+    session.actions = session.actions || {};
+    session.actions[questionId] = { text, submittedAt: new Date().toISOString(), dueDate };
+    await saveSession();
+    expandedActions.delete(questionId);
+    renderAuditView();
+}
+
+function editAction(questionId) {
+    expandedActions.add(questionId);
+    renderAuditView();
+}
 
 function apiBase() {
     return `/api/${AUDIT_TYPE}`;
@@ -115,26 +204,28 @@ function optionButtons(question) {
 
 function renderQuestion(question) {
     const value = session?.answers?.[question.id] ?? '';
+    const isNc = isScoredQuestion(question) && isNcAnswer(question, value);
+    let body = '';
     if (question.type === 'text' || question.type === 'datetime' || question.type === 'number') {
-        return `<label class="dfsc-field"><span class="dfsc-field__label">${escapeHtml(question.label)}</span>
+        body = `<label class="dfsc-field"><span class="dfsc-field__label">${escapeHtml(question.label)}</span>
             <input class="dfsc-input" type="${question.type === 'number' ? 'number' : 'text'}" data-text-answer="${escapeHtml(question.id)}" value="${escapeHtml(value)}" /></label>`;
-    }
-    if (question.type === 'textarea') {
-        return `<label class="dfsc-field"><span class="dfsc-field__label">${escapeHtml(question.label)}</span>
+    } else if (question.type === 'textarea') {
+        body = `<label class="dfsc-field"><span class="dfsc-field__label">${escapeHtml(question.label)}</span>
             <textarea class="dfsc-input" rows="3" data-text-answer="${escapeHtml(question.id)}">${escapeHtml(value)}</textarea></label>`;
-    }
-    if (question.type === 'checkbox') {
+    } else if (question.type === 'checkbox') {
         const checked = value === true || value === 'true' || value === '1';
-        return `<label class="dfsc-check"><input type="checkbox" data-check-answer="${escapeHtml(question.id)}"${checked ? ' checked' : ''} />
+        body = `<label class="dfsc-check"><input type="checkbox" data-check-answer="${escapeHtml(question.id)}"${checked ? ' checked' : ''} />
             <span>${escapeHtml(question.label)}</span></label>`;
-    }
-    if (question.type === 'signature') {
-        return `<div class="dfsc-field"><span class="dfsc-field__label">${escapeHtml(question.label)}</span>
+    } else if (question.type === 'signature') {
+        body = `<div class="dfsc-field"><span class="dfsc-field__label">${escapeHtml(question.label)}</span>
             <canvas class="dfsc-signature" data-signature="${escapeHtml(question.id)}" width="320" height="120"></canvas>
             <button type="button" class="dfsc-btn dfsc-btn-secondary dfsc-btn-sm" data-clear-sig="${escapeHtml(question.id)}">Clear</button></div>`;
+    } else {
+        body = `<div class="dfsc-question"><p class="dfsc-question__label">${escapeHtml(question.label)}</p>
+            <div class="dfsc-choice-row">${optionButtons(question).join('')}</div></div>`;
     }
-    return `<div class="dfsc-question"><p class="dfsc-question__label">${escapeHtml(question.label)}</p>
-        <div class="dfsc-choice-row">${optionButtons(question).join('')}</div></div>`;
+    const actionBlock = isNc ? renderActionForm(question.id) : '';
+    return `<div class="dfsc-question-wrap${isNc ? ' dfsc-question-wrap--nc' : ''}">${body}${actionBlock}</div>`;
 }
 
 function renderSignOffSection() {
@@ -296,6 +387,8 @@ function bindAuditEvents() {
             const value = btn.dataset.value;
             session.answers = session.answers || {};
             session.answers[id] = value;
+            const question = (schema?.questions || []).find((q) => q.id === id);
+            if (question && isNcAnswer(question, value)) expandedActions.add(id);
             scheduleSave();
             renderAuditView();
         });
@@ -313,6 +406,15 @@ function bindAuditEvents() {
             session.answers[input.dataset.checkAnswer] = input.checked;
             scheduleSave();
         });
+    });
+    app.querySelectorAll('[data-action-qid]').forEach((textarea) => {
+        textarea.addEventListener('input', () => setActionDraft(textarea.dataset.actionQid, textarea.value));
+    });
+    app.querySelectorAll('[data-submit-action]').forEach((btn) => {
+        btn.addEventListener('click', () => submitAction(btn.dataset.submitAction));
+    });
+    app.querySelectorAll('[data-edit-action]').forEach((btn) => {
+        btn.addEventListener('click', () => editAction(btn.dataset.editAction));
     });
     app.querySelectorAll('[data-section-idx]').forEach((btn) => {
         btn.addEventListener('click', () => {

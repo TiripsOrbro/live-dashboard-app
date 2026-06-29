@@ -56,7 +56,7 @@ function buildQuestionsForArea(areaId) {
             q(`${areaId}_intro_banner`, 'checklist', 'banner', '', {
                 required: false,
                 bannerTitle: area.title.toUpperCase(),
-                bannerSubtitle: 'Mark each task completed to standard or not complete. Photo evidence is required for every answer.',
+                bannerSubtitle: 'Mark each task completed to standard or not complete. Photo evidence is required for completed items.',
             })
         );
     }
@@ -106,10 +106,37 @@ function isNotCompliantValue(value, question) {
 function photoRequiredForQuestion(question, value, photos = {}) {
     if (!question?.photoRequired) return false;
     if (isAnswerEmpty(question, value)) return false;
-    if (String(value).toLowerCase() === 'na' && question.options?.some((o) => o[0] === 'na')) {
-        return true;
-    }
+    if (String(value).toLowerCase() !== 'complete') return false;
     return !photos?.[question.id];
+}
+
+function getActionEntry(session, questionId) {
+    const raw = session.actions?.[questionId];
+    if (!raw) return { text: '', submittedAt: null, dueDate: null };
+    return {
+        text: String(raw.text || ''),
+        submittedAt: raw.submittedAt || null,
+        dueDate: raw.dueDate || null,
+    };
+}
+
+function isActionSubmitted(session, questionId) {
+    const entry = getActionEntry(session, questionId);
+    return Boolean(entry.submittedAt && entry.text.trim());
+}
+
+function normalizeActionUpdate(entry, previous) {
+    const text = String(entry?.text ?? previous?.text ?? '').trim();
+    const submittedAt = entry?.submittedAt ?? previous?.submittedAt ?? null;
+    const dueDate = entry?.dueDate ?? previous?.dueDate ?? null;
+    if (entry?.submit) {
+        return {
+            text,
+            submittedAt: submittedAt || new Date().toISOString(),
+            dueDate: dueDate || null,
+        };
+    }
+    return { text, submittedAt, dueDate: dueDate || null };
 }
 
 function getVisibleQuestions(session, sectionId) {
@@ -123,13 +150,14 @@ function collectNonCompliant(session) {
         if (!isSquareStandardType(question.type)) continue;
         const value = session.answers?.[question.id];
         if (!isNotCompliantValue(value, question)) continue;
-        const note = String(session.notes?.[question.id] || '').trim();
+        const action = getActionEntry(session, question.id);
         out.push({
             questionId: question.id,
             label: question.label,
             group: question.group,
-            note,
-            hasNote: Boolean(note),
+            actionText: action.text,
+            actionSubmittedAt: action.submittedAt,
+            actionSubmitted: isActionSubmitted(session, question.id),
         });
     }
     return out;
@@ -147,8 +175,8 @@ function validateSection(session, sectionId) {
         if (photoRequiredForQuestion(question, value, session.photos)) {
             return { ok: false, error: `Photo evidence required: ${question.label.slice(0, 60)}…` };
         }
-        if (isNotCompliantValue(value, question) && !String(session.notes?.[question.id] || '').trim()) {
-            return { ok: false, error: `Add a note for not-complete items (${question.label.slice(0, 60)}…).` };
+        if (isNotCompliantValue(value, question) && !isActionSubmitted(session, question.id)) {
+            return { ok: false, error: `Submit a corrective action for not-complete items (${question.label.slice(0, 60)}…).` };
         }
     }
     return { ok: true };
@@ -203,6 +231,9 @@ module.exports = {
     isAnswerEmpty,
     isNotCompliantValue,
     photoRequiredForQuestion,
+    getActionEntry,
+    isActionSubmitted,
+    normalizeActionUpdate,
     collectNonCompliant,
     validateSection,
     validateSessionComplete,

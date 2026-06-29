@@ -1,7 +1,17 @@
 (function (global) {
     const ADMIN_PAGE_PATH = '/Admin/Settings';
+    const ACCOUNT_LEVEL_RANK = { it: 100, market: 80, area: 60, store: 40, manager: 40, mic: 20, tm: 10 };
 
     let profile = null;
+
+    function profileCanViewFeatureRequests(data) {
+        if (!data) return false;
+        if (data.canViewFeatureRequests === true) return true;
+        if (data.canViewFeatureRequests === false) return false;
+        if (data.isSuperAdmin) return true;
+        const level = String(data.accountLevel || 'manager').toLowerCase();
+        return (ACCOUNT_LEVEL_RANK[level] ?? 40) >= ACCOUNT_LEVEL_RANK.mic;
+    }
 
     function escapeAttr(value) {
         return String(value ?? '')
@@ -67,7 +77,7 @@
             btn.hidden = !data.canAccessAdminMenu;
         });
         const featureRequestsBtn = root.querySelector('[data-admin-action="feature-requests"]');
-        if (featureRequestsBtn) featureRequestsBtn.hidden = !data.isSuperAdmin;
+        if (featureRequestsBtn) featureRequestsBtn.hidden = !profileCanViewFeatureRequests(data);
     }
 
     let bindOptions = {};
@@ -161,5 +171,6 @@
         },
         close: () => {},
         fetchProfile,
+        profileCanViewFeatureRequests,
     };
 })(window);

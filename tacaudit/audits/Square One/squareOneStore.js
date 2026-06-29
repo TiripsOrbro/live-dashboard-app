@@ -15,6 +15,11 @@ const {
     inCompleteAccessError,
 } = require('../../src/audit/auditSessionAccess');
 const { applyCollaborativeUpdates } = require('../../src/audit/auditContributions');
+const {
+    promoteSessionActionsOnSubmit,
+    syncUpdatedActionsToRegistry,
+    getDefaultActionDueDate,
+} = require('../../src/core/storeActionsStore');
 const { safePathSegment } = require('../../src/audit/auditPathSafety');
 const { getAreaById, getDueAreasForSlot } = require('./squareOneAreas');
 const {
@@ -24,6 +29,7 @@ const {
     collectNonCompliant,
     getQuestionById,
     scoreSession,
+    normalizeActionUpdate,
     AUDIT_LABEL,
 } = require('./squareOneSchema');
 
@@ -249,6 +255,7 @@ function getContext(storeNumber, options = {}) {
         openAudits: listOpenAudits(store, { access }),
         canCompleteAudits: access.canCompleteAudits,
         canStartAudits: access.canStartAudits,
+        defaultActionDueDate: getDefaultActionDueDate(store),
         schema: schemaAreaId ? buildSchemaPayload(schemaAreaId) : null,
     };
 }
@@ -307,6 +314,7 @@ function createSession(
         createdByUsername: String(createdByUsername || '').trim(),
         signOff: { name: '', signatureDataUrl: '', acknowledgedAt: null },
         answers: {},
+        actions: {},
         notes: {},
         photos: {},
         clientMeta: clientMeta && typeof clientMeta === 'object' ? clientMeta : null,
@@ -345,7 +353,11 @@ function updateSession(storeNumber, sessionId, updates = {}, access = {}) {
 
     applyCollaborativeUpdates(session, updates, access, {
         getQuestionById: (questionId) => getQuestionById(questionId, session.areaId),
+        normalizeActionUpdate,
     });
+    syncUpdatedActionsToRegistry(store, 'square-one', session, updates, access, (questionId) =>
+        getQuestionById(questionId, session.areaId)
+    );
     if (updates.signOff && typeof updates.signOff === 'object') {
         session.signOff = { ...session.signOff, ...updates.signOff };
     }
@@ -407,6 +419,7 @@ function submitSession(storeNumber, sessionId, signOff = {}, access = {}) {
     session.completedAt = new Date().toISOString();
     session.nonCompliant = collectNonCompliant(session);
     session.score = scoreSession(session);
+    promoteSessionActionsOnSubmit(store, 'square-one', session, collectNonCompliant, access);
     saveSession(session);
     clearActivePointer(store, session.areaId);
     afterAuditSubmit({ storeNumber: store, auditType: 'square-one', session });
@@ -530,15 +543,18 @@ function listPhotoCandidatesForPeriod(storeNumber, periodKey) {
         const area = session.areaTitle || session.dashboardLabel || 'Square One';
         for (const [questionId, photo] of Object.entries(session.photos || {})) {
             if (!photo) continue;
+            if (String(session.answers?.[questionId] || '').toLowerCase() !== 'complete') continue;
             const question = getQuestionById(questionId, session.areaId);
             candidates.push({
                 id: `${session.id}:${questionId}`,
                 sessionId: session.id,
                 questionId,
-                area,
+                areaId: session.areaId,
+                area: session.areaTitle || area,
                 label: session.dashboardLabel || area,
                 caption: question?.label?.slice(0, 80) || 'Photo',
                 dataUrl: photo.dataUrl || photo.url || '',
+                completedAt: session.completedAt || null,
             });
         }
     }

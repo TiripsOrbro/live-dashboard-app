@@ -33,16 +33,33 @@ body.admin-settings-page .nav-back-bubble:hover {
     background: color-mix(in srgb, var(--charcoal) 75%, var(--tb-purple-light));
 }
 
+html.mic-overview-page body.admin-settings-page .app-shell-view #app,
+html.admin-overview-page body.admin-settings-page .app-shell-view #app,
+body.admin-settings-page #app {
+    display: block;
+    flex: none;
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    max-height: none;
+    padding: 0;
+    overflow: visible;
+}
+
 .admin-settings-shell {
     display: flex;
     flex-direction: column;
+    width: 100%;
     min-height: 100vh;
     min-height: 100dvh;
     padding-top: max(3.5rem, calc(env(safe-area-inset-top) + 2.5rem));
+    box-sizing: border-box;
 }
 
 .admin-settings-header {
-    padding: 0 max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 max(1.25rem, env(safe-area-inset-right)) 0 max(1.25rem, env(safe-area-inset-left));
     border-bottom: var(--cell-border) color-mix(in srgb, var(--charcoal) 15%, transparent);
     background: var(--white);
 }
@@ -98,13 +115,14 @@ body.admin-settings-page .nav-back-bubble:hover {
     align-items: center;
     justify-content: center;
     padding: calc(8px * var(--dashboard-scale)) calc(14px * var(--dashboard-scale));
-    border: var(--cell-border) var(--blank-border);
+    border: var(--mic-tile-border);
     background: var(--blank);
     color: var(--charcoal);
     font: inherit;
     font-size: var(--font-size-5);
     font-weight: var(--font-weight-ui-label);
     cursor: pointer;
+    border-radius: var(--mic-settings-radius, var(--mic-tile-radius, 0));
     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
@@ -123,24 +141,42 @@ body.admin-settings-page .nav-back-bubble:hover {
 
 .admin-settings-main {
     flex: 1;
+    width: 100%;
     min-width: 0;
-    padding: calc(16px * var(--dashboard-scale)) max(1rem, env(safe-area-inset-right))
-        calc(24px * var(--dashboard-scale)) max(1rem, env(safe-area-inset-left));
+    box-sizing: border-box;
+    padding: calc(16px * var(--dashboard-scale)) max(1.25rem, env(safe-area-inset-right))
+        calc(24px * var(--dashboard-scale)) max(1.25rem, env(safe-area-inset-left));
     overflow: auto;
 }
 
 .admin-settings-content {
+    width: 100%;
     min-height: 100%;
-    max-width: min(1280px, 100%);
+    box-sizing: border-box;
+}
+
+.admin-settings-section-panel {
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .admin-settings-user-panel {
-    max-width: min(40rem, 100%);
+    width: 100%;
+    max-width: none;
+}
+
+.admin-settings-loading-panel {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+    min-height: 12rem;
+    box-sizing: border-box;
 }
 
 .admin-settings-loading,
 .admin-settings-empty {
     margin: 0;
+    width: 100%;
     color: color-mix(in srgb, var(--charcoal) 55%, transparent);
 }
 
@@ -161,6 +197,45 @@ body.admin-settings-page .nav-back-bubble:hover {
     border-radius: 0;
     padding: 0;
     background: transparent;
+    box-sizing: border-box;
+}
+
+.admin-settings-content .admin-accounts-view,
+.admin-settings-content .admin-accounts-create,
+.admin-settings-content .admin-accounts-form-grid {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.admin-settings-content .admin-accounts-form-grid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+}
+
+.admin-settings-content .admin-accounts-create-actions,
+.admin-settings-content .admin-accounts-scope-stack {
+    grid-column: 1 / -1;
+}
+
+.admin-settings-user-panel .mic-settings-page-prefs,
+.admin-settings-user-panel .mic-settings-tabpanel,
+.admin-settings-user-panel .mic-settings-actions,
+.admin-settings-user-panel .mic-settings-pref-block,
+.admin-settings-user-panel .mic-settings-store-email,
+.admin-settings-user-panel .mic-colour-samples {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+}
+
+/* Standalone settings page: tabpanel class is for the modal picker only */
+.admin-settings-section-panel .mic-settings-tabpanel {
+    display: block;
+}
+
+.app-shell-view:has(.admin-settings-shell) {
+    overflow: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
 }
 
 .admin-settings-content .admin-modal--build-to,
@@ -929,9 +1004,15 @@ html.mic-dark-mode .admin-accounts-existing {
     gap: 0.85rem;
 }
 
+.admin-accounts-form-grid > .admin-accounts-field {
+    grid-column: 1 / -1;
+}
+
 .admin-accounts-field {
     display: grid;
     gap: 0.35rem;
+    width: 100%;
+    min-width: 0;
 }
 
 .admin-accounts-field > span,
@@ -943,6 +1024,8 @@ html.mic-dark-mode .admin-accounts-existing {
 
 .admin-accounts-field input[type='text'] {
     font: inherit;
+    width: 100%;
+    box-sizing: border-box;
     padding: 0.55rem 0.65rem;
     border: 1px solid rgba(0, 0, 0, 0.15);
     border-radius: 6px;

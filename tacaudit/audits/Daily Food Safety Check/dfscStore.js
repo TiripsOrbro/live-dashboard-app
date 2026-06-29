@@ -16,6 +16,12 @@ const {
     applyAnswerTimestamp,
 } = require('./dfscSchema');
 const { afterAuditSubmit } = require('../../src/core/tacauditSubmit');
+const { stampPhotoContributions } = require('../../src/audit/auditContributions');
+const {
+    syncRegistryFromSessionAction,
+    promoteSessionActionsOnSubmit,
+    getDefaultActionDueDate,
+} = require('../../src/core/storeActionsStore');
 const { listInspectionHistory: listPestWalkInspectionHistory } = require('../Pest Walk/pestWalkStore');
 const {
     userOwnsSession,
@@ -30,7 +36,7 @@ const { safePathSegment } = require('../../src/audit/auditPathSafety');
 
 const paths = require('../../../src/paths');
 const DFSC_DATA_DIR = path.join(paths.tacaudit.data, 'dfsc');
-const RETENTION_DAYS = 45;
+const RETENTION_DAYS = 90;
 const DEFAULT_TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
 
 function normalizeStoreKey(storeNumber) {
@@ -247,6 +253,7 @@ function getContext(storeNumber, options = {}) {
             .sort((a, b) => String(a.shift || '').localeCompare(String(b.shift || '')) || String(a.completedAt || '').localeCompare(String(b.completedAt || ''))),
         canCompleteAudits: access.canCompleteAudits,
         canStartAudits: access.canStartAudits,
+        defaultActionDueDate: getDefaultActionDueDate(store),
         schema: buildSchemaPayload(),
     };
 }
@@ -288,6 +295,7 @@ function createSession(
         signOff: { name: '', signatureDataUrl: '', acknowledgedAt: null },
         answers: {},
         actions: {},
+        photos: {},
         sectionSkips: [],
         notes: {},
         answerTimestamps: {},
@@ -324,14 +332,14 @@ function updateSession(storeNumber, sessionId, updates = {}, access = {}) {
     if (!session) return { ok: false, error: 'Session not found.' };
     if (session.status === 'completed') return { ok: false, error: 'This DFSC is already completed.' };
     if (!userOwnsSession(session, access.username, access.conductorFullName)) {
-        const actionsOnly =
-            updates.actions &&
-            typeof updates.actions === 'object' &&
+        const patchOnly =
             !updates.answers &&
             !updates.sectionSkips &&
             !updates.notes &&
-            !updates.signOff;
-        if (!(access.isAdmin && actionsOnly)) {
+            !updates.signOff &&
+            ((updates.actions && typeof updates.actions === 'object') ||
+                (updates.photos && typeof updates.photos === 'object'));
+        if (!(access.isAdmin && patchOnly)) {
             return { ok: false, error: inProgressAccessError(false) };
         }
     }
@@ -355,10 +363,27 @@ function updateSession(storeNumber, sessionId, updates = {}, access = {}) {
         session.actions = session.actions || {};
         for (const [questionId, entry] of Object.entries(updates.actions)) {
             session.actions[questionId] = normalizeActionUpdate(entry, session.actions[questionId]);
+            const normalized = session.actions[questionId];
+            if (normalized.submittedAt && normalized.text) {
+                const question = getQuestionById(questionId);
+                syncRegistryFromSessionAction(
+                    store,
+                    'dfsc',
+                    session,
+                    questionId,
+                    normalized,
+                    access,
+                    question?.label || questionId
+                );
+            }
         }
     }
     if (updates.notes && typeof updates.notes === 'object') {
         session.notes = { ...session.notes, ...updates.notes };
+    }
+    session.photos = session.photos || {};
+    if (updates.photos && typeof updates.photos === 'object') {
+        stampPhotoContributions(session, updates.photos, access);
     }
     if (updates.signOff && typeof updates.signOff === 'object') {
         session.signOff = { ...session.signOff, ...updates.signOff };
@@ -415,6 +440,7 @@ function submitSession(storeNumber, sessionId, signOff = {}, access = {}) {
     session.status = 'completed';
     session.completedAt = new Date().toISOString();
     session.nonCompliant = collectNonCompliant(session);
+    promoteSessionActionsOnSubmit(store, 'dfsc', session, collectNonCompliant, access);
     saveSession(session);
     clearActivePointer(store);
     afterAuditSubmit({ storeNumber: store, auditType: 'dfsc', session });

@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const paths = require('../paths');
+const { sendFeatureRequestEmail } = require('./bugReportEmail');
 
 const DATA_FILE = path.join(paths.dashboard.data, 'feature-requests.json');
 
@@ -135,20 +136,36 @@ function normalizeMilestones(value) {
         .slice(0, MAX_MILESTONES);
 }
 
-function normalizeRequest(row, state) {
+function requestScore(row) {
+    const upvotes = Array.isArray(row?.upvotes) ? row.upvotes.length : 0;
+    const downvotes = Array.isArray(row?.downvotes) ? row.downvotes.length : 0;
+    return upvotes - downvotes;
+}
+
+function normalizeRequest(row, state, viewerUsername = '') {
     if (!row || typeof row !== 'object') return row;
     const category = normalizeCategory(row.category, state);
+    const upvotes = Array.isArray(row.upvotes) ? row.upvotes.map(String) : [];
+    const downvotes = Array.isArray(row.downvotes) ? row.downvotes.map(String) : [];
+    const viewer = String(viewerUsername || '').trim();
     const normalized = {
         ...row,
         priority: normalizePriority(row.priority),
         details: String(row.details || '').slice(0, MAX_DETAILS_LENGTH),
         milestones: normalizeMilestones(row.milestones),
+        upvoteCount: upvotes.length,
+        downvoteCount: downvotes.length,
+        score: upvotes.length - downvotes.length,
+        upvotedByViewer: viewer ? upvotes.includes(viewer) : false,
+        downvotedByViewer: viewer ? downvotes.includes(viewer) : false,
     };
     if (category) {
         normalized.category = category;
     } else {
         delete normalized.category;
     }
+    delete normalized.upvotes;
+    delete normalized.downvotes;
     return normalized;
 }
 
@@ -156,6 +173,8 @@ function sortRequests(requests) {
     const active = requests
         .filter((row) => !row.completed)
         .sort((a, b) => {
+            const scoreDiff = requestScore(b) - requestScore(a);
+            if (scoreDiff !== 0) return scoreDiff;
             const rankDiff = priorityRank(b.priority) - priorityRank(a.priority);
             if (rankDiff !== 0) return rankDiff;
             return new Date(b.createdAt) - new Date(a.createdAt);
@@ -182,9 +201,9 @@ function listFeatureRequestPriorities() {
     return FEATURE_REQUEST_PRIORITIES.map((row) => ({ ...row }));
 }
 
-function listFeatureRequests() {
+function listFeatureRequests(viewerUsername = '') {
     const state = readState();
-    return sortRequests(state.requests.map((row) => normalizeRequest(row, state)));
+    return sortRequests(state.requests.map((row) => normalizeRequest(row, state, viewerUsername)));
 }
 
 function addFeatureRequestCategory(label) {
@@ -286,7 +305,7 @@ function deleteFeatureRequestCategory(categoryId) {
     };
 }
 
-function addFeatureRequest({ text, username, displayName, category, details }) {
+async function addFeatureRequest({ text, username, displayName, category, details }) {
     const trimmed = String(text || '').trim();
     if (trimmed.length < 3) {
         return { ok: false, error: 'Please enter a title of at least a few characters.' };
@@ -303,6 +322,8 @@ function addFeatureRequest({ text, username, displayName, category, details }) {
         priority: 'normal',
         details: String(details || '').slice(0, MAX_DETAILS_LENGTH),
         milestones: [],
+        upvotes: [],
+        downvotes: [],
         completed: false,
         createdAt: new Date().toISOString(),
         completedAt: null,
@@ -312,10 +333,71 @@ function addFeatureRequest({ text, username, displayName, category, details }) {
     if (normalizedCategory) request.category = normalizedCategory;
     state.requests.push(request);
     writeState(state);
-    return { ok: true, request: normalizeRequest(request, state) };
+
+    const normalized = normalizeRequest(request, state, username);
+    try {
+        await sendFeatureRequestEmail({
+            request: normalized,
+            reporterName: request.submittedByName,
+            reporterUsername: request.submittedBy,
+        });
+    } catch (error) {
+        console.warn('[FeatureRequests] Report email failed:', error.message);
+    }
+
+    return { ok: true, request: normalized, requests: listFeatureRequests(username) };
 }
 
-function updateFeatureRequest(id, updates = {}) {
+function applyVote(request, username, direction) {
+    const user = String(username || '').trim();
+    if (!user) return;
+    const upvotes = Array.isArray(request.upvotes) ? [...request.upvotes] : [];
+    const downvotes = Array.isArray(request.downvotes) ? [...request.downvotes] : [];
+    const upIdx = upvotes.indexOf(user);
+    const downIdx = downvotes.indexOf(user);
+
+    if (direction === 'up') {
+        if (upIdx !== -1) upvotes.splice(upIdx, 1);
+        else {
+            if (downIdx !== -1) downvotes.splice(downIdx, 1);
+            upvotes.push(user);
+        }
+    } else if (direction === 'down') {
+        if (downIdx !== -1) downvotes.splice(downIdx, 1);
+        else {
+            if (upIdx !== -1) upvotes.splice(upIdx, 1);
+            downvotes.push(user);
+        }
+    }
+
+    request.upvotes = upvotes;
+    request.downvotes = downvotes;
+}
+
+function toggleFeatureRequestVote(id, username, direction) {
+    const user = String(username || '').trim();
+    if (!user) return { ok: false, error: 'Sign in to vote on feature requests.' };
+    if (direction !== 'up' && direction !== 'down') {
+        return { ok: false, error: 'Invalid vote direction.' };
+    }
+
+    const state = readState();
+    const item = state.requests.find((row) => row.id === id);
+    if (!item) return { ok: false, error: 'Feature request not found.' };
+    if (item.completed) return { ok: false, error: 'Completed requests cannot be voted on.' };
+
+    applyVote(item, user, direction);
+    writeState(state);
+
+    return {
+        ok: true,
+        request: normalizeRequest(item, state, user),
+        requests: listFeatureRequests(user),
+        categories: listFeatureRequestCategories(),
+    };
+}
+
+function updateFeatureRequest(id, updates = {}, viewerUsername = '') {
     const state = readState();
     const item = state.requests.find((row) => row.id === id);
     if (!item) {
@@ -347,8 +429,8 @@ function updateFeatureRequest(id, updates = {}) {
     writeState(state);
     return {
         ok: true,
-        request: normalizeRequest(item, state),
-        requests: listFeatureRequests(),
+        request: normalizeRequest(item, state, viewerUsername),
+        requests: listFeatureRequests(viewerUsername),
         categories: listFeatureRequestCategories(),
     };
 }
@@ -363,5 +445,6 @@ module.exports = {
     hideFeatureRequestCategory,
     deleteFeatureRequestCategory,
     addFeatureRequest,
+    toggleFeatureRequestVote,
     updateFeatureRequest,
 };

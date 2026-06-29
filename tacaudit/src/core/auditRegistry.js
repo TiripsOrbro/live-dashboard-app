@@ -1,4 +1,4 @@
-﻿const { buildDfscReportPdf, buildReportFilename: buildDfscReportFilename, buildDfscReportText } = require('../../audits/Daily Food Safety Check/dfscReport');
+﻿const { buildDfscReportPdf, buildReportFilename: buildDfscReportFilename } = require('../../audits/Daily Food Safety Check/dfscReport');
 const { buildPestWalkReportPdf, buildReportFilename: buildPestWalkReportFilename } = require('../../audits/Pest Walk/pestWalkReport');
 const { buildRgmCleaningReportPdf, buildReportFilename: buildRgmCleaningReportFilename } = require('../../audits/RGM Cleaning/rgmCleaningReport');
 const { buildPsiReportPdf, buildReportFilename: buildPsiReportFilename } = require('../../audits/Periodic Safety Inspection/psiReport');
@@ -36,7 +36,6 @@ const REGISTRY = {
         label: 'DFSC',
         buildPdf: buildDfscReportPdf,
         buildFilename: buildDfscReportFilename,
-        buildText: buildDfscReportText,
         dateField: 'dateKey',
         sessionQueryField: 'dateKey',
     },

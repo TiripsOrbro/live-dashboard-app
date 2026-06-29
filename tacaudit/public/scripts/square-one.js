@@ -17,6 +17,7 @@ const autosave = window.AuditSessionSave?.createSaveRunner?.();
 let saveTimer = null;
 const signaturePads = new Map();
 const expandedNotes = new Set();
+const expandedActions = new Set();
 
 let selectedAreaId = '';
 
@@ -93,7 +94,23 @@ function photoMissing(question) {
     if (!question?.photoRequired) return false;
     const value = session?.answers?.[question.id];
     if (isAnswerEmpty(question, value)) return false;
+    if (String(value).toLowerCase() !== 'complete') return false;
     return !session?.photos?.[question.id];
+}
+
+function getActionEntry(questionId) {
+    const raw = session.actions?.[questionId];
+    if (!raw) return { text: '', submittedAt: null, dueDate: null };
+    return {
+        text: String(raw.text || ''),
+        submittedAt: raw.submittedAt || null,
+        dueDate: raw.dueDate || null,
+    };
+}
+
+function isActionSubmitted(questionId) {
+    const entry = getActionEntry(questionId);
+    return Boolean(entry.submittedAt && entry.text.trim());
 }
 
 const {
@@ -126,7 +143,7 @@ function isSectionComplete(sectionId) {
         if (!question.required) continue;
         const value = session?.answers?.[question.id];
         if (isAnswerEmpty(question, value)) return false;
-        if (isNcAnswer(question, value) && !String(session?.notes?.[question.id] || '').trim()) return false;
+        if (isNcAnswer(question, value) && !isActionSubmitted(question.id)) return false;
         if (photoMissing(question)) return false;
     }
     return true;
@@ -166,6 +183,7 @@ async function saveSession() {
                     sessionId: s.id,
                     periodKey: s.periodKey,
                     answers: s.answers,
+                    actions: s.actions,
                     notes: s.notes,
                     photos: s.photos,
                     signOff: s.signOff,
@@ -183,7 +201,7 @@ function setAnswer(questionId, value) {
     session.answers = session.answers || {};
     session.answers[questionId] = value;
     const question = (schema?.questions || []).find((q) => q.id === questionId);
-    if (question && isNcAnswer(question, value)) expandedNotes.add(questionId);
+    if (question && isNcAnswer(question, value)) expandedActions.add(questionId);
     scheduleSave();
     renderQuestionArea({ scrollAnchorQuestionId: questionId });
 }
@@ -192,6 +210,39 @@ function setNote(questionId, value) {
     session.notes = session.notes || {};
     session.notes[questionId] = value;
     scheduleSave();
+}
+
+function setActionDraft(questionId, value) {
+    session.actions = session.actions || {};
+    const prev = getActionEntry(questionId);
+    const dueDate = window.AuditActionForm?.readDueDateFromDom?.(questionId) || prev.dueDate;
+    session.actions[questionId] = { text: value, submittedAt: prev.submittedAt, dueDate };
+    scheduleSave();
+}
+
+async function submitAction(questionId) {
+    const textarea = document.querySelector(`[data-action-qid="${questionId}"]`);
+    const text = String(textarea?.value || getActionEntry(questionId).text || '').trim();
+    if (!text) {
+        statusMessage = 'Enter an action before submitting.';
+        statusKind = 'error';
+        renderStatusBar();
+        return;
+    }
+    const dueDate =
+        window.AuditActionForm?.readDueDateFromDom?.(questionId) ||
+        window.AuditActionForm?.defaultDueDate?.(context) ||
+        '';
+    session.actions = session.actions || {};
+    session.actions[questionId] = { text, submittedAt: new Date().toISOString(), dueDate };
+    await saveSession();
+    expandedActions.delete(questionId);
+    renderQuestionArea({ scrollAnchorQuestionId: questionId });
+}
+
+function editAction(questionId) {
+    expandedActions.add(questionId);
+    renderQuestionArea({ scrollAnchorQuestionId: questionId });
 }
 
 function initSignaturePad(canvasId) {
@@ -327,11 +378,38 @@ function renderContributionStamp(type, id, options = {}) {
     return window.AuditContributionsUi?.renderContributionStamp(session, type, id, options) || '';
 }
 
+function renderActionForm(questionId) {
+    const entry = getActionEntry(questionId);
+    const submitted = isActionSubmitted(questionId);
+    const open = expandedActions.has(questionId) || !submitted;
+    if (submitted && !open) {
+        const dueLine = entry.dueDate ? `<p class="dfsc-action-due-display">Due ${escapeHtml(entry.dueDate)}</p>` : '';
+        return `
+            <div class="dfsc-inline-action dfsc-inline-action--submitted">
+                <div class="dfsc-action-submitted-label">Action submitted</div>
+                <p class="dfsc-action-submitted-text">${escapeHtml(entry.text)}</p>
+                ${dueLine}
+                ${renderContributionStamp('actions', questionId, { prefix: 'Submitted' })}
+                <button type="button" class="dfsc-qcard-link" data-edit-action="${escapeHtml(questionId)}">Edit action</button>
+            </div>`;
+    }
+    const dueField = window.AuditActionForm?.renderDueDateField?.(questionId, entry, context) || '';
+    return `
+        <div class="dfsc-inline-action">
+            <textarea class="dfsc-textarea" rows="3" data-action-qid="${escapeHtml(questionId)}"
+                placeholder="Describe corrective action taken">${escapeHtml(entry.text)}</textarea>
+            ${dueField}
+            <button type="button" class="dfsc-btn dfsc-btn-primary dfsc-action-submit" data-submit-action="${escapeHtml(questionId)}">
+                Submit action
+            </button>
+        </div>`;
+}
+
 function renderQuestionFooter(question, { inlineButtons = false } = {}) {
     const isNc = isNcAnswer(question, session.answers?.[question.id]);
     const hasNote = Boolean(String(session.notes?.[question.id] || '').trim());
-    const noteOpen = expandedNotes.has(question.id) || hasNote || isNc;
-    const noteRequired = isNc && !hasNote;
+    const noteOpen = expandedNotes.has(question.id) || hasNote;
+    const actionSubmitted = isActionSubmitted(question.id);
     return `
         <div class="dfsc-qcard-foot">
             ${
@@ -339,11 +417,16 @@ function renderQuestionFooter(question, { inlineButtons = false } = {}) {
                     ? ''
                     : `<div class="dfsc-qcard-footer">
                 <button type="button" class="dfsc-qcard-btn dfsc-qcard-btn--note${noteOpen ? ' is-active' : ''}" data-toggle-note="${escapeHtml(question.id)}">
-                    ${NOTE_ICON}<span>${isNc ? 'Describe issue' : 'Add note'}</span>
+                    ${NOTE_ICON}<span>Add note</span>
                 </button>
             </div>`
             }
-            ${noteOpen ? `<div class="dfsc-qcard-strip dfsc-qcard-strip--note"><textarea class="dfsc-textarea" rows="2" data-note-qid="${escapeHtml(question.id)}" placeholder="${isNc ? 'Describe the issue (required)' : 'Add a note'}">${escapeHtml(session.notes?.[question.id] || '')}</textarea>${noteRequired ? '<p class="dfsc-field-hint">A note is required for No answers.</p>' : ''}${renderContributionStamp('notes', question.id)}</div>` : ''}
+            ${noteOpen ? `<div class="dfsc-qcard-strip dfsc-qcard-strip--note"><textarea class="dfsc-textarea" rows="2" data-note-qid="${escapeHtml(question.id)}" placeholder="Add a note">${escapeHtml(session.notes?.[question.id] || '')}</textarea>${renderContributionStamp('notes', question.id)}</div>` : ''}
+            ${
+                isNc
+                    ? `<div class="dfsc-qcard-strip${actionSubmitted && !expandedActions.has(question.id) ? ' dfsc-qcard-strip--submitted' : ''}">${renderActionForm(question.id)}</div>`
+                    : ''
+            }
         </div>`;
 }
 
@@ -367,7 +450,7 @@ function renderQuestion(question) {
                 ${renderChoiceGroup(question)}
                 <div class="dfsc-qcard-footer-btns">
                     <button type="button" class="dfsc-qcard-btn dfsc-qcard-btn--note${expandedNotes.has(question.id) ? ' is-active' : ''}" data-toggle-note="${escapeHtml(question.id)}">
-                        ${NOTE_ICON}<span>${isNc ? 'Describe issue' : 'Add note'}</span>
+                        ${NOTE_ICON}<span>Add note</span>
                     </button>
                     <button type="button" class="dfsc-qcard-btn dfsc-qcard-btn--media${session.photos?.[question.id] ? ' is-active' : ''}" data-add-photo="${escapeHtml(question.id)}" aria-label="Attach photo">
                         ${IMAGE_ICON}<span>Photo</span>
@@ -375,21 +458,21 @@ function renderQuestion(question) {
                 </div>
             </div>`;
         if (photoMissing(question)) {
-            control += `<p class="dfsc-field-hint">Photo evidence required for this answer.</p>`;
+            control += `<p class="dfsc-field-hint">Photo evidence required for completed items.</p>`;
         }
     }
 
-    const hasNote = Boolean(String(session.notes?.[question.id] || '').trim());
+    const actionSubmitted = isActionSubmitted(question.id);
     const ncAlert = !isNc
         ? ''
-        : hasNote
-          ? `<div class="dfsc-nc-alert dfsc-nc-alert--done">Non-compliant - note recorded</div>`
-          : `<div class="dfsc-nc-alert">ADD A NOTE FOR THIS ITEM</div>`;
+        : actionSubmitted
+          ? `<div class="dfsc-nc-alert dfsc-nc-alert--done">Not complete - action submitted</div>`
+          : `<div class="dfsc-nc-alert">SUBMIT A CORRECTIVE ACTION FOR THIS ITEM</div>`;
 
     const cardClass = [
         'dfsc-qcard',
         isSquareStandardType(question.type) ? 'dfsc-qcard--action-grid' : '',
-        isNc ? (hasNote ? 'dfsc-qcard--nc-resolved' : 'dfsc-qcard--nc') : '',
+        isNc ? (actionSubmitted ? 'dfsc-qcard--nc-resolved' : 'dfsc-qcard--nc') : '',
         unanswered && !isNc ? 'dfsc-qcard--pending' : '',
     ]
         .filter(Boolean)
@@ -512,6 +595,15 @@ function bindQuestionEvents() {
     });
     document.querySelectorAll('[data-note-qid]').forEach((textarea) => {
         textarea.addEventListener('input', () => setNote(textarea.dataset.noteQid, textarea.value));
+    });
+    document.querySelectorAll('[data-action-qid]').forEach((textarea) => {
+        textarea.addEventListener('input', () => setActionDraft(textarea.dataset.actionQid, textarea.value));
+    });
+    document.querySelectorAll('[data-submit-action]').forEach((btn) => {
+        btn.addEventListener('click', () => submitAction(btn.dataset.submitAction));
+    });
+    document.querySelectorAll('[data-edit-action]').forEach((btn) => {
+        btn.addEventListener('click', () => editAction(btn.dataset.editAction));
     });
     document.querySelectorAll('[data-toggle-note]').forEach((btn) => {
         btn.addEventListener('click', () => {

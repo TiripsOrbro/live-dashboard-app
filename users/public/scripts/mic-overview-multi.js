@@ -5,7 +5,7 @@
     const REFRESH_MS = 2 * 60 * 1000;
     const SCRAPE_POLL_MS = 15 * 1000;
     const TIME_ZONE = 'Australia/Melbourne';
-    const VOC_PLACEHOLDER = { count: 30, osatPercent: 83, accuracyPercent: 90 };
+    const VOC_PLACEHOLDER = { count: 'TBD', osatPercent: null, accuracyPercent: null };
     const SMG_REPORTING_URL = 'https://reporting.smg.com/Index.aspx';
     const DEFAULT_AREA = 'VIC-1';
     const MIC_TAB_STORAGE_KEY = 'mic-overview-active-tab';
@@ -24,21 +24,27 @@
     let activeMicTab = sessionStorage.getItem(MIC_TAB_STORAGE_KEY) || 'sales';
     let micOverviewTabsBound = false;
     let intervals = [];
-    let loadingMarkCounter = 0;
 
-    function nextLoadingMarkId() {
-        loadingMarkCounter += 1;
-        return `mic-load-mark-${loadingMarkCounter}`;
+    function shellPathname() {
+        const raw = global.__SHELL_ROUTE__?.pathname ?? global.location.pathname;
+        return String(raw).split('?')[0].split('#')[0];
+    }
+
+    function canMaintainMicOverview() {
+        if (!/^\/overview\/?$/i.test(shellPathname())) return false;
+        if (global.__APP_SHELL__ && global.AppShell?.matchRoute) {
+            return global.AppShell.matchRoute(shellPathname())?.id === 'overview';
+        }
+        return true;
     }
 
     function renderLoadingMarkHtml() {
-        const uid = nextLoadingMarkId();
-        const svg = global.TbaBrandMark?.svg?.(uid) || '';
-        return `<div class="mic-grid-loading-mark" aria-hidden="true">${svg}</div>`;
+        return global.LoadingDots?.html?.({ label: 'Loading sales data', size: 'lg' }) || '';
     }
 
     function renderLoadingOverlay() {
-        return `<div class="mic-grid-loading-overlay" aria-live="polite" aria-label="Loading sales data">${renderLoadingMarkHtml()}</div>`;
+        const dots = renderLoadingMarkHtml();
+        return `<div class="mic-grid-loading-overlay" aria-live="polite" aria-label="Loading sales data">${dots}</div>`;
     }
 
     function renderLoadingPlaceholderTile() {
@@ -52,15 +58,32 @@
         return Array.from({ length: count }, () => renderLoadingPlaceholderTile()).join('');
     }
 
+    function renderAreaSalesLoadingBody() {
+        return (
+            global.LoadingDots?.tileBody?.({ extraClass: 'mic-sales-tile-loading--area' }) ||
+            `<div class="mic-sales-tile-loading mic-sales-tile-loading--area" role="status" aria-live="polite" aria-busy="true">
+                <div class="loading-dots loading-dots--md mic-sales-tile-loading__dots" aria-hidden="true">
+                    <span class="loading-dots__dot" aria-hidden="true"></span>
+                    <span class="loading-dots__dot" aria-hidden="true"></span>
+                    <span class="loading-dots__dot" aria-hidden="true"></span>
+                </div>
+                <p class="mic-sales-tile-loading__message">Waiting for sales data</p>
+            </div>`
+        );
+    }
+
     function renderLoadingAreaStoresTile({ tabbed = false } = {}) {
         const posClass = tabbed ? '' : ' mic-tile--pos-area-stores';
         const mobileClass = tabbed ? ' mic-store-lead--mobile' : '';
         return `
-        <article class="mic-tile mic-tile--store-leaderboard mic-tile--loading mic-tile--loading-skeleton${posClass}">
-            <div class="mic-store-lead mic-store-lead--loading${mobileClass}">
-                <div class="mic-store-lead-sales mic-store-lead-sales--loading" aria-hidden="true"></div>
+        <article class="mic-tile mic-tile--store-leaderboard mic-tile--loading-skeleton${posClass}">
+            <div class="mic-store-lead mic-store-lead--purple${mobileClass}">
+                <div class="mic-store-lead-store-label">Sales</div>
+                <div class="mic-store-lead-sales mic-store-lead-sales--pending" aria-hidden="true"></div>
             </div>
-            <div class="mic-store-lead-list mic-store-lead-list--loading" role="presentation" aria-hidden="true"></div>
+            <div class="mic-store-lead-list mic-store-lead-list--dashboard mic-store-lead-list--loading-sales">
+                ${renderAreaSalesLoadingBody()}
+            </div>
         </article>`;
     }
 
@@ -144,9 +167,10 @@
     function formatVocDisplay(voc = {}) {
         if (voc.placeholder) {
             return {
-                count: voc.count ?? VOC_PLACEHOLDER.count,
-                osat: voc.osatPercent ?? VOC_PLACEHOLDER.osatPercent,
-                acc: voc.accuracyPercent ?? VOC_PLACEHOLDER.accuracyPercent,
+                placeholder: true,
+                count: 'TBD',
+                osat: null,
+                acc: null,
             };
         }
         return {
@@ -521,8 +545,8 @@
     function renderVocTile(vocRaw, { tabbed = false, inRow = false } = {}) {
         const voc = formatVocDisplay(vocRaw);
         const posClass = tabbed || inRow ? '' : ' mic-tile--pos-voc';
-        const osatText = voc.osat == null ? '—' : `${voc.osat}%`;
-        const accText = voc.acc == null ? '—' : `${voc.acc}%`;
+        const osatText = voc.placeholder ? 'TBD%' : voc.osat == null ? '—' : `${voc.osat}%`;
+        const accText = voc.placeholder ? 'TBD%' : voc.acc == null ? '—' : `${voc.acc}%`;
         const footnote = 'Pipeline coming soon';
         return `
         <a class="mic-tile mic-tile--link mic-tile--voc mic-tile--metric-card${posClass}" href="${SMG_REPORTING_URL}" target="_blank" rel="noopener noreferrer" aria-label="VOC - open SMG reporting">
@@ -1112,8 +1136,7 @@
             } else {
                 grid.style.removeProperty('--mic-content-rows');
             }
-            grid.innerHTML =
-                (mobile ? renderLoadingMobileTiles() : renderLoadingDesktopTiles()) + renderLoadingOverlay();
+            grid.innerHTML = mobile ? renderLoadingMobileTiles() : renderLoadingDesktopTiles();
             grid.setAttribute('aria-busy', 'true');
             return;
         }
@@ -1138,6 +1161,7 @@
     }
 
     function renderShell(promoBannerHtml) {
+        if (!canMaintainMicOverview()) return;
         app.innerHTML = `
         <div class="mic-page mic-page--admin" id="mic-page">
             <header class="mic-header mic-header--admin">
@@ -1193,6 +1217,7 @@
     }
 
     async function loadOverview() {
+        if (!canMaintainMicOverview()) return;
         if (overviewLoadInFlight) return;
         overviewLoadInFlight = true;
         if (!overviewData) renderTiles();
@@ -1253,6 +1278,27 @@
         intervals = [];
     }
 
+    function stop() {
+        clearIntervals();
+        document.documentElement.classList.remove(
+            'mic-overview-page',
+            'mic-overview--mobile',
+            'mic-overview-tab--sales',
+            'mic-overview-tab--results',
+            'mic-overview-tab--orders',
+            'mic-overview-tab--audits'
+        );
+        document.body.classList.remove(
+            'mic-overview-page',
+            'mic-overview--mobile',
+            'mic-overview-tab--sales',
+            'mic-overview-tab--results',
+            'mic-overview-tab--orders',
+            'mic-overview-tab--audits'
+        );
+        overviewLoadInFlight = false;
+    }
+
     async function start(profile, appEl, promoBannerHtml) {
         meProfile = profile;
         app = appEl;
@@ -1297,5 +1343,5 @@
         });
     }
 
-    global.MicOverviewMulti = { start, loadOverview };
+    global.MicOverviewMulti = { start, loadOverview, stop };
 })(window);

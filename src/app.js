@@ -270,6 +270,7 @@ const {
     requiresMmxForAccountLevel,
     canUserCreateAccounts,
     canUserAccessAdminMenu,
+    canUserViewFeatureRequests,
     canUserManageStoreLogins,
     canUserManageSmgNsfSettings,
     canUserEditGlobalBuildTo,
@@ -464,7 +465,9 @@ const {
     clearOverridesForArea,
 } = require('./services/tacaudit/tacauditSplashState');
 const { resolveComplianceSummary, ensureCompletedWeekSnapshotsCaptured } = require('./services/tacaudit/tacauditComplianceHistory');
-const { listOpenActionsForStores, submitAction } = require('./services/tacaudit/tacauditActions');
+const { listOpenActionsForStores, submitAction, summarizeStoreActions } = require('./services/tacaudit/tacauditActions');
+const { listActionsForDigest, ymdInTimeZone } = require('./services/tacaudit/storeActionsStore');
+const { sendOpenActionsDigestEmail } = require('./services/tacaudit/tacauditEmail');
 const { getAuditTypeConfig } = require('./services/tacaudit/auditRegistry');
 const {
     setAccountGateCookie,
@@ -488,8 +491,16 @@ const {
     addFeatureRequestCategory,
     hideFeatureRequestCategory,
     deleteFeatureRequestCategory,
+    toggleFeatureRequestVote,
     updateFeatureRequest,
 } = require('./services/featureRequests');
+const {
+    listBugReports,
+    addBugReport,
+    toggleBugUpvote,
+    updateBugReport,
+    getBugPhoto,
+} = require('./services/bugReports');
 const { verifyMacromatixLogin } = require('./services/macromatixScraper');
 const { verifyLifeLenzLogin } = require('../lifelenz/src/lifelenzAuth');
 const {
@@ -1897,14 +1908,16 @@ async function getSalesDataCached() {
         return salesCache;
     }
 
-    if (!anyStoreInActiveScrapeWindow()) {
+    if (!salesCache) {
         salesCache = buildCacheShellFromStoreList();
         salesCacheAt = Date.now();
         applyScrapeScheduleToCache(salesCache);
-        return salesCache;
     }
 
-    return runScrapeIntoCache({ scrapeReason: 'on-demand' });
+    if (anyStoreInActiveScrapeWindow() && !isSalesCacheFresh() && !salesInFlight) {
+        runScrapeIntoCache({ scrapeReason: 'on-demand' });
+    }
+    return salesCache;
 }
 
 /** Trading hours for a store from `.storelist`, falling back to defaults. */
@@ -3146,7 +3159,7 @@ app.get('/api/dashboard/changelog', (req, res) => {
 
 app.get('/requests', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
-    if (!isSuperAdminUser(user)) {
+    if (!canUserViewFeatureRequests(user)) {
         sendUnauthorized(req, res);
         return;
     }
@@ -3155,16 +3168,21 @@ app.get('/requests', (req, res) => {
 
 app.get('/api/feature-requests', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
-    if (!isSuperAdminUser(user)) {
-        res.status(403).json({ success: false, error: 'Only the dashboard owner can view feature requests.' });
+    if (!canUserViewFeatureRequests(user)) {
+        res.status(403).json({
+            success: false,
+            error: 'Feature requests are available to MIC accounts and above.',
+        });
         return;
     }
     res.set('Cache-Control', 'no-store');
     res.json({
         success: true,
-        requests: listFeatureRequests(),
+        requests: listFeatureRequests(user.username),
         categories: listFeatureRequestCategories(),
         priorities: listFeatureRequestPriorities(),
+        canManage: isSuperAdminUser(user),
+        viewerUsername: user.username,
     });
 });
 
@@ -3231,24 +3249,56 @@ app.delete('/api/feature-requests/categories/:id', (req, res) => {
     });
 });
 
-app.post('/api/feature-requests', (req, res) => {
+app.post('/api/feature-requests', async (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
-    if (!isRealDashboardUser(user)) {
-        res.status(401).json({ success: false, error: 'Sign in to submit a feature request.' });
+    if (!canUserViewFeatureRequests(user)) {
+        res.status(403).json({
+            success: false,
+            error: 'Feature requests are available to MIC accounts and above.',
+        });
         return;
     }
-    const result = addFeatureRequest({
-        text: req.body?.text,
-        details: req.body?.details,
-        category: req.body?.category,
-        username: user.username,
-        displayName: user.displayName || user.username,
-    });
+    try {
+        const result = await addFeatureRequest({
+            text: req.body?.text,
+            details: req.body?.details,
+            category: req.body?.category,
+            username: user.username,
+            displayName: user.displayName || user.username,
+        });
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, request: result.request, requests: result.requests });
+    } catch (error) {
+        console.error('[FeatureRequests] Failed to create request:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not add feature request.' });
+    }
+});
+
+app.post('/api/feature-requests/:id/vote', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserViewFeatureRequests(user)) {
+        res.status(403).json({
+            success: false,
+            error: 'Feature requests are available to MIC accounts and above.',
+        });
+        return;
+    }
+    const id = String(req.params.id || '').trim();
+    const direction = String(req.body?.direction || '').trim().toLowerCase();
+    const result = toggleFeatureRequestVote(id, user.username, direction);
     if (!result.ok) {
         res.status(400).json({ success: false, error: result.error });
         return;
     }
-    res.json({ success: true, request: result.request });
+    res.json({
+        success: true,
+        request: result.request,
+        requests: result.requests,
+        categories: result.categories,
+    });
 });
 
 app.patch('/api/feature-requests/:id', (req, res) => {
@@ -3271,13 +3321,17 @@ app.patch('/api/feature-requests/:id', (req, res) => {
         res.status(400).json({ success: false, error: 'Expected at least one field to update.' });
         return;
     }
-    const result = updateFeatureRequest(id, {
-        completed: hasCompleted ? req.body.completed : undefined,
-        category: hasCategory ? req.body.category : undefined,
-        details: hasDetails ? req.body.details : undefined,
-        milestones: hasMilestones ? req.body.milestones : undefined,
-        priority: hasPriority ? req.body.priority : undefined,
-    });
+    const result = updateFeatureRequest(
+        id,
+        {
+            completed: hasCompleted ? req.body.completed : undefined,
+            category: hasCategory ? req.body.category : undefined,
+            details: hasDetails ? req.body.details : undefined,
+            milestones: hasMilestones ? req.body.milestones : undefined,
+            priority: hasPriority ? req.body.priority : undefined,
+        },
+        user.username
+    );
     if (!result.ok) {
         res.status(404).json({ success: false, error: result.error });
         return;
@@ -3288,6 +3342,99 @@ app.patch('/api/feature-requests/:id', (req, res) => {
         requests: result.requests,
         categories: result.categories,
     });
+});
+
+app.get('/api/bug-reports', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.status(401).json({ success: false, error: 'Sign in to view bug reports.' });
+        return;
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json({
+        success: true,
+        bugs: listBugReports(user.username),
+        canManage: isSuperAdminUser(user),
+        viewerUsername: user.username,
+    });
+});
+
+app.post('/api/bug-reports', async (req, res) => {
+    try {
+        const user = req.dashboardUser || getRequestUser(req);
+        if (!isRealDashboardUser(user)) {
+            res.status(401).json({ success: false, error: 'Sign in to report a bug.' });
+            return;
+        }
+        const result = await addBugReport({
+            title: req.body?.title,
+            details: req.body?.details,
+            photos: req.body?.photos,
+            username: user.username,
+            displayName: user.displayName || user.username,
+        });
+        if (!result.ok) {
+            res.status(400).json({ success: false, error: result.error });
+            return;
+        }
+        res.json({ success: true, bug: result.bug, bugs: result.bugs });
+    } catch (error) {
+        console.error('[BugReports] Failed to create bug:', error);
+        res.status(500).json({ success: false, error: error.message || 'Could not submit bug report.' });
+    }
+});
+
+app.post('/api/bug-reports/:id/upvote', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.status(401).json({ success: false, error: 'Sign in to upvote bugs.' });
+        return;
+    }
+    const id = String(req.params.id || '').trim();
+    const result = toggleBugUpvote(id, user.username);
+    if (!result.ok) {
+        res.status(400).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({ success: true, bug: result.bug, bugs: result.bugs });
+});
+
+app.patch('/api/bug-reports/:id', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isSuperAdminUser(user)) {
+        res.status(403).json({ success: false, error: 'Only the dashboard owner can update bug reports.' });
+        return;
+    }
+    const id = String(req.params.id || '').trim();
+    if (!id) {
+        res.status(400).json({ success: false, error: 'Missing bug id.' });
+        return;
+    }
+    if (typeof req.body?.fixed !== 'boolean') {
+        res.status(400).json({ success: false, error: 'Expected { fixed: true | false }.' });
+        return;
+    }
+    const result = updateBugReport(id, { fixed: req.body.fixed }, user.username);
+    if (!result.ok) {
+        res.status(404).json({ success: false, error: result.error });
+        return;
+    }
+    res.json({ success: true, bug: result.bug, bugs: result.bugs });
+});
+
+app.get('/api/bug-reports/:id/photos/:photoId', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!isRealDashboardUser(user)) {
+        res.status(401).json({ success: false, error: 'Sign in to view bug photos.' });
+        return;
+    }
+    const result = getBugPhoto(req.params.id, req.params.photoId);
+    if (!result.ok) {
+        res.status(404).json({ success: false, error: result.error });
+        return;
+    }
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.type(result.contentType || 'image/jpeg').send(result.content);
 });
 
 app.post('/api/account/complete-password-setup', (req, res) => {
@@ -3431,9 +3578,9 @@ app.post('/api/account/mic-rounded-tiles', (req, res) => {
             res.status(400).json({ success: false, error: result.error });
             return;
         }
-        const freshUser = { ...user, micRoundedTiles: Boolean(result.micRoundedTiles) };
+        const freshUser = { ...user, micRoundedTiles: result.micRoundedTiles !== false };
         setSessionCookie(res, freshUser, true, dashboardEntryFromRequest(req) || 'store');
-        res.json({ success: true, micRoundedTiles: Boolean(result.micRoundedTiles) });
+        res.json({ success: true, micRoundedTiles: result.micRoundedTiles !== false });
     } catch (error) {
         console.error('[Auth] mic-rounded-tiles pref save failed:', error);
         res.status(500).json({ success: false, error: error.message || 'Could not save rounded tile preference.' });
@@ -5697,6 +5844,7 @@ app.put('/api/dfsc/session', (req, res) => {
                 sectionSkips: req.body?.sectionSkips,
                 actions: req.body?.actions,
                 notes: req.body?.notes,
+                photos: req.body?.photos,
                 signOff: req.body?.signOff,
                 dateKey: req.body?.dateKey,
                 clientMeta: req.body?.clientMeta,
@@ -6920,6 +7068,18 @@ app.put('/api/tacaudit/splash-state', async (req, res) => {
     }
 });
 
+app.get('/api/tacaudit/actions/summary', (req, res) => {
+    try {
+        const store = String(req.query.store || '').trim();
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertDfscAccess(req, res)) return;
+        res.json({ success: true, summary: summarizeStoreActions(store) });
+    } catch (error) {
+        console.error('API: Error loading Tacaudit actions summary:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.get('/api/tacaudit/actions', async (req, res) => {
     try {
         const user = req.dashboardUser || getRequestUser(req);
@@ -6963,7 +7123,7 @@ app.put('/api/tacaudit/actions', async (req, res) => {
             res.status(400).json({ success: false, error: result.error });
             return;
         }
-        res.json({ success: true, session: result.session });
+        res.json({ success: true, session: result.session, action: result.action });
     } catch (error) {
         console.error('API: Error submitting Tacaudit action:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -7608,6 +7768,48 @@ function startBackgroundRefresh() {
 }
 
 // Start the server (bind all interfaces so other LAN devices can reach the Pi).
+const ACTIONS_DIGEST_LOCAL_HOUR = 7;
+const ACTIONS_DIGEST_CHECK_MS = 15 * 60 * 1000;
+
+function localHourInTimeZone(now, timeZone) {
+    const parts = new Intl.DateTimeFormat('en-AU', {
+        timeZone,
+        hour: 'numeric',
+        hour12: false,
+    }).formatToParts(now instanceof Date ? now : new Date(now));
+    return Number(parts.find((p) => p.type === 'hour')?.value || 0);
+}
+
+async function maybeSendActionsDigests() {
+    try {
+        const stores = getStoreList();
+        const now = new Date();
+        for (const row of stores) {
+            const storeNumber = String(row.storeNumber || '').trim();
+            if (!storeNumber) continue;
+            const cfg = getStoreConfig(storeNumber) || {};
+            const timeZone = String(cfg.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne').trim();
+            if (localHourInTimeZone(now, timeZone) < ACTIONS_DIGEST_LOCAL_HOUR) continue;
+            const todayYmd = ymdInTimeZone(now, timeZone);
+            const settings = getTacauditSettings(storeNumber);
+            if (settings.lastActionsDigestDate === todayYmd) continue;
+            const result = await sendOpenActionsDigestEmail({ storeNumber });
+            if (result.sent) {
+                console.info(`[TacAudit] Open actions digest sent for store ${storeNumber}`);
+            } else if (result.reason === 'empty') {
+                saveTacauditSettings(storeNumber, { lastActionsDigestDate: todayYmd });
+            }
+        }
+    } catch (err) {
+        console.warn('[TacAudit] Actions digest check failed:', err.message);
+    }
+}
+
+function startActionsDigestScheduler() {
+    setTimeout(() => void maybeSendActionsDigests(), 60_000);
+    setInterval(() => void maybeSendActionsDigests(), ACTIONS_DIGEST_CHECK_MS);
+}
+
 (function logDashboardAuthMode() {
     if (usersFileConfigured()) {
         console.log(`[Auth] ${readUsersFileSync().length} dashboard account(s) from ${path.basename(resolveUsersFilePath())}`);
@@ -7629,6 +7831,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     } catch (err) {
         console.warn('[TacAudit] Compliance week snapshot check failed:', err.message);
     }
+    startActionsDigestScheduler();
 });
 
 // Graceful shutdown so PM2 restarts / systemctl stop release the port cleanly.

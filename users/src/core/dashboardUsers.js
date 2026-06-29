@@ -503,7 +503,7 @@ function parseAccessBlock(block) {
     let colourBlindPref = false;
     let micDarkModePref = false;
     let auditAutoCollapsePref = true;
-    let micRoundedTilesPref = false;
+    let micRoundedTilesPref = true;
     let accountLevel = '';
 
     for (const line of lines) {
@@ -532,7 +532,7 @@ function parseAccessBlock(block) {
         }
         if (FIELD_LABELS.micRoundedTiles.some((k) => lower.startsWith(`${k} `) || lower.startsWith(`${k}|`))) {
             const val = parseFieldLine(trimmed, FIELD_LABELS.micRoundedTiles);
-            micRoundedTilesPref = /^(1|true|yes|on)$/i.test(String(val || '').trim());
+            micRoundedTilesPref = !/^(0|false|no|off)$/i.test(String(val || '').trim());
             continue;
         }
         if (!username && FIELD_LABELS.username.some((k) => lower.startsWith(`${k} `) || lower.startsWith(`${k}|`))) {
@@ -618,7 +618,7 @@ function parseUsersFile(text) {
             };
             const micDarkMode = Boolean(row.micDarkModePref);
             const auditAutoCollapse = row.auditAutoCollapsePref !== false;
-            const micRoundedTiles = Boolean(row.micRoundedTilesPref);
+            const micRoundedTiles = row.micRoundedTilesPref !== false;
             if (row.username && !isCbUsername(row.username)) {
                 users.push({
                     ...base,
@@ -683,7 +683,7 @@ function parseUsersFileBlocks(text) {
                 colourBlindPref: Boolean(row.colourBlindPref),
                 micDarkModePref: Boolean(row.micDarkModePref),
                 auditAutoCollapsePref: row.auditAutoCollapsePref !== false,
-                micRoundedTilesPref: Boolean(row.micRoundedTilesPref),
+                micRoundedTilesPref: row.micRoundedTilesPref !== false,
                 accountLevel: inferAccountLevel({ ...row, username: row.username }),
             });
         }
@@ -737,7 +737,7 @@ function serializeUserBlock(block) {
     if (block.colourBlindPref) out.push('colourblind | on');
     if (block.micDarkModePref) out.push('micdarkmode | on');
     if (block.auditAutoCollapsePref === false) out.push('auditautocollapse | off');
-    if (block.micRoundedTilesPref) out.push('microundedtiles | on');
+    if (block.micRoundedTilesPref === false) out.push('microundedtiles | off');
     out.push('');
     return out.join('\n');
 }
@@ -992,6 +992,11 @@ function canUserCreateAccounts(user) {
 
 function canUserAccessAdminMenu(user) {
     return canUserCreateAccounts(user);
+}
+
+function canUserViewFeatureRequests(user) {
+    if (!isRealDashboardUser(user)) return false;
+    return accountLevelRank(getAccountLevel(user)) >= accountLevelRank('mic');
 }
 
 function canUserEditGlobalBuildTo(user) {
@@ -1605,7 +1610,7 @@ function setAccountMicRoundedTilesPreference(username, enabled) {
     if (!block) {
         return { ok: false, error: 'Account not found.' };
     }
-    block.micRoundedTilesPref = Boolean(enabled);
+    block.micRoundedTilesPref = enabled !== false;
     writeUsersFileText(serializeUsersFile(blocks));
     appendAccountAudit({
         action: 'mic-rounded-tiles-pref',
@@ -1613,7 +1618,7 @@ function setAccountMicRoundedTilesPreference(username, enabled) {
         enabled: block.micRoundedTilesPref,
         setBy: name,
     });
-    return { ok: true, micRoundedTiles: Boolean(block.micRoundedTilesPref) };
+    return { ok: true, micRoundedTiles: block.micRoundedTilesPref !== false };
 }
 
 function appendDashboardUser({
@@ -1805,7 +1810,7 @@ function normalizeUser(row) {
         colorBlind: Boolean(row.colorBlind),
         micDarkMode: Boolean(row.micDarkMode),
         auditAutoCollapse: row.auditAutoCollapse !== false,
-        micRoundedTiles: Boolean(row.micRoundedTiles),
+        micRoundedTiles: row.micRoundedTiles !== false,
         accountLevel: inferAccountLevel(row),
     };
 }
@@ -1885,7 +1890,7 @@ function parseSessionToken(token) {
         colorBlind: payload.c === 1,
         micDarkMode: payload.m === 1,
         auditAutoCollapse: payload.ac !== 0,
-        micRoundedTiles: payload.rt === 1,
+        micRoundedTiles: payload.rt !== 0,
     };
 }
 
@@ -1903,7 +1908,7 @@ function createSessionToken(user) {
         c: user.colorBlind ? 1 : 0,
         m: user.micDarkMode ? 1 : 0,
         ac: user.auditAutoCollapse === false ? 0 : 1,
-        rt: user.micRoundedTiles ? 1 : 0,
+        rt: user.micRoundedTiles === false ? 0 : 1,
         exp: Date.now() + SESSION_MAX_AGE_MS,
     });
 }
@@ -2306,7 +2311,7 @@ function userProfileForClient(user) {
             colorBlind: false,
             micDarkMode: false,
             auditAutoCollapse: true,
-            micRoundedTiles: false,
+            micRoundedTiles: true,
             nologin: true,
         };
     }
@@ -2325,7 +2330,7 @@ function userProfileForClient(user) {
             colorBlind: false,
             micDarkMode: false,
             auditAutoCollapse: true,
-            micRoundedTiles: false,
+            micRoundedTiles: true,
         };
     }
     const overviewScope = getOverviewScope(user);
@@ -2363,6 +2368,7 @@ function userProfileForClient(user) {
         canViewManagedAccounts: canUserCreateAccounts(user) || canViewCrossStoreAccounts(user),
         canViewCrossStoreAccounts: canViewCrossStoreAccounts(user),
         canAccessAdminMenu: canUserAccessAdminMenu(user),
+        canViewFeatureRequests: canUserViewFeatureRequests(user),
         canManageStoreLogins: canUserManageStoreLogins(user),
         canManageSmgNsfSettings: canUserManageSmgNsfSettings(user),
         canEditGlobalBuildTo: canUserEditGlobalBuildTo(user),
@@ -2375,7 +2381,7 @@ function userProfileForClient(user) {
         micDarkMode: Boolean(user.micDarkMode),
         auditAutoCollapse: user.auditAutoCollapse !== false,
         mustCompleteMmxSetup,
-        micRoundedTiles: Boolean(user.micRoundedTiles),
+        micRoundedTiles: user.micRoundedTiles !== false,
         mustChangePassword,
         passwordPolicy: mustChangePassword ? passwordPolicyForUser(user) : null,
     };
@@ -2491,6 +2497,7 @@ module.exports = {
     requiresMmxForAccountLevel,
     canUserCreateAccounts,
     canUserAccessAdminMenu,
+    canUserViewFeatureRequests,
     canUserManageStoreLogins,
     canUserManageSmgNsfSettings,
     canUserEditGlobalBuildTo,

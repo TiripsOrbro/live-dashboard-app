@@ -113,6 +113,21 @@
         };
     }
 
+    function areaChipLabel(areaId) {
+        const fromDisplay = global.AreaDisplay?.label?.(areaId);
+        if (fromDisplay) return fromDisplay;
+        const raw = String(areaId ?? '');
+        return raw.replace(/-1$/i, '') || raw;
+    }
+
+    function orderedAreas(areas) {
+        const canonical = ['VIC-1', 'WA-1', 'QLD-1'];
+        const list = Array.isArray(areas) ? areas : [];
+        const picked = canonical.filter((id) => list.includes(id));
+        const rest = list.filter((id) => !canonical.includes(id));
+        return picked.length ? picked : rest;
+    }
+
     function renderBrowseScopeRow(scopePrefix, label, rows, selectedValue, getValue, getLabel) {
         const list = Array.isArray(rows) ? rows : [];
         const labelFn = getLabel || getValue;
@@ -147,9 +162,18 @@
         const resolved = resolveBrowseScope(tree, scope, scope.storeNumber || '');
         const rows = [];
 
-        const areas = tree.areas || [];
+        const areas = orderedAreas(tree.areas || []);
         if (areas.length >= 1) {
-            rows.push(renderBrowseScopeRow(`${scopePrefix}-area`, 'Area', areas, resolved.area, (row) => row));
+            rows.push(
+                renderBrowseScopeRow(
+                    `${scopePrefix}-area`,
+                    'Area',
+                    areas,
+                    resolved.area,
+                    (row) => row,
+                    (row) => areaChipLabel(row)
+                )
+            );
         }
 
         const stores = resolved.area ? (tree.storesByArea || {})[resolved.area] || [] : [];

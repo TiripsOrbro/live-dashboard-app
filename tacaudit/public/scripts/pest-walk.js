@@ -147,8 +147,12 @@ function isNcAnswer(question, value) {
 
 function getActionEntry(questionId) {
     const raw = session.actions?.[questionId];
-    if (!raw) return { text: '', submittedAt: null };
-    return { text: String(raw.text || ''), submittedAt: raw.submittedAt || null };
+    if (!raw) return { text: '', submittedAt: null, dueDate: null };
+    return {
+        text: String(raw.text || ''),
+        submittedAt: raw.submittedAt || null,
+        dueDate: raw.dueDate || null,
+    };
 }
 
 function isActionSubmitted(questionId) {
@@ -274,19 +278,25 @@ function setNote(questionId, value) {
 function setActionDraft(questionId, value) {
     session.actions = session.actions || {};
     const prev = getActionEntry(questionId);
-    session.actions[questionId] = { text: value, submittedAt: prev.submittedAt };
+    const dueDate = window.AuditActionForm?.readDueDateFromDom?.(questionId) || prev.dueDate;
+    session.actions[questionId] = { text: value, submittedAt: prev.submittedAt, dueDate };
     scheduleSave();
 }
 
 async function submitAction(questionId) {
-    const entry = getActionEntry(questionId);
-    if (!entry.text.trim()) {
+    const textarea = document.querySelector(`[data-action-qid="${questionId}"]`);
+    const text = String(textarea?.value || getActionEntry(questionId).text || '').trim();
+    if (!text) {
         statusMessage = 'Enter an action before submitting.';
         statusKind = 'error';
         renderStatusBar();
         return;
     }
-    session.actions[questionId] = { text: entry.text.trim(), submittedAt: new Date().toISOString(), submit: true };
+    const dueDate =
+        window.AuditActionForm?.readDueDateFromDom?.(questionId) ||
+        window.AuditActionForm?.defaultDueDate?.(context) ||
+        '';
+    session.actions[questionId] = { text, submittedAt: new Date().toISOString(), dueDate };
     await saveSession();
     expandedActions.delete(questionId);
     renderQuestionArea({ scrollAnchorQuestionId: questionId });
@@ -428,18 +438,22 @@ function renderActionForm(questionId) {
     const submitted = isActionSubmitted(questionId);
     const open = expandedActions.has(questionId) || !submitted;
     if (submitted && !open) {
+        const dueLine = entry.dueDate ? `<p class="dfsc-action-due-display">Due ${escapeHtml(entry.dueDate)}</p>` : '';
         return `
             <div class="dfsc-inline-action dfsc-inline-action--submitted">
                 <div class="dfsc-action-submitted-label">Action submitted</div>
                 <p class="dfsc-action-submitted-text">${escapeHtml(entry.text)}</p>
+                ${dueLine}
                 ${renderContributionStamp('actions', questionId, { prefix: 'Submitted' })}
                 <button type="button" class="dfsc-qcard-link" data-edit-action="${escapeHtml(questionId)}">Edit action</button>
             </div>`;
     }
+    const dueField = window.AuditActionForm?.renderDueDateField?.(questionId, entry, context) || '';
     return `
         <div class="dfsc-inline-action">
             <textarea class="dfsc-textarea" rows="3" data-action-qid="${escapeHtml(questionId)}"
                 placeholder="Describe corrective action taken">${escapeHtml(entry.text)}</textarea>
+            ${dueField}
             <button type="button" class="dfsc-btn dfsc-btn-primary dfsc-action-submit" data-submit-action="${escapeHtml(questionId)}">
                 Submit action
             </button>

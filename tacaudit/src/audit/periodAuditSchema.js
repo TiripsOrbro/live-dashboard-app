@@ -91,8 +91,12 @@ function createPeriodAuditSchema(generated) {
 
     function getActionEntry(session, questionId) {
         const raw = session.actions?.[questionId];
-        if (!raw) return { text: '', submittedAt: null };
-        return { text: String(raw.text || ''), submittedAt: raw.submittedAt || null };
+        if (!raw) return { text: '', submittedAt: null, dueDate: null };
+        return {
+            text: String(raw.text || ''),
+            submittedAt: raw.submittedAt || null,
+            dueDate: raw.dueDate || null,
+        };
     }
 
     function isActionSubmitted(session, questionId) {
@@ -103,8 +107,15 @@ function createPeriodAuditSchema(generated) {
     function normalizeActionUpdate(entry, previous) {
         const text = String(entry?.text ?? previous?.text ?? '').trim();
         const submittedAt = entry?.submittedAt ?? previous?.submittedAt ?? null;
-        if (entry?.submit) return { text, submittedAt: submittedAt || new Date().toISOString() };
-        return { text, submittedAt };
+        const dueDate = entry?.dueDate ?? previous?.dueDate ?? null;
+        if (entry?.submit) {
+            return {
+                text,
+                submittedAt: submittedAt || new Date().toISOString(),
+                dueDate: dueDate || null,
+            };
+        }
+        return { text, submittedAt, dueDate: dueDate || null };
     }
 
     function collectNonCompliant(session) {
@@ -143,6 +154,11 @@ function createPeriodAuditSchema(generated) {
             const value = session.answers?.[question.id];
             if (question.required && isAnswerEmpty(question, value)) {
                 return { ok: false, error: `Answer required: ${question.label}` };
+            }
+            if (isScoredType(question.type) && isNotCompliantValue(value, question)) {
+                if (!isActionSubmitted(session, question.id)) {
+                    return { ok: false, error: `Submit a corrective action for: ${question.label}` };
+                }
             }
         }
         return { ok: true };

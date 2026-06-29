@@ -5,7 +5,7 @@
                 <div class="requests-view-header-row">
                     <div>
                         <h2>Feature requests</h2>
-                        <p class="admin-section-subtitle">Click a request to expand it. Use + to add a new one.</p>
+                        <p class="admin-section-subtitle">Upvote requests to raise important ideas. Downvote to lower them. New requests email the team.</p>
                     </div>
                     <button type="button" id="requests-add-toggle" class="requests-add-toggle" aria-label="New request" aria-expanded="false" title="New request">
                         <svg class="requests-add-toggle-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
@@ -87,6 +87,7 @@
     let categories = [];
     let priorities = [];
     let allRequests = [];
+    let canManage = false;
     let activeTab = null;
     let expandedId = null;
     let formOpen = false;
@@ -484,7 +485,10 @@
                     `<option value="${escapeAttr(cat.id)}"${cat.id === selected ? ' selected' : ''}>${escapeHtml(cat.label)}</option>`
             )
             .join('');
-        return `<option value=""${!selected ? ' selected' : ''}>Unassigned</option>${tabOptions}<option disabled aria-hidden="true">──────────</option><option value="${CREATE_TAB_VALUE}">+ New tab…</option>`;
+        const createOption = canManage
+            ? `<option disabled aria-hidden="true">──────────</option><option value="${CREATE_TAB_VALUE}">+ New tab…</option>`
+            : '';
+        return `<option value=""${!selected ? ' selected' : ''}>Unassigned</option>${tabOptions}${createOption}`;
     }
 
     function setCategorySelect(selectEl, categoryId) {
@@ -531,6 +535,7 @@
 
     function renderTabs() {
         if (!tabsEl) return;
+        if (tabAddEl) tabAddEl.hidden = !canManage;
         const tabs = tabsForBar();
         tabsEl.style.setProperty('--scope-cols', String(Math.max(tabs.length, 1)));
         tabsEl.innerHTML = tabs
@@ -617,6 +622,96 @@
         `;
     }
 
+    function buildVoteHtml(row) {
+        const completed = Boolean(row.completed);
+        if (completed) {
+            return `<div class="requests-vote-stack requests-vote-stack--disabled" aria-hidden="true">
+                <span class="requests-vote-score">${Number(row.score) || 0}</span>
+            </div>`;
+        }
+        return `
+            <div class="requests-vote-stack">
+                <button
+                    type="button"
+                    class="requests-vote requests-vote--up${row.upvotedByViewer ? ' is-active' : ''}"
+                    data-action="vote-up"
+                    data-request-id="${escapeAttr(row.id)}"
+                    aria-label="${row.upvotedByViewer ? 'Remove upvote' : 'Upvote'}"
+                >▲</button>
+                <span class="requests-vote-score">${Number(row.score) || 0}</span>
+                <button
+                    type="button"
+                    class="requests-vote requests-vote--down${row.downvotedByViewer ? ' is-active' : ''}"
+                    data-action="vote-down"
+                    data-request-id="${escapeAttr(row.id)}"
+                    aria-label="${row.downvotedByViewer ? 'Remove downvote' : 'Downvote'}"
+                >▼</button>
+            </div>`;
+    }
+
+    function buildReadOnlyPanel(row) {
+        const details = row.details
+            ? `<p class="requests-panel-details requests-panel-details--readonly">${escapeHtml(row.details).replace(/\n/g, '<br>')}</p>`
+            : '';
+        const milestones = Array.isArray(row.milestones) ? row.milestones : [];
+        const milestoneHtml = milestones.length
+            ? `<ul class="requests-milestones requests-milestones--readonly">${milestones
+                  .map(
+                      (milestone) =>
+                          `<li class="requests-milestone-readonly${milestone.completed ? ' is-done' : ''}">${escapeHtml(milestone.text)}</li>`
+                  )
+                  .join('')}</ul>`
+            : '';
+        return `
+            ${details}
+            ${milestoneHtml}
+            <p class="requests-item-meta">Submitted by ${escapeHtml(row.submittedByName || row.submittedBy || 'Unknown')}</p>
+        `;
+    }
+
+    function buildAdminPanelHtml(row) {
+        const completed = Boolean(row.completed);
+        const milestones = Array.isArray(row.milestones) ? row.milestones : [];
+        return `
+            <label class="requests-panel-label" for="details-${escapeAttr(row.id)}">Details</label>
+            <textarea id="details-${escapeAttr(row.id)}" class="requests-panel-details" data-field="details" rows="2" placeholder="Notes, context, links…">${escapeHtml(row.details || '')}</textarea>
+
+            <div class="requests-panel-fields">
+                <div class="requests-panel-field">
+                    <label class="requests-panel-label" for="category-${escapeAttr(row.id)}">Tab</label>
+                    <select id="category-${escapeAttr(row.id)}" class="requests-panel-select" data-field="category">
+                        ${categorySelectOptionsHtml(row.category || '')}
+                    </select>
+                </div>
+                <div class="requests-panel-field">
+                    <label class="requests-panel-label" for="priority-${escapeAttr(row.id)}">Priority</label>
+                    <select id="priority-${escapeAttr(row.id)}" class="requests-panel-select" data-field="priority">
+                        ${priorityOptionsHtml(row.priority || 'normal')}
+                    </select>
+                </div>
+            </div>
+
+            <div class="requests-panel-milestones-head">
+                <span class="requests-panel-label">Milestones</span>
+                <button type="button" class="requests-panel-link" data-action="add-milestone">Add milestone</button>
+            </div>
+            <ul class="requests-milestones">
+                ${milestones.map((milestone, index) => buildMilestoneHtml(milestone, index)).join('')}
+            </ul>
+
+            <div class="requests-panel-footer">
+                <label class="requests-panel-done">
+                    <input type="checkbox" data-field="completed"${completed ? ' checked' : ''}>
+                    Mark complete
+                </label>
+                <div class="requests-panel-actions">
+                    <button type="button" class="requests-panel-save" data-action="save">Save</button>
+                    <span class="requests-panel-status" data-role="save-status"></span>
+                </div>
+            </div>
+        `;
+    }
+
     function buildItemHtml(row) {
         const completed = Boolean(row.completed);
         const expanded = row.id === expandedId;
@@ -628,53 +723,21 @@
         const priorityBadge = priorityBadgeHtml(row.priority);
 
         return `
-            <article class="requests-item${completed ? ' is-completed' : ''}${expanded ? ' is-expanded' : ''}" data-request-id="${escapeHtml(row.id)}">
-                <button
-                    type="button"
-                    class="requests-item-header"
-                    data-action="expand"
-                    aria-expanded="${expanded ? 'true' : 'false'}"
-                >
-                    ${priorityBadge}
-                    <span class="requests-item-text">${escapeHtml(row.text)}</span>
-                    ${progress}
-                </button>
-                <div class="requests-item-panel">
-                    <label class="requests-panel-label" for="details-${escapeAttr(row.id)}">Details</label>
-                    <textarea id="details-${escapeAttr(row.id)}" class="requests-panel-details" data-field="details" rows="2" placeholder="Notes, context, links…">${escapeHtml(row.details || '')}</textarea>
-
-                    <div class="requests-panel-fields">
-                        <div class="requests-panel-field">
-                            <label class="requests-panel-label" for="category-${escapeAttr(row.id)}">Tab</label>
-                            <select id="category-${escapeAttr(row.id)}" class="requests-panel-select" data-field="category">
-                                ${categorySelectOptionsHtml(row.category || '')}
-                            </select>
-                        </div>
-                        <div class="requests-panel-field">
-                            <label class="requests-panel-label" for="priority-${escapeAttr(row.id)}">Priority</label>
-                            <select id="priority-${escapeAttr(row.id)}" class="requests-panel-select" data-field="priority">
-                                ${priorityOptionsHtml(row.priority || 'normal')}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="requests-panel-milestones-head">
-                        <span class="requests-panel-label">Milestones</span>
-                        <button type="button" class="requests-panel-link" data-action="add-milestone">Add milestone</button>
-                    </div>
-                    <ul class="requests-milestones">
-                        ${milestones.map((milestone, index) => buildMilestoneHtml(milestone, index)).join('')}
-                    </ul>
-
-                    <div class="requests-panel-footer">
-                        <label class="requests-panel-done">
-                            <input type="checkbox" data-field="completed"${completed ? ' checked' : ''}>
-                            Mark complete
-                        </label>
-                        <div class="requests-panel-actions">
-                            <button type="button" class="requests-panel-save" data-action="save">Save</button>
-                            <span class="requests-panel-status" data-role="save-status"></span>
-                        </div>
+            <article class="requests-item requests-item--with-votes${completed ? ' is-completed' : ''}${expanded ? ' is-expanded' : ''}" data-request-id="${escapeHtml(row.id)}">
+                ${buildVoteHtml(row)}
+                <div class="requests-item-main">
+                    <button
+                        type="button"
+                        class="requests-item-header"
+                        data-action="expand"
+                        aria-expanded="${expanded ? 'true' : 'false'}"
+                    >
+                        ${priorityBadge}
+                        <span class="requests-item-text">${escapeHtml(row.text)}</span>
+                        ${progress}
+                    </button>
+                    <div class="requests-item-panel">
+                        ${canManage ? buildAdminPanelHtml(row) : buildReadOnlyPanel(row)}
                     </div>
                 </div>
             </article>
@@ -734,6 +797,7 @@
                   { id: 'urgent', label: 'Urgent' },
               ];
         allRequests = Array.isArray(data.requests) ? data.requests : [];
+        canManage = Boolean(data.canManage);
         ensureActiveTab();
         setFormCategorySelect(activeTab === 'done' ? '' : activeTab === UNASSIGNED_TAB ? '' : activeTab);
         renderRequests();
@@ -777,6 +841,24 @@
         return data;
     }
 
+    async function toggleVote(requestId, direction) {
+        const res = await fetch(`/api/feature-requests/${encodeURIComponent(requestId)}/vote`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ direction }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Could not update vote.');
+        }
+        allRequests = Array.isArray(data.requests) ? data.requests : allRequests;
+        if (Array.isArray(data.categories)) {
+            categories = data.categories;
+        }
+        renderRequests();
+    }
+
     async function submitRequest(text, category, details) {
         const res = await fetch('/api/feature-requests', {
             method: 'POST',
@@ -787,6 +869,9 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) {
             throw new Error(data.error || 'Could not add feature request.');
+        }
+        if (Array.isArray(data.requests)) {
+            allRequests = data.requests;
         }
         return data;
     }
@@ -814,6 +899,7 @@
         if (pageHost) pageHost.dataset.requestsBound = '1';
 
     tabsEl?.addEventListener('contextmenu', (event) => {
+        if (!canManage) return;
         const tab = event.target.closest('[data-tab-id]');
         if (!tab) return;
         const tabId = tab.getAttribute('data-tab-id');
@@ -887,8 +973,8 @@
             expandedId = data.request?.id || null;
             setFormCategorySelect(category || '');
             setFormOpen(false);
-            showSuccess('Request added.');
-            await loadRequests();
+            showSuccess('Request added. The team has been emailed.');
+            renderRequests();
         } catch (error) {
             showError(error.message || 'Could not add request.');
         } finally {
@@ -903,6 +989,24 @@
     });
 
     listEl?.addEventListener('click', async (event) => {
+        const voteUpBtn = event.target.closest('[data-action="vote-up"]');
+        if (voteUpBtn) {
+            const requestId = voteUpBtn.getAttribute('data-request-id');
+            if (requestId) {
+                void toggleVote(requestId, 'up').catch((error) => showError(error.message));
+            }
+            return;
+        }
+
+        const voteDownBtn = event.target.closest('[data-action="vote-down"]');
+        if (voteDownBtn) {
+            const requestId = voteDownBtn.getAttribute('data-request-id');
+            if (requestId) {
+                void toggleVote(requestId, 'down').catch((error) => showError(error.message));
+            }
+            return;
+        }
+
         const expandBtn = event.target.closest('[data-action="expand"]');
         if (expandBtn) {
             if (panelAnimating) return;
@@ -939,6 +1043,7 @@
 
         const addBtn = event.target.closest('[data-action="add-milestone"]');
         if (addBtn) {
+            if (!canManage) return;
             const item = addBtn.closest('[data-request-id]');
             if (item) addMilestoneRow(item);
             return;
@@ -952,6 +1057,7 @@
 
         const saveBtn = event.target.closest('[data-action="save"]');
         if (!saveBtn || saveBtn.disabled) return;
+        if (!canManage) return;
         const item = saveBtn.closest('[data-request-id]');
         const id = item?.getAttribute('data-request-id');
         if (!item || !id) return;
@@ -993,6 +1099,7 @@
         categories = [];
         priorities = [];
         allRequests = [];
+        canManage = false;
         activeTab = null;
         expandedId = null;
         formOpen = false;

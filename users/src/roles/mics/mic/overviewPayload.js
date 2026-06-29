@@ -1,10 +1,13 @@
 ﻿const { buildMicPayload } = require('./micStore');
 const { getStoreConfig } = require('../../../../../stores/src/storeList');
 const { getSettings: getTacauditSettings } = require('../../../../../tacaudit/src/core/tacauditStore');
+const { summarizeStoreActions } = require('../../../../../tacaudit/src/core/storeActionsStore');
 const { buildAdminOverviewPayload, ensureAllAreaGroups } = require('./adminOverview');
 const { buildWeeklyAuditsTileState, buildSquareOneTiles } = require('../../../../../dashboard/src/weeklyAuditsTileState');
 const { normalizeAreaLabel } = require('../../../../../stores/src/marketsConfig');
 const { getAreaIds } = require('../../../../../stores/src/areasConfig');
+const { buildStockCountTileState } = require('../../../../../vendors/src/stockCountTileState');
+const { buildDailyStockCountTileState } = require('../../../../../vendors/src/dailyStockCountTileState');
 const {
     getOverviewScope,
     getAccessibleAreasForUser,
@@ -73,8 +76,6 @@ async function buildStoreOverviewPayload(user, deps) {
 
     const {
         storeSlice,
-        buildDailyStockCountTileStateAsync,
-        buildStockCountTileStateAsync,
         getAuditState,
         isTestStore,
         getAuditSchedule,
@@ -99,11 +100,12 @@ async function buildStoreOverviewPayload(user, deps) {
         accessibleAreas: getAccessibleAreasForUser(user) || [],
         accessibleMarkets: getUserAccessScope(user).markets || [],
         ...buildMicPayload(store, storeSlice, { canAccessDfsc: canUserAccessDfsc(user) }),
-        stockCount: await buildStockCountTileStateAsync(store, storeSlice),
-        dailyStockCount: await buildDailyStockCountTileStateAsync(store),
+        stockCount: buildStockCountTileState(store, storeSlice),
+        dailyStockCount: buildDailyStockCountTileState(store),
         weeklyAudits,
         squareOneTiles,
         reportEmail: tacauditSettings.reportEmail || '',
+        actionsSummary: summarizeStoreActions(store),
     };
 }
 

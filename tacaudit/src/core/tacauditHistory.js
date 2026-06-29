@@ -1,5 +1,6 @@
 ﻿const { getStoreConfig } = require('../../../stores/src/storeList');
 const { getDismissalPeriodKey } = require('../auditRecurrence');
+const { buildStoreDashboardProgress } = require('./tacauditDashboardProgress');
 const {
     listInspectionHistory: listDfscInspectionHistory,
     buildDaySummary,
@@ -25,6 +26,7 @@ const {
 const {
     listInspectionHistory: listSquareOneInspectionHistory,
     buildPeriodSummary: buildSquareOnePeriodSummary,
+    buildAreaSummaries,
     listOpenAudits: listSquareOneOpenAudits,
 } = require('../../audits/Square One/squareOneStore');
 const {
@@ -53,7 +55,8 @@ const { getAllMarketLabels, getAreasForMarket } = require('../../../stores/src/m
 const { readArchiveIndex, mergeHistoryWithArchive, ARCHIVE_RETENTION_DAYS } = require('./tacauditArchive');
 const { getAuditTypeConfig, isValidAuditType } = require('./auditRegistry');
 const { getSettings } = require('./tacauditStore');
-const { countOpenActionsForStore, listOpenActionsForStores } = require('./tacauditActions');
+const { countOpenActionsForStore, summarizeStoreActions, scanStoreOpenActions } = require('./tacauditActions');
+const { getDefaultActionDueDate } = require('./storeActionsStore');
 
 const HISTORY_LISTERS = {
     dfsc: listDfscInspectionHistory,
@@ -153,6 +156,34 @@ function weeklyAuditSubtext(period, openCount = 0) {
     return parts.join(' · ');
 }
 
+function squareOneAreaSubtext(area) {
+    if (area?.periodCompleted) return 'Complete this week';
+    if (area?.inProgress) return 'In progress';
+    return 'Due this week';
+}
+
+function buildSquareOneLaunchTiles(store, periodKey, squareSlot) {
+    return buildAreaSummaries(store, periodKey, squareSlot).map((area) => ({
+        id: `square-one--${area.id}`,
+        label: area.tileLabel || area.dashboardLabel || area.title,
+        href: `/${store}/square-one?area=${encodeURIComponent(area.id)}`,
+        sub: squareOneAreaSubtext(area),
+        complete: Boolean(area.periodCompleted),
+    }));
+}
+
+function buildSquareOneDueAreasForContext(storeNumber) {
+    const store = String(storeNumber || '').trim();
+    const periodKey = getDismissalPeriodKey();
+    const squareSlot = getAuditSchedule().squareSlot;
+    return buildAreaSummaries(store, periodKey, squareSlot).map((area) => ({
+        id: area.id,
+        label: area.tileLabel || area.dashboardLabel || area.title,
+        periodCompleted: Boolean(area.periodCompleted),
+        inProgress: Boolean(area.inProgress),
+    }));
+}
+
 const OPEN_AUDIT_LISTERS = [
     { type: 'dfsc', label: 'DFSC', list: listDfscOpenAudits },
     { type: 'pest-walk', label: 'Pest Walk', list: listPestOpenAudits },
@@ -203,10 +234,6 @@ function buildLaunchTiles(storeNumber, options = {}) {
     const rgmPeriod = buildRgmPeriodSummary(store, periodKey);
     const psiPeriod = buildPsiPeriodSummary(store, periodKey);
     const squareSchedule = getAuditSchedule();
-    const squarePeriod = buildSquareOnePeriodSummary(store, periodKey, squareSchedule.squareSlot);
-    const squareOpen = listSquareOneOpenAudits(store, { access }).length;
-    const squareDue = squarePeriod.dueCount || 0;
-    const squareDone = squarePeriod.completedCount || 0;
     const coachOk = options.canAccessCoachAudits ?? false;
     const coreOpsPeriod = buildCoreOpsPeriodSummary(store, periodKey);
     const coreFsPeriod = buildCoreFoodSafetyPeriodSummary(store, periodKey);
@@ -246,18 +273,7 @@ function buildLaunchTiles(storeNumber, options = {}) {
             sub: weeklyAuditSubtext(psiPeriod, listPsiOpenAudits(store, { access }).length),
             complete: Boolean(psiPeriod.periodCompleted),
         },
-        {
-            id: 'square-one',
-            label: 'Square One',
-            href: `/${store}/square-one`,
-            sub:
-                squareDue > 0 && squareDone >= squareDue
-                    ? 'Complete this week'
-                    : squareOpen > 0
-                      ? `${squareOpen} open · ${squareDone}/${squareDue} complete`
-                      : `${squareDone}/${squareDue} complete this week`,
-            complete: squareDue > 0 && squareDone >= squareDue,
-        },
+        ...buildSquareOneLaunchTiles(store, periodKey, squareSchedule.squareSlot),
         {
             id: 'core-ops',
             label: 'CORE Operations',
@@ -294,19 +310,36 @@ function buildLaunchTiles(storeNumber, options = {}) {
     return tiles;
 }
 
+function buildActionsSnapshot(storeNumber) {
+    return scanStoreOpenActions(storeNumber)
+        .sort((a, b) => {
+            if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
+            if (a.isDueSoon !== b.isDueSoon) return a.isDueSoon ? -1 : 1;
+            return String(a.dueDate || '').localeCompare(String(b.dueDate || ''));
+        })
+        .slice(0, 3);
+}
+
 function getTacauditContext(storeNumber, options = {}) {
     const cfg = getStoreConfig(storeNumber) || {};
     const settings = getSettings(storeNumber);
     const canViewAdminSummary = Boolean(options.canViewAdminSummary);
+    const launchTiles = buildLaunchTiles(storeNumber, options);
+    const access = buildAccessContext(options);
     return {
         storeNumber: settings.storeNumber,
         storeName: String(cfg.storeName || settings.storeNumber).trim(),
         areaName: String(cfg.area || '').trim(),
         settings,
         canViewAdminSummary,
-        launchTiles: buildLaunchTiles(storeNumber, options),
+        launchTiles,
+        squareOneDueAreas: buildSquareOneDueAreasForContext(storeNumber),
+        dashboardProgress: buildStoreDashboardProgress(storeNumber, launchTiles, { access }),
         inProgressAudits: buildInProgressAudits(storeNumber, options),
         openActionsCount: countOpenActionsForStore(storeNumber),
+        actionsSummary: summarizeStoreActions(storeNumber),
+        actionsSnapshot: buildActionsSnapshot(storeNumber),
+        defaultActionDueDate: getDefaultActionDueDate(storeNumber),
         canAccessCoachAudits: Boolean(options.canAccessCoachAudits),
         auditTypes: auditTypesForUser(options),
         archiveRetentionDays: ARCHIVE_RETENTION_DAYS,

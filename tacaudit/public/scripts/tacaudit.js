@@ -145,6 +145,7 @@ let savingSettings = false;
 let adminSummary = null;
 let summaryLoading = false;
 let actionsList = [];
+let actionsStatusFilter = 'all';
 let actionsLoading = false;
 let actionsFilterStore = '';
 let submittingActionId = '';
@@ -392,7 +393,7 @@ function renderTabs() {
 function renderHistoryList() {
     const cfg = auditCfg();
     if (!inspectionHistory.length) {
-        const days = context?.archiveRetentionDays || 45;
+        const days = context?.archiveRetentionDays || 90;
         return `<p class="dfsc-history-empty">No completed ${escapeHtml(cfg?.label || 'audit')} inspections yet. Finished audits are kept for ${days} days.</p>`;
     }
     return `
@@ -421,7 +422,7 @@ function renderHistoryList() {
 function renderAdminHistoryList() {
     const cfg = auditCfg();
     if (!inspectionHistory.length) {
-        const days = context?.archiveRetentionDays || 45;
+        const days = context?.archiveRetentionDays || 90;
         return `<p class="dfsc-history-empty">No completed ${escapeHtml(cfg?.label || 'audit')} inspections across this area yet. Finished audits are kept for ${days} days.</p>`;
     }
     return `
@@ -445,80 +446,6 @@ function renderAdminHistoryList() {
                 })
                 .join('')}
         </ul>`;
-}
-
-function bindLaunchRowDragScroll() {
-    const row = document.querySelector('.tacaudit-launch-row');
-    if (!row) return;
-
-    let pointerDown = false;
-    let dragging = false;
-    let didDrag = false;
-    let startX = 0;
-    let startScrollLeft = 0;
-    let activePointerId = null;
-
-    function clearDragState() {
-        dragging = false;
-        pointerDown = false;
-        row.classList.remove('is-drag-scroll');
-        if (activePointerId != null && row.hasPointerCapture(activePointerId)) {
-            row.releasePointerCapture(activePointerId);
-        }
-        activePointerId = null;
-    }
-
-    row.addEventListener(
-        'click',
-        (e) => {
-            if (!didDrag) return;
-            e.preventDefault();
-            e.stopPropagation();
-            didDrag = false;
-        },
-        true
-    );
-
-    row.addEventListener('pointerdown', (e) => {
-        if (e.button !== 0) return;
-        pointerDown = true;
-        dragging = false;
-        didDrag = false;
-        startX = e.clientX;
-        startScrollLeft = row.scrollLeft;
-        activePointerId = e.pointerId;
-    });
-
-    row.addEventListener('pointermove', (e) => {
-        if (!pointerDown || e.pointerId !== activePointerId) return;
-        const delta = e.clientX - startX;
-        if (!dragging && Math.abs(delta) > 8) {
-            dragging = true;
-            didDrag = true;
-            row.classList.add('is-drag-scroll');
-            row.setPointerCapture(e.pointerId);
-        }
-        if (!dragging) return;
-        e.preventDefault();
-        row.scrollLeft = startScrollLeft - delta;
-    });
-
-    row.addEventListener('pointerup', () => {
-        if (!didDrag) clearDragState();
-        else {
-            pointerDown = false;
-            dragging = false;
-            row.classList.remove('is-drag-scroll');
-            if (activePointerId != null && row.hasPointerCapture(activePointerId)) {
-                row.releasePointerCapture(activePointerId);
-            }
-            activePointerId = null;
-        }
-    });
-    row.addEventListener('pointercancel', clearDragState);
-    row.addEventListener('lostpointercapture', () => {
-        if (!pointerDown) row.classList.remove('is-drag-scroll');
-    });
 }
 
 function resumeAuditUrl(audit, storeNumber = STORE_NUMBER) {
@@ -631,20 +558,230 @@ function bindTabButtons() {
     });
 }
 
-function renderLaunchTiles() {
+function tileProgressState(tile) {
+    if (!tile || tile.placeholder) return 'due';
+    if (tile.complete) return 'complete';
+    const sub = String(tile.sub || '').toLowerCase();
+    if (sub.includes('in progress') || /\b\d+\s+open\b/.test(sub) || /\bopen\b/.test(sub)) {
+        return 'in_progress';
+    }
+    const partial = sub.match(/(\d+)\/(\d+)\s+complete/);
+    if (partial && Number(partial[1]) > 0) return 'in_progress';
+    return 'due';
+}
+
+function isWeeklyLaunchTile(tile) {
+    if (!tile || tile.placeholder) return false;
+    if (['pest-walk', 'rgm-cleaning', 'psi'].includes(tile.id)) return true;
+    return String(tile.id || '').startsWith('square-one--');
+}
+
+function launchTilesForView() {
     const tiles = context?.launchTiles || [];
+    const legacyIdx = tiles.findIndex((tile) => tile && tile.id === 'square-one');
+    if (legacyIdx === -1) return tiles;
+
+    const dueAreas = context?.squareOneDueAreas || [];
+    if (!dueAreas.length) return tiles;
+
+    const next = [...tiles];
+    const replacements = dueAreas.map((area) => ({
+        id: `square-one--${area.id}`,
+        label: area.label || area.id,
+        href: `/${STORE_NUMBER}/square-one?area=${encodeURIComponent(area.id)}`,
+        sub: area.periodCompleted ? 'Complete this week' : area.inProgress ? 'In progress' : 'Due this week',
+        complete: Boolean(area.periodCompleted),
+    }));
+    next.splice(legacyIdx, 1, ...replacements);
+    return next;
+}
+
+function weeklyProgressForView() {
+    const serverWeekly = context?.dashboardProgress?.weekly;
+    if (serverWeekly?.items?.length) return serverWeekly;
+    return auditProgressFromLaunchTiles(launchTilesForView());
+}
+
+function auditProgressFromLaunchTiles(tiles = launchTilesForView()) {
+    const active = (tiles || []).filter((t) => isWeeklyLaunchTile(t));
+    const counts = { complete: 0, in_progress: 0, due: 0, total: active.length, items: [] };
+    for (const tile of active) {
+        const state = tileProgressState(tile);
+        counts.items.push({ id: tile.id, label: tile.label, state });
+        counts[state === 'in_progress' ? 'in_progress' : state] += 1;
+    }
+    return counts;
+}
+
+function progressBarSegments(progress) {
+    const total = Math.max(1, Number(progress?.total) || 1);
+    const completePct = Math.round((Number(progress?.complete) || 0) / total * 1000) / 10;
+    const inProgressPct = Math.round((Number(progress?.in_progress) || 0) / total * 1000) / 10;
+    const duePct = Math.max(0, Math.round((100 - completePct - inProgressPct) * 10) / 10);
+    return { total, completePct, inProgressPct, duePct };
+}
+
+function renderProgressBar(progress) {
+    const { total, completePct, inProgressPct, duePct } = progressBarSegments(progress);
+    const breakdown =
+        progress?.breakdown ||
+        `${progress?.complete || 0} complete · ${progress?.in_progress || 0} in progress · ${progress?.due || 0} due`;
+    return `
+            <div
+                class="tacaudit-progress-bar"
+                role="progressbar"
+                aria-valuemin="0"
+                aria-valuemax="${total}"
+                aria-valuenow="${progress?.complete || 0}"
+                aria-label="${escapeHtml(breakdown)}">
+                ${
+                    progress?.complete
+                        ? `<div class="tacaudit-progress-bar__segment tacaudit-progress-bar__segment--complete" style="width:${completePct}%"></div>`
+                        : ''
+                }
+                ${
+                    progress?.in_progress
+                        ? `<div class="tacaudit-progress-bar__segment tacaudit-progress-bar__segment--in-progress" style="width:${inProgressPct}%"></div>`
+                        : ''
+                }
+                ${
+                    progress?.due && duePct > 0
+                        ? `<div class="tacaudit-progress-bar__segment tacaudit-progress-bar__segment--due" style="width:${duePct}%"></div>`
+                        : ''
+                }
+            </div>
+            <ul class="tacaudit-progress-legend">
+                <li><span class="tacaudit-progress-legend__dot tacaudit-progress-legend__dot--complete" aria-hidden="true"></span>${progress?.complete || 0} complete</li>
+                <li><span class="tacaudit-progress-legend__dot tacaudit-progress-legend__dot--in-progress" aria-hidden="true"></span>${progress?.in_progress || 0} in progress</li>
+                <li><span class="tacaudit-progress-legend__dot tacaudit-progress-legend__dot--due" aria-hidden="true"></span>${progress?.due || 0} due</li>
+            </ul>`;
+}
+
+function renderProgressAuditChips(items = []) {
+    return (items || [])
+        .map((item) => {
+            const state = String(item.state || 'due').replace(/_/g, '-');
+            const title = item.sub || item.label || '';
+            const label = item.progressLabel || item.label || '';
+            return `<li class="tacaudit-progress-audit tacaudit-progress-audit--${state}" title="${escapeHtml(title)}">${escapeHtml(label)}</li>`;
+        })
+        .join('');
+}
+
+function renderProgressPanel({
+    title,
+    statLine,
+    progress,
+    chips = [],
+    actionsHtml = '',
+    extraClass = '',
+} = {}) {
+    return `
+        <section class="tacaudit-metric-card tacaudit-progress-panel${extraClass}" aria-label="${escapeHtml(title)}">
+            <div class="tacaudit-progress-panel__head">
+                <div class="tacaudit-progress-panel__intro">
+                    <h3 class="tacaudit-progress-panel__title">${escapeHtml(title)}</h3>
+                    <p class="tacaudit-progress-panel__stat">${escapeHtml(statLine)}</p>
+                </div>
+                ${actionsHtml}
+            </div>
+            ${renderProgressBar(progress)}
+            <ul class="tacaudit-progress-audits" aria-label="Audit status">${renderProgressAuditChips(chips)}</ul>
+        </section>`;
+}
+
+function weeklyProgressChips(progress) {
+    if (progress?.items?.length) return progress.items;
+    return launchTilesForView().filter((t) => isWeeklyLaunchTile(t)).map((tile) => ({
+            id: tile.id,
+            label: tile.label,
+            state: tileProgressState(tile),
+            sub: tile.sub,
+        }));
+}
+
+function periodicProgressChips(periodic) {
+    return (periodic?.items || []).map((item) => ({
+        id: item.id,
+        label: item.label,
+        state: item.state,
+        sub: `${item.complete}/${item.target} complete`,
+        progressLabel: `${item.label} ${item.complete}/${item.target}`,
+    }));
+}
+
+function renderWeeklyProgressPanel() {
+    const weekly = weeklyProgressForView();
+    return renderProgressPanel({
+        title: 'Weekly progression',
+        statLine: `${weekly.complete} of ${weekly.total} complete`,
+        progress: weekly,
+        chips: weeklyProgressChips(weekly),
+    });
+}
+
+function renderAuditProgressPanel({ admin = false } = {}) {
+    const progress = admin
+        ? auditProgressFromLaunchTiles((context?.launchTiles || []).filter((t) => !['dfsc', 'core-ops', 'core-food-safety'].includes(t.id)))
+        : weeklyProgressForView();
+    const title = admin ? 'Area audit progression' : 'Weekly progression';
+    const statLine = `${progress.complete} of ${progress.total} complete`;
+    const chips = weeklyProgressChips(progress);
+    return renderProgressPanel({
+        title,
+        statLine,
+        progress,
+        chips,
+        actionsHtml: renderProgressActionsLink({ admin }),
+    });
+}
+
+function renderPeriodicProgressPanel() {
+    const periodic = context?.dashboardProgress?.periodic;
+    if (!periodic) return '';
+    const chips = periodicProgressChips(periodic);
+    return renderProgressPanel({
+        title: `Periodic progression · ${periodic.periodLabel || 'PERIOD'}`,
+        statLine: periodic.statLine,
+        progress: {
+            complete: periodic.complete,
+            in_progress: periodic.in_progress,
+            due: periodic.due,
+            total: periodic.total,
+            breakdown: periodic.breakdown,
+        },
+        chips,
+        extraClass: ' tacaudit-progress-panel--periodic',
+    });
+}
+
+function renderDashboardHero({ admin = false } = {}) {
+    if (admin) {
+        return `<div class="tacaudit-dashboard-hero">${renderAuditProgressPanel({ admin: true })}</div>`;
+    }
+    return `
+        <div class="tacaudit-dashboard-hero tacaudit-dashboard-hero--stacked">
+            ${renderWeeklyProgressPanel()}
+            ${renderPeriodicProgressPanel()}
+        </div>`;
+}
+
+function launchTileStateClass(tile) {
+    if (tile.complete) return ' tacaudit-launch-tile--complete';
+    if (tile.placeholder) return ' tacaudit-launch-tile--placeholder';
+    if (tileProgressState(tile) === 'in_progress') return ' tacaudit-launch-tile--in-progress';
+    return ' tacaudit-launch-tile--due';
+}
+
+function renderLaunchTiles() {
+    const tiles = launchTilesForView();
     if (!tiles.length) return '';
     return `
-        <section class="tacaudit-launch-section" aria-labelledby="tacaudit-launch-heading">
-            <h2 id="tacaudit-launch-heading" class="tacaudit-launch-heading">Start an audit</h2>
+        <section class="tacaudit-launch-section" aria-label="Start an audit">
             <div class="tacaudit-launch-row" role="list">
                 ${tiles
                     .map((tile) => {
-                        const stateClass = tile.complete
-                            ? ' tacaudit-launch-tile--complete'
-                            : tile.placeholder
-                              ? ' tacaudit-launch-tile--placeholder'
-                              : ' tacaudit-launch-tile--due';
+                        const stateClass = launchTileStateClass(tile);
                         const body = `
                             <div class="tacaudit-launch-tile-body">
                                 <div class="tacaudit-launch-tile-label">${escapeHtml(tile.label)}</div>
@@ -675,22 +812,55 @@ function renderCoreSection() {
         </article>`;
 }
 
+function renderCoreReportHeaderButton() {
+    return `
+        <button type="button" class="tacaudit-progress-actions-link" id="tacaudit-core-report-btn" aria-label="Download CORE audit report PDF">
+            <span class="tacaudit-progress-actions-link__value tacaudit-progress-actions-link__value--text">PDF</span>
+            <span class="tacaudit-progress-actions-link__meta">
+                <span class="tacaudit-progress-actions-link__label">CORE Report</span>
+                <span class="tacaudit-progress-actions-link__sub">Download PDF</span>
+            </span>
+        </button>`;
+}
+
+function renderStorePageHeader() {
+    const complianceActions = context?.canViewAdminSummary
+        ? `<div class="tacaudit-header-actions">${renderHubActionButtons({ includeActions: false })}</div>`
+        : '';
+    return `
+        <header class="tacaudit-page-header tacaudit-page-header--with-settings tacaudit-page-header--with-toolbar">
+            <div class="tacaudit-page-header__toolbar">
+                <div class="tacaudit-page-header__side tacaudit-page-header__side--start">
+                    ${renderCoreReportHeaderButton()}
+                </div>
+                <div class="tacaudit-page-header__main">
+                    <h1>TacAudit</h1>
+                    <p>${escapeHtml(context?.storeName || STORE_NUMBER)} · Audit history &amp; settings</p>
+                    ${complianceActions}
+                </div>
+                <div class="tacaudit-page-header__side tacaudit-page-header__side--end">
+                    ${renderProgressActionsLink()}
+                </div>
+            </div>
+        </header>`;
+}
+
 function renderEmailSetupCard() {
     if (hasReportEmail()) return '';
     return `
-        <article class="tacaudit-settings-card tacaudit-settings-card--setup">
-            <h2>Report email</h2>
-            <p>Set where completed audit PDFs are emailed (original resolution photos and signatures). You can change this later in Settings.</p>
-            <div class="tacaudit-settings-row">
+        <article class="tacaudit-settings-card tacaudit-settings-card--setup tacaudit-email-banner">
+            <h2>Store Email</h2>
+            <div class="tacaudit-settings-row tacaudit-email-banner__form">
                 <input type="email" id="tacaudit-email-input" value="" placeholder="store@example.com" autocomplete="email" />
-                <button type="button" class="dfsc-btn dfsc-btn-primary dfsc-btn-toolbar" id="tacaudit-save-email-btn"${savingSettings ? ' disabled' : ''}>
-                    ${savingSettings ? 'Saving…' : 'Save'}
-                </button>
             </div>
+            <p class="tacaudit-email-banner__hint">When an audit is completed, its PDF (photos and signatures) is emailed to this address. You can also set it under Settings.</p>
+            <button type="button" class="dfsc-btn dfsc-btn-primary dfsc-btn-toolbar" id="tacaudit-save-email-btn"${savingSettings ? ' disabled' : ''}>
+                ${savingSettings ? 'Saving…' : 'Save'}
+            </button>
         </article>`;
 }
 
-function renderHubActionButtons() {
+function renderHubActionButtons({ includeActions = true } = {}) {
     const parts = [];
     if (context?.canViewAdminSummary || IS_ADMIN_TACAUDIT) {
         parts.push(`
@@ -700,10 +870,12 @@ function renderHubActionButtons() {
     }
     const openCount = Math.max(0, Number(context?.openActionsCount) || 0);
     const dueClass = openCount > 0 ? ' tacaudit-actions-btn--due' : '';
-    parts.push(`
+    if (includeActions) {
+        parts.push(`
         <button type="button" class="dfsc-btn dfsc-btn-secondary dfsc-btn-sm tacaudit-actions-btn${dueClass}" id="tacaudit-actions-btn">
             Open Actions (${openCount})
         </button>`);
+    }
     return parts.join('');
 }
 
@@ -832,9 +1004,7 @@ function renderAdminLaunchTiles() {
             <div class="tacaudit-launch-row" role="list">
                 ${tiles
                     .map((tile) => {
-                        const stateClass = tile.complete
-                            ? ' tacaudit-launch-tile--complete'
-                            : ' tacaudit-launch-tile--due';
+                        const stateClass = launchTileStateClass(tile);
                         return `<article class="tacaudit-launch-tile${stateClass}" role="listitem">
                             <div class="tacaudit-launch-tile-body">
                                 <div class="tacaudit-launch-tile-label">${escapeHtml(tile.label)}</div>
@@ -847,10 +1017,85 @@ function renderAdminLaunchTiles() {
         </section>`;
 }
 
+function renderProgressActionsLink({ admin = false } = {}) {
+    const summary = context?.actionsSummary || { open: 0, overdue: 0, dueSoon: 0 };
+    const openCount = admin ? Math.max(0, Number(context?.openActionsCount) || 0) : summary.open || 0;
+    const sub = admin
+        ? `${openCount} across area`
+        : summary.overdue > 0
+          ? `${summary.overdue} overdue`
+          : summary.dueSoon > 0
+            ? `${summary.dueSoon} due soon`
+            : 'View all';
+    const dueClass = !admin && (summary.overdue > 0 || openCount > 0) ? ' tacaudit-progress-actions-link--due' : '';
+    return `
+        <button type="button" class="tacaudit-progress-actions-link${dueClass}" id="tacaudit-dashboard-actions-btn">
+            <span class="tacaudit-progress-actions-link__value">${openCount}</span>
+            <span class="tacaudit-progress-actions-link__meta">
+                <span class="tacaudit-progress-actions-link__label">Open actions</span>
+                <span class="tacaudit-progress-actions-link__sub">${escapeHtml(sub)}</span>
+            </span>
+        </button>`;
+}
+
+function renderActionsSnapshot() {
+    const snapshot = context?.actionsSnapshot || [];
+    if (!snapshot.length) {
+        return `
+            <section class="tacaudit-dashboard-panel">
+                <h2 class="tacaudit-dashboard-panel__title">Actions snapshot</h2>
+                <p class="dfsc-field-hint">No overdue or upcoming actions.</p>
+            </section>`;
+    }
+    const items = snapshot
+        .map(
+            (action) => `
+        <li class="tacaudit-snapshot-item">
+            <div class="tacaudit-snapshot-item__head">
+                <strong>${escapeHtml(action.auditLabel || action.auditType)}</strong>
+                ${actionDueBadge(action)}
+            </div>
+            <div>${escapeHtml(action.label)}</div>
+            ${formatActionDueDate(action) ? `<div class="tacaudit-action-due">Due ${escapeHtml(formatActionDueDate(action))}</div>` : ''}
+        </li>`
+        )
+        .join('');
+    return `
+        <section class="tacaudit-dashboard-panel">
+            <div class="tacaudit-dashboard-panel__head">
+                <h2 class="tacaudit-dashboard-panel__title">Actions snapshot</h2>
+                <button type="button" class="dfsc-btn dfsc-btn-ghost dfsc-btn-sm" id="tacaudit-snapshot-actions-btn">View all</button>
+            </div>
+            <ul class="tacaudit-snapshot-list">${items}</ul>
+        </section>`;
+}
+
+function renderDashboardHistory({ admin = false } = {}) {
+    return `
+        <div class="tacaudit-history-card tacaudit-dashboard-history">
+            <div class="tacaudit-dashboard-history__head">
+                <h2 class="tacaudit-launch-heading tacaudit-dashboard-history__title">Audit History</h2>
+            </div>
+            ${renderTabs()}
+            <section class="dfsc-history-section tacaudit-history-section">
+                ${renderTabPanelContent(admin ? { admin: true } : {})}
+            </section>
+        </div>`;
+}
+
+function bindDashboardActionLinks() {
+    document.getElementById('tacaudit-dashboard-actions-btn')?.addEventListener('click', () => {
+        void openActionsView();
+    });
+    document.getElementById('tacaudit-snapshot-actions-btn')?.addEventListener('click', () => {
+        void openActionsView();
+    });
+}
+
 function renderAdminMainView() {
     const areaLine = context?.areaName ? context.areaName : 'Area';
     app.innerHTML = `
-        <div class="dfsc-shell tacaudit-shell">
+        <div class="dfsc-shell tacaudit-shell tacaudit-dashboard">
             <header class="tacaudit-page-header">
                 <div class="tacaudit-page-header__main">
                     <h1>TacAudit</h1>
@@ -860,12 +1105,17 @@ function renderAdminMainView() {
                 </div>
             </header>
             <div id="tacaudit-status-bar">${renderStatus()}</div>
-            ${renderAdminLaunchTiles()}
-            <div class="tacaudit-history-card">
-                ${renderTabs()}
-                <section class="dfsc-history-section tacaudit-history-section">
-                    ${renderTabPanelContent({ admin: true })}
-                </section>
+            <div class="tacaudit-dashboard-layout">
+                ${renderDashboardHero({ admin: true })}
+                <div class="tacaudit-dashboard-body">
+                    ${renderAdminLaunchTiles()}
+                    <div class="tacaudit-dashboard-secondary">
+                        ${renderCoreSection()}
+                    </div>
+                </div>
+                <footer class="tacaudit-dashboard-footer">
+                    ${renderDashboardHistory({ admin: true })}
+                </footer>
             </div>
         </div>`;
 
@@ -875,6 +1125,7 @@ function renderAdminMainView() {
     document.getElementById('tacaudit-actions-btn')?.addEventListener('click', () => {
         void openActionsView();
     });
+    bindDashboardActionLinks();
     bindScopePicker();
     bindTabButtons();
 }
@@ -882,23 +1133,21 @@ function renderAdminMainView() {
 function renderMainView() {
     auditCfg();
     app.innerHTML = `
-        <div class="dfsc-shell tacaudit-shell">
-            <header class="tacaudit-page-header tacaudit-page-header--with-settings">
-                <div class="tacaudit-page-header__main">
-                    <h1>TacAudit</h1>
-                    <p>${escapeHtml(context?.storeName || STORE_NUMBER)} · Audit history &amp; settings</p>
-                    <div class="tacaudit-header-actions">${renderHubActionButtons()}</div>
-                </div>
-            </header>
+        <div class="dfsc-shell tacaudit-shell tacaudit-dashboard">
+            ${renderStorePageHeader()}
             <div id="tacaudit-status-bar">${renderStatus()}</div>
-            ${renderCoreSection()}
-            ${renderEmailSetupCard()}
-            ${renderLaunchTiles()}
-            <div class="tacaudit-history-card">
-                ${renderTabs()}
-                <section class="dfsc-history-section tacaudit-history-section">
-                    ${renderTabPanelContent()}
-                </section>
+            <div class="tacaudit-dashboard-layout">
+                ${renderDashboardHero()}
+                <div class="tacaudit-dashboard-body">
+                    ${renderLaunchTiles()}
+                    <div class="tacaudit-dashboard-secondary">
+                        ${renderActionsSnapshot()}
+                        ${renderEmailSetupCard()}
+                    </div>
+                </div>
+                <footer class="tacaudit-dashboard-footer">
+                    ${renderDashboardHistory()}
+                </footer>
             </div>
         </div>`;
 
@@ -907,9 +1156,7 @@ function renderMainView() {
     document.getElementById('tacaudit-compliance-btn')?.addEventListener('click', () => {
         void openAdminSummary();
     });
-    document.getElementById('tacaudit-actions-btn')?.addEventListener('click', () => {
-        void openActionsView();
-    });
+    bindDashboardActionLinks();
     bindTabButtons();
     document.querySelectorAll('[data-history-id]').forEach((btn) => {
         btn.addEventListener('click', () => openHistoryDetail(btn.dataset.historyId, btn.dataset.historyDate));
@@ -926,7 +1173,6 @@ function renderMainView() {
             }
         });
     });
-    bindLaunchRowDragScroll();
     window.MicSettings?.setStoreContext?.({
         storeNumber: STORE_NUMBER,
         reportEmail: context?.settings?.reportEmail || '',
@@ -1105,10 +1351,9 @@ async function saveEmailSettings() {
 
 async function downloadCoreReport() {
     const btn = document.getElementById('tacaudit-core-report-btn');
-    if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Generating report…';
-    }
+    const sub = btn?.querySelector('.tacaudit-progress-actions-link__sub');
+    if (btn) btn.disabled = true;
+    if (sub) sub.textContent = 'Generating…';
     statusMessage = '';
     try {
         const url = apiUrl('/api/tacaudit/core-report.pdf', { store: STORE_NUMBER });
@@ -1134,10 +1379,8 @@ async function downloadCoreReport() {
         statusKind = 'error';
         renderStatusBar();
     } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.textContent = 'CORE audit report';
-        }
+        if (btn) btn.disabled = false;
+        if (sub) sub.textContent = 'Download PDF';
     }
 }
 
@@ -1839,13 +2082,61 @@ function actionContextLine(action) {
     return parts.join(' · ');
 }
 
+function actionDueBadge(action) {
+    if (action.isOverdue) {
+        return '<span class="tacaudit-action-badge tacaudit-action-badge--overdue">Overdue</span>';
+    }
+    if (action.isDueSoon) {
+        return '<span class="tacaudit-action-badge tacaudit-action-badge--soon">Due soon</span>';
+    }
+    return '';
+}
+
+function formatActionDueDate(action) {
+    const raw = String(action.dueDate || '').trim();
+    if (!raw) return '';
+    const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return raw;
+    return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+function filterActionsByStatus(items) {
+    if (actionsStatusFilter === 'overdue') {
+        return items.filter((a) => a.isOverdue);
+    }
+    if (actionsStatusFilter === 'due_soon') {
+        return items.filter((a) => a.isDueSoon && !a.isOverdue);
+    }
+    if (actionsStatusFilter === 'open') {
+        return items.filter((a) => !a.isOverdue && !a.isDueSoon);
+    }
+    return items;
+}
+
+function renderActionsFilterBar() {
+    const filters = [
+        ['all', 'All'],
+        ['overdue', 'Overdue'],
+        ['due_soon', 'Due soon'],
+        ['open', 'Open'],
+    ];
+    return `<div class="tacaudit-actions-filters" role="tablist" aria-label="Filter actions">
+        ${filters
+            .map(
+                ([id, label]) =>
+                    `<button type="button" class="dfsc-btn dfsc-btn-sm${actionsStatusFilter === id ? ' dfsc-btn-primary' : ' dfsc-btn-secondary'}" data-actions-filter="${id}">${label}</button>`
+            )
+            .join('')}
+    </div>`;
+}
+
 function renderActionsList() {
-    let items = actionsList || [];
+    let items = filterActionsByStatus(actionsList || []);
     if (actionsFilterStore) {
         items = items.filter((a) => String(a.storeNumber) === String(actionsFilterStore));
     }
     if (!items.length) {
-        return '<p class="dfsc-history-empty">No open actions.</p>';
+        return '<p class="dfsc-history-empty">No open actions match this filter.</p>';
     }
     const showStore = IS_ADMIN_TACAUDIT || items.some((a, i, arr) => i > 0 && a.storeNumber !== arr[0].storeNumber);
     return `
@@ -1853,14 +2144,19 @@ function renderActionsList() {
             ${items
                 .map((action) => {
                     const busy = submittingActionId === action.id;
+                    const due = formatActionDueDate(action);
+                    const text = String(action.text || action.draftText || '').trim();
                     return `
-                <li class="tacaudit-action-item" data-action-id="${escapeHtml(action.id)}">
+                <li class="tacaudit-action-item${action.isOverdue ? ' tacaudit-action-item--overdue' : ''}" data-action-id="${escapeHtml(action.id)}">
                     ${showStore ? `<div class="tacaudit-action-store">${escapeHtml(action.storeName || action.storeNumber)}</div>` : ''}
-                    <div class="tacaudit-action-label">${escapeHtml(action.label)}</div>
+                    <div class="tacaudit-action-head">
+                        <div class="tacaudit-action-label">${escapeHtml(action.label)}</div>
+                        ${actionDueBadge(action)}
+                    </div>
                     <div class="tacaudit-action-meta">${escapeHtml(actionContextLine(action))}</div>
+                    ${due ? `<div class="tacaudit-action-due">Due ${escapeHtml(due)}</div>` : ''}
+                    <p class="tacaudit-action-text-display">${escapeHtml(text)}</p>
                     <div class="tacaudit-action-form">
-                        <textarea class="dfsc-input tacaudit-action-text" rows="3" data-action-text="${escapeHtml(action.id)}"
-                            placeholder="Describe corrective action taken…">${escapeHtml(action.draftText || '')}</textarea>
                         <button type="button" class="dfsc-btn dfsc-btn-primary dfsc-btn-sm tacaudit-action-submit"
                             data-action-submit="${escapeHtml(action.id)}"${busy ? ' disabled' : ''}>
                             ${busy ? 'Saving…' : 'Mark complete'}
@@ -1886,6 +2182,7 @@ function renderActionsView() {
             <div class="tacaudit-summary-toolbar">
                 <button type="button" class="dfsc-btn dfsc-btn-secondary dfsc-btn-sm" id="tacaudit-actions-back-btn">Back</button>
             </div>
+            ${renderActionsFilterBar()}
             <div id="tacaudit-status-bar">${renderStatus()}</div>
             ${
                 actionsLoading
@@ -1905,6 +2202,13 @@ function renderActionsView() {
         renderMainView();
     });
 
+    document.querySelectorAll('[data-actions-filter]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            actionsStatusFilter = btn.dataset.actionsFilter || 'all';
+            renderActionsView();
+        });
+    });
+
     document.querySelectorAll('[data-action-submit]').forEach((btn) => {
         btn.addEventListener('click', () => {
             void submitActionItem(btn.dataset.actionSubmit);
@@ -1915,14 +2219,6 @@ function renderActionsView() {
 async function submitActionItem(actionId) {
     const action = actionsList.find((a) => a.id === actionId);
     if (!action) return;
-    const textarea = document.querySelector(`[data-action-text="${CSS.escape(actionId)}"]`);
-    const text = String(textarea?.value || '').trim();
-    if (!text) {
-        statusMessage = 'Enter corrective action text before marking complete.';
-        statusKind = 'error';
-        renderStatusBar();
-        return;
-    }
     submittingActionId = actionId;
     renderActionsView();
     try {
@@ -1931,17 +2227,18 @@ async function submitActionItem(actionId) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 storeNumber: action.storeNumber,
-                auditType: action.auditType,
-                sessionId: action.sessionId,
-                questionId: action.questionId,
-                text,
-                dateKey: action.dateKey,
-                periodKey: action.periodKey,
+                actionId: action.id,
+                complete: true,
             }),
         });
         statusMessage = 'Action marked complete.';
         statusKind = 'success';
         await refreshActionsList();
+        if (context?.actionsSummary) {
+            const summary = await fetchJson(apiUrl('/api/tacaudit/actions/summary', { store: STORE_NUMBER }));
+            context.actionsSummary = summary.summary || context.actionsSummary;
+            context.openActionsCount = context.actionsSummary?.open ?? actionsList.length;
+        }
     } catch (err) {
         statusMessage = err.message;
         statusKind = 'error';

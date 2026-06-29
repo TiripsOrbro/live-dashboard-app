@@ -36,7 +36,10 @@
     --meal-period-body-padding-y: 8px;
     --meal-period-body-padding-x: 10px;
     --meal-period-stack-gap: 4px;
-    --mic-tile-radius: 0;
+    --mic-tile-radius: calc(10px * var(--dashboard-scale));
+    --mic-tile-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04);
+    --mic-tile-border: 1px solid rgba(15, 23, 42, 0.07);
+    --mic-settings-radius: var(--mic-tile-radius);
 
     --cell-border: 2px solid;
 
@@ -69,8 +72,18 @@
     --shell-transition-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-html.mic-rounded-tiles {
-    --mic-tile-radius: calc(10px * var(--dashboard-scale));
+html.mic-flat-tiles {
+    --mic-tile-radius: 0;
+    --mic-tile-shadow: none;
+}
+
+html.mic-dark-mode:not(.mic-flat-tiles) {
+    --mic-tile-shadow: 0 2px 10px rgba(0, 0, 0, 0.32);
+    --mic-tile-border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+html.mic-dark-mode.mic-flat-tiles {
+    --mic-tile-border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 body.color-blind-mode,

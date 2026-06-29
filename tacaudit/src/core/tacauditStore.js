@@ -35,18 +35,30 @@ function getSettings(storeNumber) {
     return {
         storeNumber: store,
         reportEmail: String(raw.reportEmail || '').trim(),
+        lastActionsDigestDate: String(raw.lastActionsDigestDate || '').trim() || null,
+        actionsSoonDays: Math.max(1, Math.min(14, Number(raw.actionsSoonDays) || 2)),
         updatedAt: raw.updatedAt || null,
     };
 }
 
 function saveSettings(storeNumber, updates = {}) {
     const store = normalizeStoreKey(storeNumber);
-    const reportEmail = String(updates.reportEmail || '').trim();
+    const prev = readJson(settingsPath(store), {});
+    const reportEmail =
+        updates.reportEmail !== undefined ? String(updates.reportEmail || '').trim() : String(prev.reportEmail || '').trim();
     if (reportEmail && !isValidEmail(reportEmail)) {
         return { ok: false, error: 'Enter a valid email address.' };
     }
     const next = {
         reportEmail,
+        lastActionsDigestDate:
+            updates.lastActionsDigestDate !== undefined
+                ? String(updates.lastActionsDigestDate || '').trim() || null
+                : prev.lastActionsDigestDate || null,
+        actionsSoonDays:
+            updates.actionsSoonDays !== undefined
+                ? Math.max(1, Math.min(14, Number(updates.actionsSoonDays) || 2))
+                : Math.max(1, Math.min(14, Number(prev.actionsSoonDays) || 2)),
         updatedAt: new Date().toISOString(),
     };
     writeJson(settingsPath(store), next);

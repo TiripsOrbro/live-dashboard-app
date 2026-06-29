@@ -15,6 +15,11 @@ const {
     inCompleteAccessError,
 } = require('./auditSessionAccess');
 const { applyCollaborativeUpdates } = require('./auditContributions');
+const {
+    promoteSessionActionsOnSubmit,
+    syncUpdatedActionsToRegistry,
+    getDefaultActionDueDate,
+} = require('../core/storeActionsStore');
 const { safePathSegment } = require('./auditPathSafety');
 
 const DEFAULT_TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
@@ -249,6 +254,7 @@ function createPeriodAuditStore({ auditType, dataDir, schema }) {
             periodCompleted: getCompletedSessions(store, periodKey).map(summarizeCompletedAudit),
             canCompleteAudits: access.canCompleteAudits,
             canStartAudits: access.canStartAudits,
+            defaultActionDueDate: getDefaultActionDueDate(store),
             schema: schema.buildSchemaPayload(),
         };
     }
@@ -326,6 +332,9 @@ function createPeriodAuditStore({ auditType, dataDir, schema }) {
             getQuestionById: (questionId) => schema.getQuestionById(questionId),
             normalizeActionUpdate: schema.normalizeActionUpdate,
         });
+        syncUpdatedActionsToRegistry(store, auditType, session, updates, access, (questionId) =>
+            schema.getQuestionById(questionId)
+        );
         if (updates.signOff && typeof updates.signOff === 'object') {
             session.signOff = { ...session.signOff, ...updates.signOff };
         }
@@ -386,6 +395,7 @@ function createPeriodAuditStore({ auditType, dataDir, schema }) {
         session.completedAt = new Date().toISOString();
         session.nonCompliant = schema.collectNonCompliant(session);
         session.score = schema.scoreSession(session);
+        promoteSessionActionsOnSubmit(store, auditType, session, schema.collectNonCompliant, access);
         saveSession(session);
         clearActivePointer(store);
         afterAuditSubmit({ storeNumber: store, auditType, session });

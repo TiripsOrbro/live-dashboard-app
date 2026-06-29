@@ -194,8 +194,12 @@ function getScoredQuestions(session) {
 
 function getActionEntry(session, questionId) {
     const raw = session.actions?.[questionId];
-    if (!raw) return { text: '', submittedAt: null };
-    return { text: String(raw.text || ''), submittedAt: raw.submittedAt || null };
+    if (!raw) return { text: '', submittedAt: null, dueDate: null };
+    return {
+        text: String(raw.text || ''),
+        submittedAt: raw.submittedAt || null,
+        dueDate: raw.dueDate || null,
+    };
 }
 
 function isActionSubmitted(session, questionId) {
@@ -206,10 +210,15 @@ function isActionSubmitted(session, questionId) {
 function normalizeActionUpdate(entry, previous) {
     const text = String(entry?.text ?? previous?.text ?? '').trim();
     const submittedAt = entry?.submittedAt ?? previous?.submittedAt ?? null;
+    const dueDate = entry?.dueDate ?? previous?.dueDate ?? null;
     if (entry?.submit) {
-        return { text, submittedAt: submittedAt || new Date().toISOString() };
+        return {
+            text,
+            submittedAt: submittedAt || new Date().toISOString(),
+            dueDate: dueDate || null,
+        };
     }
-    return { text, submittedAt };
+    return { text, submittedAt, dueDate: dueDate || null };
 }
 
 function collectNonCompliant(session) {
@@ -249,9 +258,8 @@ function validateSection(session, sectionId) {
                 return { ok: false, error: `Answer required: ${question.label}` };
             }
             if (isNotCompliantValue(value, question)) {
-                const note = String(session.notes?.[question.id] || '').trim();
-                if (!note) {
-                    return { ok: false, error: `Add a note for: ${question.label}` };
+                if (!isActionSubmitted(session, question.id)) {
+                    return { ok: false, error: `Submit a corrective action for: ${question.label}` };
                 }
             }
         }
@@ -282,7 +290,7 @@ function scoreSession(session) {
         yesCount: okCount,
         percent: pct,
         flaggedCount: nc.length,
-        actionCount: nc.filter((r) => r.hasNote).length,
+        actionCount: nc.filter((r) => r.actionSubmitted).length,
     };
 }
 

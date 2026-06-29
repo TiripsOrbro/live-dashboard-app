@@ -10,6 +10,10 @@
     color: var(--charcoal);
 }
 
+html:not(.mic-flat-tiles) .mic-page {
+    background: #eef0f4;
+}
+
 .mic-header {
     display: flex;
     align-items: flex-start;
@@ -193,6 +197,17 @@
 .admin-promo-banner:focus-visible {
     transform: translateY(-1px);
     box-shadow: 0 4px 14px color-mix(in srgb, var(--charcoal) 14%, transparent);
+}
+
+html:not(.mic-flat-tiles) .admin-promo-banner {
+    border: var(--mic-tile-border);
+    border-radius: var(--mic-tile-radius, 0);
+    box-shadow: var(--mic-tile-shadow, none);
+}
+
+html:not(.mic-flat-tiles) .admin-promo-banner:hover,
+html:not(.mic-flat-tiles) .admin-promo-banner:focus-visible {
+    box-shadow: var(--mic-tile-shadow, none), 0 4px 14px color-mix(in srgb, var(--charcoal) 14%, transparent);
 }
 
 .admin-promo-banner-bg {
@@ -485,11 +500,14 @@ html.admin-overview-page .app-shell-view #app > .mic-page--admin {
     flex-direction: column;
     overflow: visible;
     background: var(--white);
-    border-color: var(--charcoal);
     opacity: 1;
     align-items: center;
     justify-content: center;
     text-align: center;
+}
+
+.mic-grid--admin > .mic-tile.mic-tile--core-countdown {
+    overflow: hidden;
 }
 
 .mic-grid--admin > .mic-tile:not(.mic-tile--store-leaderboard) .mic-tile-body,
@@ -509,7 +527,6 @@ html.admin-overview-page .app-shell-view #app > .mic-page--admin {
 .mic-grid--admin > .mic-tile--stock-active,
 .mic-grid--admin > .mic-tile--stock-idle {
     background: var(--white);
-    border-color: var(--charcoal);
     opacity: 1;
 }
 
@@ -687,7 +704,9 @@ html.admin-overview-page .app-shell-view #app > .mic-page--admin {
     height: 100%;
     overflow: hidden;
     box-sizing: border-box;
-    border: var(--cell-border) var(--charcoal);
+    border: var(--mic-tile-border);
+    border-radius: var(--mic-tile-radius, 0);
+    box-shadow: var(--mic-tile-shadow, none);
 }
 
 .mic-grid--admin .mic-tile--pos-voc {
@@ -818,7 +837,9 @@ html.admin-overview-page .app-shell-view #app > .mic-page--admin {
     justify-content: center;
     text-align: center;
     background: var(--white);
-    border: var(--cell-border) var(--charcoal);
+    border: var(--mic-tile-border);
+    border-radius: var(--mic-tile-radius, 0);
+    box-shadow: var(--mic-tile-shadow, none);
 }
 
 .mic-grid--admin .mic-tacaudit-access-audits > .mic-tile .mic-tile-body {
@@ -849,8 +870,9 @@ html.admin-overview-page .app-shell-view #app > .mic-page--admin {
     width: 100%;
     box-sizing: border-box;
     margin: 0;
-    border: var(--cell-border) var(--charcoal);
-    border-radius: 0;
+    border: var(--mic-tile-border);
+    border-radius: var(--mic-tile-radius, 0);
+    box-shadow: var(--mic-tile-shadow, none);
     background: var(--white);
     padding: calc(12px * var(--dashboard-scale)) calc(14px * var(--dashboard-scale));
     font: inherit;
@@ -902,7 +924,9 @@ html.admin-overview-page .app-shell-view #app > .mic-page--admin {
     justify-content: center;
     text-align: center;
     background: var(--white);
-    border: var(--cell-border) var(--charcoal);
+    border: var(--mic-tile-border);
+    border-radius: var(--mic-tile-radius, 0);
+    box-shadow: var(--mic-tile-shadow, none);
 }
 
 .mic-grid--admin .mic-grid-equal-row > .mic-tile .mic-tile-body {
@@ -1403,7 +1427,9 @@ html.mic-dark-mode .mic-audit-stat--complete {
     height: 100%;
     overflow: hidden;
     box-sizing: border-box;
-    border: var(--cell-border) var(--charcoal);
+    border: var(--mic-tile-border);
+    border-radius: var(--mic-tile-radius, 0);
+    box-shadow: var(--mic-tile-shadow, none);
 }
 
 .mic-store-lead {
@@ -1423,9 +1449,17 @@ html.mic-dark-mode .mic-audit-stat--complete {
     z-index: 2;
 }
 
+.mic-tile--store-leaderboard .mic-store-lead:not(.mic-store-lead--loading) {
+    width: calc(100% + 2px);
+    max-width: none;
+    margin: -1px -1px 0;
+    border-radius: max(0px, calc(var(--mic-tile-radius, 0px) + 1px))
+        max(0px, calc(var(--mic-tile-radius, 0px) + 1px)) 0 0;
+}
+
 .mic-store-lead--purple {
     background: linear-gradient(180deg, var(--tb-purple-light, #9b63d6) 0%, var(--tb-purple, #702082) 100%);
-    padding: calc(16px * var(--dashboard-scale)) 0 0;
+    padding: calc(12px * var(--dashboard-scale)) 0 calc(18px * var(--dashboard-scale));
     display: flex;
     flex-direction: column;
 }
@@ -1845,6 +1879,54 @@ html.mic-dark-mode .mic-audit-stat--complete {
     text-align: center;
     font-size: var(--font-size-5);
     color: color-mix(in srgb, var(--charcoal) 65%, white);
+}
+
+.mic-mini-dashboard--loading {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: calc(160px * var(--dashboard-scale));
+}
+
+.mic-sales-tile-loading {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(16px * var(--dashboard-scale));
+    min-height: calc(160px * var(--dashboard-scale));
+    padding: calc(24px * var(--dashboard-scale)) calc(16px * var(--dashboard-scale));
+    text-align: center;
+    box-sizing: border-box;
+}
+
+.mic-sales-tile-loading__message {
+    margin: 0;
+    font-size: var(--font-size-5);
+    line-height: 1.35;
+    color: color-mix(in srgb, var(--charcoal) 65%, white);
+}
+
+.mic-sales-tile-loading__dots {
+    flex-shrink: 0;
+}
+
+.mic-store-lead-sales-stack--pending,
+.mic-store-lead-sales--pending {
+    min-height: 0;
+}
+
+.mic-store-lead-list--dashboard.mic-store-lead-list--loading-sales,
+.mic-store-lead-list--dashboard .mic-mini-dashboard--loading {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: calc(180px * var(--dashboard-scale));
+}
+
+.mic-store-lead-list--loading-sales .mic-sales-tile-loading--area {
+    min-height: calc(200px * var(--dashboard-scale));
 }
 
 .mic-mini-dashboard .dashboard-grid.dashboard-grid--portrait {
@@ -2464,8 +2546,9 @@ html.mic-dark-mode .mic-audit-stat--complete {
 
 .mic-tile {
     background: var(--white);
-    border: var(--cell-border) var(--charcoal);
+    border: var(--mic-tile-border);
     border-radius: var(--mic-tile-radius, 0);
+    box-shadow: var(--mic-tile-shadow, none);
     padding: calc(18px * var(--dashboard-scale)) calc(14px * var(--dashboard-scale));
     display: flex;
     flex-direction: column;
@@ -2739,9 +2822,11 @@ html.mic-dark-mode .mic-audit-stat--complete {
 .mic-tile--core-countdown {
     position: relative;
     overflow: hidden;
+    border-radius: var(--mic-tile-radius, 0);
     background: color-mix(in srgb, var(--tb-purple, #702082) 68%, black);
     color: #fff;
     transition: box-shadow 0.35s ease;
+    isolation: isolate;
 }
 
 .mic-tile--core-countdown:hover,
@@ -2753,6 +2838,7 @@ html.mic-dark-mode .mic-audit-stat--complete {
 .mic-core-countdown-bg {
     position: absolute;
     inset: 0;
+    border-radius: inherit;
     background:
         linear-gradient(
             180deg,
@@ -2854,6 +2940,7 @@ html.mic-dark-mode .mic-audit-stat--complete {
 }
 
 .mic-grid--admin .mic-grid-equal-row > .mic-tile.mic-tile--core-countdown {
+    overflow: hidden;
     background: color-mix(in srgb, var(--tb-purple, #702082) 68%, black);
 }
 
@@ -3093,6 +3180,10 @@ html.mic-dark-mode .mic-audit-stat--complete {
     padding: calc(18px * var(--dashboard-scale)) 0 0;
 }
 
+html:not(.mic-flat-tiles) .mic-tile--stock-levels {
+    overflow: hidden;
+}
+
 .mic-tile--stock-levels .mic-tile-body {
     flex: 1 1 auto;
     padding-left: calc(14px * var(--dashboard-scale));
@@ -3211,29 +3302,68 @@ html.mic-dark-mode .mic-audit-stat--complete {
     margin-top: auto;
 }
 
+.mic-grid--admin .mic-grid-equal-row > .mic-tile.mic-tile--stock-levels:not(:has(.mic-tile-stock-view)),
+.mic-tile--stock-levels:not(:has(.mic-tile-stock-view)) {
+    border-bottom: none;
+}
+
 .mic-tile-stock-check-tabs {
     width: 100%;
     flex: 0 0 auto;
     margin-top: auto;
+    align-items: stretch;
+    border-top: 1px solid color-mix(in srgb, var(--charcoal) 12%, var(--grey));
+    border-bottom: none;
+}
+
+.mic-tile--stock-levels:not(:has(.mic-tile-stock-view)) .mic-tile-stock-check-tabs {
+    border-bottom: none;
+}
+
+html:not(.mic-flat-tiles) .mic-tile--stock-levels:not(:has(.mic-tile-stock-view)) {
+    border-bottom: var(--mic-tile-border);
+}
+
+html:not(.mic-flat-tiles) .mic-tile--stock-levels:not(:has(.mic-tile-stock-view)) .mic-tile-stock-check-tabs {
     border-bottom: none;
 }
 
 .mic-tile-stock-check-tabs .app-tab {
     flex: 1 1 0;
     font-size: calc(0.72rem * var(--dashboard-scale));
-    --app-tab-pad-y: calc(8px * var(--dashboard-scale));
+    --app-tab-pad-y: calc(10px * var(--dashboard-scale));
     --app-tab-pad-x: calc(6px * var(--dashboard-scale));
-    border-bottom: var(--app-tab-border);
-    margin-bottom: 0;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    background: var(--white);
+    color: var(--charcoal);
+    font-weight: var(--font-weight-ui-label);
+    padding-bottom: var(--app-tab-pad-y);
 }
 
 .mic-tile-stock-check-tabs .app-tab.is-active {
-    border-bottom: var(--app-tab-active-bottom);
+    background: color-mix(in srgb, var(--charcoal) 7%, var(--white));
+    border-bottom: none;
+    padding-bottom: var(--app-tab-pad-y);
+}
+
+.mic-tile-stock-check-tabs .app-tab:hover:not(.is-active):not(:disabled) {
+    background: color-mix(in srgb, var(--tb-purple, #702082) 8%, var(--white));
+    color: var(--charcoal);
 }
 
 .mic-tile-stock-check-tabs .app-tab:disabled {
     opacity: 0.65;
     cursor: wait;
+}
+
+html:not(.mic-flat-tiles) .mic-tile-stock-check-tabs .app-tab:first-child {
+    border-bottom-left-radius: var(--mic-tile-radius);
+}
+
+html:not(.mic-flat-tiles) .mic-tile-stock-check-tabs .app-tab:last-child {
+    border-bottom-right-radius: var(--mic-tile-radius);
 }
 
 .mic-tile--audits-active {
@@ -3475,8 +3605,8 @@ html.mic-dark-mode .mic-audit-stat--complete {
 .mic-settings-store-email input[type="email"] {
     width: 100%;
     box-sizing: border-box;
-    border: var(--cell-border) var(--charcoal);
-    border-radius: 6px;
+    border: var(--mic-tile-border);
+    border-radius: var(--mic-settings-radius, var(--mic-tile-radius, 0));
     padding: 0.55rem 0.65rem;
     font: inherit;
 }
@@ -3513,20 +3643,20 @@ html.mic-dark-mode .mic-audit-stat--complete {
     width: 100%;
     box-sizing: border-box;
     text-align: left;
-    border: var(--cell-border) var(--charcoal);
+    border: var(--mic-tile-border);
     background: var(--white);
     padding: 0.75rem 1rem;
     font: inherit;
     cursor: pointer;
     color: inherit;
-    border-radius: 6px;
+    border-radius: var(--mic-settings-radius, var(--mic-tile-radius, 0));
     white-space: normal;
 }
 
 .mic-settings-pref-block,
 .mic-colour-blind-block {
-    border: var(--cell-border) var(--charcoal);
-    border-radius: 6px;
+    border: var(--mic-tile-border);
+    border-radius: var(--mic-settings-radius, var(--mic-tile-radius, 0));
     padding: 0.75rem 1rem;
     background: var(--blank);
 }
@@ -3616,23 +3746,28 @@ html.mic-dark-mode .mic-audit-stat--complete {
 
 .mic-colour-samples {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.5rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: calc(8px * var(--dashboard-scale));
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .mic-colour-sample {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 0.35rem;
+    align-items: stretch;
+    gap: calc(4px * var(--dashboard-scale));
     text-align: center;
+    min-width: 0;
 }
 
 .mic-colour-sample-box {
     display: block;
     width: 100%;
-    aspect-ratio: 1.35;
-    border-radius: 4px;
+    height: var(--dashboard-grid-min-height);
+    min-height: var(--dashboard-grid-min-height);
+    border-radius: var(--mic-settings-radius, var(--mic-tile-radius, 0));
     box-sizing: border-box;
 }
 
@@ -3663,13 +3798,13 @@ html.mic-dark-mode .mic-audit-stat--complete {
 
 .mic-settings-close {
     width: 100%;
-    border: var(--cell-border) var(--charcoal);
+    border: var(--mic-tile-border);
     background: var(--charcoal);
     color: var(--white);
     padding: 0.65rem;
     font: inherit;
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: var(--mic-settings-radius, var(--mic-tile-radius, 0));
 }
 
 .mic-settings-admin-btn {
@@ -3683,7 +3818,7 @@ html.mic-dark-mode .mic-audit-stat--complete {
     font: inherit;
     font-weight: var(--font-weight-semibold, 600);
     cursor: pointer;
-    border-radius: 6px;
+    border-radius: var(--mic-settings-radius, var(--mic-tile-radius, 0));
     transition: filter 0.15s ease;
 }
 
@@ -3726,7 +3861,9 @@ html.mic-dark-mode .mic-audit-stat--complete {
     max-height: min(70vh, 640px);
     overflow: auto;
     background: var(--white);
-    border: var(--cell-border) var(--charcoal);
+    border: var(--mic-tile-border);
+    border-radius: var(--mic-settings-radius, var(--mic-tile-radius, 0));
+    box-shadow: var(--mic-tile-shadow, none);
     padding: 1rem;
     box-sizing: border-box;
 }
@@ -3741,6 +3878,14 @@ html.mic-dark-mode .mic-audit-stat--complete {
     width: min(38rem, calc(100% - 2rem));
     max-width: 38rem;
     padding: 1.35rem 1.5rem 1.15rem;
+}
+
+html:not(.mic-flat-tiles) .mic-item-picker-panel.mic-settings-panel .mic-settings-tab:first-child {
+    border-top-left-radius: var(--mic-settings-radius, var(--mic-tile-radius, 0));
+}
+
+html:not(.mic-flat-tiles) .mic-item-picker-panel.mic-settings-panel .mic-settings-tab:last-child {
+    border-top-right-radius: var(--mic-settings-radius, var(--mic-tile-radius, 0));
 }
 
 .mic-item-picker h2 {
@@ -4287,7 +4432,7 @@ button.mic-tile.mic-tile--link {
         text-align: center;
         font-size: var(--font-size-4);
         color: color-mix(in srgb, var(--charcoal) 55%, white);
-        border: var(--cell-border) var(--charcoal);
+        border: var(--mic-tile-border);
         border-radius: var(--mic-tile-radius, 0);
         background: var(--white);
     }
@@ -4441,7 +4586,8 @@ button.mic-tile.mic-tile--link {
         max-height: none;
         padding: calc(10px * var(--dashboard-scale)) calc(14px * var(--dashboard-scale));
         border-radius: var(--mic-tile-radius, 0);
-        border: var(--cell-border) var(--charcoal);
+        border: var(--mic-tile-border);
+        box-shadow: var(--mic-tile-shadow, none);
         background: var(--white);
         overflow: hidden;
     }
@@ -4707,7 +4853,8 @@ html.mic-dark-mode .mic-tile--core-countdown:focus-within .mic-core-countdown-bg
 
 html.mic-dark-mode .mic-tile {
     background: #262626;
-    border-color: #5a5a5a;
+    border: var(--mic-tile-border);
+    box-shadow: var(--mic-tile-shadow, none);
     color: #f0f0f0;
 }
 
@@ -4941,4 +5088,16 @@ html.mic-dark-mode .mic-colour-sample-label {
     cursor: pointer;
     border-radius: 6px;
     white-space: nowrap;
+}
+
+.mic-tile--open-actions .mic-tile-metric {
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.1;
+    margin: 0.15rem 0;
+}
+
+.mic-tile--actions-overdue {
+    border-color: #dc2626;
+    box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.15);
 }

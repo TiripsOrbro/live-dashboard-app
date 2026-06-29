@@ -62,6 +62,7 @@ const OIL_TMP_BAND_CHOICES = [
     { value: '0_19.9', label: '0–19.9%', tone: 'green', nc: false },
     { value: '20_22.9', label: '20–22.9%', tone: 'yellow', nc: false },
     { value: '23_plus', label: '23%+', tone: 'red', nc: true },
+    { value: 'na', label: 'N/A', tone: 'grey', nc: false },
 ];
 
 const LINE_COUNT_CHOICES = [
@@ -435,10 +436,6 @@ const DFSC_QUESTIONS = [
         ...HOT_HOLD_TEMP_OPTS,
         hideWhenAnswer: { init_nachoCarryover: 'no' },
     }),
-    q('prepFry_heatedCabinetTemp', 'prepFry', 'temperature', 'Heated Cabinet', {
-        group: 'Heated Cabinet',
-        ...RICE_HOT_TEMP_OPTS,
-    }),
     q('prepFry_cabinetIngredientsBanner', 'prepFry', 'banner', '', {
         group: 'Heated Cabinet',
         bannerTitle: 'Heated cabinet ingredients',
@@ -536,6 +533,12 @@ const DFSC_QUESTIONS = [
         tempMin: 49,
         unlockAfterAnswer: { questionId: 'init_tacoTowerHotWaterCup', minutes: 30 },
     }),
+    q('prodLine1_tacoTowerTemp2', 'productionLines', 'temperature', 'Taco Tower Temp (2nd reading)', {
+        group: 'Line 1 - Hot Line',
+        hint: 'Minimum 49°C',
+        tempMin: 49,
+        unlockAfterAnswer: { questionId: 'init_tacoTowerHotWaterCup', minutes: 30 },
+    }),
     q('prodLine1_beefTemp', 'productionLines', 'temperature', 'Beef Temp', { group: 'Line 1 - Hot Line', ...HOT_HOLD_TEMP_OPTS }),
     q('prodLine1_chickenTemp', 'productionLines', 'temperature', 'Chicken Temp', { group: 'Line 1 - Hot Line', ...HOT_HOLD_TEMP_OPTS }),
     q('prodLine1_beansTemp', 'productionLines', 'temperature', 'Bean Temp', { group: 'Line 1 - Hot Line', ...HOT_HOLD_TEMP_OPTS }),
@@ -569,9 +572,9 @@ const DFSC_QUESTIONS = [
     // Line 1 - Cold Line
     q('prodLine1_guacTemp', 'productionLines', 'temperature', 'Guac Temp', { group: 'Line 1 - Cold Line', ...FRIDGE_TEMP_OPTS }),
     q('prodLine1_lettuceTemp', 'productionLines', 'temperature', 'Lettuce Temp', { group: 'Line 1 - Cold Line', ...FRIDGE_TEMP_OPTS }),
+    q('prodLine1_cheeseTemp', 'productionLines', 'temperature', 'Cheese Temp', { group: 'Line 1 - Cold Line', ...FRIDGE_TEMP_OPTS }),
     q('prodLine1_tomatoesTemp', 'productionLines', 'temperature', 'Tomatoes Temp', { group: 'Line 1 - Cold Line', ...FRIDGE_TEMP_OPTS }),
     q('prodLine1_fiestaTemp', 'productionLines', 'temperature', 'Fiesta Temp', { group: 'Line 1 - Cold Line', ...FRIDGE_TEMP_OPTS }),
-    q('prodLine1_cheeseTemp', 'productionLines', 'temperature', 'Cheese Temp', { group: 'Line 1 - Cold Line', ...FRIDGE_TEMP_OPTS }),
     q(
         'prodLine1_coldHoldChart',
         'productionLines',
@@ -644,6 +647,13 @@ const DFSC_QUESTIONS = [
         unlockAfterAnswer: { questionId: 'init_tacoTowerHotWaterCup', minutes: 30 },
         showWhenAnswer: TWO_LINE_SPLIT_VISIBLE,
     }),
+    q('prodLine2_tacoTowerTemp2', 'productionLines', 'temperature', 'Taco Tower Temp (2nd reading)', {
+        group: 'Line 2 - Hot Line',
+        hint: 'Minimum 49°C',
+        tempMin: 49,
+        unlockAfterAnswer: { questionId: 'init_tacoTowerHotWaterCup', minutes: 30 },
+        showWhenAnswer: TWO_LINE_SPLIT_VISIBLE,
+    }),
     q('prodLine2_beefTemp', 'productionLines', 'temperature', 'Beef Temp', {
         group: 'Line 2 - Hot Line',
         ...HOT_HOLD_TEMP_OPTS,
@@ -709,17 +719,17 @@ const DFSC_QUESTIONS = [
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
+    q('prodLine2_cheeseTemp', 'productionLines', 'temperature', 'Cheese Temp', {
+        group: 'Line 2 - Cold Line',
+        ...FRIDGE_TEMP_OPTS,
+        showWhenAnswer: TWO_LINES_VISIBLE,
+    }),
     q('prodLine2_tomatoesTemp', 'productionLines', 'temperature', 'Tomatoes Temp', {
         group: 'Line 2 - Cold Line',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
     }),
     q('prodLine2_fiestaTemp', 'productionLines', 'temperature', 'Fiesta Temp', {
-        group: 'Line 2 - Cold Line',
-        ...FRIDGE_TEMP_OPTS,
-        showWhenAnswer: TWO_LINES_VISIBLE,
-    }),
-    q('prodLine2_cheeseTemp', 'productionLines', 'temperature', 'Cheese Temp', {
         group: 'Line 2 - Cold Line',
         ...FRIDGE_TEMP_OPTS,
         showWhenAnswer: TWO_LINES_VISIBLE,
@@ -1028,11 +1038,12 @@ function getVisibleQuestions(session, sectionId) {
 
 function getActionEntry(session, questionId) {
     const raw = session?.actions?.[questionId];
-    if (!raw) return { text: '', submittedAt: null };
-    if (typeof raw === 'string') return { text: raw.trim(), submittedAt: null };
+    if (!raw) return { text: '', submittedAt: null, dueDate: null };
+    if (typeof raw === 'string') return { text: raw.trim(), submittedAt: null, dueDate: null };
     return {
         text: String(raw.text || '').trim(),
         submittedAt: raw.submittedAt || null,
+        dueDate: raw.dueDate || null,
     };
 }
 
@@ -1042,24 +1053,27 @@ function isActionSubmitted(session, questionId) {
 }
 
 function normalizeActionUpdate(incoming, existingRaw) {
-    let prev = { text: '', submittedAt: null };
+    let prev = { text: '', submittedAt: null, dueDate: null };
     if (typeof existingRaw === 'string') {
-        prev = { text: existingRaw.trim(), submittedAt: null };
+        prev = { text: existingRaw.trim(), submittedAt: null, dueDate: null };
     } else if (existingRaw && typeof existingRaw === 'object') {
         prev = {
             text: String(existingRaw.text || '').trim(),
             submittedAt: existingRaw.submittedAt || null,
+            dueDate: existingRaw.dueDate || null,
         };
     }
     if (typeof incoming === 'string') {
-        return { text: incoming.trim(), submittedAt: prev.submittedAt };
+        return { text: incoming.trim(), submittedAt: prev.submittedAt, dueDate: prev.dueDate };
     }
     if (!incoming || typeof incoming !== 'object') {
         return prev;
     }
     const text = String(incoming.text ?? prev.text ?? '').trim();
     const submittedAt = incoming.submittedAt !== undefined ? incoming.submittedAt || null : prev.submittedAt;
-    return { text, submittedAt };
+    const dueDate =
+        incoming.dueDate !== undefined ? String(incoming.dueDate || '').trim() || null : prev.dueDate || null;
+    return { text, submittedAt, dueDate };
 }
 
 function collectNonCompliant(session) {

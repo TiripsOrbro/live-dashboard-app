@@ -415,6 +415,10 @@ body.dfsc-page {
     color: var(--dfsc-red);
 }
 
+.dfsc-radio-group--ppm .dfsc-choice--ppm-grey span {
+    color: var(--dfsc-grey);
+}
+
 .dfsc-radio-group--ppm .dfsc-choice--ppm-green input:checked + span {
     background: var(--dfsc-green-bg);
     border-color: var(--dfsc-green-bg);
@@ -430,6 +434,12 @@ body.dfsc-page {
 .dfsc-radio-group--ppm .dfsc-choice--ppm-red input:checked + span {
     background: var(--dfsc-red-bg);
     border-color: var(--dfsc-red-bg);
+    color: #fff;
+}
+
+.dfsc-radio-group--ppm .dfsc-choice--ppm-grey input:checked + span {
+    background: var(--dfsc-grey-bg);
+    border-color: var(--dfsc-grey-bg);
     color: #fff;
 }
 
@@ -1795,8 +1805,9 @@ body.dfsc-page #app.app-boot-loading {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100%;
-    min-height: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    height: auto;
     overflow: hidden;
     padding: max(calc(24px * var(--dashboard-scale)), env(safe-area-inset-top))
         max(calc(24px * var(--dashboard-scale)), env(safe-area-inset-right))
@@ -1897,6 +1908,41 @@ body.dfsc-page #app.app-boot-loading {
         border-radius: 0;
         border: none;
         background: #fff;
+    }
+
+    .dfsc-qcard--action-grid .dfsc-qcard-actions .dfsc-choice--nc input:checked + span {
+        background: var(--dfsc-red-bg);
+        color: #fff;
+    }
+
+    .dfsc-qcard--action-grid .dfsc-qcard-actions .dfsc-choice--na input:checked + span {
+        background: var(--dfsc-grey-bg);
+        color: #fff;
+    }
+
+    .dfsc-qcard--action-grid .dfsc-qcard-actions .dfsc-choice:not(.dfsc-choice--nc):not(.dfsc-choice--na) input:checked + span {
+        background: var(--dfsc-green-bg);
+        color: #fff;
+    }
+
+    .dfsc-qcard--action-grid .dfsc-qcard-actions .dfsc-choice--ppm-red input:checked + span {
+        background: var(--dfsc-red-bg);
+        color: #fff;
+    }
+
+    .dfsc-qcard--action-grid .dfsc-qcard-actions .dfsc-choice--ppm-green input:checked + span {
+        background: var(--dfsc-green-bg);
+        color: #fff;
+    }
+
+    .dfsc-qcard--action-grid .dfsc-qcard-actions .dfsc-choice--ppm-yellow input:checked + span {
+        background: #f59e0b;
+        color: #fff;
+    }
+
+    .dfsc-qcard--action-grid .dfsc-qcard-actions .dfsc-choice--ppm-grey input:checked + span {
+        background: var(--dfsc-grey-bg);
+        color: #fff;
     }
 
     .dfsc-qcard-footer .dfsc-qcard-footer-btns {

@@ -19,6 +19,7 @@
 
     <!-- Styles -->
     <link rel="stylesheet" href="/styles/brand-mark.css">
+    <link rel="stylesheet" href="/styles/loading-dots.css">
     <link rel="stylesheet" href="/styles/dashboard.css">
     <link rel="stylesheet" href="/styles/login.css">
     <link rel="stylesheet" href="/styles/page-transition.css">
@@ -34,6 +35,7 @@
 
 <body>
     <script src="/scripts/brand-mark.js"></script>
+    <script src="/scripts/loading-dots.js"></script>
     <script src="/scripts/page-transition.js"></script>
     <script>
         DashboardPageTransition.initEnterFade();
@@ -42,7 +44,11 @@
     <script src="/scripts/welcome-overlay.js"></script>
     <!-- Main App Container -->
     <div id="app" class="app-boot-loading" aria-busy="true">
-        <p class="app-boot-loading__message">Loading dashboard…</p>
+        <div class="loading-dots loading-dots--lg" role="status" aria-label="Loading dashboard">
+            <span class="loading-dots__dot" aria-hidden="true"></span>
+            <span class="loading-dots__dot" aria-hidden="true"></span>
+            <span class="loading-dots__dot" aria-hidden="true"></span>
+        </div>
     </div>
 
     <!-- Popup Container -->
@@ -83,6 +89,7 @@
     <script src="/scripts/audit-preferences.js"></script>
     <script src="/scripts/mic-settings.js"></script>
     <script src="/scripts/sales-progress.js"></script>
+    <script src="/scripts/dashboard-data-cache.js"></script>
     <script src="/scripts/mic-mini-dashboard.js"></script>
     <script src="/scripts/dashboard.js"></script>
 </body>

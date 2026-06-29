@@ -195,6 +195,7 @@ async function applyAdminStoreSlice(storeNum) {
     STORE_NUMBER = key;
     rememberAdminAreaStore(key);
     applySalesPayload(slice);
+    persistSalesPayload(slice);
     updateStoreHeader();
 
     if (typeof window.StockCountNotify?.initPipelineWatcher === 'function') {
@@ -840,6 +841,34 @@ function applySalesPayload(data) {
     }
 }
 
+function persistSalesPayload(data) {
+    if (!STORE_NUMBER || isAdminAreaDashboard() || !data?.success) return;
+    window.DashboardDataCache?.writeSales?.(STORE_NUMBER, data);
+    try {
+        sessionStorage.setItem('mic-last-store', STORE_NUMBER);
+    } catch {
+        /* ignore */
+    }
+}
+
+function restoreCachedSalesPayload() {
+    if (!STORE_NUMBER || isAdminAreaDashboard()) return false;
+    const entry = window.DashboardDataCache?.readSales?.(STORE_NUMBER);
+    if (!entry?.data || !window.DashboardDataCache?.hasMeaningfulSalesSlice?.(entry.data)) return false;
+
+    applySalesPayload(entry.data);
+    updateStoreHeader();
+    if (entry.data.timestamp) updateTimestamp(entry.data.timestamp);
+    updateSalesStatus({
+        stale: true,
+        staleAgeSeconds: window.DashboardDataCache.staleAgeSeconds(entry),
+        warning: 'Showing last saved sales while refreshing.',
+    });
+    salesDataLoadedOnce = true;
+    updateGrid();
+    return true;
+}
+
 /** Reflect the current store in the header title and the browser tab. */
 function updateStoreHeader() {
     const el = document.getElementById('store-label');
@@ -874,6 +903,7 @@ async function loadSalesData() {
 
         // Remove early hours (store closed) and keep only 10AM–9PM, can -4 to -5 for a 10PM store
         applySalesPayload(data);
+        persistSalesPayload(data);
 
         await loadAuditSchedule();
         updateTimestamp(data.timestamp);
@@ -1626,13 +1656,8 @@ function buildLoadingMealPeriodRow() {
 }
 
 function buildLoadingGridContent() {
-    return `
-        ${buildHeaderRow()}
-        ${buildLoadingForecastRow()}
-        ${buildLoadingActualRow()}
-        ${buildLoadingMealPeriodRow()}
-        ${buildGridFooterRow()}
-    `;
+    const dots = window.LoadingDots?.html?.({ label: 'Loading sales data', size: 'lg' }) || '';
+    return `<div class="dashboard-grid-loading">${dots}</div>`;
 }
 
 function buildLoadingPortraitHourRows() {
@@ -1667,11 +1692,8 @@ function buildLoadingPortraitMealRows() {
 }
 
 function buildLoadingPortraitGridContent() {
-    return `
-        ${buildLoadingPortraitMealRows()}
-        ${buildPortraitHeaderRow()}
-        ${buildLoadingPortraitHourRows()}
-    `;
+    const dots = window.LoadingDots?.html?.({ label: 'Loading sales data', size: 'lg' }) || '';
+    return `<div class="dashboard-grid-loading">${dots}</div>`;
 }
 
 function shouldShowSalesLoadingGrid() {
@@ -2223,15 +2245,8 @@ function buildAdminMicMobileGridContent() {
 }
 
 function buildLoadingAdminMicMobileGridContent() {
-    return `
-        <div class="mic-admin-mobile-sales mic-admin-mobile-sales--loading" aria-busy="true">
-            <div class="mic-store-lead mic-store-lead--purple mic-store-lead--mobile">
-                <div class="mic-store-lead-store-label mic-store-lead-store-label--mobile">Loading…</div>
-            </div>
-            <div class="mic-mini-dashboard mic-mini-dashboard--mobile">
-                <p class="mic-mini-dashboard-empty">Loading sales data…</p>
-            </div>
-        </div>`;
+    const dots = window.LoadingDots?.html?.({ label: 'Loading sales data', size: 'lg' }) || '';
+    return `<div class="dashboard-grid-loading mic-admin-mobile-sales--loading" aria-busy="true">${dots}</div>`;
 }
 
 function syncAdminMicMobileHourlyScroll() {
@@ -2910,9 +2925,10 @@ async function bootSalesDashboard() {
     lastPortraitLayout = isPortraitMobileView();
     applyDashboardScale();
     renderDashboard();
+    const hadCachedSales = restoreCachedSalesPayload();
     bindAdminStockCountPicker();
     if (isAdminAreaDashboard()) {
-        showGridSkeleton();
+        if (!hadCachedSales) showGridSkeleton();
         try {
             await loadAdminAreaSales();
             window.AdminAreaPanel?.preload?.(getAdminAreaCode());
@@ -2929,20 +2945,23 @@ async function bootSalesDashboard() {
             });
         }
     } else {
-        await initTradingHours();
-        showGridSkeleton();
+        if (!hadCachedSales) showGridSkeleton();
+        void initTradingHours().then(() => {
+            if (salesDataLoadedOnce && document.querySelector('.dashboard-grid')) {
+                updateGrid();
+            }
+        });
     }
-    await applyUserPreferences();
+    startSyncedUpdates();
+    void applyUserPreferences();
     initPopupTestButton();
     initMobileLandscape();
-    await loadAuditSchedule();
-    if (!isAdminAreaDashboard()) {
-        await loadAuditState();
-    }
+    void loadAuditSchedule().then(() => {
+        if (!isAdminAreaDashboard()) return loadAuditState();
+    });
     if (STORE_NUMBER) {
         window.StockCountNotify?.initPipelineWatcher?.(STORE_NUMBER);
     }
-    startSyncedUpdates();
 }
 
 const dashboardUnmountFns = [];

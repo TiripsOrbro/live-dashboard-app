@@ -10,7 +10,8 @@
     const scriptCache = new Map();
     let activeView = null;
     let activeUnmount = null;
-    let navigating = false;
+    let pendingNavigation = null;
+    let navigationDrain = null;
     let bootId = '';
 
     function prefersReducedMotion() {
@@ -77,9 +78,48 @@
         }
     }
 
+    async function loadScriptBatch(urls) {
+        await Promise.all((urls || []).map((url) => loadScript(url)));
+    }
+
+    async function loadOverviewScripts() {
+        await loadScriptBatch([
+            '/scripts/page-transition.js',
+            '/scripts/welcome-overlay.js',
+            '/scripts/loading-dots.js',
+            '/scripts/dashboard-data-cache.js',
+            '/scripts/area-display.js',
+            '/scripts/area-picker-overlay.js',
+            '/scripts/sales-progress.js',
+            '/scripts/nav-back.js',
+            '/scripts/store-snap-row.js',
+            '/scripts/mic-mini-dashboard.js',
+            '/scripts/core-countdown.js',
+        ]);
+        await loadScriptBatch([
+            '/scripts/account-modal.js',
+            '/scripts/admin-menu.js',
+            '/scripts/create-account-form.js',
+            '/scripts/admin-accounts.js',
+            '/scripts/admin-forecast.js',
+            '/scripts/admin-build-to.js',
+            '/scripts/admin-store-logins.js',
+            '/scripts/admin-smg-nsf.js',
+            '/scripts/audit-preferences.js',
+            '/scripts/mic-settings.js',
+            '/scripts/admin-store-picker.js',
+            '/scripts/admin-scope-picker.js',
+            '/scripts/admin-store-view.js',
+            '/scripts/mmx-user-login-prompt.js',
+        ]);
+        await loadScript('/scripts/mic-overview-multi.js');
+        await loadScript('/scripts/mic-dashboard.js');
+    }
+
     const SHARED_OVERVIEW_SCRIPTS = [
         '/scripts/page-transition.js',
         '/scripts/welcome-overlay.js',
+        '/scripts/loading-dots.js',
         '/scripts/area-display.js',
         '/scripts/area-picker-overlay.js',
         '/scripts/account-modal.js',
@@ -93,6 +133,7 @@
         '/scripts/audit-preferences.js',
         '/scripts/mic-settings.js',
         '/scripts/sales-progress.js',
+        '/scripts/dashboard-data-cache.js',
         '/scripts/nav-back.js',
         '/scripts/store-snap-row.js',
         '/scripts/admin-store-picker.js',
@@ -108,9 +149,11 @@
     const SHARED_DASHBOARD_SCRIPTS = [
         '/scripts/page-transition.js',
         '/scripts/welcome-overlay.js',
+        '/scripts/loading-dots.js',
         '/scripts/area-display.js',
         '/scripts/audit-preferences.js',
         '/scripts/mic-settings.js',
+        '/scripts/dashboard-data-cache.js',
         '/scripts/nav-back.js',
         '/scripts/store-snap-row.js',
         '/scripts/admin-store-tabs.js',
@@ -136,6 +179,7 @@
         '/scripts/admin-store-logins.js',
         '/scripts/admin-smg-nsf.js',
         '/scripts/requests.js',
+        '/scripts/bug-reports.js',
         '/scripts/admin-page.js',
     ];
 
@@ -176,11 +220,13 @@
             { re: /^\/changelog$/i, id: 'changelog' },
             { re: /^\/requests$/i, id: 'requests' },
             { re: /^\/tacaudit\/summary$/i, id: 'tacaudit-summary' },
+            { re: /^\/tacaudit\/actions$/i, id: 'tacaudit-summary' },
             { re: /^\/MIC\/(teststore|\d{3,6})$/i, id: 'sales-dashboard', store: 1 },
             { re: /^\/Admin\/(qld-1|vic-1|wa-1|teststore|\d{3,6})$/i, id: 'sales-dashboard', area: 1 },
             { re: /^\/Admin\/A\d+$/i, id: 'sales-dashboard', area: 1 },
             { re: /^\/(\d{3,6})\/daily-stock-count$/i, id: 'daily-stock-count', store: 1 },
             { re: /^\/(\d{3,6})\/stock-count\/[^/]+$/i, id: 'stock-count', store: 1 },
+            { re: /^\/(\d{3,6})\/tacaudit\/actions$/i, id: 'tacaudit-store', store: 1 },
             { re: /^\/(\d{3,6})\/tacaudit$/i, id: 'tacaudit-store', store: 1 },
             { re: /^\/(\d{3,6})\/(dfsc|pest-walk|psi|rgm-cleaning|period-audit)$/i, id: 'tacaudit-audit', store: 1, audit: 2 },
             { re: /^\/(\d{3,6})\/square-one(?:\/[^/]+)?$/i, id: 'tacaudit-audit', store: 1 },
@@ -202,7 +248,7 @@
     }
 
     async function mountOverview() {
-        await loadScriptChain(SHARED_OVERVIEW_SCRIPTS);
+        await loadOverviewScripts();
         if (global.MicOverviewView?.mount) {
             await global.MicOverviewView.mount(getAppEl());
             return;
@@ -210,17 +256,39 @@
         getAppEl().textContent = 'Overview failed to load.';
     }
 
+    async function loadDashboardScripts() {
+        await loadScriptBatch([
+            '/scripts/page-transition.js',
+            '/scripts/welcome-overlay.js',
+            '/scripts/loading-dots.js',
+            '/scripts/dashboard-data-cache.js',
+            '/scripts/area-display.js',
+            '/scripts/audit-preferences.js',
+            '/scripts/mic-settings.js',
+            '/scripts/nav-back.js',
+            '/scripts/store-snap-row.js',
+            '/scripts/stock-count-notify.js',
+        ]);
+        await loadScriptBatch([
+            '/scripts/admin-store-tabs.js',
+            '/scripts/admin-area-panel.js',
+            '/scripts/admin-scope-picker.js',
+        ]);
+        await loadScript('/scripts/dashboard.js');
+    }
+
     async function mountSalesDashboard() {
-        async function loadDashboardScripts() {
-            await loadScriptChain(SHARED_DASHBOARD_SCRIPTS);
+        async function loadDashboardScriptsWithRetry() {
+            await loadDashboardScripts();
         }
         function clearDashboardScriptCache() {
             for (const url of SHARED_DASHBOARD_SCRIPTS) scriptCache.delete(url);
+            scriptCache.delete('/scripts/dashboard.js');
         }
-        await loadDashboardScripts();
+        await loadDashboardScriptsWithRetry();
         if (!global.SalesDashboardView?.mount) {
             clearDashboardScriptCache();
-            await loadDashboardScripts();
+            await loadDashboardScriptsWithRetry();
         }
         if (global.SalesDashboardView?.mount) {
             await global.SalesDashboardView.mount(getAppEl());
@@ -299,11 +367,16 @@
         global.location.href = url;
     }
 
+    function bootLoadingHtml(label = 'Loading') {
+        return global.LoadingDots?.html?.({ label, size: 'lg' })
+            || '<p class="app-boot-loading__message">Loading…</p>';
+    }
+
     async function mountView(route) {
         const app = getAppEl();
         app.className = 'app-boot-loading';
         app.setAttribute('aria-busy', 'true');
-        app.innerHTML = '<p class="app-boot-loading__message">Loading…</p>';
+        app.innerHTML = bootLoadingHtml();
         document.body.classList.remove('stock-count-page', 'tacaudit-page', 'dfsc-page', 'admin-page');
         document.documentElement.classList.remove('dfsc-page');
 
@@ -315,6 +388,8 @@
                 await mountSalesDashboard();
                 break;
             case 'admin-settings':
+                document.body.classList.remove('mic-overview-page', 'admin-overview-page', 'mic-overview--mobile');
+                document.documentElement.classList.remove('mic-overview-page', 'admin-overview-page');
                 await mountAdminSettings();
                 break;
             case 'stock-count':
@@ -333,6 +408,8 @@
                 await mountLegacyPage('/changelog');
                 return;
             case 'requests':
+                document.body.classList.remove('mic-overview-page', 'admin-overview-page', 'mic-overview--mobile');
+                document.documentElement.classList.remove('mic-overview-page', 'admin-overview-page');
                 global.history.replaceState(null, '', '/Admin/Settings#feature-requests');
                 setShellRoute('/Admin/Settings', '', '#feature-requests');
                 document.title = 'Admin Settings';
@@ -407,32 +484,49 @@
         return canon;
     }
 
-    async function navigate(pathname, { replace = false, search = '', hash = '' } = {}) {
-        if (navigating) return;
-        navigating = true;
-        try {
-            const target = maybeCanonicalizeAdminPath(parseShellTarget(pathname, search, hash));
-            const path = target.pathname;
-            const route = matchRoute(path);
-            route.pathname = path;
-            setShellRoute(path, target.search, target.hash);
-            const url = `${path}${target.search || ''}${target.hash || ''}`;
-            if (replace) {
-                global.history.replaceState({ shell: true, path }, '', url);
-            } else {
-                global.history.pushState({ shell: true, path }, '', url);
-            }
-            document.title = titleForRoute(route);
-            await unmountActive();
-            await runTransition(async () => {
-                await mountView(route);
-                activeView = route.id;
-                activeUnmount = unmountHandlerFor(route.id);
-            });
-            prefetchAdjacent(route);
-        } finally {
-            navigating = false;
+    async function performNavigate(pathname, { replace = false, search = '', hash = '' } = {}) {
+        const target = maybeCanonicalizeAdminPath(parseShellTarget(pathname, search, hash));
+        const path = target.pathname;
+        const route = matchRoute(path);
+        route.pathname = path;
+        setShellRoute(path, target.search, target.hash);
+        const url = `${path}${target.search || ''}${target.hash || ''}`;
+        if (replace) {
+            global.history.replaceState({ shell: true, path }, '', url);
+        } else {
+            global.history.pushState({ shell: true, path }, '', url);
         }
+        document.title = titleForRoute(route);
+        await unmountActive();
+        await runTransition(async () => {
+            await mountView(route);
+            activeView = route.id;
+            activeUnmount = unmountHandlerFor(route.id);
+        });
+        prefetchAdjacent(route);
+    }
+
+    async function drainNavigationQueue() {
+        try {
+            while (pendingNavigation) {
+                const job = pendingNavigation;
+                pendingNavigation = null;
+                await performNavigate(job.pathname, job.options);
+            }
+        } finally {
+            navigationDrain = null;
+            if (pendingNavigation) {
+                navigationDrain = drainNavigationQueue();
+            }
+        }
+    }
+
+    function navigate(pathname, { replace = false, search = '', hash = '' } = {}) {
+        pendingNavigation = { pathname, options: { replace, search, hash } };
+        if (!navigationDrain) {
+            navigationDrain = drainNavigationQueue();
+        }
+        return navigationDrain;
     }
 
     function unmountHandlerFor(viewId) {

@@ -142,6 +142,35 @@ body.stock-count-page {
 .stock-count-levels-check-tabs {
     width: 100%;
     max-width: 28rem;
+    align-items: stretch;
+    border: var(--cell-border, 2px solid) var(--charcoal, #231e1f);
+}
+
+.stock-count-levels-check-tabs .app-tab {
+    margin: 0;
+    border: none;
+    border-right: var(--cell-border, 2px solid) var(--charcoal, #231e1f);
+    border-bottom: none;
+    border-radius: 0;
+    background: var(--white, #fff);
+    color: var(--charcoal, #231e1f);
+    font-weight: var(--font-weight-ui-label, 600);
+    padding-bottom: var(--app-tab-pad-y);
+}
+
+.stock-count-levels-check-tabs .app-tab:last-child {
+    border-right: none;
+}
+
+.stock-count-levels-check-tabs .app-tab.is-active {
+    background: color-mix(in srgb, var(--charcoal, #231e1f) 7%, var(--white, #fff));
+    border-bottom: none;
+    padding-bottom: var(--app-tab-pad-y);
+}
+
+.stock-count-levels-check-tabs .app-tab:hover:not(.is-active):not(:disabled) {
+    background: color-mix(in srgb, var(--tb-purple, #702082) 8%, var(--white, #fff));
+    color: var(--charcoal, #231e1f);
 }
 
 .stock-count-levels-check-tabs .app-tab:disabled {

@@ -4,7 +4,7 @@ const { normalizeStoreKey } = require('../../../stores/src/testStore');
 const { TACAUDIT_DATA_DIR } = require('./tacauditStore');
 const { safePathSegment } = require('../audit/auditPathSafety');
 
-const ARCHIVE_RETENTION_DAYS = 45;
+const ARCHIVE_RETENTION_DAYS = 90;
 
 function archiveRoot(storeNumber) {
     return path.join(TACAUDIT_DATA_DIR, safePathSegment(normalizeStoreKey(storeNumber), 'store number'), 'archive');

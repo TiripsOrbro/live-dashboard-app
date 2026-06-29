@@ -8,6 +8,7 @@ const {
     isCompliantType,
     isNotCompliantValue,
 } = require('./dfscSchema');
+const { formatContributionLine } = require('../../src/audit/auditContributions');
 
 const REPORT_SECTIONS = DFSC_SECTIONS.filter((s) => s.id !== 'actions' && s.id !== 'signOff');
 
@@ -186,6 +187,9 @@ function renderQuestionRows(session, questions) {
             const action = isNc
                 ? collectNonCompliant(session).find((row) => row.questionId === question.id)
                 : null;
+            const photo = session.photos?.[question.id];
+            const photoDataUrl = photo?.dataUrl || photo?.url || '';
+            const photoBy = photoDataUrl ? formatContributionLine(session, 'photos', question.id) : '';
             return `
                 <tr class="${isNc ? 'row-nc' : ''}">
                     <td class="col-question">${escapeHtml(question.label)}</td>
@@ -199,6 +203,11 @@ function renderQuestionRows(session, questions) {
                 ${
                     action?.actionText
                         ? `<tr class="row-action"><td colspan="2"><span class="note-label">Action:</span> ${escapeHtml(action.actionText)}</td></tr>`
+                        : ''
+                }
+                ${
+                    photoDataUrl
+                        ? `<tr class="row-photo"><td colspan="2"><span class="note-label">Photo${photoBy ? ` (${escapeHtml(photoBy)})` : ''}:</span><br /><img class="question-photo" src="${photoDataUrl}" alt="Photo evidence" /></td></tr>`
                         : ''
                 }`;
         })
@@ -453,6 +462,14 @@ function buildDfscReportHtml(session) {
         display: block;
         max-width: 260px;
         max-height: 90px;
+        border: 1px solid #d1d5db;
+        background: #fff;
+    }
+    .question-photo {
+        display: block;
+        max-width: 280px;
+        max-height: 200px;
+        margin-top: 6px;
         border: 1px solid #d1d5db;
         background: #fff;
     }

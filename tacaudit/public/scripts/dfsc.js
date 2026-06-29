@@ -23,6 +23,7 @@ let inspectionHistory = [];
 let historyDetailSession = null;
 let historyDetailCanReopen = false;
 let historyDetailReturnTo = 'history';
+let pendingQuestionAreaRender = null;
 let blue2Unsubscribe = null;
 let blue2CaptureModal = null;
 let completionGuideActive = false;
@@ -209,7 +210,26 @@ function bindDatetimeInputEvents(input) {
     // iOS fires `input` while the native picker moves; saving on `input` re-renders and locks in "now".
     input.addEventListener('change', () => {
         setAnswer(qid, String(input.value || '').trim());
+        if (pendingQuestionAreaRender) {
+            const opts = pendingQuestionAreaRender;
+            pendingQuestionAreaRender = null;
+            renderQuestionArea(opts);
+        }
     });
+    input.addEventListener('blur', () => {
+        if (!pendingQuestionAreaRender) return;
+        const opts = pendingQuestionAreaRender;
+        pendingQuestionAreaRender = null;
+        window.setTimeout(() => renderQuestionArea(opts), 0);
+    });
+}
+
+function isDatetimePickerFocused() {
+    const el = document.activeElement;
+    if (!el || el === document.body) return false;
+    if (!el.closest('#dfsc-section-body')) return false;
+    const type = String(el.type || '').toLowerCase();
+    return type === 'date' || type === 'datetime-local';
 }
 
 function isQuestionVisible(question) {
@@ -330,7 +350,14 @@ function isAnswerEmpty(question, value) {
     return false;
 }
 
-const questionGroups = window.AuditQuestionGroupsUi.createController({ isAnswerEmpty });
+function isQuestionResolved(question, sess) {
+    const value = sess?.answers?.[question.id];
+    if (isAnswerEmpty(question, value)) return false;
+    if (isNcAnswer(question, value)) return isActionSubmitted(question.id);
+    return true;
+}
+
+const questionGroups = window.AuditQuestionGroupsUi.createController({ isAnswerEmpty, isQuestionResolved });
 const {
     collapsedGroups: collapsedQuestionGroups,
     expandQuestionGroup,
@@ -365,11 +392,12 @@ function collectNonCompliant() {
 
 function getActionEntry(questionId) {
     const raw = session.actions?.[questionId];
-    if (!raw) return { text: '', submittedAt: null };
-    if (typeof raw === 'string') return { text: raw.trim(), submittedAt: null };
+    if (!raw) return { text: '', submittedAt: null, dueDate: null };
+    if (typeof raw === 'string') return { text: raw.trim(), submittedAt: null, dueDate: null };
     return {
         text: String(raw.text || '').trim(),
         submittedAt: raw.submittedAt || null,
+        dueDate: raw.dueDate || null,
     };
 }
 
@@ -569,6 +597,7 @@ async function saveSession() {
                     sectionSkips: s.sectionSkips,
                     actions: s.actions,
                     notes: s.notes,
+                    photos: s.photos,
                     signOff: s.signOff,
                     clientMeta: s.clientMeta || buildClientMeta(),
                 }),
@@ -736,7 +765,8 @@ function setAnswer(questionId, value) {
 function setActionDraft(questionId, value) {
     session.actions = session.actions || {};
     const prev = getActionEntry(questionId);
-    session.actions[questionId] = { text: value, submittedAt: prev.submittedAt };
+    const dueDate = window.AuditActionForm?.readDueDateFromDom?.(questionId) || prev.dueDate;
+    session.actions[questionId] = { text: value, submittedAt: prev.submittedAt, dueDate };
     scheduleSave();
 }
 
@@ -749,8 +779,12 @@ async function submitAction(questionId) {
         renderStatusBar();
         return;
     }
+    const dueDate =
+        window.AuditActionForm?.readDueDateFromDom?.(questionId) ||
+        window.AuditActionForm?.defaultDueDate?.(context) ||
+        '';
     session.actions = session.actions || {};
-    session.actions[questionId] = { text, submittedAt: new Date().toISOString() };
+    session.actions[questionId] = { text, submittedAt: new Date().toISOString(), dueDate };
     statusMessage = '';
     await saveSession();
     expandedActions.delete(questionId);
@@ -1267,9 +1301,12 @@ function renderPpmBandGroup(question) {
                             ? 'dfsc-choice--ppm-green'
                             : choice.tone === 'yellow'
                               ? 'dfsc-choice--ppm-yellow'
-                              : 'dfsc-choice--ppm-red';
+                              : choice.tone === 'grey'
+                                ? 'dfsc-choice--ppm-grey'
+                                : 'dfsc-choice--ppm-red';
+                    const ncClass = choice.nc ? ' dfsc-choice--nc' : '';
                     return `
-                <label class="dfsc-choice ${toneClass}">
+                <label class="dfsc-choice ${toneClass}${ncClass}">
                     <input type="radio" name="${escapeHtml(question.id)}" value="${escapeHtml(choice.value)}" ${value === choice.value ? 'checked' : ''}
                         data-qid="${escapeHtml(question.id)}" data-qtype="choice" />
                     <span>${escapeHtml(choice.label)}</span>
@@ -1383,24 +1420,53 @@ function renderChoiceGroup(question) {
 const NOTE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 3H5a2 2 0 0 0-2 2v14l4-4h12a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/></svg>`;
 const IMAGE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 19V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2zM8.5 10.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM21 19l-5.5-7-4 5-2.5-3L5 19h16z"/></svg>`;
 
+function renderContributionStamp(type, id, options = {}) {
+    return window.AuditContributionsUi?.renderContributionStamp(session, type, id, options) || '';
+}
+
+function pickPhoto(questionId) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'environment';
+    input.addEventListener('change', () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+            session.photos = session.photos || {};
+            session.photos[questionId] = { dataUrl: String(reader.result || ''), addedAt: new Date().toISOString() };
+            scheduleSave();
+            renderQuestionArea({ scrollAnchorQuestionId: questionId });
+        };
+        reader.readAsDataURL(file);
+    });
+    input.click();
+}
+
 function renderActionForm(questionId, { compact = false } = {}) {
     const entry = getActionEntry(questionId);
     const submitted = isActionSubmitted(questionId);
     const open = expandedActions.has(questionId) || !submitted;
 
     if (submitted && !open) {
+        const dueLine = entry.dueDate ? `<p class="dfsc-action-due-display">Due ${escapeHtml(entry.dueDate)}</p>` : '';
         return `
             <div class="dfsc-inline-action dfsc-inline-action--submitted">
                 <div class="dfsc-action-submitted-label">Action submitted</div>
                 <p class="dfsc-action-submitted-text">${escapeHtml(entry.text)}</p>
+                ${dueLine}
+                ${renderContributionStamp('actions', questionId, { prefix: 'Submitted' })}
                 <button type="button" class="dfsc-qcard-link" data-edit-action="${escapeHtml(questionId)}">Edit action</button>
             </div>`;
     }
 
+    const dueField = window.AuditActionForm?.renderDueDateField?.(questionId, entry, context) || '';
     return `
         <div class="dfsc-inline-action">
             <textarea class="dfsc-textarea" rows="${compact ? 3 : 3}" data-action-qid="${escapeHtml(questionId)}"
                 placeholder="Describe corrective action taken">${escapeHtml(entry.text)}</textarea>
+            ${dueField}
             <button type="button" class="dfsc-btn dfsc-btn-primary dfsc-action-submit" data-submit-action="${escapeHtml(questionId)}">
                 Submit action
             </button>
@@ -1425,7 +1491,7 @@ function renderQuestionFooterButtons(question) {
             <button type="button" class="${noteBtnClass}" data-toggle-note="${escapeHtml(question.id)}">
                 ${NOTE_ICON}<span>Add note</span>
             </button>
-            <button type="button" class="dfsc-qcard-btn dfsc-qcard-btn--media" data-add-photo="${escapeHtml(question.id)}" aria-label="Attach photo">
+            <button type="button" class="dfsc-qcard-btn dfsc-qcard-btn--media${session.photos?.[question.id] ? ' is-active' : ''}" data-add-photo="${escapeHtml(question.id)}" aria-label="Attach photo">
                 ${IMAGE_ICON}<span>Photo</span>
             </button>
         </div>`;
@@ -1605,6 +1671,8 @@ function renderQuestion(question) {
                 ${timeGateBanner}
                 ${control}
                 ${remindHint}
+                ${renderContributionStamp('answers', question.id, { prefix: 'Answered' })}
+                ${session.photos?.[question.id] ? renderContributionStamp('photos', question.id, { prefix: 'Photo added' }) : ''}
                 ${ncAlert}
             </div>
             ${renderQuestionFooter(question, { inlineButtons: useActionGrid })}
@@ -1734,6 +1802,12 @@ function renderAuditHeader() {
 }
 
 function renderQuestionArea({ scrollToTop = false, scrollAnchorQuestionId = null } = {}) {
+    if (isDatetimePickerFocused()) {
+        pendingQuestionAreaRender = { scrollToTop, scrollAnchorQuestionId };
+        return;
+    }
+    pendingQuestionAreaRender = null;
+
     const sections = schema?.sections || [];
     const section = sections[currentSectionIndex];
     if (!section) return;
@@ -1773,7 +1847,10 @@ function renderQuestionArea({ scrollToTop = false, scrollAnchorQuestionId = null
 
     const activeEl = document.activeElement;
     if (activeEl && activeEl !== document.body && activeEl.closest('#dfsc-section-body')) {
-        activeEl.blur();
+        const inputType = String(activeEl.type || '').toLowerCase();
+        if (inputType !== 'date' && inputType !== 'datetime-local') {
+            activeEl.blur();
+        }
     }
 
     document.getElementById('dfsc-section-body').innerHTML = body;
@@ -1870,11 +1947,7 @@ function bindQuestionEvents() {
         });
     });
     document.querySelectorAll('[data-add-photo]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            statusMessage = 'Photo attachments are coming soon.';
-            statusKind = 'info';
-            renderStatusBar();
-        });
+        btn.addEventListener('click', () => pickPhoto(btn.dataset.addPhoto));
     });
 }
 

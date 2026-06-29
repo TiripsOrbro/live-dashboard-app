@@ -10,16 +10,16 @@ function afterAuditSubmit({ storeNumber, auditType, session }) {
     void (async () => {
         try {
             const pdfBuffer = await cfg.buildPdf(session);
+            const downscaled = await downscaleSessionImages(session);
             await sendAuditReportEmail({
                 storeNumber,
                 auditType,
-                session,
+                session: downscaled,
                 pdfBuffer,
                 buildFilename: cfg.buildFilename,
                 buildText: cfg.buildText,
             });
 
-            const downscaled = await downscaleSessionImages(session);
             const archivePdf = await cfg.buildPdf(downscaled);
             saveArchivePdf({
                 storeNumber,

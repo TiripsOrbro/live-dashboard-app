@@ -1,6 +1,6 @@
 ﻿/** @deprecated Use tacaudit email pipeline via afterAuditSubmit */
 const { sendAuditReportEmail } = require('../../src/core/tacauditEmail');
-const { buildDfscReportText, buildDfscReportPdf, buildReportFilename } = require('./dfscReport');
+const { buildDfscReportPdf, buildReportFilename } = require('./dfscReport');
 
 async function sendDfscReportEmail(session) {
     try {
@@ -12,7 +12,6 @@ async function sendDfscReportEmail(session) {
             session,
             pdfBuffer,
             buildFilename: buildReportFilename,
-            buildText: buildDfscReportText,
         });
     } catch (err) {
         console.info('[DFSC] Report email not sent:', err.message);

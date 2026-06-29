@@ -297,6 +297,107 @@
     color: inherit;
 }
 
+.requests-item--with-votes {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.65rem;
+    align-items: start;
+}
+
+.requests-vote-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.1rem;
+    min-width: 2.5rem;
+    padding: 0.25rem 0.2rem;
+    border: var(--cell-border) color-mix(in srgb, var(--charcoal) 18%, transparent);
+    border-radius: 8px;
+    background: var(--white);
+}
+
+.requests-vote-stack--disabled {
+    justify-content: center;
+    opacity: 0.45;
+    cursor: default;
+}
+
+.requests-vote {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.35rem;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    font: inherit;
+    font-size: 0.85rem;
+    line-height: 1;
+    color: color-mix(in srgb, var(--charcoal) 55%, transparent);
+    cursor: pointer;
+}
+
+.requests-vote:hover,
+.requests-vote:focus-visible {
+    color: var(--charcoal);
+    background: color-mix(in srgb, var(--charcoal) 6%, var(--white));
+    outline: none;
+}
+
+.requests-vote--up.is-active {
+    color: var(--tb-purple, #702082);
+    background: color-mix(in srgb, var(--tb-purple, #702082) 12%, var(--white));
+}
+
+.requests-vote--down.is-active {
+    color: #b42318;
+    background: color-mix(in srgb, #b42318 10%, var(--white));
+}
+
+.requests-vote-score {
+    font-size: 0.82rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--charcoal);
+}
+
+.requests-item-main {
+    min-width: 0;
+}
+
+.requests-item-meta {
+    margin: 0.35rem 0 0;
+    font-size: 0.78rem;
+    color: color-mix(in srgb, var(--charcoal) 50%, transparent);
+}
+
+.requests-panel-details--readonly {
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    resize: none;
+    min-height: 0;
+    font-size: 0.88rem;
+    line-height: 1.45;
+}
+
+.requests-milestones--readonly {
+    margin-top: 0.35rem;
+}
+
+.requests-milestone-readonly {
+    font-size: 0.85rem;
+    color: color-mix(in srgb, var(--charcoal) 72%, transparent);
+}
+
+.requests-milestone-readonly.is-done {
+    text-decoration: line-through;
+    color: color-mix(in srgb, var(--charcoal) 42%, transparent);
+}
+
 .requests-item:last-child {
     border-bottom: none;
 }

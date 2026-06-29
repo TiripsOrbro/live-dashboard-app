@@ -32,17 +32,24 @@
         return el.getBoundingClientRect().height > 0;
     }
 
-    function createController({ isAnswerEmpty, excludeProgressTypes = ['banner'] } = {}) {
+    function createController({ isAnswerEmpty, isQuestionResolved, excludeProgressTypes = ['banner'] } = {}) {
         if (typeof isAnswerEmpty !== 'function') {
             throw new Error('AuditQuestionGroupsUi.createController requires isAnswerEmpty');
         }
 
         const collapsedGroups = new Set();
 
+        function isQuestionComplete(question, sess) {
+            if (typeof isQuestionResolved === 'function') {
+                return isQuestionResolved(question, sess);
+            }
+            return !isAnswerEmpty(question, sess?.answers?.[question.id]);
+        }
+
         function groupProgress(questions, session) {
             const items = questions.filter((q) => !excludeProgressTypes.includes(q.type));
             const required = items.filter((q) => q.required !== false);
-            const answered = required.filter((q) => !isAnswerEmpty(q, session?.answers?.[q.id])).length;
+            const answered = required.filter((q) => isQuestionComplete(q, session)).length;
             return { answered, total: required.length };
         }
 

@@ -1,14 +1,16 @@
+@import url('/styles/design-tokens.css');
 @import url('/styles/app-tabs.css');
 
-/* Full-page admin settings — /Admin/Settings */
+/* Full-page settings — /Admin/Settings */
 body.admin-settings-page {
     margin: 0;
     min-height: 100vh;
     min-height: 100dvh;
-    background: #ececec;
-    color: #1a1a1a;
-    font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
-    font-size: 1rem;
+    background: var(--grey);
+    color: var(--charcoal);
+    font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial,
+        sans-serif;
+    font-size: var(--font-size-4);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
 }
@@ -22,88 +24,124 @@ body.admin-settings-page .admin-settings-shell textarea {
 }
 
 body.admin-settings-page .nav-back-bubble {
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+    background: color-mix(in srgb, var(--charcoal) 88%, transparent);
+    color: var(--white);
+    border: var(--cell-border) color-mix(in srgb, var(--white) 18%, transparent);
 }
 
 body.admin-settings-page .nav-back-bubble:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: color-mix(in srgb, var(--charcoal) 75%, var(--tb-purple-light));
 }
 
 .admin-settings-shell {
-    display: grid;
-    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
-    min-height: 100vh;
-    min-height: 100dvh;
-}
-
-.admin-settings-sidebar {
-    background: #252528;
-    color: #f5f5f5;
-    padding: max(4.25rem, calc(env(safe-area-inset-top) + 3.25rem)) 0 1.5rem;
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding-top: max(3.5rem, calc(env(safe-area-inset-top) + 2.5rem));
+}
+
+.admin-settings-header {
+    padding: 0 max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
+    border-bottom: var(--cell-border) color-mix(in srgb, var(--charcoal) 15%, transparent);
+    background: var(--white);
 }
 
 .admin-settings-title {
-    margin: 0;
-    padding: 0 1.25rem;
-    font-size: 1.35rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
+    margin: 0 0 calc(10px * var(--dashboard-scale));
+    font-size: var(--font-size-2);
+    font-weight: var(--font-weight-page-title);
+    letter-spacing: 0.02em;
 }
 
-.admin-settings-nav {
+.admin-settings-tabs {
     display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    padding: 0 0.65rem;
+    flex-wrap: wrap;
+    gap: calc(6px * var(--dashboard-scale));
+    padding-bottom: calc(10px * var(--dashboard-scale));
 }
 
-.admin-settings-nav-item {
-    display: block;
+.admin-settings-nav-wrap {
+    display: grid;
+    gap: 0.65rem;
     width: 100%;
-    padding: 0.65rem 0.85rem;
-    border: none;
-    border-radius: 8px;
-    background: transparent;
-    color: rgba(255, 255, 255, 0.78);
+    padding-bottom: calc(10px * var(--dashboard-scale));
+}
+
+.admin-settings-nav-row .admin-settings-section-tabs,
+.admin-settings-segmented-tabs .admin-accounts-scope-row {
+    width: 100%;
+}
+
+.admin-settings-segmented-tabs {
+    margin-bottom: 1rem;
+    width: 100%;
+}
+
+.admin-settings-segmented-tabs .admin-accounts-scope-row-wrap {
+    margin: 0;
+}
+
+.admin-settings-nav-item.admin-accounts-scope-chip.is-active,
+.admin-settings-tab.admin-accounts-scope-chip.is-active {
+    background: color-mix(in srgb, var(--tb-purple-light, #9b59d0) 12%, var(--white, #fff));
+    color: var(--charcoal, #2b2b2b);
+}
+
+.admin-settings-tab {
+    flex: 0 1 auto;
+}
+
+.admin-settings-nav-item,
+.admin-settings-tab:not(.admin-accounts-scope-chip) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(8px * var(--dashboard-scale)) calc(14px * var(--dashboard-scale));
+    border: var(--cell-border) var(--blank-border);
+    background: var(--blank);
+    color: var(--charcoal);
     font: inherit;
-    font-size: 0.95rem;
-    font-weight: 600;
-    text-align: left;
+    font-size: var(--font-size-5);
+    font-weight: var(--font-weight-ui-label);
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-.admin-settings-nav-item:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
+.admin-settings-nav-item:hover,
+.admin-settings-tab:not(.admin-accounts-scope-chip):hover {
+    border-color: var(--tb-purple-light);
+    background: color-mix(in srgb, var(--tb-purple-light) 8%, var(--white));
 }
 
-.admin-settings-nav-item.is-active {
-    background: rgba(122, 62, 177, 0.35);
-    color: #fff;
+.admin-settings-nav-item.is-active:not(.admin-accounts-scope-chip),
+.admin-settings-tab.is-active:not(.admin-accounts-scope-chip) {
+    border-color: var(--charcoal);
+    background: var(--charcoal);
+    color: var(--white);
 }
 
 .admin-settings-main {
+    flex: 1;
     min-width: 0;
-    padding: 1.25rem 1.5rem 2rem;
+    padding: calc(16px * var(--dashboard-scale)) max(1rem, env(safe-area-inset-right))
+        calc(24px * var(--dashboard-scale)) max(1rem, env(safe-area-inset-left));
     overflow: auto;
 }
 
 .admin-settings-content {
     min-height: 100%;
+    max-width: min(1280px, 100%);
+}
+
+.admin-settings-user-panel {
+    max-width: min(40rem, 100%);
 }
 
 .admin-settings-loading,
 .admin-settings-empty {
     margin: 0;
-    color: rgba(0, 0, 0, 0.55);
+    color: color-mix(in srgb, var(--charcoal) 55%, transparent);
 }
 
 .admin-settings-section-panel[hidden] {
@@ -255,31 +293,14 @@ html.mic-dark-mode .admin-accounts-org-nav {
 }
 
 @media (max-width: 820px) {
-    .admin-settings-shell {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto 1fr;
+    .admin-settings-nav-wrap {
+        gap: calc(4px * var(--dashboard-scale));
     }
 
-    .admin-settings-sidebar {
-        border-right: none;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-        padding-top: max(4.25rem, calc(env(safe-area-inset-top) + 3.25rem));
-        padding-bottom: 0.85rem;
-    }
-
-    .admin-settings-nav {
-        flex-direction: row;
-        flex-wrap: wrap;
-        gap: 0.35rem;
-    }
-
-    .admin-settings-nav-item {
-        width: auto;
-        flex: 1 1 auto;
-        min-width: calc(50% - 0.35rem);
-        text-align: center;
-        font-size: 0.88rem;
-        padding: 0.55rem 0.65rem;
+    .admin-settings-nav-item.admin-accounts-scope-chip,
+    .admin-settings-tab.admin-accounts-scope-chip {
+        font-size: 0.82rem;
+        padding: calc(6px * var(--dashboard-scale)) calc(4px * var(--dashboard-scale));
     }
 
     .admin-settings-main {
@@ -292,8 +313,9 @@ html.mic-dark-mode body.admin-settings-page {
     color: #f2f2f2;
 }
 
-html.mic-dark-mode .admin-settings-sidebar {
+html.mic-dark-mode .admin-settings-header {
     background: #1e1e24;
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
 html.mic-dark-mode .admin-settings-loading,
@@ -836,6 +858,10 @@ html.mic-dark-mode .admin-btn-primary {
     align-items: center;
     padding: 0.65rem 0;
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.admin-accounts-list li .mic-settings-btn {
+    text-align: center;
 }
 
 .admin-accounts-meta {
@@ -1648,8 +1674,15 @@ html.mic-dark-mode .admin-forecast-update-badge--user {
     display: block;
 }
 
-.admin-forecast-area-tabs {
-    margin: 0 0 1rem;
+.admin-forecast-area-nav {
+    margin-bottom: 1rem;
+    width: 100%;
+}
+
+.admin-forecast-area-nav .admin-accounts-scope-row-wrap,
+.admin-forecast-area-nav .admin-forecast-area-tabs {
+    width: 100%;
+    max-width: none;
 }
 
 .admin-modal--forecast-preview {
@@ -1681,7 +1714,7 @@ html.mic-dark-mode .admin-forecast-update-badge--user {
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 
-.admin-forecast-store-tabs .admin-store-tabs {
+.admin-forecast-store-tabs .admin-accounts-scope-row-wrap {
     margin: 0;
 }
 
@@ -2288,10 +2321,16 @@ html.mic-dark-mode .admin-forecast-progress-day--done {
 
 .admin-forecast-toolbar {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem 0.75rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+    width: 100%;
     margin-bottom: 1rem;
+}
+
+.admin-forecast-toolbar > .mic-settings-btn {
+    width: 100%;
+    text-align: center;
 }
 
 .admin-forecast-lifelenz-status {
@@ -2774,29 +2813,37 @@ html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-entry {
 .admin-forecast-target-wrap {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem 0.75rem;
-    margin-right: 0.5rem;
+    align-items: stretch;
+    gap: 0.75rem;
+    width: 100%;
 }
 
 .admin-forecast-target-scope-label,
 .admin-forecast-target-week-start-label,
 .admin-forecast-target-day-label {
-    display: inline-flex;
-    align-items: center;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
     gap: 0.35rem;
+    flex: 1 1 calc(33.333% - 0.5rem);
+    min-width: min(100%, 10rem);
     font-size: 0.9rem;
 }
 
 .admin-forecast-target-wrap select,
 .admin-forecast-target-wrap input[type='date'] {
+    width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
     font: inherit;
 }
 
-.admin-forecast-toolbar {
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem 0.75rem;
+@media (max-width: 640px) {
+    .admin-forecast-target-scope-label,
+    .admin-forecast-target-week-start-label,
+    .admin-forecast-target-day-label {
+        flex: 1 1 100%;
+    }
 }
 
 .admin-forecast-week-start-label {

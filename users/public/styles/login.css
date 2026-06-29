@@ -937,6 +937,135 @@ body.welcome-overlay-active .stores-sign-out-btn {
     }
 }
 
+/* ── Area picker (post-welcome) — dark screen, white area labels only ── */
+.area-picker-stage {
+    z-index: 10001;
+    background: var(--login-bg);
+    cursor: default;
+}
+
+.area-picker-stage.welcome-stage--visible {
+    cursor: default;
+    pointer-events: auto;
+}
+
+.area-picker-stage-inner--text {
+    gap: 0;
+}
+
+body.area-picker-overlay-active {
+    overflow: hidden;
+    overflow-x: clip;
+    background: var(--login-bg);
+}
+
+body.area-picker-overlay-active .dashboard-preload {
+    visibility: visible;
+    pointer-events: none;
+}
+
+body.area-picker-overlay-active #app,
+body.area-picker-overlay-exiting #app {
+    visibility: visible;
+    pointer-events: none;
+}
+
+body.area-picker-overlay-active #app .mic-header--admin,
+body.area-picker-overlay-active #app .mic-settings-cog,
+body.area-picker-overlay-exiting #app .mic-header--admin,
+body.area-picker-overlay-exiting #app .mic-settings-cog {
+    pointer-events: auto;
+}
+
+body.area-picker-overlay-exiting .dashboard-preload {
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.area-picker-options--text {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    width: min(100%, 640px);
+    margin: 0;
+    padding: 0 1rem;
+}
+
+.area-picker-pipe {
+    flex: 0 0 auto;
+    padding: 0 calc(10px * var(--dashboard-scale, 1));
+    color: color-mix(in srgb, var(--white) 34%, transparent);
+    font-size: clamp(1.35rem, 4.2vw, 1.85rem);
+    font-weight: 500;
+    line-height: 1.2;
+    user-select: none;
+}
+
+.area-picker-option--text {
+    border: none;
+    background: none;
+    color: var(--white);
+    font: inherit;
+    font-size: clamp(1.35rem, 4.2vw, 1.85rem);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    line-height: 1.2;
+    padding: calc(10px * var(--dashboard-scale, 1)) calc(14px * var(--dashboard-scale, 1));
+    cursor: pointer;
+    opacity: 0;
+    transform: translateY(8px);
+    transition:
+        opacity 0.55s var(--apple-ease-out),
+        transform 0.55s var(--apple-ease-out),
+        color 0.2s ease;
+}
+
+.area-picker-stage--ready .area-picker-option--text {
+    opacity: 0.52;
+    transform: translateY(0);
+}
+
+.area-picker-option--text:hover,
+.area-picker-option--text:focus-visible {
+    opacity: 0.88;
+    outline: none;
+}
+
+.area-picker-option--text.is-active {
+    opacity: 1;
+    text-decoration: underline;
+    text-underline-offset: 0.22em;
+}
+
+.area-picker-stage--exit,
+.area-picker-stage.welcome-stage--exit.area-picker-stage--exit {
+    opacity: 0;
+    background-color: transparent;
+    pointer-events: none;
+    transition:
+        opacity 0.9s var(--apple-ease) 0.04s,
+        background-color 0.9s var(--apple-ease) 0.04s;
+}
+
+.area-picker-stage--exit .area-picker-option--text,
+.area-picker-stage--exit .area-picker-pipe {
+    opacity: 0;
+    transform: translateY(-6px);
+    transition:
+        opacity 0.55s var(--apple-ease) forwards,
+        transform 0.55s var(--apple-ease) forwards;
+}
+
+/* Legacy area-picker blocks (unused) */
+.area-picker-brand,
+.area-picker-copy,
+.area-picker-market,
+.area-picker-prompt {
+    display: none;
+}
+
 .login-actions {
     display: flex;
     flex-direction: column;

@@ -1,3 +1,4 @@
+@import url('/styles/design-tokens.css');
 @import url('/styles/app-tabs.css');
 
 .mic-page {
@@ -110,6 +111,10 @@
     --admin-grid-gap: calc(14px * var(--dashboard-scale));
 }
 
+.mic-overview-page .mic-page--admin {
+    --admin-grid-cols: minmax(0, 1.05fr) minmax(0, 1fr) minmax(calc(168px * var(--dashboard-scale)), 1.15fr) auto;
+}
+
 .mic-header--admin {
     display: grid;
     grid-template-columns: var(--admin-grid-cols);
@@ -130,6 +135,41 @@
 .mic-header--admin .mic-header-actions {
     grid-column: 4;
     justify-self: end;
+}
+
+.mic-header-store-slot {
+    grid-column: 3;
+    justify-self: center;
+    align-self: center;
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+    width: 100%;
+    max-width: calc(280px * var(--dashboard-scale));
+}
+
+.mic-overview-page .mic-header-store-slot {
+    grid-column: 3;
+    justify-self: center;
+    align-self: center;
+    width: 100%;
+    max-width: calc(280px * var(--dashboard-scale));
+}
+
+.mic-overview-page .mic-header--admin .mic-header-actions {
+    grid-column: 4;
+    justify-self: end;
+}
+
+.mic-page--admin > .mic-header--admin {
+    position: relative;
+    z-index: 12;
+    pointer-events: auto;
+}
+
+.mic-page--admin > .mic-header--admin a,
+.mic-page--admin > .mic-header--admin button {
+    pointer-events: auto;
 }
 
 .admin-promo-banner {
@@ -287,7 +327,8 @@
     position: fixed;
     right: max(calc(16px * var(--dashboard-scale)), env(safe-area-inset-right));
     bottom: max(calc(16px * var(--dashboard-scale)), env(safe-area-inset-bottom));
-    z-index: 40;
+    z-index: 50;
+    pointer-events: auto;
     width: calc(44px * var(--dashboard-scale));
     height: calc(44px * var(--dashboard-scale));
     border: none;
@@ -368,6 +409,39 @@ html.page-scroll.mic-overview-page #app {
     max-height: 100dvh;
     min-height: 0;
     overflow: hidden;
+}
+
+html.mic-overview-page .app-shell-viewport,
+html.admin-overview-page .app-shell-viewport {
+    height: 100%;
+    max-height: 100dvh;
+    min-height: 0;
+}
+
+html.mic-overview-page .app-shell-view,
+html.admin-overview-page .app-shell-view {
+    height: 100%;
+    max-height: 100dvh;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+html.mic-overview-page .app-shell-view #app,
+html.admin-overview-page .app-shell-view #app {
+    flex: 1 1 auto;
+    height: auto;
+    max-height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+html.mic-overview-page .app-shell-view #app > .mic-page--admin,
+html.admin-overview-page .app-shell-view #app > .mic-page--admin {
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 .admin-overview-page .mic-page,
@@ -494,6 +568,115 @@ html.page-scroll.mic-overview-page #app {
 .mic-grid--admin .mic-orders-store-empty {
     padding: 0;
     text-align: center;
+}
+
+.mic-grid--admin.mic-grid--loading {
+    position: relative;
+    z-index: 1;
+}
+
+.mic-grid--admin.mic-grid--loading > .mic-tile--loading {
+    pointer-events: none;
+}
+
+.mic-grid--admin.mic-grid--loading > .mic-tile.mic-tile--loading-skeleton {
+    background: transparent;
+    border: var(--cell-border) var(--charcoal);
+    border-color: var(--charcoal);
+    opacity: 1;
+    box-shadow: none;
+    filter: none;
+}
+
+.mic-grid--admin.mic-grid--loading > .mic-tile.mic-tile--loading-skeleton.mic-tile--store-leaderboard {
+    background: transparent;
+}
+
+.mic-grid--admin.mic-grid--loading > .mic-tile.mic-tile--loading-skeleton .mic-tile-body--loading {
+    background: transparent;
+}
+
+.mic-grid-loading-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 6;
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    background: transparent;
+}
+
+.mic-grid-loading-mark {
+    position: relative;
+    z-index: 1;
+    width: clamp(calc(168px * var(--dashboard-scale)), 20vw, calc(248px * var(--dashboard-scale)));
+    height: clamp(calc(168px * var(--dashboard-scale)), 20vw, calc(248px * var(--dashboard-scale)));
+    filter: drop-shadow(0 calc(10px * var(--dashboard-scale)) calc(28px * var(--dashboard-scale)) color-mix(in srgb, var(--charcoal) 18%, transparent));
+}
+
+.mic-tile--loading .mic-tile-body--loading {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0;
+    min-height: calc(56px * var(--dashboard-scale));
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.mic-tile-loading-mark {
+    width: calc(58px * var(--dashboard-scale));
+    height: calc(58px * var(--dashboard-scale));
+    flex-shrink: 0;
+}
+
+.mic-tile-loading-mark--compact {
+    width: calc(46px * var(--dashboard-scale));
+    height: calc(46px * var(--dashboard-scale));
+}
+
+.mic-tile-loading-mark--large {
+    width: calc(128px * var(--dashboard-scale));
+    height: calc(128px * var(--dashboard-scale));
+}
+
+.mic-store-lead--loading {
+    background: transparent;
+    padding: calc(16px * var(--dashboard-scale)) calc(12px * var(--dashboard-scale)) 0;
+    filter: none;
+    opacity: 1;
+}
+
+.mic-store-lead--loading::after {
+    border-top-color: var(--charcoal);
+}
+
+.mic-store-lead-sales--loading,
+.mic-store-lead-list--loading {
+    flex: 1;
+    min-height: calc(72px * var(--dashboard-scale));
+    background: transparent;
+    border-radius: 0;
+}
+
+.mic-store-lead-list--loading {
+    min-height: calc(120px * var(--dashboard-scale));
+    background: transparent;
+}
+
+.admin-area-text-tab--loading {
+    cursor: default;
+    pointer-events: none;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: inherit;
 }
 
 .mic-grid--admin .mic-tile--pos-area-stores {
@@ -785,6 +968,7 @@ html.mic-dark-mode .mic-audit-stat--complete {
     align-items: center;
     justify-content: center;
     width: 100%;
+    gap: calc(6px * var(--dashboard-scale));
 }
 
 .admin-area-text-row.is-dimmed .admin-area-text-tab {
@@ -796,9 +980,9 @@ html.mic-dark-mode .mic-audit-stat--complete {
 }
 
 .admin-area-text-tab {
-    flex: 1 1 0;
+    flex: 0 1 auto;
     min-width: 0;
-    padding: calc(2px * var(--dashboard-scale)) 0;
+    padding: calc(2px * var(--dashboard-scale)) calc(12px * var(--dashboard-scale));
 }
 
 .admin-area-text-pipe {
@@ -809,7 +993,7 @@ html.mic-dark-mode .mic-audit-stat--complete {
     font-size: var(--font-size-3);
     font-weight: var(--font-weight-ui-label);
     line-height: 1.2;
-    padding: calc(2px * var(--dashboard-scale)) 0;
+    padding: calc(2px * var(--dashboard-scale)) calc(6px * var(--dashboard-scale));
     user-select: none;
 }
 
@@ -1115,7 +1299,7 @@ html.mic-dark-mode .mic-audit-stat--complete {
 }
 
 .mic-store-lead {
-    background: linear-gradient(180deg, #4a7fd4 0%, #3d6fbf 100%);
+    background: linear-gradient(180deg, var(--tb-purple-light, #9b63d6) 0%, var(--tb-purple, #702082) 100%);
     color: #fff;
     padding: calc(12px * var(--dashboard-scale)) calc(14px * var(--dashboard-scale))
         calc(18px * var(--dashboard-scale));
@@ -1146,7 +1330,7 @@ html.mic-dark-mode .mic-audit-stat--complete {
     transform: translateX(-50%);
     border-left: 10px solid transparent;
     border-right: 10px solid transparent;
-    border-top: 10px solid #3d6fbf;
+    border-top: 10px solid var(--tb-purple, #702082);
     z-index: 4;
     pointer-events: none;
 }
@@ -3560,33 +3744,40 @@ html.mic-dark-mode .mic-audit-stat--complete {
 
 .mic-header-store-select-wrap {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: calc(2px * var(--dashboard-scale));
+    align-items: center;
+    justify-content: center;
     min-width: 0;
+    width: 100%;
+    max-width: calc(280px * var(--dashboard-scale));
 }
 
 .mic-header-store-select-label {
-    font-size: var(--font-size-6);
-    font-weight: var(--font-weight-semibold, 600);
-    color: color-mix(in srgb, var(--charcoal) 65%, white);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    line-height: 1.1;
+    display: none;
 }
 
 .mic-header-store-select {
-    min-width: calc(168px * var(--dashboard-scale));
-    max-width: calc(240px * var(--dashboard-scale));
+    width: 100%;
+    min-width: 0;
+    max-width: calc(280px * var(--dashboard-scale));
+    min-height: calc(64px * var(--dashboard-scale));
+    height: calc(64px * var(--dashboard-scale));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
     border: var(--cell-border) var(--charcoal);
     background: var(--white);
     color: var(--charcoal);
     font: inherit;
     font-size: var(--font-size-5);
     font-weight: var(--font-weight-semibold, 600);
-    padding: calc(6px * var(--dashboard-scale)) calc(8px * var(--dashboard-scale));
+    padding: 0 calc(14px * var(--dashboard-scale));
     border-radius: calc(4px * var(--dashboard-scale));
     cursor: pointer;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .mic-header-store-select:hover,
@@ -3791,10 +3982,21 @@ button.mic-tile.mic-tile--link {
         justify-content: flex-end;
     }
 
-    .mic-header-store-select-wrap {
-        align-items: flex-start;
+    .mic-overview-page .mic-header-store-slot {
+        position: static;
+        transform: none;
+        grid-column: 1 / -1;
+        grid-row: 3;
+        justify-self: center;
         width: 100%;
-        max-width: calc(220px * var(--dashboard-scale));
+        max-width: calc(280px * var(--dashboard-scale));
+        pointer-events: auto;
+    }
+
+    .mic-header-store-select-wrap {
+        align-items: center;
+        width: 100%;
+        max-width: calc(280px * var(--dashboard-scale));
     }
 
     .mic-header-store-select {

@@ -1,8 +1,19 @@
-const IS_MIC_OVERVIEW = /^\/overview\/?$/i.test(window.location.pathname);
-let STORE_NUMBER =
-    (window.location.pathname.match(/^\/MIC\/(teststore|\d{3,6})\/?$/i) || [])[1] || '';
+function shellPathname() {
+    const raw = window.__SHELL_ROUTE__?.pathname ?? window.location.pathname;
+    return String(raw).split('?')[0].split('#')[0];
+}
 
-const app = document.getElementById('app');
+function isMicOverviewPath() {
+    return /^\/overview\/?$/i.test(shellPathname());
+}
+
+let STORE_NUMBER = (shellPathname().match(/^\/MIC\/(teststore|\d{3,6})\/?$/i) || [])[1] || '';
+
+function getAppRoot() {
+    return document.getElementById('app');
+}
+
+const app = getAppRoot();
 const REFRESH_MS = 2 * 60 * 1000;
 const SCRAPE_POLL_MS = 15 * 1000;
 const TIME_ZONE = 'Australia/Melbourne';
@@ -216,13 +227,7 @@ function renderShell() {
                 <div class="mic-item-list" id="mic-item-list"></div>
             </div>
         </div>
-        -->
-        ${window.MicSettings?.renderPanel?.({
-            darkModeHint: 'Dark background and tiles on this MIC page.',
-            storeNumber: STORE_NUMBER || '',
-            reportEmail: micData?.reportEmail || '',
-        }) || ''}
-    `;
+        -->`;
 }
 
 function renderSalesStack(sales) {
@@ -1315,7 +1320,7 @@ async function loadMicData() {
 
 async function resolveMicStoreNumber() {
     if (STORE_NUMBER) return STORE_NUMBER;
-    if (!IS_MIC_OVERVIEW) return '';
+    if (!isMicOverviewPath()) return '';
     try {
         const res = await fetch('/api/me', { credentials: 'same-origin' });
         if (!res.ok) return '';
@@ -1358,7 +1363,7 @@ function clearBrokenStoreViewMode() {
 }
 
 async function initStoreOverview(me) {
-    if (!STORE_NUMBER && IS_MIC_OVERVIEW) {
+    if (!STORE_NUMBER && isMicOverviewPath()) {
         STORE_NUMBER = await resolveMicStoreNumber();
     }
     if (!STORE_NUMBER) {
@@ -1416,7 +1421,10 @@ async function init() {
         }
         await window.AdminStoreView?.init?.(me);
 
-        if (!IS_MIC_OVERVIEW) {
+        if (!isMicOverviewPath()) {
+            if (window.__APP_SHELL__) {
+                return;
+            }
             await initStoreOverview(me);
             return;
         }
@@ -1445,4 +1453,16 @@ async function init() {
     }
 }
 
-init();
+window.MicOverviewView = {
+    async mount() {
+        await init();
+    },
+    unmount() {
+        const root = getAppRoot();
+        if (root) root.innerHTML = '';
+    },
+};
+
+if (!window.__APP_SHELL__) {
+    init();
+}

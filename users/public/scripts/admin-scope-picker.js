@@ -6,7 +6,7 @@
     let escHandler = null;
     let scopeTree = null;
     let scopeTreePromise = null;
-    let browseScope = { market: '', area: '', storeNumber: '' };
+    let browseScope = { area: '', storeNumber: '' };
 
     function escapeHtml(value) {
         return String(value ?? '')
@@ -29,13 +29,7 @@
 
     function normalizeScopeTree(tree) {
         if (!tree || typeof tree !== 'object') {
-            return { markets: [], areasByMarket: {}, storesByArea: {}, defaults: {} };
-        }
-        const areasByMarket = {};
-        if (tree.areasByMarket && typeof tree.areasByMarket === 'object') {
-            for (const [market, areas] of Object.entries(tree.areasByMarket)) {
-                areasByMarket[market] = Array.isArray(areas) ? areas : [];
-            }
+            return { areas: [], storesByArea: {}, defaults: {} };
         }
         const storesByArea = {};
         if (tree.storesByArea && typeof tree.storesByArea === 'object') {
@@ -43,9 +37,11 @@
                 storesByArea[area] = Array.isArray(stores) ? stores : [];
             }
         }
+        const areas = Array.isArray(tree.areas)
+            ? tree.areas
+            : Object.keys(storesByArea).filter((area) => storesByArea[area]?.length);
         return {
-            markets: Array.isArray(tree.markets) ? tree.markets : [],
-            areasByMarket,
+            areas,
             storesByArea,
             defaults: tree.defaults && typeof tree.defaults === 'object' ? tree.defaults : {},
         };
@@ -53,30 +49,20 @@
 
     function resolveBrowseScope(tree, selections = {}, preferredStore = '') {
         tree = normalizeScopeTree(tree);
-        let market = selections.market || '';
         let area = selections.area || '';
         let storeNumber = selections.storeNumber || '';
 
         const pref = String(preferredStore || '').trim();
-        if (pref && !market && !area && !storeNumber) {
+        if (pref && !area && !storeNumber) {
             storeNumber = pref;
             for (const [areaName, stores] of Object.entries(tree.storesByArea || {})) {
                 if (!stores.some((row) => row.storeNumber === storeNumber)) continue;
                 area = areaName;
-                for (const [marketName, areas] of Object.entries(tree.areasByMarket || {})) {
-                    if ((areas || []).includes(areaName)) {
-                        market = marketName;
-                        break;
-                    }
-                }
                 break;
             }
         }
 
-        if (!market && (tree.markets || []).length === 1) market = tree.markets[0];
-        if (!market && tree.defaults?.market) market = tree.defaults.market;
-
-        const areas = market ? (tree.areasByMarket || {})[market] || [] : [];
+        const areas = tree.areas || [];
         if (area && !areas.includes(area)) area = '';
         if (!area && areas.length === 1) area = areas[0];
         if (!area && tree.defaults?.area && areas.includes(tree.defaults.area)) area = tree.defaults.area;
@@ -92,7 +78,7 @@
             storeNumber = tree.defaults.storeNumber;
         }
 
-        return { market, area, storeNumber };
+        return { area, storeNumber };
     }
 
     function filterScopeTreeForStores(tree, storeRows) {
@@ -112,24 +98,16 @@
             if (filtered.length) storesByArea[area] = filtered;
         }
 
-        const areasByMarket = {};
-        for (const [market, areas] of Object.entries(tree.areasByMarket || {})) {
-            const filteredAreas = (areas || []).filter((area) => storesByArea[area]?.length);
-            if (filteredAreas.length) areasByMarket[market] = filteredAreas;
-        }
-
-        const markets = (tree.markets || []).filter((market) => (areasByMarket[market] || []).length);
+        const areas = (tree.areas || Object.keys(storesByArea)).filter((area) => storesByArea[area]?.length);
         const defaults = { ...(tree.defaults || {}) };
         if (defaults.storeNumber && !allowed.has(String(defaults.storeNumber))) {
             defaults.storeNumber = '';
         }
         if (defaults.area && !storesByArea[defaults.area]?.length) defaults.area = '';
-        if (defaults.market && !areasByMarket[defaults.market]?.length) defaults.market = '';
 
         return {
             ...tree,
-            markets,
-            areasByMarket,
+            areas,
             storesByArea,
             defaults,
         };
@@ -169,14 +147,7 @@
         const resolved = resolveBrowseScope(tree, scope, scope.storeNumber || '');
         const rows = [];
 
-        const markets = tree.markets || [];
-        if (markets.length >= 1) {
-            rows.push(
-                renderBrowseScopeRow(`${scopePrefix}-market`, 'Market', markets, resolved.market, (row) => row)
-            );
-        }
-
-        const areas = resolved.market ? (tree.areasByMarket || {})[resolved.market] || [] : [];
+        const areas = tree.areas || [];
         if (areas.length >= 1) {
             rows.push(renderBrowseScopeRow(`${scopePrefix}-area`, 'Area', areas, resolved.area, (row) => row));
         }
@@ -208,17 +179,13 @@
 
     function storesMatchingScope(storeRows, tree, scope) {
         const list = storeRows || [];
-        const { market, area, storeNumber } = scope || {};
+        const { area, storeNumber } = scope || {};
         if (storeNumber) {
             return list.filter((row) => String(row.storeNumber) === String(storeNumber));
         }
         const allowed = new Set();
         if (area && tree?.storesByArea?.[area]) {
             tree.storesByArea[area].forEach((row) => allowed.add(String(row.storeNumber)));
-        } else if (market && (tree.areasByMarket || {})[market]) {
-            for (const areaName of (tree.areasByMarket || {})[market]) {
-                ((tree.storesByArea || {})[areaName] || []).forEach((row) => allowed.add(String(row.storeNumber)));
-            }
         } else {
             return list;
         }
@@ -228,7 +195,7 @@
     function mountInline(host, { tree, initialScope = {}, preferredStore = '', onChange, scopePrefix = 'inline' } = {}) {
         if (!host || !tree) return null;
 
-        let scope = { market: '', area: '', storeNumber: '', ...initialScope };
+        let scope = { area: '', storeNumber: '', ...initialScope };
         let treeRef = normalizeScopeTree(tree);
 
         function render() {
@@ -247,9 +214,7 @@
                 if (!chip) return;
                 const name = chip.dataset.browseScope || '';
                 const value = chip.dataset.browseValue || '';
-                if (name === `${scopePrefix}-market`) {
-                    scope = { market: value, area: '', storeNumber: '' };
-                } else if (name === `${scopePrefix}-area`) {
+                if (name === `${scopePrefix}-area`) {
                     scope = { ...scope, area: value, storeNumber: '' };
                 } else if (name === `${scopePrefix}-store`) {
                     scope = { ...scope, storeNumber: value };
@@ -269,7 +234,7 @@
                 return { ...scope };
             },
             setScope(next) {
-                scope = { market: '', area: '', storeNumber: '', ...next };
+                scope = { area: '', storeNumber: '', ...next };
                 render();
             },
             setTree(nextTree) {
@@ -311,8 +276,7 @@
             if (!chip || !scopeTree) return;
             const name = chip.dataset.browseScope;
             const value = chip.dataset.browseValue || '';
-            if (name === 'browse-market') browseScope = { market: value, area: '', storeNumber: '' };
-            else if (name === 'browse-area') browseScope = { ...browseScope, area: value, storeNumber: '' };
+            if (name === 'browse-area') browseScope = { ...browseScope, area: value, storeNumber: '' };
             else if (name === 'browse-store') browseScope = { ...browseScope, storeNumber: value };
             renderModalNavigator(scopeTree, browseScope.storeNumber);
         });
@@ -378,7 +342,7 @@
 
         return loadScopeTree()
             .then((tree) => {
-                browseScope = { market: '', area: '', storeNumber: '' };
+                browseScope = { area: '', storeNumber: '' };
                 renderModalNavigator(tree, preferredStore || '');
                 root.hidden = false;
                 root.querySelector('#admin-scope-picker-nav button')?.focus();

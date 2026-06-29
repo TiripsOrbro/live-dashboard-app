@@ -16,7 +16,11 @@ const statusBanner = document.getElementById('status-banner');
 let latestDashboards = [];
 let latestAreaKey = initialAreaKey;
 
-let areaList = ['Area 1', 'Area 2', 'Area 21', 'Area 22'];
+let areaList = ['VIC-1', 'WA-1', 'QLD-1'];
+
+function areaLabel(name) {
+    return global.AreaDisplay?.label?.(name) ?? String(name ?? '').trim();
+}
 let isAdminView = false;
 /** @type {Map<string, object>} */
 const areasByKey = new Map();
@@ -121,11 +125,11 @@ function renderAreaTabs(currentAreaName) {
             normalizeAreaMatchKey(latestAreaKey) === normalizeAreaMatchKey(tabKey);
         if (active) {
             parts.push(
-                `<span class="admin-area-tab is-active" role="tab" aria-selected="true">${name}</span>`
+                `<span class="admin-area-tab is-active" role="tab" aria-selected="true">${escapeHtml(areaLabel(name))}</span>`
             );
         } else {
             parts.push(
-                `<button type="button" class="admin-area-tab" role="tab" data-area-select="${tabKey}" aria-selected="false">${name}</button>`
+                `<button type="button" class="admin-area-tab" role="tab" data-area-select="${tabKey}" aria-selected="false">${escapeHtml(areaLabel(name))}</button>`
             );
         }
         if (idx < areaList.length - 1) {

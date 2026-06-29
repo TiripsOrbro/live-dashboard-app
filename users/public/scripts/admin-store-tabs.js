@@ -1,12 +1,20 @@
 /**
- * Admin store dashboard - /Admin/A1…A22 with in-page store switching; legacy /Admin/{store}.
+ * Admin store dashboard - /Admin/qld-1|vic-1|wa-1 with in-page store switching.
  */
 (function (global) {
     const MOBILE_MAX = 768;
-    const ADMIN_AREAS = ['Area 1', 'Area 2', 'Area 21', 'Area 22'];
+    const ADMIN_AREAS = ['VIC-1', 'WA-1', 'QLD-1'];
+
+    function areaLabel(name) {
+        return global.AreaDisplay?.label?.(name) ?? String(name ?? '').trim();
+    }
+
+    function shellPath() {
+        return global.__SHELL_ROUTE__?.pathname ?? global.location.pathname;
+    }
 
     function isAdminAreaPath() {
-        return /^\/Admin\/A\d+\/?$/i.test(global.location.pathname);
+        return /^\/Admin\/(qld-1|vic-1|wa-1|A\d+)\/?$/i.test(shellPath());
     }
 
     function isLegacyAdminStorePath() {
@@ -17,14 +25,23 @@
         return isAdminAreaPath() || isLegacyAdminStorePath();
     }
 
+    function areaSlugFromName(name) {
+        return normalizeAreaKey(name);
+    }
+
     function areaCodeFromName(name) {
-        const m = String(name || '').match(/(\d+)/);
-        return m ? `A${Number(m[1])}` : '';
+        return areaSlugFromName(name);
     }
 
     function areaFromPath() {
-        const m = global.location.pathname.match(/^\/Admin\/A(\d+)\/?$/i);
-        return m ? `A${m[1]}` : '';
+        const slugMatch = shellPath().match(/^\/Admin\/(qld-1|vic-1|wa-1)\/?$/i);
+        if (slugMatch) return String(slugMatch[1]).toLowerCase();
+        const legacyMatch = shellPath().match(/^\/Admin\/A(\d+)\/?$/i);
+        if (legacyMatch) {
+            const legacyMap = { 1: 'qld-1', 2: 'qld-1', 21: 'vic-1', 22: 'vic-1' };
+            return legacyMap[Number(legacyMatch[1])] || '';
+        }
+        return '';
     }
 
     function storeFromPath() {
@@ -62,7 +79,12 @@
 
     function activeAreaKey(stores, activeStore, areaCode) {
         if (areaCode) {
-            return normalizeAreaKey(areaCodeFromName(`Area ${String(areaCode).replace(/^A/i, '')}`));
+            const legacy = String(areaCode).match(/^A(\d+)$/i);
+            if (legacy) {
+                const legacyMap = { 1: 'qld-1', 2: 'qld-1', 21: 'vic-1', 22: 'vic-1' };
+                return legacyMap[Number(legacy[1])] || normalizeAreaKey(areaCode);
+            }
+            return normalizeAreaKey(areaCode);
         }
         const active = String(activeStore || storeFromPath()).toLowerCase();
         if (active === 'teststore') return 'test-store';
@@ -76,9 +98,9 @@
     }
 
     function areaHref(areaName) {
-        const code = areaCodeFromName(areaName);
-        if (code) {
-            return global.AppPaths?.adminArea?.(code, { view: 'area' }) || `/Admin/${code}?view=area`;
+        const slug = areaSlugFromName(areaName);
+        if (slug) {
+            return global.AppPaths?.adminArea?.(slug, { view: 'area' }) || `/Admin/${slug}?view=area`;
         }
         return global.AppPaths?.overview?.() || '/overview';
     }
@@ -88,7 +110,7 @@
         const active = String(activeStore || '').toLowerCase();
 
         if (isAdminAreaPath() && areaCode) {
-            const key = normalizeAreaKey(areaCodeFromName(`Area ${String(areaCode).replace(/^A/i, '')}`));
+            const key = activeAreaKey(stores, activeStore, areaCode);
             return list.filter((s) => !s.testStore && areaKeyForStore(s) === key);
         }
 
@@ -154,11 +176,11 @@
             const href = areaHref(name);
             if (isActive) {
                 parts.push(
-                    `<button type="button" class="admin-area-tab is-active${areaTotalsViewActive ? ' is-area-totals-view' : ''}" role="tab" aria-selected="true" data-area-totals-view aria-pressed="${areaTotalsViewActive ? 'true' : 'false'}">${escapeHtml(name)}</button>`
+                    `<button type="button" class="admin-area-tab is-active${areaTotalsViewActive ? ' is-area-totals-view' : ''}" role="tab" aria-selected="true" data-area-totals-view aria-pressed="${areaTotalsViewActive ? 'true' : 'false'}">${escapeHtml(areaLabel(name))}</button>`
                 );
             } else {
                 parts.push(
-                    `<a class="admin-area-tab" role="tab" href="${escapeHtml(href)}" data-area-name="${escapeHtml(name)}">${escapeHtml(name)}</a>`
+                    `<a class="admin-area-tab" role="tab" href="${escapeHtml(href)}" data-area-name="${escapeHtml(name)}">${escapeHtml(areaLabel(name))}</a>`
                 );
             }
             if (idx < ADMIN_AREAS.length - 1) {

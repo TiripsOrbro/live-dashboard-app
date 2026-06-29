@@ -167,11 +167,16 @@
                 )}
                 <div id="admin-store-logins-browse-scope" class="admin-accounts-browse-scope admin-accounts-org-nav"></div>
                 <div id="admin-store-logins-content" class="admin-store-logins-content" hidden>
-                    <div class="admin-tabs admin-tabs--full" id="admin-store-logins-tabs">
-                        ${SERVICES.map(
-                            (svc) =>
-                                `<button type="button" class="admin-tab${svc === 'mmx' ? ' is-active' : ''}" data-tab="${svc}">${SERVICE_LABELS[svc]}</button>`
-                        ).join('')}
+                    <div class="admin-settings-segmented-tabs admin-accounts-org-nav">
+                        <div class="admin-accounts-scope-row-wrap">
+                            <span class="admin-accounts-scope-row-label">Service</span>
+                            <div class="admin-accounts-scope-row admin-accounts-scope-row--equal" id="admin-store-logins-tabs" role="tablist" style="--scope-cols: ${SERVICES.length}">
+                                ${SERVICES.map(
+                                    (svc) =>
+                                        `<button type="button" class="admin-accounts-scope-chip${svc === 'mmx' ? ' is-active' : ''}" data-tab="${svc}" role="tab" aria-selected="${svc === 'mmx' ? 'true' : 'false'}">${SERVICE_LABELS[svc]}</button>`
+                                ).join('')}
+                            </div>
+                        </div>
                     </div>
                     <div id="admin-store-logins-body"></div>
                 </div>

@@ -78,7 +78,7 @@
         return `
             <div class="admin-modal admin-modal--wide admin-accounts-view" data-accounts-view="existing">
                 ${sectionHeader(
-                    'Existing accounts',
+                    'Store accounts',
                     'Use the org tree to pick a market, area, and store, then view or manage crew logins for that store.'
                 )}
                 <div id="admin-accounts-browse-scope" class="admin-accounts-browse-scope admin-accounts-org-nav"></div>

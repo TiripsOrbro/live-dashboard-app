@@ -1,25 +1,63 @@
 /* -----------------------------------------------------------
    Root element - dashboard mounts here (`#app`)
 ----------------------------------------------------------- */
-const app = document.getElementById('app');
+function shellPathname() {
+    return window.__SHELL_ROUTE__?.pathname ?? window.location.pathname;
+}
 
-/** Store id from URL (/Admin/A22, /MIC/3811, /kiosk/3811, or legacy /3811). */
-const IS_ADMIN_AREA_DASHBOARD = /^\/Admin\/A(\d+)\/?$/i.test(window.location.pathname);
-const ADMIN_AREA_MATCH = window.location.pathname.match(/^\/Admin\/A(\d+)\/?$/i);
-const ADMIN_AREA_CODE = ADMIN_AREA_MATCH ? `A${ADMIN_AREA_MATCH[1]}` : '';
-const IS_MIC_STORE_DASHBOARD = /^\/MIC\/(teststore|\d{3,6})\/?$/i.test(window.location.pathname);
-const IS_LEGACY_ADMIN_STORE_DASHBOARD = /^\/Admin\/(teststore|\d{3,6})\/?$/i.test(
-    window.location.pathname
-);
-const IS_ADMIN_STORE_DASHBOARD = IS_ADMIN_AREA_DASHBOARD || IS_LEGACY_ADMIN_STORE_DASHBOARD;
+function shellSearch() {
+    return window.__SHELL_ROUTE__?.search ?? window.location.search;
+}
 
-function storeNumberFromPath() {
+function getAppRoot() {
+    return document.getElementById('app');
+}
+
+const app = getAppRoot();
+
+/** Store id from URL (/Admin/vic-1, /MIC/3811, /kiosk/3811, or legacy /3811). */
+function isAdminAreaDashboardPath(path = shellPathname()) {
+    return /^\/Admin\/(qld-1|vic-1|wa-1|A\d+)\/?$/i.test(path);
+}
+
+function adminAreaCodeFromPath(path = shellPathname()) {
+    const slugMatch = path.match(/^\/Admin\/(qld-1|vic-1|wa-1)\/?$/i);
+    if (slugMatch) return String(slugMatch[1]).toLowerCase();
+    const legacyMatch = path.match(/^\/Admin\/A(\d+)\/?$/i);
+    if (legacyMatch) {
+        const legacyMap = { 1: 'qld-1', 2: 'qld-1', 21: 'vic-1', 22: 'vic-1' };
+        return legacyMap[Number(legacyMatch[1])] || `a${legacyMatch[1]}`;
+    }
+    return '';
+}
+
+function isAdminAreaDashboard() {
+    return isAdminAreaDashboardPath();
+}
+
+function getAdminAreaCode() {
+    return adminAreaCodeFromPath();
+}
+
+function isMicStoreDashboard() {
+    return /^\/MIC\/(teststore|\d{3,6})\/?$/i.test(shellPathname());
+}
+
+function isLegacyAdminStoreDashboard() {
+    return /^\/Admin\/(teststore|\d{3,6})\/?$/i.test(shellPathname());
+}
+
+function isAdminStoreDashboard() {
+    return isAdminAreaDashboard() || isLegacyAdminStoreDashboard();
+}
+
+function storeNumberFromPath(path = shellPathname()) {
     return (
         (
-            window.location.pathname.match(/^\/Admin\/(teststore|\d{3,6})\/?$/i) ||
-            window.location.pathname.match(/^\/MIC\/(teststore|\d{3,6})\/?$/i) ||
-            window.location.pathname.match(/\/(?:nologin|kiosk)\/(\d{3,6})\/?$/i) ||
-            window.location.pathname.match(/^\/(teststore|\d{3,6})\/?$/i) ||
+            path.match(/^\/Admin\/(teststore|\d{3,6})\/?$/i) ||
+            path.match(/^\/MIC\/(teststore|\d{3,6})\/?$/i) ||
+            path.match(/\/(?:nologin|kiosk)\/(\d{3,6})\/?$/i) ||
+            path.match(/^\/(teststore|\d{3,6})\/?$/i) ||
             []
         )[1]?.toLowerCase() || ''
     );
@@ -27,10 +65,10 @@ function storeNumberFromPath() {
 
 function initialAdminAreaStore() {
     try {
-        const fromQuery = new URLSearchParams(window.location.search).get('store');
+        const fromQuery = new URLSearchParams(shellSearch()).get('store');
         if (fromQuery) return String(fromQuery).toLowerCase();
-        if (ADMIN_AREA_CODE) {
-            const saved = sessionStorage.getItem(`admin-area-store-${ADMIN_AREA_CODE}`);
+        if (getAdminAreaCode()) {
+            const saved = sessionStorage.getItem(`admin-area-store-${getAdminAreaCode()}`);
             if (saved) return String(saved).toLowerCase();
         }
     } catch {
@@ -39,7 +77,7 @@ function initialAdminAreaStore() {
     return '';
 }
 
-let STORE_NUMBER = IS_ADMIN_AREA_DASHBOARD ? initialAdminAreaStore() : storeNumberFromPath();
+let STORE_NUMBER = isAdminAreaDashboard() ? initialAdminAreaStore() : storeNumberFromPath();
 const KIOSK_TOKEN =
     typeof window !== 'undefined' && window.__DASHBOARD_KIOSK__
         ? String(window.__DASHBOARD_KIOSK__)
@@ -64,10 +102,10 @@ function isNologinDashboardEntry() {
 /** Settings cog on sales dashboard - MIC and admin logins only, not wall/kiosk tablets. */
 function shouldShowDashboardSettings() {
     if (isKioskDashboardEntry() || isNologinDashboardEntry()) return false;
-    if (IS_ADMIN_STORE_DASHBOARD || IS_MIC_STORE_DASHBOARD) return true;
+    if (isAdminStoreDashboard() || isMicStoreDashboard()) return true;
     return (
         document.cookie.split(';').some((c) => c.trim() === 'dashboard_entry=store') ||
-        /^\/MIC\/(teststore|\d{3,6})\/?$/i.test(window.location.pathname) ||
+        /^\/MIC\/(teststore|\d{3,6})\/?$/i.test(shellPathname()) ||
         /^\/(teststore|\d{3,6})\/?$/i.test(window.location.pathname)
     );
 }
@@ -116,7 +154,7 @@ const SALES_REFRESH_MINUTES = 2;
 const adminAreaSalesCache = new Map();
 
 function adminAreaStorageKey() {
-    return ADMIN_AREA_CODE ? `admin-area-store-${ADMIN_AREA_CODE}` : '';
+    return getAdminAreaCode() ? `admin-area-store-${getAdminAreaCode()}` : '';
 }
 
 function rememberAdminAreaStore(storeNum) {
@@ -181,9 +219,9 @@ async function applyAdminStoreSlice(storeNum) {
 }
 
 async function loadAdminAreaSales() {
-    if (!IS_ADMIN_AREA_DASHBOARD || !ADMIN_AREA_CODE) return false;
+    if (!isAdminAreaDashboard() || !getAdminAreaCode()) return false;
     const res = await fetch(
-        `${window.location.origin}/api/admin/area-sales?area=${encodeURIComponent(ADMIN_AREA_CODE)}`,
+        `${window.location.origin}/api/admin/area-sales?area=${encodeURIComponent(getAdminAreaCode())}`,
         { credentials: 'include' }
     );
     if (!res.ok) {
@@ -212,7 +250,7 @@ async function loadAdminAreaSales() {
         await applyAdminStoreSlice(list[0].storeNumber);
     }
 
-    window.AdminStoreTabs?.refreshFromAreaSales?.(list, STORE_NUMBER, ADMIN_AREA_CODE);
+    window.AdminStoreTabs?.refreshFromAreaSales?.(list, STORE_NUMBER, getAdminAreaCode());
 
     if (window.location.search) {
         const params = new URLSearchParams(window.location.search);
@@ -220,7 +258,7 @@ async function loadAdminAreaSales() {
             params.delete('store');
             const qs = params.toString();
             history.replaceState(
-                { area: ADMIN_AREA_CODE, store: STORE_NUMBER },
+                { area: getAdminAreaCode(), store: STORE_NUMBER },
                 '',
                 qs ? `${window.location.pathname}?${qs}` : window.location.pathname
             );
@@ -230,13 +268,13 @@ async function loadAdminAreaSales() {
 }
 
 function setAdminAreaTotalsUrl(active) {
-    if (!IS_ADMIN_AREA_DASHBOARD) return;
+    if (!isAdminAreaDashboard()) return;
     try {
         const url = new URL(window.location.href);
         if (active) url.searchParams.set('view', 'area');
         else url.searchParams.delete('view');
         const next = `${url.pathname}${url.search}`;
-        history.replaceState({ area: ADMIN_AREA_CODE, store: STORE_NUMBER, view: active ? 'area' : '' }, '', next);
+        history.replaceState({ area: getAdminAreaCode(), store: STORE_NUMBER, view: active ? 'area' : '' }, '', next);
     } catch {
         /* ignore */
     }
@@ -251,7 +289,7 @@ function wantsAdminAreaTotalsView() {
 }
 
 async function switchAdminStore(storeNum) {
-    if (!IS_ADMIN_AREA_DASHBOARD) return false;
+    if (!isAdminAreaDashboard()) return false;
     if (document.body.classList.contains('admin-showing-area-totals')) {
         window.AdminAreaPanel?.hide?.();
         setAdminAreaTotalsUrl(false);
@@ -263,7 +301,7 @@ async function switchAdminStore(storeNum) {
 }
 
 async function showAdminAreaTotals(options = {}) {
-    if (!IS_ADMIN_AREA_DASHBOARD || !ADMIN_AREA_CODE) return false;
+    if (!isAdminAreaDashboard() || !getAdminAreaCode()) return false;
     const quiet = Boolean(options.quiet);
     const panel = document.getElementById('admin-area-view');
     const grids = document.getElementById('admin-area-grids');
@@ -281,7 +319,7 @@ async function showAdminAreaTotals(options = {}) {
             setAdminAreaTotalsUrl(true);
         }
         if (options.refresh) window.AdminAreaPanel?.invalidateCache?.();
-        await window.AdminAreaPanel?.show?.(ADMIN_AREA_CODE);
+        await window.AdminAreaPanel?.show?.(getAdminAreaCode());
         applyDashboardScale();
         return true;
     } catch (err) {
@@ -303,7 +341,7 @@ async function refreshAdminAreaTotalsIfVisible() {
 }
 
 function showAdminStoreView() {
-    if (!IS_ADMIN_AREA_DASHBOARD) return;
+    if (!isAdminAreaDashboard()) return;
     window.AdminAreaPanel?.hide?.();
     setAdminAreaTotalsUrl(false);
     applyDashboardScale();
@@ -493,13 +531,13 @@ function adminStockCountPickerOptions() {
 let adminStockCountPickerBound = false;
 
 function bindAdminStockCountPicker() {
-    if (adminStockCountPickerBound || !IS_ADMIN_AREA_DASHBOARD) return;
+    if (adminStockCountPickerBound || !isAdminAreaDashboard()) return;
     adminStockCountPickerBound = true;
     document.addEventListener(
         'click',
         (event) => {
             const link = event.target.closest('a.pending-vendor-chip--combined');
-            if (!link || !IS_ADMIN_AREA_DASHBOARD) return;
+            if (!link || !isAdminAreaDashboard()) return;
             const options = adminStockCountPickerOptions();
             if (options.length <= 1) return;
             event.preventDefault();
@@ -537,13 +575,13 @@ const AUDIT_FORM_ROUTES = {
 const CORE_WEEKLY_AUDIT_LABELS = new Set(Object.keys(AUDIT_FORM_ROUTES));
 
 function adminAreaNameForTacaudit() {
-    if (!ADMIN_AREA_CODE) return '';
-    const n = ADMIN_AREA_CODE.replace(/^A/i, '');
+    if (!getAdminAreaCode()) return '';
+    const n = getAdminAreaCode().replace(/^A/i, '');
     return n ? `Area ${n}` : '';
 }
 
 function auditFormPath(label) {
-    if (IS_ADMIN_STORE_DASHBOARD && STORE_NUMBER) {
+    if (isAdminStoreDashboard() && STORE_NUMBER) {
         return (
             window.AppPaths?.tacauditAdminHub?.({
                 area: adminAreaNameForTacaudit(),
@@ -818,7 +856,7 @@ async function loadSalesData() {
         updateGrid();
     }
     try {
-        if (IS_ADMIN_AREA_DASHBOARD) {
+        if (isAdminAreaDashboard()) {
             await loadAdminAreaSales();
             await refreshAdminAreaTotalsIfVisible();
             return;
@@ -2134,7 +2172,7 @@ function buildPortraitGridContent() {
 }
 
 function useAdminMicMobileSalesLayout() {
-    return IS_ADMIN_STORE_DASHBOARD && isPortraitMobileView();
+    return isAdminStoreDashboard() && isPortraitMobileView();
 }
 
 function buildSalesTodayFromGrid() {
@@ -2283,7 +2321,7 @@ function updateAuditsPanel() {
               .map((name) => {
                   const formPath = auditFormPath(name);
                   if (formPath) {
-                      const auditAction = IS_ADMIN_STORE_DASHBOARD ? 'View' : 'Start';
+                      const auditAction = isAdminStoreDashboard() ? 'View' : 'Start';
                       return `<div class="audit-item"><a class="audit-chip audit-chip--link" href="${escapeHtml(formPath)}" aria-label="${auditAction} ${escapeHtml(name)}">${escapeHtml(name)}</a></div>`;
                   }
                   return `<div class="audit-item"><button type="button" class="audit-chip" data-audit="${encodeURIComponent(
@@ -2412,24 +2450,18 @@ async function applyUserPreferences() {
 function bindDashboardSettings() {
     if (!shouldShowDashboardSettings() || !window.MicSettings) return;
     window.MicSettings.bind({
-        getViewAccountsOptions: () => (IS_ADMIN_STORE_DASHBOARD ? { isAdmin: true, storeNumber: STORE_NUMBER || '' } : { storeNumber: STORE_NUMBER || '' }),
+        getViewAccountsOptions: () => (isAdminStoreDashboard() ? { isAdmin: true, storeNumber: STORE_NUMBER || '' } : { storeNumber: STORE_NUMBER || '' }),
         storeNumber: STORE_NUMBER || '',
     });
     window.AdminMenu?.bind?.({
-        getViewAccountsOptions: () => (IS_ADMIN_STORE_DASHBOARD ? { isAdmin: true, storeNumber: STORE_NUMBER || '' } : { storeNumber: STORE_NUMBER || '' }),
+        getViewAccountsOptions: () => (isAdminStoreDashboard() ? { isAdmin: true, storeNumber: STORE_NUMBER || '' } : { storeNumber: STORE_NUMBER || '' }),
     });
     window.AdminAccounts?.maybeOpenFromQuery?.();
 }
 
 function renderDashboardSettingsChrome() {
     if (!shouldShowDashboardSettings() || !window.MicSettings) return '';
-    return `
-        ${window.MicSettings.renderCog()}
-        ${window.MicSettings.renderPanel({
-            darkModeHint: 'Dark background on dashboard pages that support it.',
-            storeNumber: STORE_NUMBER || '',
-        })}
-    `;
+    return window.MicSettings.renderCog();
 }
 
 function buildAuditsAsideHtml() {
@@ -2556,14 +2588,14 @@ function renderDashboard() {
                 <div class="rotate-hint-icon" aria-hidden="true">↻</div>
                 <h2>Rotate to landscape</h2>
                 <p>The sales grid is built for a wide view. Turn your phone sideways for the best layout.</p>
-                <a class="rotate-hint-back" href="${IS_ADMIN_STORE_DASHBOARD ? (window.AppPaths?.overview?.() || '/overview') : '/'}">← ${
-                    IS_ADMIN_STORE_DASHBOARD ? 'Admin overview' : 'All stores'
+                <a class="rotate-hint-back" href="${isAdminStoreDashboard() ? (window.AppPaths?.overview?.() || '/overview') : '/'}">← ${
+                    isAdminStoreDashboard() ? 'Admin overview' : 'All stores'
                 }</a>
             </div>
         </div>
-        <div class="dashboard${IS_ADMIN_STORE_DASHBOARD ? ' dashboard--admin-store' : ''}">
+        <div class="dashboard${isAdminStoreDashboard() ? ' dashboard--admin-store' : ''}">
             ${
-                IS_ADMIN_STORE_DASHBOARD
+                isAdminStoreDashboard()
                     ? '<div class="nav-back-host" id="admin-store-nav-back"></div>'
                     : ''
             }
@@ -2571,7 +2603,7 @@ function renderDashboard() {
                 ${buildPortraitTabsHtml()}
             </div>
             ${
-                IS_ADMIN_STORE_DASHBOARD
+                isAdminStoreDashboard()
                     ? ''
                     : `
             <div class="dashboard-header">
@@ -2596,7 +2628,7 @@ function renderDashboard() {
             </div>`
             }
             ${
-                IS_ADMIN_STORE_DASHBOARD
+                isAdminStoreDashboard()
                     ? `
             <span id="time-display" class="dashboard-admin-clock-sink" hidden aria-hidden="true">${formatTime(new Date())}</span>
             <span id="last-updated" class="dashboard-admin-clock-sink" hidden aria-hidden="true">--:--</span>
@@ -2608,7 +2640,7 @@ function renderDashboard() {
             <div id="audit-schedule-status" class="audit-schedule-status" role="alert" aria-live="assertive" hidden></div>
 
             ${
-                IS_ADMIN_AREA_DASHBOARD
+                isAdminAreaDashboard()
                     ? `<div id="admin-store-view">`
                     : ''
             }
@@ -2632,7 +2664,7 @@ function renderDashboard() {
             </div>
 
             ${
-                IS_ADMIN_AREA_DASHBOARD
+                isAdminAreaDashboard()
                     ? `</div>
             <div id="admin-area-view" hidden>
                 <div id="admin-area-grids" class="area-grid-stack"></div>
@@ -2674,13 +2706,13 @@ function renderDashboard() {
     const isKioskEntry = isKioskDashboardEntry();
     const isMicStoreEntry =
         !isKioskEntry &&
-        (IS_MIC_STORE_DASHBOARD ||
+        (isMicStoreDashboard() ||
             document.cookie.split(';').some((c) => c.trim() === 'dashboard_entry=store') ||
             /^\/MIC\/(teststore|\d{3,6})\/?$/i.test(window.location.pathname) ||
             /^\/\d{3,6}\/?$/i.test(window.location.pathname) ||
             /^\/teststore\/?$/i.test(window.location.pathname));
     if (STORE_NUMBER && window.DashboardNavBack) {
-        if (IS_ADMIN_STORE_DASHBOARD) {
+        if (isAdminStoreDashboard()) {
             window.DashboardNavBack.mountBackButton(document.getElementById('admin-store-nav-back'), {
                 fallback: window.AppPaths?.adminOverview?.() || '/Admin/Overview',
                 alwaysFallback: true,
@@ -2699,9 +2731,9 @@ function renderDashboard() {
         }
     }
 
-    if (IS_ADMIN_STORE_DASHBOARD) {
+    if (isAdminStoreDashboard()) {
         document.body.classList.add('dashboard-page--admin-store');
-        window.AdminStoreTabs?.mount?.(STORE_NUMBER, { areaCode: ADMIN_AREA_CODE });
+        window.AdminStoreTabs?.mount?.(STORE_NUMBER, { areaCode: getAdminAreaCode() });
     }
 }
 
@@ -2873,17 +2905,17 @@ function initMobileLandscape() {
 /* -----------------------------------------------------------
    Boot - render dashboard shell, then start clock & sales sync
 ----------------------------------------------------------- */
-(async () => {
+async function bootSalesDashboard() {
     syncDashboardLayoutMode();
     lastPortraitLayout = isPortraitMobileView();
     applyDashboardScale();
     renderDashboard();
     bindAdminStockCountPicker();
-    if (IS_ADMIN_AREA_DASHBOARD) {
+    if (isAdminAreaDashboard()) {
         showGridSkeleton();
         try {
             await loadAdminAreaSales();
-            window.AdminAreaPanel?.preload?.(ADMIN_AREA_CODE);
+            window.AdminAreaPanel?.preload?.(getAdminAreaCode());
             if (wantsAdminAreaTotalsView()) {
                 await showAdminAreaTotals();
             } else {
@@ -2904,11 +2936,38 @@ function initMobileLandscape() {
     initPopupTestButton();
     initMobileLandscape();
     await loadAuditSchedule();
-    if (!IS_ADMIN_AREA_DASHBOARD) {
+    if (!isAdminAreaDashboard()) {
         await loadAuditState();
     }
     if (STORE_NUMBER) {
         window.StockCountNotify?.initPipelineWatcher?.(STORE_NUMBER);
     }
     startSyncedUpdates();
-})();
+}
+
+const dashboardUnmountFns = [];
+
+function resetSalesDashboardRoute() {
+    STORE_NUMBER = isAdminAreaDashboard() ? initialAdminAreaStore() : storeNumberFromPath();
+}
+
+window.SalesDashboardView = {
+    async mount() {
+        resetSalesDashboardRoute();
+        await bootSalesDashboard();
+    },
+    unmount() {
+        dashboardUnmountFns.forEach((fn) => {
+            try {
+                fn();
+            } catch {
+                /* ignore */
+            }
+        });
+        dashboardUnmountFns.length = 0;
+    },
+};
+
+if (!window.__APP_SHELL__) {
+    bootSalesDashboard();
+}

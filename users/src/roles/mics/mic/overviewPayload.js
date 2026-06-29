@@ -4,6 +4,7 @@ const { getSettings: getTacauditSettings } = require('../../../../../tacaudit/sr
 const { buildAdminOverviewPayload, ensureAllAreaGroups } = require('./adminOverview');
 const { buildWeeklyAuditsTileState, buildSquareOneTiles } = require('../../../../../dashboard/src/weeklyAuditsTileState');
 const { normalizeAreaLabel } = require('../../../../../stores/src/marketsConfig');
+const { getAreaIds } = require('../../../../../stores/src/areasConfig');
 const {
     getOverviewScope,
     getAccessibleAreasForUser,
@@ -33,7 +34,7 @@ function filterAreaGroupsForUser(areaGroups, user) {
         });
     }
 
-    const ordered = [...allowed];
+    const ordered = getAreaIds().filter((name) => allowed.has(name));
     return ordered.map((name) => {
         const key = normalizeAreaKey(name);
         return (

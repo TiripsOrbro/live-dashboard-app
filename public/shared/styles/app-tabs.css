@@ -40,8 +40,7 @@
 }
 
 .app-tabs--scroll,
-.stock-count-locations,
-.requests-tabs {
+.stock-count-locations {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
@@ -307,45 +306,6 @@ button.admin-store-tabs__tab.is-active,
 .stock-count-loc-btn--done:not(.stock-count-loc-btn--active) {
     background: color-mix(in srgb, var(--blank, #fff) 18%, var(--dark-purple-border, #4b3a63));
     border-color: var(--dark-purple-border, #4b3a63);
-}
-
-/* ========== Feature requests (dark page) ========== */
-
-.requests-tabs-bar {
-    --app-tab-bar-border: 1px solid rgba(255, 255, 255, 0.14);
-    --app-tab-border: 1px solid rgba(255, 255, 255, 0.1);
-    --app-tab-inactive-bg: transparent;
-    --app-tab-active-bg: rgba(255, 255, 255, 0.1);
-    --app-tab-active-bottom: 2px solid rgba(255, 255, 255, 0.85);
-    --app-tab-text: rgba(255, 255, 255, 0.58);
-    --app-tab-text-active: #fff;
-    --app-tab-hover-bg: rgba(255, 255, 255, 0.06);
-    --app-tab-hover-text: rgba(255, 255, 255, 0.88);
-    --app-tab-pad-y: 0.7rem;
-    --app-tab-pad-x: 0.65rem;
-    --app-tab-font-size: 0.88rem;
-    --app-tab-overlap: 0;
-    border-bottom: var(--app-tab-bar-border);
-}
-
-.requests-tab {
-    min-width: 5.5rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    border-left: none;
-    border-right: var(--app-tab-border);
-    border-bottom: none;
-    margin: 0;
-}
-
-.requests-tab:first-child {
-    border-left: var(--app-tab-border);
-}
-
-.requests-tab.is-active {
-    box-shadow: none;
 }
 
 /* ========== Admin store tabs container ========== */

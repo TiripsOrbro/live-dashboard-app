@@ -78,6 +78,14 @@
                 setBusy(false);
                 return;
             }
+            try {
+                sessionStorage.removeItem('mic-overview-area');
+                sessionStorage.removeItem('admin-view-as-store-enabled');
+                sessionStorage.removeItem('admin-view-as-store');
+                localStorage.setItem('mic-area-picker-pending', '1');
+            } catch {
+                /* ignore */
+            }
             window.location.replace(data.defaultPath || '/');
         } catch {
             showError('Could not save password. Check your connection.');

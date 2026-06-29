@@ -193,6 +193,48 @@ function loginDestination(data, username) {
 
 let dashboardPreloadFrame = null;
 
+const OVERVIEW_SESSION_KEYS = [
+    'mic-overview-area',
+    'admin-view-as-store-enabled',
+    'admin-view-as-store',
+];
+const AREA_PICKER_PENDING_KEY = 'mic-area-picker-pending';
+
+function markAreaPickerPendingForLogin() {
+    try {
+        localStorage.setItem(AREA_PICKER_PENDING_KEY, '1');
+    } catch {
+        /* ignore */
+    }
+}
+
+function clearAreaPickerPendingForLogin() {
+    try {
+        localStorage.removeItem(AREA_PICKER_PENDING_KEY);
+    } catch {
+        /* ignore */
+    }
+}
+
+function clearOverviewSessionKeysInWindow(win) {
+    if (!win) return;
+    try {
+        for (const key of OVERVIEW_SESSION_KEYS) {
+            win.sessionStorage.removeItem(key);
+        }
+    } catch {
+        /* ignore */
+    }
+}
+
+function clearOverviewSessionKeysInPreloadFrame(iframe) {
+    try {
+        clearOverviewSessionKeysInWindow(iframe?.contentWindow);
+    } catch {
+        /* ignore */
+    }
+}
+
 function ensureDashboardPreloadFrame() {
     if (dashboardPreloadFrame) return dashboardPreloadFrame;
     const iframe = document.createElement('iframe');
@@ -223,6 +265,7 @@ function preloadDashboard(dest) {
             'load',
             () => {
                 window.clearTimeout(timeoutId);
+                clearOverviewSessionKeysInPreloadFrame(iframe);
                 try {
                     if (iframe.contentWindow?.location?.pathname === '/login') {
                         finish(false);
@@ -394,6 +437,10 @@ async function submitLogin() {
 
         const dest = loginDestination(data, username);
         try {
+            for (const key of OVERVIEW_SESSION_KEYS) {
+                sessionStorage.removeItem(key);
+            }
+            markAreaPickerPendingForLogin();
             sessionStorage.setItem(
                 'dashboard-entry',
                 String(dest || '').startsWith('/admin') ? 'admin' : 'store'
@@ -421,6 +468,15 @@ loginForm.addEventListener('submit', async (event) => {
 });
 
 readQueryError();
+
+try {
+    clearAreaPickerPendingForLogin();
+    for (const key of OVERVIEW_SESSION_KEYS) {
+        sessionStorage.removeItem(key);
+    }
+} catch {
+    /* ignore */
+}
 
 const loginVersionEl = document.getElementById('login-version');
 const loginUpdateBtn = document.getElementById('login-update-btn');

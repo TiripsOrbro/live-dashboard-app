@@ -26,19 +26,23 @@
         return ['manager', 'mic', 'tm'].includes(level);
     }
 
+    function treeMarkets(tree) {
+        return Array.isArray(tree?.markets) ? tree.markets : [];
+    }
+
+    function areasForTree(tree, market) {
+        const markets = treeMarkets(tree);
+        if (markets.length && tree.areasByMarket) {
+            return market ? tree.areasByMarket[market] || [] : [];
+        }
+        return tree.areas || Object.keys(tree.storesByArea || {});
+    }
+
     function resolveScopeSelections(level, tree, selections = {}) {
-        let market = selections.market || '';
         let area = selections.area || '';
         let storeNumber = selections.storeNumber || '';
+        const areas = areasForTree(tree, selections.market);
 
-        if (levelNeedsMarket(level)) {
-            if (!market && tree.markets.length === 1) market = tree.markets[0];
-            if (!market && tree.defaults?.market) market = tree.defaults.market;
-        } else {
-            market = '';
-        }
-
-        const areas = market ? tree.areasByMarket[market] || [] : [];
         if (levelNeedsArea(level)) {
             if (area && !areas.includes(area)) area = '';
             if (!area && areas.length === 1) area = areas[0];
@@ -62,6 +66,14 @@
             storeNumber = '';
         }
 
+        const markets = treeMarkets(tree);
+        let market = '';
+        if (levelNeedsMarket(level)) {
+            market =
+                selections.market ||
+                tree.defaults?.market ||
+                (markets.length === 1 ? markets[0] : '');
+        }
         return { market, area, storeNumber };
     }
 
@@ -187,18 +199,19 @@
             storeNumber: readSelectValue(formRoot, 'storeNumber'),
         });
 
+        const markets = treeMarkets(tree);
         const marketSelect = getSelect(formRoot, 'market');
         const marketWrap = getFieldWrap(formRoot, 'market');
-        if (levelNeedsMarket(level) && tree.markets.length) {
-            setSelectOptions(marketSelect, tree.markets, selections.market, (row) => row);
-            marketSelect.disabled = tree.markets.length <= 1;
+        if (levelNeedsMarket(level) && markets.length) {
+            setSelectOptions(marketSelect, markets, selections.market, (row) => row);
+            marketSelect.disabled = markets.length <= 1;
             if (marketWrap) marketWrap.hidden = false;
         } else if (marketWrap) {
             marketWrap.hidden = true;
             if (marketSelect) marketSelect.innerHTML = '';
         }
 
-        const areas = selections.market ? tree.areasByMarket[selections.market] || [] : [];
+        const areas = areasForTree(tree, selections.market);
         const areaSelect = getSelect(formRoot, 'area');
         const areaWrap = getFieldWrap(formRoot, 'area');
         if (levelNeedsArea(level) && areas.length) {
@@ -295,7 +308,8 @@
             showFieldError(formRoot, 'accountLevel', 'Choose an access level.');
             errors.push({ field: 'accountLevel', message: 'Choose an access level.' });
         }
-        if (levelNeedsMarket(values.accountLevel) && !values.market) {
+        const markets = treeMarkets(createOptions?.scopeTree);
+        if (levelNeedsMarket(values.accountLevel) && markets.length && !values.market) {
             showFieldError(formRoot, 'market', 'Choose a market.');
             errors.push({ field: 'market', message: 'Choose a market.' });
         }

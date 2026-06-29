@@ -73,9 +73,14 @@
                     <h2>Build to adjustments</h2>
                     <p class="admin-buildto-subtitle">Set build-to rules, item codes (MMX / vendor / fallbacks), and low-stock thresholds. Global, area, or per-store.</p>
                 </div>
-                <div class="admin-tabs admin-tabs--full" id="admin-buildto-tabs">
-                    <button type="button" class="admin-tab is-active" data-tab="global" id="admin-buildto-global-tab" hidden>Global</button>
-                    <button type="button" class="admin-tab" data-tab="store">Stores</button>
+                <div class="admin-settings-segmented-tabs admin-accounts-org-nav">
+                    <div class="admin-accounts-scope-row-wrap">
+                        <span class="admin-accounts-scope-row-label">Scope</span>
+                        <div class="admin-accounts-scope-row admin-accounts-scope-row--equal" id="admin-buildto-tabs" role="tablist" style="--scope-cols: 1">
+                            <button type="button" class="admin-accounts-scope-chip" data-tab="global" id="admin-buildto-global-tab" hidden role="tab">Global</button>
+                            <button type="button" class="admin-accounts-scope-chip" data-tab="store" role="tab">Stores</button>
+                        </div>
+                    </div>
                 </div>
                 <div id="admin-buildto-scope-wrap" class="admin-buildto-scope-wrap" hidden>
                     <div id="admin-buildto-scope-nav" class="admin-buildto-scope-nav"></div>
@@ -139,10 +144,14 @@
 
     function applyTabUi() {
         const root = ensureBackdrop();
-        root.querySelectorAll('.admin-tab').forEach((tab) => {
+        const row = root.querySelector('#admin-buildto-tabs');
+        let visibleCount = 0;
+        root.querySelectorAll('#admin-buildto-tabs [data-tab]').forEach((tab) => {
             if (tab.hidden) return;
+            visibleCount += 1;
             tab.classList.toggle('is-active', tab.dataset.tab === activeTab);
         });
+        if (row) row.style.setProperty('--scope-cols', String(Math.max(visibleCount, 1)));
         root.querySelector('#admin-buildto-scope-wrap').hidden = activeTab === 'global';
     }
 

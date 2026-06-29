@@ -1,24 +1,88 @@
-(function () {
-    const formEl = document.getElementById('requests-form');
-    const formWrapEl = document.getElementById('requests-form-wrap');
-    const addToggleEl = document.getElementById('requests-add-toggle');
-    const titleEl = document.getElementById('requests-title');
-    const addDescriptionBtn = document.getElementById('requests-add-description');
-    const descriptionPanelEl = document.getElementById('requests-description-panel');
-    const descriptionEl = document.getElementById('requests-description');
-    const categoryEl = document.getElementById('requests-category');
-    const submitEl = formEl?.querySelector('.requests-submit');
-    const tabsEl = document.getElementById('requests-tabs');
-    const tabAddEl = document.getElementById('requests-tab-add');
-    const doneToggleEl = document.getElementById('requests-done-toggle');
-    const tabDialogEl = document.getElementById('requests-tab-dialog');
-    const tabDialogFormEl = document.getElementById('requests-tab-dialog-form');
-    const tabDialogInputEl = document.getElementById('requests-tab-dialog-input');
-    const tabDialogCancelEl = document.getElementById('requests-tab-dialog-cancel');
-    const listEl = document.getElementById('requests-list');
-    const emptyEl = document.getElementById('requests-empty');
-    const errorEl = document.getElementById('requests-error');
-    const successEl = document.getElementById('requests-success');
+(function (global) {
+    const REQUESTS_PANEL_HTML = `
+        <div class="requests-view">
+            <header class="admin-section-header requests-view-header">
+                <div class="requests-view-header-row">
+                    <div>
+                        <h2>Feature requests</h2>
+                        <p class="admin-section-subtitle">Click a request to expand it. Use + to add a new one.</p>
+                    </div>
+                    <button type="button" id="requests-add-toggle" class="requests-add-toggle" aria-label="New request" aria-expanded="false" title="New request">
+                        <svg class="requests-add-toggle-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+                            <path fill="currentColor" d="M12 5c.55 0 1 .45 1 1v5h5c.55 0 1 .45 1 1s-.45 1-1 1h-5v5c0 .55-.45 1-1 1s-1-.45-1-1v-5H6c-.55 0-1-.45-1-1s.45-1 1-1h5V6c0-.55.45-1 1-1z"/>
+                        </svg>
+                    </button>
+                </div>
+            </header>
+            <div id="requests-form-wrap" class="requests-form-wrap">
+                <form id="requests-form" class="requests-form">
+                    <input id="requests-title" name="title" type="text" class="requests-form-title" placeholder="Title" maxlength="2000" required autocomplete="off">
+                    <div class="requests-form-description-wrap">
+                        <button type="button" id="requests-add-description" class="requests-form-add-description">Add description</button>
+                        <div id="requests-description-panel" class="requests-form-description-panel">
+                            <textarea id="requests-description" name="description" rows="3" placeholder="Add more context…"></textarea>
+                        </div>
+                    </div>
+                    <div class="requests-form-footer">
+                        <select id="requests-category" name="category" aria-label="Tab"></select>
+                        <button type="submit" class="requests-submit mic-settings-btn mic-settings-btn--primary">Add request</button>
+                    </div>
+                </form>
+            </div>
+            <p id="requests-success" class="requests-success" role="status" hidden></p>
+            <div class="admin-settings-segmented-tabs admin-accounts-org-nav requests-tabs-bar">
+                <div class="admin-accounts-scope-row-wrap">
+                    <span class="admin-accounts-scope-row-label">Category</span>
+                    <div class="requests-tabs-row">
+                        <div id="requests-tabs" class="admin-accounts-scope-row admin-accounts-scope-row--equal requests-tabs" role="tablist" aria-label="Feature request tabs"></div>
+                        <button type="button" id="requests-tab-add" class="admin-accounts-scope-chip requests-tab-add" aria-label="Add tab" title="Add tab">+</button>
+                    </div>
+                </div>
+            </div>
+            <div id="requests-list" class="requests-list" aria-live="polite">Loading…</div>
+            <p id="requests-empty" class="requests-empty" hidden>No feature requests yet.</p>
+            <p id="requests-error" class="requests-error" role="alert" hidden></p>
+            <div class="admin-settings-segmented-tabs requests-done-bar">
+                <div class="admin-accounts-scope-row-wrap">
+                    <div class="admin-accounts-scope-row admin-accounts-scope-row--equal requests-done-row" style="--scope-cols: 1">
+                        <button type="button" id="requests-done-toggle" class="admin-accounts-scope-chip requests-done-toggle" aria-pressed="false" role="tab">Done</button>
+                    </div>
+                </div>
+            </div>
+            <dialog id="requests-tab-dialog" class="requests-tab-dialog">
+                <form id="requests-tab-dialog-form" class="requests-tab-dialog-form">
+                    <h2 class="requests-tab-dialog-title">New tab</h2>
+                    <label class="requests-tab-dialog-label" for="requests-tab-dialog-input">Tab name</label>
+                    <input id="requests-tab-dialog-input" class="requests-tab-dialog-input" type="text" maxlength="40" autocomplete="off" placeholder="e.g. Dashboard">
+                    <div class="requests-tab-dialog-actions">
+                        <button type="button" id="requests-tab-dialog-cancel" class="requests-tab-dialog-cancel">Cancel</button>
+                        <button type="submit" class="requests-tab-dialog-create mic-settings-btn mic-settings-btn--primary">Create tab</button>
+                    </div>
+                </form>
+            </dialog>
+        </div>`;
+
+    let pageHost = null;
+    let formEl;
+    let formWrapEl;
+    let addToggleEl;
+    let titleEl;
+    let addDescriptionBtn;
+    let descriptionPanelEl;
+    let descriptionEl;
+    let categoryEl;
+    let submitEl;
+    let tabsEl;
+    let tabAddEl;
+    let doneToggleEl;
+    let tabDialogEl;
+    let tabDialogFormEl;
+    let tabDialogInputEl;
+    let tabDialogCancelEl;
+    let listEl;
+    let emptyEl;
+    let errorEl;
+    let successEl;
 
     let categories = [];
     let priorities = [];
@@ -43,10 +107,27 @@
         await wait(PANEL_MS);
     }
 
-    if (window.DashboardNavBack) {
-        window.DashboardNavBack.mountBackButton(document.getElementById('requests-back'), {
-            fallback: '/admin',
-        });
+    function bindDom(root) {
+        formEl = root.querySelector('#requests-form');
+        formWrapEl = root.querySelector('#requests-form-wrap');
+        addToggleEl = root.querySelector('#requests-add-toggle');
+        titleEl = root.querySelector('#requests-title');
+        addDescriptionBtn = root.querySelector('#requests-add-description');
+        descriptionPanelEl = root.querySelector('#requests-description-panel');
+        descriptionEl = root.querySelector('#requests-description');
+        categoryEl = root.querySelector('#requests-category');
+        submitEl = formEl?.querySelector('.requests-submit');
+        tabsEl = root.querySelector('#requests-tabs');
+        tabAddEl = root.querySelector('#requests-tab-add');
+        doneToggleEl = root.querySelector('#requests-done-toggle');
+        tabDialogEl = root.querySelector('#requests-tab-dialog');
+        tabDialogFormEl = root.querySelector('#requests-tab-dialog-form');
+        tabDialogInputEl = root.querySelector('#requests-tab-dialog-input');
+        tabDialogCancelEl = root.querySelector('#requests-tab-dialog-cancel');
+        listEl = root.querySelector('#requests-list');
+        emptyEl = root.querySelector('#requests-empty');
+        errorEl = root.querySelector('#requests-error');
+        successEl = root.querySelector('#requests-success');
     }
 
     function escapeHtml(value) {
@@ -443,6 +524,7 @@
         const count = countForTab('done');
         const isActive = activeTab === 'done';
         doneToggleEl.classList.toggle('is-active', isActive);
+        doneToggleEl.setAttribute('aria-selected', isActive ? 'true' : 'false');
         doneToggleEl.setAttribute('aria-pressed', isActive ? 'true' : 'false');
         doneToggleEl.innerHTML = `<span class="requests-tab-label">Done</span>${count ? `<span class="requests-tab-count">${count}</span>` : ''}`;
     }
@@ -450,6 +532,7 @@
     function renderTabs() {
         if (!tabsEl) return;
         const tabs = tabsForBar();
+        tabsEl.style.setProperty('--scope-cols', String(Math.max(tabs.length, 1)));
         tabsEl.innerHTML = tabs
             .map((tab) => {
                 const count = countForTab(tab.id);
@@ -457,7 +540,7 @@
                 return `
                     <button
                         type="button"
-                        class="requests-tab${selected ? ' is-active' : ''}"
+                        class="admin-accounts-scope-chip${selected ? ' is-active' : ''}"
                         role="tab"
                         aria-selected="${selected ? 'true' : 'false'}"
                         data-tab-id="${escapeAttr(tab.id)}"
@@ -726,6 +809,10 @@
         li.querySelector('.requests-milestone-input')?.focus();
     }
 
+    function wireEvents() {
+        if (pageHost?.dataset.requestsBound) return;
+        if (pageHost) pageHost.dataset.requestsBound = '1';
+
     tabsEl?.addEventListener('contextmenu', (event) => {
         const tab = event.target.closest('[data-tab-id]');
         if (!tab) return;
@@ -896,9 +983,33 @@
         const preview = row?.querySelector('.requests-milestone-text');
         if (preview) preview.textContent = input.value;
     });
+    }
 
-    loadRequests().catch((error) => {
-        if (listEl) listEl.innerHTML = '';
-        showError(error.message || 'Load failed.');
-    });
-})();
+    async function mount(host) {
+        pageHost = host;
+        host.innerHTML = REQUESTS_PANEL_HTML;
+        bindDom(host);
+        wireEvents();
+        categories = [];
+        priorities = [];
+        allRequests = [];
+        activeTab = null;
+        expandedId = null;
+        formOpen = false;
+        descriptionOpen = false;
+        return loadRequests().catch((error) => {
+            if (listEl) listEl.innerHTML = '';
+            showError(error.message || 'Load failed.');
+        });
+    }
+
+    function unmount() {
+        pageHost = null;
+    }
+
+    global.FeatureRequestsView = { mount, unmount };
+
+    if (!global.__APP_SHELL__ && document.getElementById('requests-mount')) {
+        void mount(document.getElementById('requests-mount'));
+    }
+})(window);

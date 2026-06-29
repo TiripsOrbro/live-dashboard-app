@@ -3,8 +3,11 @@
  */
 (function (global) {
     function areaCodeFromName(name) {
-        const m = String(name || '').match(/(\d+)/);
-        return m ? `A${Number(m[1])}` : '';
+        return String(name || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)/g, '');
     }
 
     function micOverview() {
@@ -27,11 +30,27 @@
     }
 
     function adminArea(areaCodeOrName, options = {}) {
-        const code = areaCodeFromName(areaCodeOrName) || String(areaCodeOrName || '').trim();
+        const code = areaCodeFromName(areaCodeOrName) || String(areaCodeOrName || '').trim().toLowerCase();
         if (!code) return adminOverview();
         const base = `/Admin/${code}`;
         if (options && options.view === 'area') return `${base}?view=area`;
         return base;
+    }
+
+    const LEGACY_ADMIN_AREA_SLUGS = { 1: 'qld-1', 2: 'qld-1', 21: 'vic-1', 22: 'vic-1' };
+
+    /** Map `/Admin/A22` → `vic-1` slug; empty when path is not a legacy admin area code. */
+    function adminSlugFromLegacyPath(pathname) {
+        const m = String(pathname || '').match(/^\/Admin\/A(\d+)\/?$/i);
+        if (!m) return '';
+        return LEGACY_ADMIN_AREA_SLUGS[Number(m[1])] || '';
+    }
+
+    /** Canonicalize legacy `/Admin/A##` paths to `/Admin/{slug}` for the app shell. */
+    function canonicalAdminSalesPath(pathname, search = '', hash = '') {
+        const slug = adminSlugFromLegacyPath(pathname);
+        if (!slug) return null;
+        return { pathname: `/Admin/${slug}`, search: String(search || ''), hash: String(hash || '') };
     }
 
     function adminAreaWithStore(areaCodeOrName, storeNumber) {
@@ -49,7 +68,7 @@
 
     function areaTotals(areaCodeOrName) {
         const code = areaCodeFromName(areaCodeOrName);
-        return code ? `/${code}` : '/A22';
+        return code ? `/Admin/${code}` : '/Admin/vic-1';
     }
 
     function tacaudit(storeNumber) {
@@ -126,6 +145,8 @@
         adminStore,
         areaTotals,
         areaCodeFromName,
+        adminSlugFromLegacyPath,
+        canonicalAdminSalesPath,
         tacaudit,
         tacauditAdminHub,
         tacauditSplash,

@@ -29,7 +29,8 @@ const {
 } = require('../../../../../dashboard/src/sssg/sssgCalc');
 
 /** Same areas as store picker - always rotate through these even with no stores/data. */
-const ADMIN_ROTATE_AREAS = ['Area 1', 'Area 2', 'Area 21', 'Area 22'];
+const { getAreaIds } = require('../../../../../stores/src/areasConfig');
+const ADMIN_ROTATE_AREAS = getAreaIds();
 
 function normalizeAreaKey(value) {
     return String(value || '')

@@ -710,43 +710,32 @@ function renderComplianceViewToggle() {
 function renderScopePicker() {
     if (!canShowScopePicker()) return '';
     const meta = getScopeMeta();
-    const showMarket = meta.accessibleMarkets.length > 1;
-    const areas = areasInCurrentMarket();
-    const showArea = areas.length > 1;
-    if (!showMarket && !showArea) return '';
+    const areas = meta.accessibleAreas?.length
+        ? meta.accessibleAreas
+        : areasInCurrentMarket();
+    if (areas.length <= 1) return '';
     const area = currentAreaName();
-    const market = currentMarketName();
-    const parts = ['<div class="tacaudit-scope-picker">'];
-    if (showMarket) {
-        parts.push(`
-            <label class="tacaudit-scope-picker__field">
-                <span class="tacaudit-scope-picker__label">Market</span>
-                <select id="tacaudit-market-select" class="dfsc-input tacaudit-scope-picker__select">
-                    ${meta.accessibleMarkets
-                        .map(
-                            (name) =>
-                                `<option value="${escapeHtml(name)}"${name === market ? ' selected' : ''}>${escapeHtml(name)}</option>`
-                        )
-                        .join('')}
-                </select>
-            </label>`);
-    }
-    if (showArea) {
-        parts.push(`
-            <label class="tacaudit-scope-picker__field">
-                <span class="tacaudit-scope-picker__label">Area</span>
-                <select id="tacaudit-area-select" class="dfsc-input tacaudit-scope-picker__select">
-                    ${areas
-                        .map(
-                            (name) =>
-                                `<option value="${escapeHtml(name)}"${name === area ? ' selected' : ''}>${escapeHtml(name)}</option>`
-                        )
-                        .join('')}
-                </select>
-            </label>`);
-    }
-    parts.push('</div>');
-    return parts.join('');
+    return `<div class="tacaudit-scope-picker">
+        <button type="button" class="scope-popup-trigger" id="tacaudit-area-popup-btn">Select area: ${escapeHtml(area || 'Choose…')}</button>
+    </div>`;
+}
+
+function bindScopePicker() {
+    const btn = document.getElementById('tacaudit-area-popup-btn');
+    if (!btn || !window.ScopePopup?.open) return;
+    btn.addEventListener('click', () => {
+        const meta = getScopeMeta();
+        const areas = meta.accessibleAreas?.length ? meta.accessibleAreas : areasInCurrentMarket();
+        window.ScopePopup.open({
+            title: 'Select area',
+            selectOnClick: true,
+            selected: currentAreaName(),
+            groups: [{ label: 'Areas', items: areas.map((name) => ({ value: name, label: window.AreaDisplay?.label?.(name) ?? name })) }],
+            onSelect: (item) => {
+                if (item?.value) void switchAdminArea(item.value);
+            },
+        });
+    });
 }
 
 function renderAreaPicker() {
@@ -771,19 +760,6 @@ async function switchAdminArea(area) {
         return;
     }
     window.location.href = adminHubUrl(nextArea);
-}
-
-function bindScopePicker() {
-    document.getElementById('tacaudit-market-select')?.addEventListener('change', (e) => {
-        const market = e.target.value;
-        const areas = getScopeMeta().marketAreas[market] || [];
-        const current = currentAreaName();
-        const next = areas.includes(current) ? current : areas[0];
-        if (next) void switchAdminArea(next);
-    });
-    document.getElementById('tacaudit-area-select')?.addEventListener('change', (e) => {
-        void switchAdminArea(e.target.value);
-    });
 }
 
 function renderAdminLaunchTiles() {
@@ -937,18 +913,7 @@ function mountSettingsChrome() {
     if (!window.MicSettings || document.getElementById('mic-settings-btn')) return;
     const host = document.createElement('div');
     host.className = 'tacaudit-settings-host';
-    host.innerHTML =
-        window.MicSettings.renderCog() +
-        window.MicSettings.renderPanel({
-            storeNumber: STORE_NUMBER,
-            reportEmail: context?.settings?.reportEmail || '',
-            darkModeHint: 'Dark background on TacoAudit and audit pages.',
-            onReportEmailSaved: (email) => {
-                if (context?.settings) context.settings.reportEmail = email;
-                else context = { ...context, settings: { reportEmail: email } };
-                render();
-            },
-        });
+    host.innerHTML = window.MicSettings.renderCog();
     document.body.appendChild(host);
     window.MicSettings.bind({
         storeNumber: STORE_NUMBER,
@@ -2109,4 +2074,16 @@ async function init() {
     }
 }
 
-init();
+window.TacauditView = {
+    async mount() {
+        await init();
+    },
+    unmount() {
+        const root = document.getElementById('app');
+        if (root) root.innerHTML = '';
+    },
+};
+
+if (!window.__APP_SHELL__) {
+    init();
+}

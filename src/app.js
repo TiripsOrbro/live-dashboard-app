@@ -296,7 +296,17 @@ const {
     setDailyItemMultiplier,
     clearStoreDailyMultipliers,
 } = require('./services/mic/micStore');
+const {
+    getAreaIds,
+    normalizeAreaLabel: normalizeCanonicalAreaLabel,
+    inferAreaFromStore,
+    areaCodeFromValue: areaSlugFromValue,
+    resolveAreaFromParam,
+    getAdminAreaPath: buildAdminAreaPath,
+} = require('../stores/src/areasConfig');
+
 const { computeStoreSalesToday, ADMIN_ROTATE_AREAS } = require('./services/mic/adminOverview');
+const SHELL_NAV_ENABLED = /^(1|true|yes|on)$/i.test(String(process.env.SHELL_NAV ?? '1').trim());
 const { buildOverviewPayload } = require('./services/mic/overviewPayload');
 const {
     getContext: getDfscContext,
@@ -1970,10 +1980,7 @@ function normalizeAreaKey(value) {
 }
 
 function areaCodeFromValue(value) {
-    const s = String(value || '').trim();
-    const m = s.match(/(?:^|\b)area\D*(\d+)\b/i) || s.match(/^a(\d+)$/i) || s.match(/^(\d+)$/);
-    if (!m) return '';
-    return `A${String(Number(m[1]))}`;
+    return areaSlugFromValue(value);
 }
 
 function areaMatchTokens(value) {
@@ -1982,6 +1989,11 @@ function areaMatchTokens(value) {
     if (key) set.add(key);
     const lower = String(value || '').trim().toLowerCase();
     if (lower) set.add(lower);
+    const canonical = normalizeCanonicalAreaLabel(value);
+    if (canonical) {
+        set.add(canonical.toLowerCase());
+        set.add(normalizeAreaKey(canonical));
+    }
     const code = areaCodeFromValue(value);
     if (code) {
         set.add(code.toLowerCase());
@@ -1991,16 +2003,7 @@ function areaMatchTokens(value) {
 }
 
 function resolveAreaFromAdminList(areaParam) {
-    const raw = String(areaParam || '').trim();
-    if (!raw || /^market\s*\d+$/i.test(raw)) return null;
-    for (const name of ADMIN_ROTATE_AREAS) {
-        const wanted = areaMatchTokens(areaParam);
-        const areaTokens = areaMatchTokens(name);
-        for (const token of wanted) {
-            if (areaTokens.has(token)) return { name, key: normalizeAreaKey(name) };
-        }
-    }
-    return null;
+    return resolveAreaFromParam(areaParam);
 }
 
 function areaParamMatchesStore(areaParam, store) {
@@ -2014,8 +2017,12 @@ function areaParamMatchesStore(areaParam, store) {
 }
 
 function areaNameFromStore(store) {
-    const area = String(store?.area || '').trim();
-    return area || 'Area 22';
+    return inferAreaFromStore(
+        store?.storeNumber,
+        store?.storeName,
+        store?.area,
+        store?.timeZone
+    );
 }
 
 function buildAreaGroups(stores) {
@@ -2025,6 +2032,7 @@ function buildAreaGroups(stores) {
         if (!groups.has(area)) groups.set(area, []);
         groups.get(area).push(store);
     }
+    const areaOrder = new Map(getAreaIds().map((name, idx) => [name, idx]));
     return [...groups.entries()]
         .map(([name, areaStores]) => ({
             name,
@@ -2033,7 +2041,14 @@ function buildAreaGroups(stores) {
                 String(a.storeNumber).localeCompare(String(b.storeNumber), undefined, { numeric: true })
             ),
         }))
-        .sort((a, b) => a.name.localeCompare(b.name));
+        .sort((a, b) => {
+            const ai = areaOrder.get(a.name);
+            const bi = areaOrder.get(b.name);
+            if (ai != null && bi != null) return ai - bi;
+            if (ai != null) return -1;
+            if (bi != null) return 1;
+            return a.name.localeCompare(b.name);
+        });
 }
 
 const RAW_BASE_HOUR = 5;
@@ -2593,10 +2608,15 @@ function sendAdminOverviewPage(_req, res) {
 
 function sendAdminSettingsPage(req, res) {
     const user = req.dashboardUser || getRequestUser(req);
-    if (!user || (!canUserAccessAdminMenu(user) && !canUserManageStoreLogins(user))) {
+    if (!user || !isRealDashboardUser(user)) {
         sendUnauthorized(req, res);
         return;
     }
+    if (isNologinUser(user)) {
+        sendForbidden(req, res, 'Settings are not available on no-login links.');
+        return;
+    }
+    if (sendShellOrLegacy(res, null, 'Settings')) return;
     const bootId = getDashboardMeta().bootId;
     let html = fsSync.readFileSync(path.join(paths.users.public, 'admin.html'), 'utf8');
     html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
@@ -2609,6 +2629,19 @@ app.get(/^\/admin\/settings\/?$/i, sendAdminSettingsPage);
 app.get(/^\/Admin\/Settings\/?$/i, sendAdminSettingsPage);
 
 app.get(/^\/Admin\/A(\d+)\/?$/i, requireMultiStoreScope, (req, res) => {
+    const n = Number((req.path.match(/^\/Admin\/A(\d+)\/?$/i) || [])[1]);
+    const legacyMap = { 1: 'qld-1', 2: 'qld-1', 21: 'vic-1', 22: 'vic-1' };
+    const slug = legacyMap[n];
+    if (slug) {
+        res.redirect(302, buildAdminAreaPath(slug));
+        return;
+    }
+    if (sendShellOrLegacy(res, null, 'Sales Dashboard')) return;
+    res.sendFile(path.join(paths.dashboard.public, 'index.html'));
+});
+
+app.get(/^\/Admin\/(qld-1|vic-1|wa-1)\/?$/i, requireMultiStoreScope, (req, res) => {
+    if (sendShellOrLegacy(res, null, 'Sales Dashboard')) return;
     res.sendFile(path.join(paths.dashboard.public, 'index.html'));
 });
 
@@ -2622,13 +2655,15 @@ app.get(/^\/Admin\/(\d{3,6})\/?$/i, requireMultiStoreScope, (req, res) => {
     const storeNumber = (req.path.match(/^\/Admin\/(\d{3,6})\/?$/i) || [])[1];
     if (!assertStoreAccess(req, res, storeNumber)) return;
     const cfg = getStoreConfig(storeNumber);
-    const areaCode = areaCodeFromValue(areaNameFromStore(cfg || {})) || 'A22';
-    res.redirect(302, `${getAdminAreaPath(areaCode)}?store=${encodeURIComponent(storeNumber)}`);
+    const areaCode = areaCodeFromValue(areaNameFromStore(cfg || {})) || 'vic-1';
+    res.redirect(302, `${buildAdminAreaPath(areaCode)}?store=${encodeURIComponent(storeNumber)}`);
 });
 
 app.get(/^\/admin\/A(\d+)\/?$/i, requireMultiStoreScope, (req, res) => {
     const n = (req.path.match(/^\/admin\/A(\d+)\/?$/i) || [])[1];
-    res.redirect(302, getAdminAreaPath(`A${n}`));
+    const legacyMap = { 1: 'qld-1', 2: 'qld-1', 21: 'vic-1', 22: 'vic-1' };
+    const slug = legacyMap[Number(n)] || `a${n}`;
+    res.redirect(302, buildAdminAreaPath(slug));
 });
 
 app.get(/^\/admin\/(\d{3,6})\/?$/i, requireMultiStoreScope, (req, res) => {
@@ -2639,6 +2674,22 @@ app.get(/^\/admin\/(\d{3,6})\/?$/i, requireMultiStoreScope, (req, res) => {
 app.get(/^\/admin\/teststore\/?$/i, requireMultiStoreScope, (_req, res) => {
     res.redirect(302, '/Admin/teststore');
 });
+
+function sendAppShell(res, title = 'Dashboard') {
+    const bootId = getDashboardMeta().bootId;
+    let html = fsSync.readFileSync(path.join(paths.sharedPublic, 'app.html'), 'utf8');
+    html = html.replace(/<title>[^<]*<\/title>/i, `<title>${title}</title>`);
+    html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
+    res.type('html').send(html);
+}
+
+function sendShellOrLegacy(res, legacyFn, title = 'Dashboard') {
+    if (SHELL_NAV_ENABLED) {
+        sendAppShell(res, title);
+        return true;
+    }
+    return false;
+}
 
 // -- Unified overview (scope-aware tiles) + per-store sales dashboard --
 function sendOverviewPage(req, res) {
@@ -2664,6 +2715,7 @@ function sendOverviewPage(req, res) {
         const store = singleStoreForUser(user);
         if (!store || !assertStoreAccess(req, res, store)) return;
     }
+    if (sendShellOrLegacy(res)) return;
     const bootId = getDashboardMeta().bootId;
     let html = fsSync.readFileSync(path.join(paths.users.public, 'mic.html'), 'utf8');
     html = html.replace(/src="(\/scripts\/[^"]+\.js)"/g, `src="$1?v=${bootId}"`);
@@ -2693,6 +2745,7 @@ app.get(/^\/MIC\/(\d{3,6})\/?$/i, (req, res) => {
         return;
     }
     if (!assertStoreAccess(req, res, storeNumber)) return;
+    if (sendShellOrLegacy(res, null, 'Sales Dashboard')) return;
     res.sendFile(path.join(paths.dashboard.public, 'index.html'));
 });
 
@@ -2725,7 +2778,7 @@ app.get(/^\/teststore\/?$/i, (req, res) => {
     }
     const user = req.dashboardUser || getRequestUser(req);
     if (user && (isSuperAdminUser(user) || hasMultiStoreScope(user))) {
-        res.redirect(302, getAdminAreaPath('A22') + '?store=teststore');
+        res.redirect(302, getAdminAreaPath('vic-1') + '?store=teststore');
         return;
     }
     res.redirect(302, getMicStorePath('teststore'));
@@ -2742,7 +2795,7 @@ app.get(/^\/(\d{3,6})\/?$/, (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     if (user && (isSuperAdminUser(user) || hasMultiStoreScope(user))) {
         const cfg = getStoreConfig(storeNumber);
-        const areaCode = areaCodeFromValue(areaNameFromStore(cfg || {})) || 'A22';
+        const areaCode = areaCodeFromValue(areaNameFromStore(cfg || {})) || 'vic-1';
         res.redirect(302, `${getAdminAreaPath(areaCode)}?store=${encodeURIComponent(storeNumber)}`);
         return;
     }
@@ -2760,24 +2813,25 @@ app.get(/^\/(area\/[a-z0-9-]+|a\d+)\/?$/i, (req, res) => {
         const codeMatch = req.path.match(/^\/(a\d+)\/?$/i);
         if (codeMatch) {
             const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
-            res.redirect(302, `${getAdminAreaPath(codeMatch[1].toUpperCase())}${qs}`);
+            const legacyMap = { A1: 'qld-1', A2: 'qld-1', A21: 'vic-1', A22: 'vic-1' };
+            const slug = legacyMap[codeMatch[1].toUpperCase()] || codeMatch[1].toLowerCase();
+            res.redirect(302, `${getAdminAreaPath(slug)}${qs}`);
             return;
         }
         const areaSlugMatch = req.path.match(/^\/area\/([a-z0-9-]+)\/?$/i);
         if (areaSlugMatch) {
-            const numMatch = areaSlugMatch[1].match(/(\d+)/);
-            if (numMatch) {
-                const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
-                res.redirect(302, `${getAdminAreaPath(`A${numMatch[1]}`)}${qs}`);
-                return;
-            }
+            const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+            res.redirect(302, `${getAdminAreaPath(areaSlugMatch[1])}${qs}`);
+            return;
         }
     }
+    if (sendShellOrLegacy(res, null, 'Area Dashboard')) return;
     res.sendFile(path.join(paths.users.public, 'area.html'));
 });
 
 function sendStockCountPage(req, res, storeNumber) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
+    if (sendShellOrLegacy(res, null, 'Stock Count')) return;
     res.sendFile(path.join(paths.vendors.public, 'stock-count.html'));
 }
 
@@ -2788,6 +2842,7 @@ app.get(/^\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)\/?$/i, (req, res) => 
 
 function sendDailyStockCountPage(req, res, storeNumber) {
     if (!assertStoreAccess(req, res, storeNumber)) return;
+    if (sendShellOrLegacy(res, null, 'Daily Stock Count')) return;
     const bootId = getDashboardMeta().bootId;
     const htmlPath = path.join(paths.vendors.public, 'daily-stock-count.html');
     let html = fsSync.readFileSync(htmlPath, 'utf8');
@@ -2961,6 +3016,7 @@ for (const auditType of PERIOD_AUDIT_PAGE_TYPES) {
 }
 
 function sendTacauditHtml(res) {
+    if (sendShellOrLegacy(res, null, 'Audits')) return;
     const bootId = getDashboardMeta().bootId;
     const htmlPath = path.join(paths.tacaudit.public, 'tacaudit.html');
     let html = fsSync.readFileSync(htmlPath, 'utf8');
@@ -3015,6 +3071,10 @@ app.get(/^\/(teststore|\d{3,6})\/tacaudit\/?$/i, (req, res) => {
 app.get('/api/me', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     res.json({ success: true, ...userProfileForClient(user) });
+});
+
+app.get('/api/areas', (_req, res) => {
+    res.json({ success: true, areas: getAreaIds() });
 });
 
 app.get('/api/admin/store-scope', (req, res) => {
@@ -3088,7 +3148,7 @@ app.get('/requests', (req, res) => {
         sendUnauthorized(req, res);
         return;
     }
-    res.sendFile(path.join(paths.dashboard.public, 'requests.html'));
+    res.redirect(302, '/Admin/Settings#feature-requests');
 });
 
 app.get('/api/feature-requests', (req, res) => {

@@ -2,7 +2,7 @@
 
 Plain-English summary of what changed in each release — written for store managers and admins, not developers.
 
-**Current live branch:** `Version-0.4`
+**Current live branch:** `Version-0.6`
 
 ---
 
@@ -26,6 +26,27 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 
 ## Release history
 
+### Version 0.6.0.0 – June 2026
+
+**Added**
+
+- **Unified design system** — shared palette, typography, and Inter font across post-login pages.
+- **Single app shell** — fluid in-page navigation between overview, dashboards, admin, stock count, and audits (`SHELL_NAV=1` by default).
+- **Scope popups** — “Select Store” / “Select area” buttons replace org dropdowns in key admin screens.
+- **Area restructure** — three areas only: `QLD-1`, `VIC-1`, `WA-1`.
+
+**Changed**
+
+- Admin area URLs use slugs (`/Admin/vic-1`); legacy `/Admin/A22` redirects automatically.
+- Market selector removed from org-tree navigation UI.
+
+**What you need to do**
+
+- Local/staging only until sign-off — **do not deploy to Pi yet** (Pi stays on `Version-0.4`).
+- Run `node scripts/migrate-areas-v06.js --write` to update `.storelist` and `.Users` when ready.
+- Hard refresh after pulling (`Ctrl+F5`).
+
+---
 
 ### Version 0.4.9.9 – June 2026
 

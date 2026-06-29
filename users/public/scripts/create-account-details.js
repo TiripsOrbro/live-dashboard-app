@@ -58,19 +58,32 @@
         return ['manager', 'mic', 'tm'].includes(level);
     }
 
+    function treeMarkets(tree) {
+        return Array.isArray(tree?.markets) ? tree.markets : [];
+    }
+
+    function areasForTree(tree, market) {
+        const markets = treeMarkets(tree);
+        if (markets.length && tree.areasByMarket) {
+            return market ? tree.areasByMarket[market] || [] : [];
+        }
+        return tree.areas || Object.keys(tree.storesByArea || {});
+    }
+
     function resolveScopeSelections(level, tree, selections = {}) {
         let market = selections.market || '';
         let area = selections.area || '';
         let storeNumber = selections.storeNumber || '';
+        const markets = treeMarkets(tree);
 
         if (levelNeedsMarket(level)) {
-            if (!market && tree.markets.length === 1) market = tree.markets[0];
+            if (!market && markets.length === 1) market = markets[0];
             if (!market && tree.defaults?.market) market = tree.defaults.market;
         } else {
             market = '';
         }
 
-        const areas = market ? tree.areasByMarket[market] || [] : [];
+        const areas = areasForTree(tree, market);
         if (levelNeedsArea(level)) {
             if (area && !areas.includes(area)) area = '';
             if (!area && areas.length === 1) area = areas[0];
@@ -155,10 +168,11 @@
         });
 
         const sections = [];
-        if (levelNeedsMarket(level) && tree.markets.length > 1) {
-            sections.push(renderScopeSection('market', 'Market', tree.markets, selections.market, (row) => row));
+        const markets = treeMarkets(tree);
+        if (levelNeedsMarket(level) && markets.length > 1) {
+            sections.push(renderScopeSection('market', 'Market', markets, selections.market, (row) => row));
         }
-        const areas = selections.market ? tree.areasByMarket[selections.market] || [] : [];
+        const areas = areasForTree(tree, selections.market);
         if (levelNeedsArea(level) && areas.length > 1) {
             sections.push(renderScopeSection('area', 'Area', areas, selections.area, (row) => row));
         }

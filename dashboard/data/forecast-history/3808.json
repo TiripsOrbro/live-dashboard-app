@@ -726,6 +726,56 @@
       "finalized": true,
       "capturedAt": "2026-06-14T14:03:14.972Z",
       "source": "live-scrape"
+    },
+    "2026-06-23": {
+      "date": "2026-06-23",
+      "weekday": 2,
+      "openHour": 10,
+      "closeHour": 23,
+      "actual": [
+        141.05,
+        507.91,
+        676.75,
+        147.59,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "actualTotal": 1473.3,
+      "finalized": true,
+      "capturedAt": "2026-06-23T09:58:30.159Z",
+      "source": "live-scrape"
+    },
+    "2026-06-24": {
+      "date": "2026-06-24",
+      "weekday": 3,
+      "openHour": 10,
+      "closeHour": 23,
+      "actual": [
+        141.05,
+        507.91,
+        676.75,
+        147.59,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "actualTotal": 1473.3,
+      "finalized": true,
+      "capturedAt": "2026-06-23T18:22:02.047Z",
+      "source": "live-scrape"
     }
   }
 }

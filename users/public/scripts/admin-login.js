@@ -44,6 +44,14 @@
                 window.location.replace('/change-password');
                 return;
             }
+            try {
+                sessionStorage.removeItem('mic-overview-area');
+                sessionStorage.removeItem('admin-view-as-store-enabled');
+                sessionStorage.removeItem('admin-view-as-store');
+                localStorage.setItem('mic-area-picker-pending', '1');
+            } catch {
+                /* ignore */
+            }
             window.location.replace(data.defaultPath || '/overview');
         } catch (err) {
             showError('Could not sign in. Check your connection.');

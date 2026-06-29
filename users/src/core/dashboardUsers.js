@@ -12,6 +12,7 @@ const {
     getAllMarketLabels,
     getMarketForArea,
 } = require('../../../stores/src/marketsConfig');
+const { getAreaIds } = require('../../../stores/src/areasConfig');
 
 const USERS_PATH = path.join(paths.root, '.Users');
 const ACCOUNT_AUDIT_LOG = path.join(paths.users.data, 'account-audit.log');
@@ -1102,6 +1103,7 @@ function buildCreateAccountScopeTree(actor) {
         markets,
         areasByMarket,
         storesByArea,
+        areas: getAreaIds().filter((area) => storesByArea[area]?.length),
         defaults: {
             market: defaultMarket,
             area: defaultArea,
@@ -2230,9 +2232,8 @@ function getMicStorePath(storeNumber) {
 }
 
 function getAdminAreaPath(areaCodeOrName) {
-    const m = String(areaCodeOrName || '').match(/(\d+)/);
-    const code = m ? `A${Number(m[1])}` : String(areaCodeOrName || '').trim();
-    return code ? `/Admin/${code}` : getAdminRedirectPath();
+    const { getAdminAreaPath: areaPath } = require('../../../stores/src/areasConfig');
+    return areaPath(areaCodeOrName);
 }
 
 function getKioskRedirectPath(user) {
@@ -2338,6 +2339,11 @@ function userProfileForClient(user) {
     const mustChangePassword = isRealDashboardUser(user) && userNeedsPasswordChange(user.username);
     const accessibleAreas = getAccessibleAreasForUser(user);
     const scope = getUserAccessScope(user);
+    const accessibleMarkets = isSuperAdminUser(user)
+        ? getAllMarketLabels()
+        : Array.isArray(scope.markets)
+          ? scope.markets
+          : [];
     const setupPath = getAccountSetupRedirectPath(user);
     return {
         username: user.username,
@@ -2346,7 +2352,7 @@ function userProfileForClient(user) {
         role: user.role,
         overviewScope,
         accessibleAreas: Array.isArray(accessibleAreas) ? accessibleAreas : [],
-        accessibleMarkets: Array.isArray(scope.markets) ? scope.markets : [],
+        accessibleMarkets,
         effectiveStores: Array.isArray(effectiveStores) ? effectiveStores : [],
         stores,
         skipStorePicker,
@@ -2377,13 +2383,7 @@ function userProfileForClient(user) {
 
 function normalizeScopeTreeForClient(tree) {
     if (!tree || typeof tree !== 'object') {
-        return { markets: [], areasByMarket: {}, storesByArea: {}, defaults: {} };
-    }
-    const areasByMarket = {};
-    if (tree.areasByMarket && typeof tree.areasByMarket === 'object') {
-        for (const [market, areas] of Object.entries(tree.areasByMarket)) {
-            areasByMarket[market] = Array.isArray(areas) ? areas : [];
-        }
+        return { areas: [], storesByArea: {}, defaults: {} };
     }
     const storesByArea = {};
     if (tree.storesByArea && typeof tree.storesByArea === 'object') {
@@ -2391,11 +2391,14 @@ function normalizeScopeTreeForClient(tree) {
             storesByArea[area] = Array.isArray(stores) ? stores : [];
         }
     }
+    const { getAreaIds: loadAreaIds } = require('../../../stores/src/areasConfig');
+    const areas = loadAreaIds().filter((area) => storesByArea[area]?.length);
+    const defaults = tree.defaults && typeof tree.defaults === 'object' ? { ...tree.defaults } : {};
+    delete defaults.market;
     return {
-        markets: Array.isArray(tree.markets) ? tree.markets : [],
-        areasByMarket,
+        areas,
         storesByArea,
-        defaults: tree.defaults && typeof tree.defaults === 'object' ? tree.defaults : {},
+        defaults,
     };
 }
 

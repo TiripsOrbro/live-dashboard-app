@@ -1,11 +1,13 @@
+@import url('/styles/design-tokens.css');
+
 /* DFSC - SafetyCulture-inspired audit UI */
 
 :root {
-    --dfsc-bg: #eef1f4;
-    --dfsc-card-bg: #ffffff;
-    --dfsc-border: #dde1e6;
-    --dfsc-text: #1f2933;
-    --dfsc-text-muted: #6b7280;
+    --dfsc-bg: var(--grey, #eef1f4);
+    --dfsc-card-bg: var(--white, #ffffff);
+    --dfsc-border: var(--blank-border, #dde1e6);
+    --dfsc-text: var(--charcoal, #1f2933);
+    --dfsc-text-muted: color-mix(in srgb, var(--charcoal, #1f2933) 55%, transparent);
     --dfsc-link: #2563eb;
     --dfsc-green: #1f7a4d;
     --dfsc-green-bg: #1f7a4d;

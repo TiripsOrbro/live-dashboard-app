@@ -331,6 +331,195 @@
         }
     }
 
+    function buildSettingsUrl(section = '', query = {}) {
+        const params = new URLSearchParams();
+        Object.entries(query).forEach(([key, value]) => {
+            if (value != null && String(value).trim() !== '') params.set(key, String(value));
+        });
+        const qs = params.toString();
+        const hash = section ? `#${section}` : '';
+        return `${global.AdminMenu?.ADMIN_PAGE_PATH || '/Admin/Settings'}${qs ? `?${qs}` : ''}${hash}`;
+    }
+
+    async function resolveDefaultSettingsSection() {
+        try {
+            const res = await fetch('/api/me', { credentials: 'same-origin' });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) return 'account';
+            if (global.AdminSettingsPage?.defaultSectionId) {
+                return global.AdminSettingsPage.defaultSectionId(data);
+            }
+            if (data.canAccessAdminMenu || data.canManageStoreLogins) {
+                return data.canAccessAdminMenu ? 'accounts-create' : 'store-logins';
+            }
+            return 'account';
+        } catch {
+            return 'account';
+        }
+    }
+
+    async function navigateToSettingsPage(section = '', query = {}) {
+        const store = String(query.storeNumber || bindOptions.storeNumber || '').trim();
+        const q = { ...query };
+        if (store) q.store = store;
+        delete q.storeNumber;
+        let targetSection = section;
+        if (!targetSection) {
+            targetSection = await resolveDefaultSettingsSection();
+        }
+        const url = buildSettingsUrl(targetSection, q);
+        if (global.AppShell?.navigate) {
+            const parsed = new URL(url, global.location.origin);
+            global.AppShell.navigate(parsed.pathname, { search: parsed.search, hash: parsed.hash });
+            return;
+        }
+        global.location.href = url;
+    }
+
+    function pageSectionHtml(sectionId, options = {}) {
+        const darkHint = options.darkModeHint || 'Dark background and tiles on supported pages.';
+        const hasStore = Boolean(options.storeNumber);
+        const email = String(options.reportEmail || '').trim();
+
+        if (sectionId === 'account') {
+            return `
+                <div class="mic-settings-actions">
+                    <button type="button" class="mic-settings-btn" data-action="change-password">Change password</button>
+                    <button type="button" class="mic-settings-btn mic-settings-btn--danger" data-action="logout">Sign out</button>
+                </div>`;
+        }
+        if (sectionId === 'preferences') {
+            return `
+                <div class="mic-settings-tabpanel" data-settings-panel="preferences">
+                <div class="mic-settings-pref-block">
+                    <div class="mic-settings-toggle-row">
+                        <span class="mic-settings-toggle-label" id="mic-dark-mode-label">Dark mode</span>
+                        <label class="mic-toggle-switch">
+                            <input type="checkbox" id="mic-dark-mode-toggle" role="switch" aria-labelledby="mic-dark-mode-label" />
+                            <span class="mic-toggle-slider" aria-hidden="true"></span>
+                        </label>
+                    </div>
+                    <p class="mic-settings-pref-hint">${darkHint}</p>
+                </div>
+                <div class="mic-settings-pref-block">
+                    <div class="mic-settings-toggle-row">
+                        <span class="mic-settings-toggle-label" id="mic-audit-auto-collapse-label">Auto-collapse audit sections</span>
+                        <label class="mic-toggle-switch">
+                            <input type="checkbox" id="mic-audit-auto-collapse-toggle" role="switch" aria-labelledby="mic-audit-auto-collapse-label" checked />
+                            <span class="mic-toggle-slider" aria-hidden="true"></span>
+                        </label>
+                    </div>
+                    <p class="mic-settings-pref-hint">When on, completed checklist sections collapse automatically in DFSC and TacoAudit audits.</p>
+                </div>
+                <div class="mic-settings-pref-block">
+                    <div class="mic-settings-toggle-row">
+                        <span class="mic-settings-toggle-label" id="mic-colour-blind-label">Colour blind mode</span>
+                        <label class="mic-toggle-switch">
+                            <input type="checkbox" id="mic-colour-blind-toggle" role="switch" aria-labelledby="mic-colour-blind-label" />
+                            <span class="mic-toggle-slider" aria-hidden="true"></span>
+                        </label>
+                    </div>
+                    <p class="mic-settings-pref-hint">On-track status colours on the sales dashboard:</p>
+                    <div class="mic-colour-samples" id="mic-colour-samples" aria-live="polite">
+                        <div class="mic-colour-sample">
+                            <span class="mic-colour-sample-box mic-colour-sample-box--good" aria-hidden="true"></span>
+                            <span class="mic-colour-sample-label">On track</span>
+                        </div>
+                        <div class="mic-colour-sample">
+                            <span class="mic-colour-sample-box mic-colour-sample-box--near" aria-hidden="true"></span>
+                            <span class="mic-colour-sample-label">Near</span>
+                        </div>
+                        <div class="mic-colour-sample">
+                            <span class="mic-colour-sample-box mic-colour-sample-box--bad" aria-hidden="true"></span>
+                            <span class="mic-colour-sample-label">Behind</span>
+                        </div>
+                    </div>
+                </div>
+                </div>`;
+        }
+        if (sectionId === 'store' && hasStore) {
+            return `
+                <p class="mic-settings-pref-hint">Completed audit PDFs for this store are emailed here.</p>
+                <div class="mic-settings-store-email">
+                    <label class="mic-settings-field-label" for="mic-report-email-input">Report email</label>
+                    <input type="email" id="mic-report-email-input" value="${escapeAttr(email)}" placeholder="store@example.com" autocomplete="email" />
+                    <button type="button" class="mic-settings-btn mic-settings-btn--primary" id="mic-save-report-email-btn">Save email</button>
+                </div>`;
+        }
+        if (sectionId === 'general') {
+            return `
+                <div class="mic-settings-actions">
+                    <button type="button" class="mic-settings-btn" data-action="changelog">What's new</button>
+                    <button type="button" class="mic-settings-btn" data-action="hard-refresh">Refresh page</button>
+                </div>`;
+        }
+        return '';
+    }
+
+    function wirePageSection(host, sectionId) {
+        host.querySelector('[data-action="change-password"]')?.addEventListener('click', () => {
+            global.DashboardAccount?.openChangePasswordModal?.();
+        });
+        host.querySelector('[data-action="changelog"]')?.addEventListener('click', () => {
+            if (global.AppShell?.navigate) global.AppShell.navigate('/changelog');
+            else global.location.href = '/changelog';
+        });
+        host.querySelector('[data-action="hard-refresh"]')?.addEventListener('click', () => {
+            if (global.DashboardMeta?.hardRefresh) {
+                void global.DashboardMeta.hardRefresh();
+                return;
+            }
+            global.location.reload();
+        });
+        host.querySelector('[data-action="logout"]')?.addEventListener('click', () => {
+            global.location.href = '/logout';
+        });
+        host.querySelector('#mic-save-report-email-btn')?.addEventListener('click', () => {
+            void saveReportEmail();
+        });
+
+        if (sectionId === 'preferences') {
+            host.querySelector('#mic-dark-mode-toggle')?.addEventListener('change', (event) => {
+                const input = event.currentTarget;
+                updateMicDarkToggle(input.checked);
+                applyMicDarkMode(input.checked);
+                saveMicDarkMode(input.checked);
+            });
+            host.querySelector('#mic-colour-blind-toggle')?.addEventListener('change', (event) => {
+                const input = event.currentTarget;
+                updateColourBlindToggle(input.checked);
+                applyColourBlindMode(input.checked);
+                saveColourBlindMode(input.checked);
+            });
+            host.querySelector('#mic-audit-auto-collapse-toggle')?.addEventListener('change', (event) => {
+                const input = event.currentTarget;
+                updateAuditAutoCollapseToggle(input.checked);
+                global.AuditPreferences?.setAutoCollapseEnabled?.(input.checked);
+                saveAuditAutoCollapse(input.checked);
+            });
+            loadMicPreferences().then((prefs) => {
+                updateColourBlindToggle(prefs.colorBlind);
+                updateMicDarkToggle(prefs.micDarkMode);
+                updateAuditAutoCollapseToggle(prefs.auditAutoCollapse);
+            });
+        }
+
+        if (sectionId === 'store' && bindOptions.storeNumber) {
+            void loadStoreReportEmail();
+        }
+    }
+
+    async function mountPageSection(sectionId, host, options = {}) {
+        if (!host) return;
+        setStoreContext(options);
+        host.innerHTML = pageSectionHtml(sectionId, {
+            darkModeHint: 'Dark background and tiles on supported pages.',
+            storeNumber: options.storeNumber || bindOptions.storeNumber,
+            reportEmail: bindOptions.reportEmail,
+        });
+        wirePageSection(host, sectionId);
+    }
+
     function openSettingsPanel() {
         if (settingsOpen) return;
         settingsOpen = true;
@@ -366,15 +555,20 @@
 
     function bind(options = {}) {
         bindOptions = { ...bindOptions, ...options };
-        if (settingsPanelBound) {
-            return;
-        }
         const btn = document.getElementById('mic-settings-btn');
-        const picker = document.getElementById('mic-settings-picker');
-        if (!btn || !picker) return;
-        settingsPanelBound = true;
+        if (!btn) return;
+        if (!btn.dataset.micSettingsBound) {
+            btn.dataset.micSettingsBound = '1';
+            btn.addEventListener('click', () => {
+                void navigateToSettingsPage('', {
+                    storeNumber: bindOptions.storeNumber,
+                });
+            });
+        }
 
-        btn.addEventListener('click', () => openSettingsPanel());
+        const picker = document.getElementById('mic-settings-picker');
+        if (!picker || settingsPanelBound) return;
+        settingsPanelBound = true;
 
         picker.querySelector('#mic-settings-close')?.addEventListener('click', closeSettingsPanel);
         picker.addEventListener('click', (event) => {
@@ -504,6 +698,9 @@
         initPreferences,
         loadMicPreferences,
         setStoreContext,
+        navigateToSettingsPage,
+        mountPageSection,
+        buildSettingsUrl,
     };
 
     global.MicOverviewScale = {

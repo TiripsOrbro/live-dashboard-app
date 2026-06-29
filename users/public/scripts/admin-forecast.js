@@ -22,7 +22,11 @@
     let lifelenzStatus = { configured: false, updatedAt: null };
     let sessionLifeLenzCredentials = null;
 
-    const ADMIN_AREAS = ['Area 1', 'Area 2', 'Area 21', 'Area 22'];
+    const ADMIN_AREAS = ['VIC-1', 'WA-1', 'QLD-1'];
+
+    function areaLabel(name) {
+        return global.AreaDisplay?.label?.(name) ?? String(name ?? '').trim();
+    }
     const FORECAST_AREA_STORAGE_KEY = 'admin-forecast-area';
     const FORECAST_TARGET_SCOPE_KEY = 'admin-forecast-target-scope';
     const FORECAST_TARGET_WEEK_KEY = 'admin-forecast-target-week';
@@ -186,7 +190,12 @@
             <div class="admin-modal admin-modal--wide" role="dialog" aria-modal="true">
                 <h2>Forecast tool</h2>
                 <p class="admin-accounts-meta">Uses 5 weeks of stored hourly sales (trimmed weekday averages + hourly shape), then writes to Macromatix and LifeLenz when configured. Choose this week, next week, the week after, a custom week starting date, or a single day before preview/submit.</p>
-                <nav class="admin-area-tabs admin-forecast-area-tabs" id="admin-forecast-area-tabs" role="tablist" aria-label="Select area"></nav>
+                <div class="admin-settings-segmented-tabs admin-accounts-browse-scope admin-accounts-org-nav admin-forecast-area-nav">
+                    <div class="admin-accounts-scope-row-wrap">
+                        <span class="admin-accounts-scope-row-label">Area</span>
+                        <nav class="admin-accounts-scope-row admin-accounts-scope-row--equal admin-forecast-area-tabs" id="admin-forecast-area-tabs" role="tablist" aria-label="Select area"></nav>
+                    </div>
+                </div>
                 <div class="admin-modal-toolbar admin-forecast-toolbar">
                     <div class="admin-forecast-target-wrap" id="admin-forecast-target-wrap">
                         <label class="admin-forecast-target-scope-label">Forecast target
@@ -2013,14 +2022,10 @@
     function renderAreaTabs(root) {
         const nav = root.querySelector('#admin-forecast-area-tabs');
         if (!nav) return;
-        nav.innerHTML = ADMIN_AREAS.map((name, idx) => {
+        nav.style.setProperty('--scope-cols', String(ADMIN_AREAS.length));
+        nav.innerHTML = ADMIN_AREAS.map((name) => {
             const isActive = name === activeArea;
-            const tab = `<button type="button" class="admin-area-tab${isActive ? ' is-active' : ''}" role="tab" aria-selected="${isActive}" data-forecast-area="${escapeHtml(name)}">${escapeHtml(name)}</button>`;
-            const pipe =
-                idx < ADMIN_AREAS.length - 1
-                    ? '<span class="admin-area-tab-pipe" aria-hidden="true">|</span>'
-                    : '';
-            return tab + pipe;
+            return `<button type="button" class="admin-accounts-scope-chip${isActive ? ' is-active' : ''}" role="tab" aria-selected="${isActive ? 'true' : 'false'}" data-forecast-area="${escapeHtml(name)}">${escapeHtml(areaLabel(name))}</button>`;
         }).join('');
     }
 
@@ -2213,12 +2218,20 @@
         }
         if (okPreviews.length > 1) {
             tabs.hidden = false;
-            tabs.innerHTML = `<nav class="admin-store-tabs" aria-label="Select store"><div class="admin-store-tabs__scroll" role="tablist">${okPreviews
-                .map((row) => {
-                    const active = String(row.storeNumber) === String(storeNumber) ? ' is-active' : '';
-                    return `<button type="button" class="admin-store-tabs__tab${active}" data-preview-store="${escapeHtml(row.storeNumber)}" role="tab" aria-selected="${String(row.storeNumber) === String(storeNumber)}"><span class="admin-store-tabs__num">${escapeHtml(row.storeNumber)}</span></button>`;
-                })
-                .join('')}</div></nav>`;
+            tabs.innerHTML = `
+                <div class="admin-settings-segmented-tabs admin-accounts-org-nav">
+                    <div class="admin-accounts-scope-row-wrap">
+                        <span class="admin-accounts-scope-row-label">Store</span>
+                        <div class="admin-accounts-scope-row admin-accounts-scope-row--equal" role="tablist" aria-label="Select store" style="--scope-cols: ${okPreviews.length}">
+                        ${okPreviews
+                            .map((row) => {
+                                const active = String(row.storeNumber) === String(storeNumber);
+                                return `<button type="button" class="admin-accounts-scope-chip${active ? ' is-active' : ''}" data-preview-store="${escapeHtml(row.storeNumber)}" role="tab" aria-selected="${active ? 'true' : 'false'}">${escapeHtml(row.storeNumber)}</button>`;
+                            })
+                            .join('')}
+                        </div>
+                    </div>
+                </div>`;
         } else {
             tabs.hidden = true;
             tabs.innerHTML = '';

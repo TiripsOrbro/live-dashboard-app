@@ -7,41 +7,138 @@
     const TIME_ZONE = 'Australia/Melbourne';
     const VOC_PLACEHOLDER = { count: 30, osatPercent: 83, accuracyPercent: 90 };
     const SMG_REPORTING_URL = 'https://reporting.smg.com/Index.aspx';
-    const DEFAULT_AREA = 'Area 22';
-    const MARKET_LABEL = 'Market 1';
+    const DEFAULT_AREA = 'VIC-1';
     const MIC_TAB_STORAGE_KEY = 'mic-overview-active-tab';
     const DAILY_COUNT_STORE_KEY = 'daily-count-store';
+    const LOADING_AUDIT_TILE_COUNT = 4;
 
     let app = null;
     let meProfile = null;
     let overviewData = null;
     let dfscStatus = null;
     let areaIndex = 0;
-    let marketViewActive = false;
+    let areaPickerActive = false;
+    let pendingAreaName = '';
     let lastSalesUpdatedAt = null;
     let overviewLoadInFlight = false;
     let activeMicTab = sessionStorage.getItem(MIC_TAB_STORAGE_KEY) || 'sales';
     let micOverviewTabsBound = false;
     let intervals = [];
+    let loadingMarkCounter = 0;
 
-    function isMarketScope() {
-        return meProfile?.overviewScope === 'market' || meProfile?.overviewScope === 'super';
+    function nextLoadingMarkId() {
+        loadingMarkCounter += 1;
+        return `mic-load-mark-${loadingMarkCounter}`;
+    }
+
+    function renderLoadingMarkHtml() {
+        const uid = nextLoadingMarkId();
+        const svg = global.TbaBrandMark?.svg?.(uid) || '';
+        return `<div class="mic-grid-loading-mark" aria-hidden="true">${svg}</div>`;
+    }
+
+    function renderLoadingOverlay() {
+        return `<div class="mic-grid-loading-overlay" aria-live="polite" aria-label="Loading sales data">${renderLoadingMarkHtml()}</div>`;
+    }
+
+    function renderLoadingPlaceholderTile() {
+        return `
+        <article class="mic-tile mic-tile--loading mic-tile--loading-skeleton">
+            <div class="mic-tile-body mic-tile-body--loading" aria-hidden="true"></div>
+        </article>`;
+    }
+
+    function renderLoadingPlaceholderTiles(count) {
+        return Array.from({ length: count }, () => renderLoadingPlaceholderTile()).join('');
+    }
+
+    function renderLoadingAreaStoresTile({ tabbed = false } = {}) {
+        const posClass = tabbed ? '' : ' mic-tile--pos-area-stores';
+        const mobileClass = tabbed ? ' mic-store-lead--mobile' : '';
+        return `
+        <article class="mic-tile mic-tile--store-leaderboard mic-tile--loading mic-tile--loading-skeleton${posClass}">
+            <div class="mic-store-lead mic-store-lead--loading${mobileClass}">
+                <div class="mic-store-lead-sales mic-store-lead-sales--loading" aria-hidden="true"></div>
+            </div>
+            <div class="mic-store-lead-list mic-store-lead-list--loading" role="presentation" aria-hidden="true"></div>
+        </article>`;
+    }
+
+    function renderLoadingDesktopTiles() {
+        const topRow = renderEqualWidthRow(
+            [renderLoadingPlaceholderTile(), renderLoadingPlaceholderTile(), renderLoadingPlaceholderTile()],
+            { rowNum: 'top' }
+        );
+        const middleRow = renderEqualWidthRow(
+            [renderLoadingPlaceholderTile(), renderLoadingPlaceholderTile()],
+            { rowNum: 1, extraClass: 'mic-tile--pos-middle-row' }
+        );
+        const auditRow = renderEqualWidthRow(
+            Array.from({ length: LOADING_AUDIT_TILE_COUNT }, () => renderLoadingPlaceholderTile()),
+            { rowNum: 2, extraClass: 'mic-tile--pos-weekly-audit-row' }
+        );
+        return `${renderLoadingAreaStoresTile()}${topRow}${middleRow}${auditRow}`;
+    }
+
+    function loadingAreaNames() {
+        return global.MicAreaPicker?.resolveInitialAreaNames?.(meProfile, overviewData?.areas) || [];
+    }
+
+    function areaLabel(value) {
+        return global.AreaDisplay?.label?.(value) ?? String(value ?? '').trim();
+    }
+
+    function renderLoadingMobileTiles() {
+        return `
+        ${renderMicTabPanel('sales', renderLoadingAreaStoresTile({ tabbed: true }))}
+        ${renderMicTabPanel('results', renderLoadingPlaceholderTiles(2))}
+        ${renderMicTabPanel('orders', renderLoadingPlaceholderTiles(2))}
+        ${renderMicTabPanel('audits', renderLoadingPlaceholderTiles(3))}`;
     }
 
     function subtitleForScope() {
+        const area = currentArea();
+        if (area?.name) return areaLabel(area);
+        const stored = pendingAreaName || global.MicAreaPicker?.getStoredArea?.() || '';
+        if (stored) return areaLabel(stored);
         const scope = meProfile?.overviewScope;
-        if (scope === 'market' || scope === 'super') {
-            const markets = meProfile?.accessibleMarkets;
-            if (Array.isArray(markets) && markets.length) return markets[0];
-            return MARKET_LABEL;
-        }
         if (scope === 'area') {
             const areas = meProfile?.accessibleAreas;
-            if (Array.isArray(areas) && areas.length === 1) return areas[0];
-            if (Array.isArray(areas) && areas.length > 1) return areas.join(' · ');
-            return 'Area overview';
+            if (Array.isArray(areas) && areas.length === 1) return areaLabel(areas[0]);
         }
+        const preliminary = loadingAreaNames();
+        if (preliminary.length === 1) return areaLabel(preliminary[0]);
+        if (preliminary.length > 1) return areaLabel(preliminary[areaIndex % preliminary.length]);
         return 'Overview';
+    }
+
+    function updateScopeSubtitle() {
+        const label = document.getElementById('mic-store-label');
+        if (label) label.textContent = subtitleForScope();
+    }
+
+    function applyAreaSelection(name) {
+        const areas = overviewData?.areas || [];
+        if (!areas.length) {
+            pendingAreaName = String(name || '').trim();
+            return;
+        }
+        const target = String(name || pendingAreaName || global.MicAreaPicker?.getStoredArea?.() || '').trim();
+        if (target) {
+            areaIndex = global.MicAreaPicker?.areaIndexForName?.(areas, target) ?? defaultAreaIndex(areas);
+            pendingAreaName = target;
+        }
+        updateScopeSubtitle();
+        renderTiles();
+    }
+
+    async function dismissAreaPickerWhenReady() {
+        if (!areaPickerActive || !global.MicAreaPicker) return;
+        await new Promise((resolve) => {
+            global.requestAnimationFrame(() => global.requestAnimationFrame(resolve));
+        });
+        await global.MicAreaPicker.dismiss();
+        areaPickerActive = false;
     }
 
     function formatVocDisplay(voc = {}) {
@@ -158,102 +255,12 @@
         return areas[areaIndex % areas.length];
     }
 
-    function mergeMarketHourly(areas) {
-        const list = areas || [];
-        let openHour = 10;
-        let closeHour = 22;
-        let maxHours = 0;
-        const chunks = [];
-        for (const area of list) {
-            const st = area.salesToday || {};
-            const actualHourly = Array.isArray(st.actualHourly) ? st.actualHourly : [];
-            const forecastHourly = Array.isArray(st.forecastHourly) ? st.forecastHourly : [];
-            if (!actualHourly.length && !forecastHourly.length) continue;
-            chunks.push({ actualHourly, forecastHourly });
-            maxHours = Math.max(maxHours, actualHourly.length, forecastHourly.length);
-            if (Number.isFinite(st.openHour)) openHour = st.openHour;
-            if (Number.isFinite(st.closeHour)) closeHour = st.closeHour;
-        }
-        const actual = new Array(maxHours).fill(0);
-        const forecast = new Array(maxHours).fill(0);
-        for (const chunk of chunks) {
-            for (let i = 0; i < maxHours; i++) {
-                actual[i] += Number(chunk.actualHourly[i]) || 0;
-                forecast[i] += Number(chunk.forecastHourly[i]) || 0;
-            }
-        }
-        return { actual, forecast, openHour, closeHour, hours: maxHours };
-    }
-
-    function computeMarketProgress(areas, actual, forecast) {
-        const hourly = mergeMarketHourly(areas);
-        if (hourly.hours > 0 && global.SalesProgress?.computeDaySalesPresentation) {
-            return global.SalesProgress.computeDaySalesPresentation({
-                actual: hourly.actual,
-                forecast: hourly.forecast,
-                openHour: hourly.openHour,
-                closeHour: hourly.closeHour,
-                timeZone: TIME_ZONE,
-            });
-        }
-        const outcomeClass = global.SalesProgress?.getActualCellClass?.(actual, forecast) || 'cell-green';
-        const sample = (areas || [])
-            .map((area) => area.salesToday?.progress)
-            .find((progress) => progress && progress.timeFillPercent != null);
-        return {
-            phase: sample?.phase || 'during',
-            timeFillPercent: sample?.timeFillPercent ?? 0,
-            outcomeClass,
-            paceClass: sample?.paceClass || outcomeClass,
-        };
-    }
-
-    function buildMarketAggregate(areas) {
-        const list = areas || [];
-        const storeSales = sortStoresByNumber(list.flatMap((a) => a.storeSales || []));
-        let actual = 0;
-        let forecast = 0;
-        for (const area of list) {
-            const st = area.salesToday || {};
-            actual += Number(st.actual) || 0;
-            forecast += Number(st.forecast) || 0;
-        }
-        const progress = computeMarketProgress(list, actual, forecast);
-        const wtdValues = list
-            .map((a) => a.sssgWtdTotals)
-            .filter((t) => t && (Number(t.lyTotal) > 0 || Number(t.actualTotal) > 0));
-        let wtdPercent = null;
-        if (wtdValues.length) {
-            let actualTotal = 0;
-            let lyTotal = 0;
-            for (const totals of wtdValues) {
-                actualTotal += Number(totals.actualTotal) || 0;
-                lyTotal += Number(totals.lyTotal) || 0;
-            }
-            if (lyTotal > 0) {
-                wtdPercent = Math.round(((actualTotal - lyTotal) / lyTotal) * 1000) / 10;
-            }
-        }
-        return {
-            name: MARKET_LABEL,
-            areaKey: 'market-1',
-            salesToday: { actual, forecast, progress },
-            storeSales,
-            sssgTodayPercent: formatAreaSssgFromStores({ storeSales }),
-            sssgWtdPercent: wtdPercent,
-        };
-    }
-
     function currentDisplayArea() {
-        const areas = overviewData?.areas || [];
-        if (!areas.length) return null;
-        if (marketViewActive && isMarketScope()) return buildMarketAggregate(areas);
         return currentArea();
     }
 
     function ordersForDisplay() {
         const all = overviewData?.storesNeedingOrders || [];
-        if (marketViewActive && isMarketScope()) return all;
         const area = currentArea();
         if (!area) return [];
         const inArea = new Set((area.storeSales || []).map((s) => String(s.storeNumber).trim()).filter(Boolean));
@@ -265,35 +272,7 @@
         return all.filter((s) => inArea.has(String(s.storeNumber).trim()));
     }
 
-    function mergeAuditTileSummaries(summaryLists) {
-        const byKey = new Map();
-        for (const list of summaryLists || []) {
-            for (const tile of list || []) {
-                const key = `${tile.kind || 'weekly'}\0${tile.label}`;
-                const existing = byKey.get(key);
-                if (!existing) {
-                    byKey.set(key, {
-                        ...tile,
-                        stats: { ...(tile.stats || {}) },
-                    });
-                    continue;
-                }
-                existing.stats.notStarted = (Number(existing.stats.notStarted) || 0) + (Number(tile.stats?.notStarted) || 0);
-                existing.stats.inProgress = (Number(existing.stats.inProgress) || 0) + (Number(tile.stats?.inProgress) || 0);
-                existing.stats.completed = (Number(existing.stats.completed) || 0) + (Number(tile.stats?.completed) || 0);
-                existing.done = existing.stats.notStarted === 0 && existing.stats.inProgress === 0;
-                existing.sub = formatStoreStatsSub(existing.stats);
-            }
-        }
-        return [...byKey.values()];
-    }
-
     function auditTilesForDisplay() {
-        const areas = overviewData?.areas || [];
-        if (!areas.length) return [];
-        if (marketViewActive && isMarketScope()) {
-            return mergeAuditTileSummaries(areas.map((a) => a.auditTileSummaries));
-        }
         const area = currentArea();
         return area?.auditTileSummaries || [];
     }
@@ -458,9 +437,9 @@
         const last = areas.length - 1;
         const parts = [];
         areas.forEach((a, idx) => {
-            const active = !marketViewActive && idx === areaIndex % areas.length;
+            const active = idx === areaIndex % areas.length;
             parts.push(
-                `<button type="button" class="admin-area-text-tab${active ? ' is-active' : ''}" role="tab" aria-selected="${active}" data-area-index="${idx}">${escapeHtml(a.name)}</button>`
+                `<button type="button" class="admin-area-text-tab${active ? ' is-active' : ''}" role="tab" aria-selected="${active}" data-area-index="${idx}">${escapeHtml(areaLabel(a))}</button>`
             );
             if (idx < last) parts.push('<span class="admin-area-text-pipe" aria-hidden="true"> |</span>');
         });
@@ -471,21 +450,15 @@
         const areas = overviewData?.areas || [];
         if (!areas.length) return '';
         const liveAttr = live ? ' aria-live="polite"' : '';
-        const marketRow = isMarketScope()
-            ? `<div class="admin-market-text-row${marketViewActive ? '' : ' is-dimmed'}">
-                <button type="button" class="admin-market-text-tab${marketViewActive ? ' is-active' : ''}" role="tab" aria-selected="${marketViewActive}" data-view="market">${MARKET_LABEL}</button>
-            </div>`
-            : '';
         return `
         <div class="admin-area-text-track" role="tablist"${liveAttr} data-area-count="${areas.length}">
-            ${marketRow}
-            <div class="admin-area-text-row${marketViewActive && isMarketScope() ? ' is-dimmed' : ''}">${areaRowCells(areas)}</div>
+            <div class="admin-area-text-row">${areaRowCells(areas)}</div>
         </div>`;
     }
 
     function setActiveAreaTab(track, index) {
         track.querySelectorAll('.admin-area-text-tab').forEach((tab, idx) => {
-            const active = !marketViewActive && idx === index;
+            const active = idx === index;
             tab.classList.toggle('is-active', active);
             tab.setAttribute('aria-selected', String(active));
         });
@@ -495,13 +468,6 @@
         const track = document.querySelector('.admin-area-text-track');
         const areas = overviewData?.areas || [];
         if (!track || !areas.length) return;
-        const marketTab = track.querySelector('.admin-market-text-tab');
-        if (marketTab) {
-            marketTab.classList.toggle('is-active', marketViewActive);
-            marketTab.setAttribute('aria-selected', String(marketViewActive));
-        }
-        track.querySelector('.admin-market-text-row')?.classList.toggle('is-dimmed', !marketViewActive);
-        track.querySelector('.admin-area-text-row')?.classList.toggle('is-dimmed', marketViewActive && isMarketScope());
         setActiveAreaTab(track, areaIndex % areas.length);
     }
 
@@ -549,11 +515,11 @@
     }
 
     function useMicStyleTiles() {
-        return marketViewActive && isMarketScope();
+        return false;
     }
 
     function renderVocTile(vocRaw, { tabbed = false, inRow = false } = {}) {
-        const voc = formatVocDisplay(useMicStyleTiles() ? VOC_PLACEHOLDER : vocRaw);
+        const voc = formatVocDisplay(vocRaw);
         const posClass = tabbed || inRow ? '' : ' mic-tile--pos-voc';
         const osatText = voc.osat == null ? '—' : `${voc.osat}%`;
         const accText = voc.acc == null ? '—' : `${voc.acc}%`;
@@ -643,30 +609,7 @@
 
     function dailyStockCountForDisplay() {
         const area = currentDisplayArea();
-        const dc = area?.dailyStockCount;
-        if (dc?.configured) return dc;
-        if (!marketViewActive || !isMarketScope()) return dc || {};
-        const areas = overviewData?.areas || [];
-        const storeNumbers = [
-            ...new Set(
-                areas
-                    .flatMap((a) => a.dailyStockCount?.storeNumbers || [])
-                    .map((n) => String(n).trim())
-                    .filter(Boolean)
-            ),
-        ].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-        if (!storeNumbers.length) return {};
-        const subs = areas.map((a) => a.dailyStockCount?.sub).filter(Boolean);
-        return {
-            configured: true,
-            clickable: true,
-            href: `/${storeNumbers[0]}/daily-stock-count`,
-            storeNumbers,
-            message: 'Open daily count',
-            sub:
-                subs.find((s) => /variance|Macromatix|completed/i.test(String(s))) ||
-                `${storeNumbers.length} stores - select store to count`,
-        };
+        return area?.dailyStockCount || {};
     }
 
     function dailyCountHrefForArea(dc) {
@@ -840,11 +783,7 @@
     }
 
     function tacauditAreaQuery() {
-        const areas = overviewData?.areas || [];
-        if (marketViewActive && isMarketScope()) {
-            return String(areas[0]?.name || '').trim();
-        }
-        return String(currentDisplayArea()?.name || areas[0]?.name || '').trim();
+        return String(currentDisplayArea()?.name || overviewData?.areas?.[0]?.name || '').trim();
     }
 
     function tacauditHrefForTile() {
@@ -1117,22 +1056,16 @@
     function bindAreaTextSelector() {
         const grid = document.getElementById('mic-grid');
         if (!grid) return;
-        grid.querySelectorAll('.admin-market-text-tab').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                marketViewActive = true;
-                renderTiles();
-            });
-        });
         grid.querySelectorAll('.admin-area-text-tab').forEach((btn) => {
             btn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 const idx = Number(btn.dataset.areaIndex);
                 if (!Number.isFinite(idx)) return;
-                marketViewActive = false;
                 areaIndex = idx;
+                const areaName = overviewData?.areas?.[idx]?.name;
+                if (areaName) global.MicAreaPicker?.setStoredArea?.(areaName);
+                updateScopeSubtitle();
                 renderTiles();
             });
         });
@@ -1140,11 +1073,27 @@
 
     function renderTiles() {
         const grid = document.getElementById('mic-grid');
-        if (!grid || !overviewData) return;
+        if (!grid) return;
         const mobile = syncMicLayoutMode();
-        const auditTiles = auditTilesForDisplay();
         syncMicOverviewTabs(mobile);
         grid.classList.toggle('mic-grid--tabbed', mobile);
+
+        if (!overviewData) {
+            grid.classList.add('mic-grid--loading');
+            if (!mobile) {
+                grid.style.setProperty('--mic-content-rows', '3');
+            } else {
+                grid.style.removeProperty('--mic-content-rows');
+            }
+            grid.innerHTML =
+                (mobile ? renderLoadingMobileTiles() : renderLoadingDesktopTiles()) + renderLoadingOverlay();
+            grid.setAttribute('aria-busy', 'true');
+            return;
+        }
+
+        grid.setAttribute('aria-busy', 'false');
+        grid.classList.remove('mic-grid--loading');
+        const auditTiles = auditTilesForDisplay();
         if (!mobile) {
             grid.style.setProperty('--mic-content-rows', String(countAdminContentRows(auditTiles)));
         } else {
@@ -1172,6 +1121,7 @@
                     </div>
                 </div>
                 ${promoBannerHtml || ''}
+                <div class="mic-header-store-slot" id="mic-header-store-slot"></div>
                 <div class="mic-header-actions">
                     <div class="mic-clock">
                         <span class="mic-clock-label">Current time</span>
@@ -1183,10 +1133,7 @@
             <nav class="mic-overview-tabs" id="mic-overview-tabs" role="tablist" aria-label="MIC overview sections" hidden></nav>
             <div class="mic-grid mic-grid--admin" id="mic-grid"></div>
         </div>
-        ${global.MicSettings?.renderCog?.() || ''}
-        ${global.MicSettings?.renderPanel?.({
-            darkModeHint: 'Dark background and tiles on this MIC page.',
-        }) || ''}`;
+        ${global.MicSettings?.renderCog?.() || ''}`;
 
         global.MicSettings?.bind?.({
             getViewAccountsOptions: () => ({
@@ -1201,6 +1148,7 @@
         });
         global.AdminAccounts?.maybeOpenFromQuery?.();
         global.MicSettings?.initPreferences?.();
+        renderTiles();
     }
 
     async function loadDfscStatus() {
@@ -1220,6 +1168,7 @@
     async function loadOverview() {
         if (overviewLoadInFlight) return;
         overviewLoadInFlight = true;
+        if (!overviewData) renderTiles();
         try {
             const res = await fetch('/api/overview', { credentials: 'same-origin' });
             const data = await res.json();
@@ -1232,9 +1181,22 @@
             overviewData = data;
             const areas = data.areas || [];
             const isFirstLoad = !document.getElementById('mic-grid');
-            if (areas.length && isFirstLoad) areaIndex = defaultAreaIndex(areas);
             if (!document.getElementById('mic-grid')) renderShell(global.MicOverviewShared?.renderPromoBanner?.());
-            renderTiles();
+            const storedArea = pendingAreaName || global.MicAreaPicker?.getStoredArea?.() || '';
+            if (areas.length && isFirstLoad) {
+                if (storedArea) {
+                    applyAreaSelection(storedArea);
+                } else if (!areaPickerActive) {
+                    areaIndex = defaultAreaIndex(areas);
+                    updateScopeSubtitle();
+                    renderTiles();
+                } else {
+                    areaIndex = defaultAreaIndex(areas);
+                    renderTiles();
+                }
+            } else {
+                renderTiles();
+            }
         } finally {
             overviewLoadInFlight = false;
         }
@@ -1264,16 +1226,37 @@
         intervals = [];
     }
 
-    function start(profile, appEl, promoBannerHtml) {
+    async function start(profile, appEl, promoBannerHtml) {
         meProfile = profile;
         app = appEl;
         clearIntervals();
+        pendingAreaName =
+            global.MicAreaPicker?.isPickerPending?.() ? '' : global.MicAreaPicker?.getStoredArea?.() || '';
         document.documentElement.classList.add('mic-overview-page');
         document.body.classList.add('mic-overview-page');
-        marketViewActive = isMarketScope();
         renderShell(promoBannerHtml);
         syncMicLayoutMode();
-        global.CoreCountdown?.init?.().then(() => loadOverview());
+
+        const pickerAreas = global.MicAreaPicker?.resolveInitialAreaNames?.(profile, null) || [];
+        const showPicker =
+            global.MicAreaPicker?.shouldShowPicker?.(profile) && pickerAreas.length > 1;
+
+        if (showPicker) {
+            areaPickerActive = true;
+            void global.MicAreaPicker.show({
+                profile,
+                areaNames: pickerAreas,
+                onPick: (name) => {
+                    applyAreaSelection(name);
+                },
+            }).finally(() => {
+                areaPickerActive = false;
+            });
+        }
+
+        await global.CoreCountdown?.init?.();
+        await loadOverview();
+
         intervals.push(
             global.setInterval(() => {
                 const clock = document.getElementById('mic-clock');

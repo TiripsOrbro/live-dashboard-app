@@ -20,7 +20,13 @@
     }
 
     function goToAdminPage(section, query = {}) {
-        global.location.href = sectionUrl(section, query);
+        const url = sectionUrl(section, query);
+        if (global.AppShell?.navigate) {
+            const parsed = new URL(url, global.location.origin);
+            global.AppShell.navigate(parsed.pathname, { search: parsed.search, hash: parsed.hash });
+            return;
+        }
+        global.location.href = url;
     }
 
     function renderTrigger(options = {}) {
@@ -33,7 +39,7 @@
     function renderActionsHtml() {
         return `
                 <div class="admin-menu-actions mic-settings-actions">
-                    <button type="button" class="mic-settings-btn" data-admin-action="view-accounts">Accounts</button>
+                    <button type="button" class="mic-settings-btn" data-admin-action="view-accounts">Store accounts</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="store-logins" hidden>Store logins</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="smg-nsf" hidden>Setup SMG/NSF</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="forecast">Forecast tool</button>
@@ -54,7 +60,7 @@
         const storeLoginsBtn = root.querySelector('[data-admin-action="store-logins"]');
         if (storeLoginsBtn) storeLoginsBtn.hidden = !data.canManageStoreLogins;
         const smgNsfBtn = root.querySelector('[data-admin-action="smg-nsf"]');
-        if (smgNsfBtn) smgNsfBtn.hidden = !data.canManageSmgNsfSettings;
+        if (smgNsfBtn) smgNsfBtn.hidden = true;
         root.querySelectorAll(
             '[data-admin-action="view-accounts"], [data-admin-action="forecast"], [data-admin-action="build-to"]'
         ).forEach((btn) => {
@@ -97,7 +103,7 @@
         });
         root.querySelector('[data-admin-action="feature-requests"]')?.addEventListener('click', () => {
             onBeforeAction();
-            global.location.href = '/requests';
+            goToAdminPage('feature-requests');
         });
     }
 
@@ -116,7 +122,7 @@
             if (btn.dataset.adminMenuBound) return;
             btn.dataset.adminMenuBound = '1';
             btn.addEventListener('click', () => {
-                global.location.href = ADMIN_PAGE_PATH;
+                void global.MicSettings?.navigateToSettingsPage?.('');
             });
         });
         if (bindOptions.resolveVisibility !== false) {
@@ -151,7 +157,7 @@
         bindActionButtons,
         applyActionVisibility,
         open: () => {
-            global.location.href = ADMIN_PAGE_PATH;
+            void global.MicSettings?.navigateToSettingsPage?.('');
         },
         close: () => {},
         fetchProfile,

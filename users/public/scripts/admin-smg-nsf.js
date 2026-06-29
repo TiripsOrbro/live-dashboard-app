@@ -38,9 +38,14 @@
     const SMG_NSF_MODAL_HTML = `
             <div class="admin-modal admin-modal--wide admin-modal--smg-nsf" role="dialog" aria-modal="true">
                 <h2>Setup SMG / NSF</h2>
-                <div class="admin-tabs admin-tabs--full" id="admin-smg-nsf-tabs">
-                    <button type="button" class="admin-tab is-active" data-tab="smg">SMG periods</button>
-                    <button type="button" class="admin-tab" data-tab="nsf">NSF rounds</button>
+                <div class="admin-settings-segmented-tabs admin-accounts-org-nav">
+                    <div class="admin-accounts-scope-row-wrap">
+                        <span class="admin-accounts-scope-row-label">Section</span>
+                        <div class="admin-accounts-scope-row admin-accounts-scope-row--equal" id="admin-smg-nsf-tabs" role="tablist" style="--scope-cols: 2">
+                            <button type="button" class="admin-accounts-scope-chip is-active" data-tab="smg" role="tab" aria-selected="true">SMG periods</button>
+                            <button type="button" class="admin-accounts-scope-chip" data-tab="nsf" role="tab" aria-selected="false">NSF rounds</button>
+                        </div>
+                    </div>
                 </div>
                 <div id="admin-smg-nsf-body"></div>
                 <p id="admin-smg-nsf-error" class="admin-modal-error" role="alert"></p>

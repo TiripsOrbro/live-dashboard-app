@@ -25,7 +25,11 @@ const DAY_ALIASES = {
     sat: 6,
 };
 
-const DEFAULT_AREA = 'Area 22';
+const {
+    normalizeAreaLabel: normalizeCanonicalArea,
+    inferAreaFromStore,
+} = require('./areasConfig');
+const DEFAULT_AREA = 'VIC-1';
 const TEST_AREA = 'Test Store';
 const PERTH_STORE_NAMES = ['midland', 'ellenbrook', 'canning vale', 'butler'];
 const PERTH_STORE_NUMBERS = new Set(['3901', '3902', '3903', '3904']);
@@ -57,9 +61,8 @@ function normalizeHours(open, close) {
     return { openHour: Math.trunc(openHour), closeHour: Math.trunc(closeHour) };
 }
 
-function normalizeArea(value) {
-    const s = String(value || '').trim();
-    return s || DEFAULT_AREA;
+function normalizeArea(value, storeNumber, storeName, timeZone) {
+    return inferAreaFromStore(storeNumber, storeName, value, timeZone);
 }
 
 function inferStoreTimeZone(storeNumber, storeName, explicit) {
@@ -129,7 +132,7 @@ function parseStoreList(text) {
         current = {
             storeNumber,
             storeName,
-            area: normalizeArea(area),
+            area: normalizeArea(area, storeNumber, storeName, zone),
             timeZone: inferStoreTimeZone(storeNumber, storeName, zone),
         };
         if (hasUniformHours) {
@@ -189,7 +192,7 @@ function getStoreList() {
         const out = {
             storeNumber: store.storeNumber,
             storeName: store.storeName,
-            area: normalizeArea(store.area),
+            area: normalizeArea(store.area, store.storeNumber, store.storeName, store.timeZone),
             timeZone: store.timeZone || inferStoreTimeZone(store.storeNumber, store.storeName),
             openHour,
             closeHour,

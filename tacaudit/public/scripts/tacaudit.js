@@ -11,8 +11,12 @@ const STORE_NUMBER = IS_ADMIN_TACAUDIT ? '' : pathMatch ? pathMatch[1].toLowerCa
 
 const SPLASH_STATUS_CYCLE = ['blank', 'opened', 'complete'];
 
-document.documentElement.classList.add('dfsc-page');
-document.body.classList.add('dfsc-page', 'tacaudit-page');
+const IS_SHELL_TACAUDIT = Boolean(window.__APP_SHELL__);
+
+if (!IS_SHELL_TACAUDIT) {
+    document.documentElement.classList.add('dfsc-page');
+    document.body.classList.add('dfsc-page', 'tacaudit-page');
+}
 
 const app = document.getElementById('app');
 
@@ -249,6 +253,45 @@ function mountBackNav() {
         alwaysFallback: true,
         fade: IS_ADMIN_TACAUDIT,
     });
+}
+
+function ensureTacauditChrome() {
+    if (!document.getElementById('tacaudit-nav-back')) {
+        const host = document.createElement('div');
+        host.id = 'tacaudit-nav-back';
+        host.className = 'nav-back-host';
+        const root = document.getElementById('app');
+        if (root?.parentNode) {
+            root.parentNode.insertBefore(host, root);
+        } else {
+            document.body.insertBefore(host, document.body.firstChild);
+        }
+    }
+    if (!document.body.classList.contains('tacaudit-page')) {
+        document.body.classList.add('dfsc-page', 'tacaudit-page');
+    }
+    if (!document.documentElement.classList.contains('dfsc-page')) {
+        document.documentElement.classList.add('dfsc-page');
+    }
+}
+
+function renderLoadingShell(message = 'Loading TacAudit…') {
+    const root = document.getElementById('app');
+    if (!root) return;
+    ensureTacauditChrome();
+    root.classList.remove('app-boot-loading');
+    root.removeAttribute('aria-busy');
+    const storeLabel = STORE_NUMBER ? escapeHtml(STORE_NUMBER) : '…';
+    root.innerHTML = `
+        <div class="dfsc-shell tacaudit-shell">
+            <header class="tacaudit-page-header">
+                <div class="tacaudit-page-header__main">
+                    <h1>TacAudit</h1>
+                    <p>${storeLabel}</p>
+                </div>
+            </header>
+            <p class="tacaudit-summary-loading">${escapeHtml(message)}</p>
+        </div>`;
 }
 
 function escapeHtml(value) {
@@ -2015,6 +2058,7 @@ function render() {
 }
 
 async function init() {
+    renderLoadingShell();
     mountBackNav();
 
     if (IS_ADMIN_TACAUDIT) {
@@ -2079,8 +2123,12 @@ window.TacauditView = {
         await init();
     },
     unmount() {
+        document.getElementById('mic-settings-btn')?.closest('.tacaudit-settings-host')?.remove();
+        document.getElementById('tacaudit-nav-back')?.remove();
         const root = document.getElementById('app');
         if (root) root.innerHTML = '';
+        document.body.classList.remove('tacaudit-page', 'dfsc-page');
+        document.documentElement.classList.remove('dfsc-page');
     },
 };
 

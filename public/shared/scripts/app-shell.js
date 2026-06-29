@@ -141,11 +141,27 @@
 
     const SHARED_TACAUDIT_SCRIPTS = [
         '/scripts/page-transition.js',
-        '/scripts/area-display.js',
         '/scripts/nav-back.js',
+        '/scripts/audit-preferences.js',
+        '/scripts/mic-settings.js',
         '/scripts/admin-scope-picker.js',
         '/scripts/tacaudit.js',
     ];
+
+    function ensureTacauditShellChrome() {
+        document.documentElement.classList.add('dfsc-page');
+        if (!document.getElementById('tacaudit-nav-back')) {
+            const host = document.createElement('div');
+            host.id = 'tacaudit-nav-back';
+            host.className = 'nav-back-host';
+            const app = document.getElementById(APP_ID);
+            if (app?.parentNode) {
+                app.parentNode.insertBefore(host, app);
+            } else {
+                document.body.insertBefore(host, document.body.firstChild);
+            }
+        }
+    }
 
     function matchRoute(pathname) {
         const path = String(pathname || '/').replace(/\/+$/, '') || '/';
@@ -240,10 +256,16 @@
 
     async function mountTacauditSummary() {
         document.body.classList.add('dfsc-page', 'tacaudit-page');
+        ensureTacauditShellChrome();
         await loadScriptChain(SHARED_TACAUDIT_SCRIPTS);
         if (global.TacauditView?.mount) {
             await global.TacauditView.mount(getAppEl());
+            return;
         }
+        const app = getAppEl();
+        app.classList.remove('app-boot-loading');
+        app.removeAttribute('aria-busy');
+        app.textContent = 'TacAudit failed to load.';
     }
 
     async function mountLegacyPage(url) {
@@ -256,6 +278,7 @@
         app.setAttribute('aria-busy', 'true');
         app.innerHTML = '<p class="app-boot-loading__message">Loading…</p>';
         document.body.classList.remove('stock-count-page', 'tacaudit-page', 'dfsc-page', 'admin-page');
+        document.documentElement.classList.remove('dfsc-page');
 
         switch (route.id) {
             case 'overview':

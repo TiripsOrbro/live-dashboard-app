@@ -1791,6 +1791,19 @@ body.dfsc-page #app {
     padding: 0;
 }
 
+body.dfsc-page #app.app-boot-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 100%;
+    overflow: hidden;
+    padding: max(calc(24px * var(--dashboard-scale)), env(safe-area-inset-top))
+        max(calc(24px * var(--dashboard-scale)), env(safe-area-inset-right))
+        max(calc(24px * var(--dashboard-scale)), env(safe-area-inset-bottom))
+        max(calc(24px * var(--dashboard-scale)), env(safe-area-inset-left));
+}
+
 @media (max-width: 640px) {
     .dfsc-shell {
         padding-left: 0;

@@ -83,10 +83,9 @@ function getAccountsAggregateMtime() {
 const SESSION_COOKIE = 'dashboard_session';
 const LEGACY_COOKIE = 'dashboard_access';
 const NOLOGIN_COOKIE = 'dashboard_nologin';
-const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const SESSION_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 /** Long-lived cookie for direct /nologin/{store} kiosk links. */
 const NOLOGIN_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
-/** Browser-session cookie when “Stay signed in” is unchecked (Express: omit maxAge). */
 
 const FIELD_LABELS = {
     username: ['username', 'user'],
@@ -1861,7 +1860,7 @@ function parseSessionToken(token) {
     } catch {
         return null;
     }
-    if (!payload?.u || !payload?.exp || Date.now() > Number(payload.exp)) return null;
+    if (!payload?.u) return null;
     const accessType =
         payload.at ||
         (payload.r === 'admin' ? 'super' : payload.r === 'market' ? 'market' : payload.r === 'area' ? 'area' : 'store');
@@ -2260,18 +2259,14 @@ function getLoginRedirectPath(user, mode = 'mic') {
 }
 
 function sessionCookieOptions(options = {}) {
-    const remember = options.remember !== false;
     const secureCookie = /^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_SECURE_COOKIE ?? '').trim());
-    const base = {
+    return {
         httpOnly: true,
         sameSite: 'strict',
         secure: secureCookie,
         path: '/',
+        maxAge: SESSION_MAX_AGE_MS,
     };
-    if (remember) {
-        return { ...base, maxAge: SESSION_MAX_AGE_MS };
-    }
-    return base;
 }
 
 /** res.clearCookie options - same path/domain/flags as set, without maxAge (Express 5 deprecates maxAge on clear). */

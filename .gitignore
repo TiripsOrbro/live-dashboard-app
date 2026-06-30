@@ -47,6 +47,18 @@ dashboard/data/sssg-lastyear/
 dashboard/data/sssg/grid-debug.json
 dashboard/data/sssg-weekly/*.json
 !dashboard/data/sssg-weekly/import-template.json
+# Forecast runtime data (live capture, manual edits, run state — never commit)
+dashboard/data/forecast-history/*
+!dashboard/data/forecast-history/README.md
+!dashboard/data/forecast-history/import-template.json
+dashboard/data/forecast-status/
+dashboard/data/forecast-updates/
+dashboard/data/forecast-manual/
+dashboard/data/forecast-adjustments/
+dashboard/data/forecast-auto-submit.json
+dashboard/data/forecast-store-auto-submit.json
+dashboard/data/forecast-schedule-state.json
+dashboard/data/forecast-schedule-log/
 !dashboard/data/feature-requests.json
 !dashboard/data/bug-reports.json
 dashboard/data/bug-reports/photos/
@@ -96,6 +108,8 @@ data/account-audit.log
 data/sales-snapshots/
 data/sssg-lastyear/
 data/sssg-weekly/
+data/forecast-history/
+data/forecast-status/
 data/stock-count-state.json
 data/daily-stock-count-state.json
 data/mmx-pipeline-checkpoints.json

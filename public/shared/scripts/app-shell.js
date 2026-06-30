@@ -188,15 +188,6 @@
         '/scripts/admin-page.js',
     ];
 
-    const SHARED_STOCK_COUNT_SCRIPTS = [
-        '/scripts/page-transition.js',
-        '/scripts/nav-back.js',
-        '/scripts/stock-count-notify.js',
-        '/scripts/variance-catalog-match.js',
-        '/scripts/mmx-user-login-prompt.js',
-        '/scripts/stock-count.js',
-    ];
-
     const SHARED_TACAUDIT_SCRIPTS = [
         '/scripts/page-transition.js',
         '/scripts/nav-back.js',
@@ -204,6 +195,14 @@
         '/scripts/mic-settings.js',
         '/scripts/admin-scope-picker.js',
     ];
+
+    function fallbackToLegacyStockCountPage() {
+        const url = new URL(global.location.href);
+        if (url.searchParams.get('noshell') === '1') return false;
+        url.searchParams.set('noshell', '1');
+        global.location.replace(url.toString());
+        return true;
+    }
 
     function ensureTacauditShellChrome() {
         document.documentElement.classList.add('dfsc-page');
@@ -329,18 +328,37 @@
     async function mountStockCount() {
         document.body.classList.add('stock-count-page');
         ensureStockCountStyles();
-        await loadScriptChain(SHARED_STOCK_COUNT_SCRIPTS);
-        if (!global.StockCountView?.mount) {
-            for (const url of SHARED_STOCK_COUNT_SCRIPTS) scriptCache.delete(url);
-            await loadScriptChain(SHARED_STOCK_COUNT_SCRIPTS);
-        }
-        if (global.StockCountView?.mount) {
-            await global.StockCountView.mount();
+        try {
+            await loadScriptBatch([
+                '/scripts/page-transition.js',
+                '/scripts/nav-back.js',
+            ]);
+            await Promise.allSettled([
+                loadScript('/scripts/stock-count-notify.js'),
+                loadScript('/scripts/variance-catalog-match.js'),
+                loadScript('/scripts/mmx-user-login-prompt.js'),
+            ]);
+            await loadScript('/scripts/stock-count.js', { force: true });
+        } catch (err) {
+            console.error('[AppShell] stock count script load failed:', err);
+            if (fallbackToLegacyStockCountPage()) return;
+            getAppEl().textContent = err?.message || 'Stock count failed to load.';
             return;
         }
-        console.error('[AppShell] StockCountView missing after loading stock count scripts');
-        getAppEl().textContent =
-            'Stock count failed to load. Hard refresh the page (Ctrl+Shift+R).';
+        if (!global.StockCountView?.mount) {
+            console.error('[AppShell] StockCountView missing after loading stock count scripts');
+            if (fallbackToLegacyStockCountPage()) return;
+            getAppEl().textContent =
+                'Stock count failed to load. Hard refresh the page (Ctrl+Shift+R).';
+            return;
+        }
+        try {
+            await global.StockCountView.mount();
+        } catch (err) {
+            console.error('[AppShell] stock count mount failed:', err);
+            if (fallbackToLegacyStockCountPage()) return;
+            getAppEl().textContent = err?.message || 'Stock count failed to load.';
+        }
     }
 
     async function mountDailyStockCount() {

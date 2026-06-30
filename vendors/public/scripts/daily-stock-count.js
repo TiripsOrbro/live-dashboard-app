@@ -11,6 +11,20 @@ function syncDailyStockCountRoute(pathname) {
 
 syncDailyStockCountRoute();
 
+window.DailyStockCountView = {
+    async mount() {
+        syncDailyStockCountRoute();
+        await init();
+    },
+    unmount() {
+        mmxPollInFlight = null;
+        document.documentElement.classList.remove('stock-count-page');
+        document.body.classList.remove('stock-count-page');
+        const root = document.getElementById('app');
+        if (root) root.innerHTML = '';
+    },
+};
+
 let catalog = null;
 let accessibleStores = [];
 let showStorePicker = false;
@@ -699,19 +713,6 @@ async function init() {
         app.innerHTML = `<div class="stock-count"><p class="stock-count-status stock-count-status--error">${escapeHtml(error.message)}</p></div>`;
     }
 }
-
-window.DailyStockCountView = {
-    async mount() {
-        syncDailyStockCountRoute();
-        await init();
-    },
-    unmount() {
-        mmxPollInFlight = null;
-        document.documentElement.classList.remove('stock-count-page');
-        document.body.classList.remove('stock-count-page');
-        if (app) app.innerHTML = '';
-    },
-};
 
 if (!window.__APP_SHELL__) {
     init();

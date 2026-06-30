@@ -16,6 +16,21 @@ function syncStockCountRoute(pathname) {
 
 syncStockCountRoute();
 
+window.StockCountView = {
+    async mount() {
+        syncStockCountRoute();
+        teardownStockCountView();
+        await init();
+    },
+    unmount() {
+        teardownStockCountView();
+        document.documentElement.classList.remove('stock-count-page');
+        document.body.classList.remove('stock-count-page');
+        const root = document.getElementById('app');
+        if (root) root.innerHTML = '';
+    },
+};
+
 let catalog = null;
 let draft = null;
 let combinedVendorSlugs = [];
@@ -3326,20 +3341,6 @@ function teardownStockCountView() {
         stockCountToastTimer = null;
     }
 }
-
-window.StockCountView = {
-    async mount() {
-        syncStockCountRoute();
-        teardownStockCountView();
-        await init();
-    },
-    unmount() {
-        teardownStockCountView();
-        document.documentElement.classList.remove('stock-count-page');
-        document.body.classList.remove('stock-count-page');
-        if (app) app.innerHTML = '';
-    },
-};
 
 if (!window.__APP_SHELL__) {
     void init();

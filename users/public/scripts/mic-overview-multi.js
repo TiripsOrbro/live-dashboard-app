@@ -5,12 +5,66 @@
     const REFRESH_MS = 2 * 60 * 1000;
     const SCRAPE_POLL_MS = 15 * 1000;
     const TIME_ZONE = 'Australia/Melbourne';
-    const VOC_PLACEHOLDER = { count: 'TBD', osatPercent: null, accuracyPercent: null };
-    const SMG_REPORTING_URL = 'https://reporting.smg.com/Index.aspx';
     const DEFAULT_AREA = 'VIC-1';
-    const MIC_TAB_STORAGE_KEY = 'mic-overview-active-tab';
     const DAILY_COUNT_STORE_KEY = 'daily-count-store';
     const LOADING_AUDIT_TILE_COUNT = 4;
+
+    const MOS = () => global.MicOverviewShell;
+    const MOT = () => global.MicOverviewTiles;
+
+    const VOC_PLACEHOLDER = MOT()?.VOC_PLACEHOLDER ?? { count: 'TBD', osatPercent: null, accuracyPercent: null };
+
+    function formatVocDisplay(voc = {}) {
+        return MOT()?.formatVocDisplay?.(voc) ?? voc;
+    }
+
+    function formatMoney(value) {
+        return MOT()?.formatMoney?.(value) ?? `$${Number(value) || 0}`;
+    }
+
+    function escapeHtml(value) {
+        return MOS()?.escapeHtml?.(value) ?? String(value ?? '');
+    }
+
+    function formatTime(date) {
+        return MOS()?.formatTime?.(date) ?? date.toLocaleTimeString();
+    }
+
+    function formatSssgDisplay(value) {
+        return MOT()?.formatSssgDisplay?.(value) ?? { text: '-', toneClass: 'mic-sssg--na' };
+    }
+
+    function isMicMobileView() {
+        return MOS()?.isMicMobileView?.() ?? global.matchMedia('(max-width: 900px)').matches;
+    }
+
+    function syncMicLayoutMode() {
+        return MOS()?.syncMicLayoutMode?.() ?? isMicMobileView();
+    }
+
+    function renderMicTabPanel(tabId, content) {
+        return MOT()?.renderMicTabPanel?.(tabId, content) ?? content;
+    }
+
+    function applyMicOverviewTab(tabId) {
+        MOS()?.applyMicOverviewTab?.(tabId);
+    }
+
+    function syncMicOverviewTabs(mobile) {
+        MOS()?.syncMicOverviewTabs?.(mobile);
+    }
+
+    function renderEqualWidthRow(tileHtmlList, options = {}) {
+        return MOT()?.renderEqualWidthRow?.(tileHtmlList, options) ?? tileHtmlList.filter(Boolean).join('');
+    }
+
+    function renderLoadingPlaceholderTile() {
+        return MOT()?.renderLoadingPlaceholderTile?.() ?? '';
+    }
+
+    function renderLoadingPlaceholderTiles(count) {
+        return MOT()?.renderLoadingPlaceholderTiles?.(count) ?? '';
+    }
 
     let app = null;
     let meProfile = null;
@@ -21,8 +75,6 @@
     let pendingAreaName = '';
     let lastSalesUpdatedAt = null;
     let overviewLoadInFlight = false;
-    let activeMicTab = sessionStorage.getItem(MIC_TAB_STORAGE_KEY) || 'sales';
-    let micOverviewTabsBound = false;
     let intervals = [];
 
     function shellPathname() {
@@ -45,17 +97,6 @@
     function renderLoadingOverlay() {
         const dots = renderLoadingMarkHtml();
         return `<div class="mic-grid-loading-overlay" aria-live="polite" aria-label="Loading sales data">${dots}</div>`;
-    }
-
-    function renderLoadingPlaceholderTile() {
-        return `
-        <article class="mic-tile mic-tile--loading mic-tile--loading-skeleton">
-            <div class="mic-tile-body mic-tile-body--loading" aria-hidden="true"></div>
-        </article>`;
-    }
-
-    function renderLoadingPlaceholderTiles(count) {
-        return Array.from({ length: count }, () => renderLoadingPlaceholderTile()).join('');
     }
 
     function renderAreaSalesLoadingBody() {
@@ -164,22 +205,6 @@
         areaPickerActive = false;
     }
 
-    function formatVocDisplay(voc = {}) {
-        if (voc.placeholder) {
-            return {
-                placeholder: true,
-                count: 'TBD',
-                osat: null,
-                acc: null,
-            };
-        }
-        return {
-            count: voc.count == null ? '-' : voc.count,
-            osat: voc.osatPercent,
-            acc: voc.accuracyPercent,
-        };
-    }
-
     function formatSalesScrapeHint(status) {
         if (!status) return { text: '', title: '' };
         const tz = status.timeZone || TIME_ZONE;
@@ -230,14 +255,6 @@
         el.classList.toggle('is-updating', Boolean(status?.inFlight));
     }
 
-    function escapeHtml(value) {
-        return String(value ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-    }
-
     function sortStoresByNumber(stores) {
         return [...(stores || [])].sort((a, b) =>
             String(a.storeNumber).localeCompare(String(b.storeNumber), undefined, { numeric: true })
@@ -255,15 +272,6 @@
             adminAreaCode: areaCodeFromName(area?.name),
             adminAreaLinkOnly: true,
         };
-    }
-
-    function formatTime(date) {
-        return date.toLocaleTimeString('en-AU', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-            timeZone: TIME_ZONE,
-        });
     }
 
     function defaultAreaIndex(areas) {
@@ -326,117 +334,6 @@
             .map((v) => Number(v));
         if (!values.length) return null;
         return Math.round((values.reduce((sum, v) => sum + v, 0) / values.length) * 10) / 10;
-    }
-
-    function formatSssgDisplay(value) {
-        if (value == null || Number.isNaN(Number(value))) {
-            return { text: '-', toneClass: 'mic-sssg--na' };
-        }
-        const n = Number(value);
-        const sign = n > 0 ? '+' : '';
-        const toneClass = n > 0 ? 'mic-sssg--up' : n < 0 ? 'mic-sssg--down' : 'mic-sssg--na';
-        return { text: `${sign}${n}%`, toneClass };
-    }
-
-    function isMicMobileView() {
-        return global.matchMedia('(max-width: 900px)').matches;
-    }
-
-    let lastMicMobileLayout = null;
-
-    function syncMicLayoutMode() {
-        const mobile = isMicMobileView();
-        document.body.classList.toggle('mic-overview--mobile', mobile);
-        document.documentElement.classList.toggle('mic-overview--mobile', mobile);
-        if (lastMicMobileLayout !== null && lastMicMobileLayout !== mobile && overviewData) {
-            renderTiles();
-        }
-        lastMicMobileLayout = mobile;
-        return mobile;
-    }
-
-    function renderMicTabPanel(tabId, content) {
-        return `
-        <section
-            class="mic-tab-panel mic-tab-panel--${tabId}"
-            data-mic-tab-panel="${tabId}"
-            id="mic-tabpanel-${tabId}"
-            role="tabpanel"
-            aria-labelledby="mic-tab-${tabId}"
-        >${content}</section>`;
-    }
-
-    const MIC_OVERVIEW_TABS = [
-        { id: 'sales', label: 'Sales' },
-        { id: 'results', label: 'Results' },
-        { id: 'orders', label: 'Orders' },
-        { id: 'audits', label: 'Audits' },
-    ];
-
-    function renderMicOverviewTabsHtml() {
-        return MIC_OVERVIEW_TABS.map(({ id, label }) => {
-            const isActive = activeMicTab === id;
-            return `<button type="button" class="mic-overview-tab${isActive ? ' is-active' : ''}" role="tab" id="mic-tab-${id}" aria-selected="${isActive ? 'true' : 'false'}" aria-controls="mic-tabpanel-${id}" data-mic-overview-tab="${id}">${escapeHtml(label)}</button>`;
-        }).join('');
-    }
-
-    function applyMicOverviewTab(tabId) {
-        if (!MIC_OVERVIEW_TABS.some((tab) => tab.id === tabId)) tabId = 'sales';
-        activeMicTab = tabId;
-        sessionStorage.setItem(MIC_TAB_STORAGE_KEY, tabId);
-        document.querySelectorAll('[data-mic-overview-tab]').forEach((button) => {
-            const isActive = button.dataset.micOverviewTab === tabId;
-            button.classList.toggle('is-active', isActive);
-            button.setAttribute('aria-selected', isActive ? 'true' : 'false');
-        });
-        const tabClasses = [
-            'mic-overview-tab--sales',
-            'mic-overview-tab--results',
-            'mic-overview-tab--orders',
-            'mic-overview-tab--audits',
-        ];
-        document.body.classList.remove(...tabClasses);
-        document.documentElement.classList.remove(...tabClasses);
-        document.body.classList.add(`mic-overview-tab--${tabId}`);
-        document.documentElement.classList.add(`mic-overview-tab--${tabId}`);
-        const grid = document.getElementById('mic-grid');
-        if (!grid) return;
-        grid.querySelectorAll('[data-mic-tab-panel]').forEach((panel) => {
-            const isActive = panel.dataset.micTabPanel === tabId;
-            panel.hidden = !isActive;
-            panel.classList.toggle('is-tab-active', isActive);
-        });
-    }
-
-    function bindMicOverviewTabs() {
-        const nav = document.getElementById('mic-overview-tabs');
-        if (!nav || micOverviewTabsBound) return;
-        nav.addEventListener('click', (event) => {
-            const button = event.target.closest('[data-mic-overview-tab]');
-            if (!button) return;
-            applyMicOverviewTab(button.dataset.micOverviewTab);
-        });
-        micOverviewTabsBound = true;
-    }
-
-    function syncMicOverviewTabs(mobile) {
-        const nav = document.getElementById('mic-overview-tabs');
-        const tabClasses = [
-            'mic-overview-tab--sales',
-            'mic-overview-tab--results',
-            'mic-overview-tab--orders',
-            'mic-overview-tab--audits',
-        ];
-        if (!mobile) {
-            if (nav) nav.hidden = true;
-            document.body.classList.remove(...tabClasses);
-            document.documentElement.classList.remove(...tabClasses);
-            return;
-        }
-        if (!nav) return;
-        nav.hidden = false;
-        nav.innerHTML = renderMicOverviewTabsHtml();
-        bindMicOverviewTabs();
     }
 
     function renderAreaSalesTotal(sales) {
@@ -517,53 +414,21 @@
     }
 
     function renderSssgTile(area, { tabbed = false } = {}) {
-        const today = formatSssgDisplay(areaSssgToday(area));
-        const wtd = formatSssgDisplay(areaSssgWtd(area));
-        const hasData = today.text !== '-' || wtd.text !== '-';
-        const futureClass = hasData ? '' : ' mic-tile--future';
-        const posClass = tabbed ? '' : ' mic-tile--pos-sssg';
-        return `
-        <article class="mic-tile mic-tile--sssg mic-tile--metric-card${futureClass}${posClass}">
-            <div class="mic-tile-body mic-metric-card">
-                <div class="mic-metric-card__head">
-                    <div class="mic-tile-label">Today SSSG</div>
-                </div>
-                <div class="mic-sssg-grid">
-                    <div class="mic-sssg-value ${today.toneClass}">${escapeHtml(today.text)}</div>
-                    <div class="mic-sssg-footer">
-                        <span class="mic-sssg-wtd ${wtd.toneClass}">WTD ${escapeHtml(wtd.text)}</span>
-                    </div>
-                </div>
-            </div>
-        </article>`;
+        return (
+            MOT()?.renderSssgTile?.(area, {
+                tabbed,
+                todayValue: areaSssgToday(area),
+                wtdValue: areaSssgWtd(area),
+            }) ?? ''
+        );
     }
 
     function useMicStyleTiles() {
         return false;
     }
 
-    function renderVocTile(vocRaw, { tabbed = false, inRow = false } = {}) {
-        const voc = formatVocDisplay(vocRaw);
-        const posClass = tabbed || inRow ? '' : ' mic-tile--pos-voc';
-        const osatText = voc.placeholder ? 'TBD%' : voc.osat == null ? '—' : `${voc.osat}%`;
-        const accText = voc.placeholder ? 'TBD%' : voc.acc == null ? '—' : `${voc.acc}%`;
-        const footnote = 'Pipeline coming soon';
-        return `
-        <a class="mic-tile mic-tile--link mic-tile--voc mic-tile--metric-card${posClass}" href="${SMG_REPORTING_URL}" target="_blank" rel="noopener noreferrer" aria-label="VOC - open SMG reporting">
-            <div class="mic-tile-body mic-metric-card">
-                <div class="mic-metric-card__head">
-                    <div class="mic-tile-label">VOC</div>
-                </div>
-                <div class="mic-voc-grid">
-                    <div class="mic-voc-count">${voc.count}</div>
-                    <div class="mic-voc-metrics">
-                        <span class="mic-voc-metric">OSAT ${osatText}</span>
-                        <span class="mic-voc-metric">Acc ${accText}</span>
-                    </div>
-                </div>
-                <div class="mic-tile-sub mic-tile-sub--footnote">${footnote}</div>
-            </div>
-        </a>`;
+    function renderVocTile(vocRaw, options = {}) {
+        return MOT()?.renderVocTile?.(vocRaw, options) ?? '';
     }
 
     function dfscStoresForArea(area) {
@@ -756,17 +621,6 @@
         const count = Number(entry?.pendingCount) || 0;
         if (count > 0) return `${count} vendor${count === 1 ? '' : 's'} to count`;
         return entry?.message || 'Open stock count';
-    }
-
-    function renderEqualWidthRow(tileHtmlList, { rowNum, tabbed = false, extraClass = '' } = {}) {
-        const tiles = tileHtmlList.filter(Boolean);
-        if (!tiles.length) return '';
-        const colCount = tiles.length;
-        if (tabbed) {
-            return `<div class="mic-tab-tile-row mic-tab-tile-row--cols-${colCount}">${tiles.join('')}</div>`;
-        }
-        const rowClass = rowNum ? ` mic-grid-equal-row--row-${rowNum}` : '';
-        return `<div class="mic-grid-equal-row mic-grid-equal-row--cols-${colCount}${rowClass}${extraClass ? ` ${extraClass}` : ''}">${tiles.join('')}</div>`;
     }
 
     function countAdminContentRows(auditTiles) {
@@ -1156,35 +1010,16 @@
         bindTacauditTileLinks();
         bindAreaTextSelector();
         applyAreaHighlight();
-        if (mobile) applyMicOverviewTab(activeMicTab);
+        if (mobile) applyMicOverviewTab(MOS()?.getActiveTab?.() || 'sales');
         loadDfscStatus();
     }
 
     function renderShell(promoBannerHtml) {
         if (!canMaintainMicOverview()) return;
-        app.innerHTML = `
-        <div class="mic-page mic-page--admin" id="mic-page">
-            <header class="mic-header mic-header--admin">
-                <div class="mic-header-brand">
-                    <div>
-                        <h1>MIC OVERVIEW</h1>
-                        <p class="subtitle" id="mic-store-label">${escapeHtml(subtitleForScope())}</p>
-                    </div>
-                </div>
-                ${promoBannerHtml || ''}
-                <div class="mic-header-store-slot" id="mic-header-store-slot"></div>
-                <div class="mic-header-actions">
-                    <div class="mic-clock">
-                        <span class="mic-clock-label">Current time</span>
-                        <span class="mic-clock-value" id="mic-clock">${formatTime(new Date())}</span>
-                        <span class="mic-sales-scrape-hint" id="mic-sales-scrape-hint" hidden>Sales · —</span>
-                    </div>
-                </div>
-            </header>
-            <nav class="mic-overview-tabs" id="mic-overview-tabs" role="tablist" aria-label="MIC overview sections" hidden></nav>
-            <div class="mic-grid mic-grid--admin" id="mic-grid"></div>
-        </div>
-        ${global.MicSettings?.renderCog?.() || ''}`;
+        MOS()?.mountShell?.(app, {
+            subtitle: subtitleForScope(),
+            promoBannerHtml: promoBannerHtml || '',
+        });
 
         global.MicSettings?.bind?.({
             getViewAccountsOptions: () => ({
@@ -1233,7 +1068,7 @@
             overviewData = data;
             const areas = data.areas || [];
             const isFirstLoad = !document.getElementById('mic-grid');
-            if (!document.getElementById('mic-grid')) renderShell(global.MicOverviewShared?.renderPromoBanner?.());
+            if (!document.getElementById('mic-grid')) renderShell(MOS()?.renderPromoBanner?.());
             const storedArea = pendingAreaName || global.MicAreaPicker?.getStoredArea?.() || '';
             if (areas.length && isFirstLoad) {
                 if (storedArea) {
@@ -1280,22 +1115,7 @@
 
     function stop() {
         clearIntervals();
-        document.documentElement.classList.remove(
-            'mic-overview-page',
-            'mic-overview--mobile',
-            'mic-overview-tab--sales',
-            'mic-overview-tab--results',
-            'mic-overview-tab--orders',
-            'mic-overview-tab--audits'
-        );
-        document.body.classList.remove(
-            'mic-overview-page',
-            'mic-overview--mobile',
-            'mic-overview-tab--sales',
-            'mic-overview-tab--results',
-            'mic-overview-tab--orders',
-            'mic-overview-tab--audits'
-        );
+        MOS()?.unmountPageClasses?.();
         overviewLoadInFlight = false;
     }
 
@@ -1305,8 +1125,9 @@
         clearIntervals();
         pendingAreaName =
             global.MicAreaPicker?.isPickerPending?.() ? '' : global.MicAreaPicker?.getStoredArea?.() || '';
-        document.documentElement.classList.add('mic-overview-page');
-        document.body.classList.add('mic-overview-page');
+        MOS()?.setOnMobileLayoutChange?.(() => {
+            if (overviewData) renderTiles();
+        });
         renderShell(promoBannerHtml);
         syncMicLayoutMode();
 

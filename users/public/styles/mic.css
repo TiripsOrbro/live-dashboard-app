@@ -1659,11 +1659,12 @@ html.mic-dark-mode .mic-audit-stat--complete {
     display: flex;
     flex-direction: column;
     gap: calc(8px * var(--dashboard-scale));
-    padding: calc(18px * var(--dashboard-scale)) 0 calc(8px * var(--dashboard-scale));
+    padding: calc(18px * var(--dashboard-scale)) 0 0;
     margin-top: 0;
     flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
+    scrollbar-gutter: auto;
 }
 
 .mic-store-lead-list--dashboard .mic-mini-dashboard,
@@ -1758,29 +1759,34 @@ html.mic-dark-mode .mic-audit-stat--complete {
     line-height: 1;
 }
 
-.mic-store-lead-list--dashboard .mic-sssg-inline {
+.mic-tile--store-leaderboard > .mic-sssg-inline {
     flex-shrink: 0;
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
     justify-content: center;
+    align-self: stretch;
     gap: calc(4px * var(--dashboard-scale)) calc(10px * var(--dashboard-scale));
     padding: calc(8px * var(--dashboard-scale)) calc(12px * var(--dashboard-scale));
-    margin-bottom: 0;
+    width: calc(100% + 2px);
+    max-width: none;
+    margin: 0 -1px -1px;
     min-height: 0;
+    border-bottom-left-radius: max(0px, calc(var(--mic-tile-radius, 0px) + 1px));
+    border-bottom-right-radius: max(0px, calc(var(--mic-tile-radius, 0px) + 1px));
 }
 
-.mic-store-lead-list--dashboard .mic-sssg-inline-label {
+.mic-tile--store-leaderboard > .mic-sssg-inline-label {
     font-size: calc(0.65rem * var(--dashboard-scale));
     margin: 0;
 }
 
-.mic-store-lead-list--dashboard .mic-sssg-inline .mic-sssg-value {
+.mic-tile--store-leaderboard > .mic-sssg-inline .mic-sssg-value {
     font-size: var(--font-size-4);
     line-height: 1.1;
 }
 
-.mic-store-lead-list--dashboard .mic-sssg-inline .mic-sssg-wtd {
+.mic-tile--store-leaderboard > .mic-sssg-inline .mic-sssg-wtd {
     font-size: var(--font-size-5);
     line-height: 1.1;
 }
@@ -2291,13 +2297,6 @@ html.mic-dark-mode .mic-audit-stat--complete {
 }
 
 .mic-store-lead-list--dashboard .mic-multiplier-pick {
-    flex-shrink: 0;
-    margin-top: 0;
-    margin-bottom: 0;
-    align-self: stretch;
-}
-
-.mic-store-lead-list--dashboard .mic-sssg-inline {
     flex-shrink: 0;
     margin-top: 0;
     margin-bottom: 0;

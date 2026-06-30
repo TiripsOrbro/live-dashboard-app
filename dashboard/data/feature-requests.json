@@ -58,7 +58,11 @@
       "completedAt": null,
       "submittedBy": "AshOwens",
       "submittedByName": "Admin - Ash Owens",
-      "category": "audits"
+      "category": "audits",
+      "upvotes": [
+        "Ash"
+      ],
+      "downvotes": []
     },
     {
       "id": "56144d4c-26fb-45a0-8c62-c44cd381cfbe",

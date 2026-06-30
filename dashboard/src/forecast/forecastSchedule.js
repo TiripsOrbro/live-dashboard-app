@@ -95,6 +95,15 @@ function hasScheduledRunForWeek(runDateKey, weekStart) {
     return Boolean(state.runs?.[key] || state.runs?.[String(runDateKey || '').trim()]);
 }
 
+function getLatestScheduledRunDate() {
+    const state = readState();
+    const keys = Object.keys(state.runs || {})
+        .filter(Boolean)
+        .sort()
+        .reverse();
+    return keys[0] || null;
+}
+
 function markScheduledRun(runDateKey, weekStart, meta = {}) {
     const state = readState();
     state.runs = state.runs || {};
@@ -137,6 +146,7 @@ module.exports = {
     nextScheduleRunDate,
     hasScheduledRunForDate,
     hasScheduledRunForWeek,
+    getLatestScheduledRunDate,
     markScheduledRun,
     appendScheduleLog,
 };

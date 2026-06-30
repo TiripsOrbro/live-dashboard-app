@@ -42,8 +42,8 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 
 **What you need to do**
 
-- Local/staging only until sign-off — **do not deploy to Pi yet** (Pi stays on `Version-0.4`).
-- Run `node scripts/migrate-areas-v06.js --write` to update `.storelist` and `.Users` when ready.
+- On the Pi: `git pull origin Version-0.6 && pm2 restart dashboard`
+- Run `node scripts/migrate-areas-v06.js --write` on the Pi once to update `.storelist` and `.Users` if not done already.
 - Hard refresh after pulling (`Ctrl+F5`).
 
 ---

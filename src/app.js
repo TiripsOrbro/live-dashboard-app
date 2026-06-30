@@ -371,13 +371,28 @@ const {
     buildStoreAutoSubmitStatus,
     buildStoreAutoSubmitMap,
 } = require('../dashboard/src/forecast/forecastStoreAutoSubmitLedger');
+const { getLatestScheduledRunDate } = require('../dashboard/src/forecast/forecastSchedule');
+const {
+    isStoreEnabled: isFiveAmReportsStoreEnabled,
+    setStoreEnabled: setFiveAmReportsStoreEnabled,
+    listEnabledStores: listFiveAmReportsEnabledStores,
+    getLastRun: getFiveAmReportsLastRun,
+    setLastRun: setFiveAmReportsLastRun,
+    buildStatus: buildFiveAmReportsStatus,
+} = require('../dashboard/src/fiveAmReports/fiveAmReportsStore');
+const {
+    writeStoreResult: writeFiveAmReportsResult,
+    readStoreResult: readFiveAmReportsResult,
+    purgeOldResults: purgeFiveAmReportsResults,
+    purgeOldReportFiles: purgeFiveAmReportsReportFiles,
+} = require('../dashboard/src/fiveAmReports/fiveAmReportsResults');
 const {
     buildForecastUpdatesForStores,
     summarizeForecastUpdates,
 } = require('../dashboard/src/forecast/forecastUpdateLedger');
 const { buildAdminDfscStatus } = require('../tacaudit/audits/Daily Food Safety Check/dfscAdmin');
 const { buildAdminBuildToCatalog, filterOverridesForActor, readOverridesDoc } = require('../vendors/src/buildToAdminCatalog');
-const { patchOverrides } = require('../vendors/src/buildToAdminOverrides');
+const { patchOverrides, stripItemCodeFieldsFromBuildToPatch } = require('../vendors/src/buildToAdminOverrides');
 const {
     getContext: getPestWalkContext,
     createSession: createPestWalkSession,
@@ -844,6 +859,7 @@ function dashboardAuthMiddleware(req, res, next) {
 }
 
 function isAccountSetupAllowedPath(reqPath, needsMmx, needsPassword) {
+    if (reqPath.startsWith('/scripts/') || reqPath.startsWith('/styles/')) return true;
     if (reqPath === '/api/me') return true;
     if (reqPath === '/logout') return true;
     if (reqPath === '/api/account/create-options' || reqPath === '/api/account/create') return true;
@@ -3771,6 +3787,7 @@ app.get('/api/admin/forecast/auto-submit', (req, res) => {
         success: true,
         ...buildStoreAutoSubmitStatus(storeNumbers),
         canManage: canUserEditGlobalBuildTo(user),
+        lastScheduledRun: getLatestScheduledRunDate(),
     });
 });
 
@@ -3814,6 +3831,51 @@ app.put('/api/admin/forecast/store-auto-submit', (req, res) => {
         res.json({ success: true, store, enabled: Boolean(enabled) });
     } catch (err) {
         res.status(400).json({ success: false, error: err.message || 'Could not save store auto-submit setting.' });
+    }
+});
+
+app.get('/api/admin/five-am-reports/stores', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const storeNumbers = getEffectiveStoresForUser(user).filter((s) => !isTestStore(s));
+    res.json({
+        success: true,
+        scheduleHour: FIVE_AM_REPORTS_HOUR,
+        ...buildFiveAmReportsStatus(storeNumbers),
+    });
+});
+
+app.put('/api/admin/five-am-reports/stores', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    if (!canUserEditGlobalBuildTo(user)) {
+        res.status(403).json({ success: false, error: 'Area Manager access or above required.' });
+        return;
+    }
+    const store = String(req.body?.store || '').trim();
+    if (!store || !assertStoreAccess(req, res, store)) return;
+    try {
+        const enabled = !(req.body?.enabled === false || req.body?.enabled === 0 || req.body?.enabled === '0');
+        setFiveAmReportsStoreEnabled(store, enabled, user.username);
+        const todayYmd = ymdInTimeZone(new Date(), fiveAmReportsTimeZoneForStore(store));
+        const hasTodayData = getFiveAmReportsLastRun(store) === todayYmd;
+        const pulling = Boolean(enabled) && !hasTodayData;
+        res.json({ success: true, store, enabled: Boolean(enabled), pulling });
+        // When enabling a store that has no data for today yet, pull it now rather than
+        // waiting for the next 5AM run. Runs in the background (per-store MMX lock applies).
+        if (pulling) {
+            void runFiveAmReportsForStore(store).catch((err) => {
+                console.warn(`[5AMReports] Immediate run for ${store} failed:`, err.message);
+            });
+        }
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not save 5AM reports setting.' });
     }
 });
 
@@ -4359,11 +4421,14 @@ app.put('/api/admin/build-to/overrides', (req, res) => {
         }
     }
 
-    const overrides = patchOverrides(patch);
+    const patchToApply = canUserEditGlobalBuildTo(user)
+        ? patch
+        : stripItemCodeFieldsFromBuildToPatch(patch);
+    const overrides = patchOverrides(patchToApply);
     appendAccountAudit({
         action: 'update-build-to-overrides',
         updatedBy: user.username,
-        patch,
+        patch: patchToApply,
     });
     res.json({ success: true, overrides: filterOverridesForActor(
         overrides,
@@ -5153,7 +5218,19 @@ app.get('/api/stock-count/low-stock-summary', async (req, res) => {
         const store = stockCountStoreFromQuery(req);
         if (!store || !assertStoreAccess(req, res, store)) return;
         const onHandOnly = /^(1|true|yes|on)$/i.test(String(req.query.onHandOnly ?? ''));
-        const summary = await getLowStockSummary(store, { onHandOnly });
+        let summary = await getLowStockSummary(store, { onHandOnly });
+        // Fall back to the persisted 5AM result when the live cache/reports are unavailable
+        // (e.g. after a restart, or once today's report files have been cleared).
+        if (!summary.checked) {
+            const cfg = getStoreConfig(store) || {};
+            const tz = String(cfg.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne').trim();
+            const todayKey = ymdInTimeZone(new Date(), tz);
+            const saved = readFiveAmReportsResult(todayKey, store);
+            const mode = onHandOnly ? 'onHandOnly' : 'withOnOrder';
+            if (saved && saved[mode] && saved[mode].checked) {
+                summary = saved[mode];
+            }
+        }
         res.json({
             success: true,
             storeNumber: String(store),
@@ -7875,6 +7952,117 @@ function startActionsDigestScheduler() {
     setInterval(() => void maybeSendActionsDigests(), ACTIONS_DIGEST_CHECK_MS);
 }
 
+// --- 5AM reports: automated daily stock-levels check for admin-enabled stores ---
+const FIVE_AM_REPORTS_ENABLED = /^(1|true|yes|on)$/i.test(
+    String(process.env.FIVE_AM_REPORTS_ENABLED ?? '1').trim()
+);
+const FIVE_AM_REPORTS_HOUR = (() => {
+    const h = Number(process.env.FIVE_AM_REPORTS_HOUR ?? 5);
+    return Number.isFinite(h) && h >= 0 && h <= 23 ? Math.floor(h) : 5;
+})();
+const FIVE_AM_REPORTS_CHECK_MS = 15 * 60 * 1000;
+let fiveAmReportsRunning = false;
+const fiveAmReportsInFlight = new Set();
+
+function serializeStockSummaryForFiveAm(summary) {
+    if (!summary) return null;
+    return {
+        count: Number(summary.count) || 0,
+        items: Array.isArray(summary.items) ? summary.items : [],
+        alerts: Array.isArray(summary.alerts) ? summary.alerts : summary.items || [],
+        thresholdDays: summary.thresholdDays,
+        onHandOnly: Boolean(summary.onHandOnly),
+        checked: Boolean(summary.checked),
+        checkedAt: summary.checkedAt || null,
+    };
+}
+
+function fiveAmReportsTimeZoneForStore(storeNumber) {
+    const cfg = getStoreConfig(storeNumber) || {};
+    return String(cfg.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne').trim();
+}
+
+/**
+ * Download + compute both stock-levels modes for one store, persist the result and
+ * record the run. Skips if today's result already exists (unless `force`). Safe to
+ * call from the scheduler or on-demand (e.g. when an admin enables a store).
+ */
+async function runFiveAmReportsForStore(storeNumber, { force = false } = {}) {
+    const store = String(storeNumber || '').trim();
+    if (!store || isTestStore(store)) return null;
+    if (fiveAmReportsInFlight.has(store)) return null;
+
+    const timeZone = fiveAmReportsTimeZoneForStore(store);
+    const todayYmd = ymdInTimeZone(new Date(), timeZone);
+    if (!force && getFiveAmReportsLastRun(store) === todayYmd) return null;
+
+    fiveAmReportsInFlight.add(store);
+    try {
+        // One Macromatix download covers both modes.
+        const withOnOrder = await checkStockLevelsForStore(store, { onHandOnly: false });
+        const onHandOnly = await getLowStockSummary(store, { onHandOnly: true });
+        writeFiveAmReportsResult(todayYmd, store, {
+            withOnOrder: serializeStockSummaryForFiveAm(withOnOrder),
+            onHandOnly: serializeStockSummaryForFiveAm(onHandOnly),
+        });
+        setFiveAmReportsLastRun(store, todayYmd);
+        console.info(
+            `[5AMReports] Stock levels computed for store ${store} (on-hand ${onHandOnly.count}, on-hand+on-order ${withOnOrder.count})`
+        );
+        try {
+            purgeFiveAmReportsReportFiles(store, todayYmd);
+        } catch (err) {
+            console.warn(`[5AMReports] Report cleanup failed for ${store}:`, err.message);
+        }
+        return { withOnOrder, onHandOnly, todayYmd };
+    } finally {
+        fiveAmReportsInFlight.delete(store);
+    }
+}
+
+async function maybeRunFiveAmReports() {
+    if (!FIVE_AM_REPORTS_ENABLED || fiveAmReportsRunning) return;
+    fiveAmReportsRunning = true;
+    try {
+        const now = new Date();
+        const enabled = new Set(listFiveAmReportsEnabledStores().map(String));
+        if (!enabled.size) return;
+        const stores = getStoreList().filter((s) => enabled.has(String(s.storeNumber)));
+        const defaultTz = String(process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne').trim();
+        let didRun = false;
+        for (const row of stores) {
+            const storeNumber = String(row.storeNumber || '').trim();
+            if (!storeNumber || isTestStore(storeNumber)) continue;
+            const timeZone = fiveAmReportsTimeZoneForStore(storeNumber);
+            if (localHourInTimeZone(now, timeZone) < FIVE_AM_REPORTS_HOUR) continue;
+            if (getFiveAmReportsLastRun(storeNumber) === ymdInTimeZone(now, timeZone)) continue;
+            try {
+                const result = await runFiveAmReportsForStore(storeNumber);
+                if (result) didRun = true;
+            } catch (err) {
+                console.warn(`[5AMReports] Store ${storeNumber} failed:`, err.message);
+            }
+        }
+        if (didRun) {
+            try {
+                purgeFiveAmReportsResults(ymdInTimeZone(now, defaultTz));
+            } catch (err) {
+                console.warn('[5AMReports] Results cleanup failed:', err.message);
+            }
+        }
+    } catch (err) {
+        console.warn('[5AMReports] Run failed:', err.message);
+    } finally {
+        fiveAmReportsRunning = false;
+    }
+}
+
+function startFiveAmReportsScheduler() {
+    if (!FIVE_AM_REPORTS_ENABLED) return;
+    setTimeout(() => void maybeRunFiveAmReports(), 90_000);
+    setInterval(() => void maybeRunFiveAmReports(), FIVE_AM_REPORTS_CHECK_MS);
+}
+
 (function logDashboardAuthMode() {
     if (usersFileConfigured()) {
         console.log(`[Auth] ${readUsersFileSync().length} dashboard account(s) from ${path.basename(resolveUsersFilePath())}`);
@@ -7897,6 +8085,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
         console.warn('[TacAudit] Compliance week snapshot check failed:', err.message);
     }
     startActionsDigestScheduler();
+    startFiveAmReportsScheduler();
 });
 
 // Graceful shutdown so PM2 restarts / systemctl stop release the port cleanly.

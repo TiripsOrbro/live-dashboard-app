@@ -1,0 +1,11 @@
+{
+  "watch": ["src", "dashboard/src", "users/src", "stores/src", "tacaudit/src", "vendors/src", "smg/src", "nsf/src", "public", "dashboard/public", "users/public", "tacaudit/public", "vendors/public"],
+  "ignore": [
+    "**/data/**",
+    "**/*.log",
+    "**/sales-snapshots/**",
+    "**/.Users",
+    "**/node_modules/**"
+  ],
+  "ext": "js,json,html,css"
+}

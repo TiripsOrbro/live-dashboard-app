@@ -2427,8 +2427,6 @@
             body.innerHTML = `<p>No stores in ${escapeHtml(activeArea || 'this area')}.</p>`;
             return;
         }
-        const canManageAuto = payload.canManageAutoSubmit;
-        const storeAutoSubmit = payload.storeAutoSubmit || {};
         const updatesByWeek = payload.updatesSummaryByWeek || {};
         const head = weeks
             .map((w, idx) => {
@@ -2467,21 +2465,11 @@
                         return `<td>${dot(false)} Pending</td>`;
                     })
                     .join('');
-                const autoEnabled = Boolean(storeAutoSubmit[storeNumber]);
-                const autoCell = canManageAuto
-                    ? `<td class="admin-forecast-auto-cell">
-                        <label class="mic-toggle-switch" title="Daily 5 AM auto-submit for this store">
-                            <input type="checkbox" role="switch" aria-label="5 AM auto-submit store ${escapeHtml(storeNumber)}" data-auto-submit-store="${escapeHtml(storeNumber)}"${autoEnabled ? ' checked' : ''} />
-                            <span class="mic-toggle-slider" aria-hidden="true"></span>
-                        </label>
-                    </td>`
-                    : `<td><span class="admin-accounts-meta">${autoEnabled ? 'On' : 'Off'}</span></td>`;
                 const manualBtn = `<button type="button" class="mic-settings-btn" data-manual-update-store="${escapeHtml(storeNumber)}">Manual Update</button>`;
                 return `<tr>
                     <td>${escapeHtml(storeNumber)}<span class="admin-accounts-meta">${histLabel}</span></td>
                     <td>${dot(hist.ready, !hist.ready && hist.daysRecorded > 0)} ${hist.ready ? 'Ready' : 'Not ready'}</td>
                     ${weekCells}
-                    ${autoCell}
                     <td class="admin-forecast-actions">
                         <button type="button" class="mic-settings-btn" data-history-store="${escapeHtml(storeNumber)}">History</button>
                         ${manualBtn}
@@ -2491,9 +2479,10 @@
             })
             .join('');
         body.innerHTML = `
+            <p class="admin-accounts-meta">Daily forecast auto-submit is configured under Admin → Daily reports.</p>
             <table class="admin-table">
                 <thead>
-                    <tr><th>Store</th><th>History</th>${head}<th>5 AM auto</th><th></th></tr>
+                    <tr><th>Store</th><th>History</th>${head}<th></th></tr>
                 </thead>
                 <tbody>${rows}</tbody>
             </table>`;
@@ -2510,14 +2499,6 @@
         body.querySelectorAll('[data-manual-update-store]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 void openManualUpdate(btn.getAttribute('data-manual-update-store'));
-            });
-        });
-        body.querySelectorAll('[data-auto-submit-store]').forEach((input) => {
-            input.addEventListener('change', (event) => {
-                void saveStoreAutoSubmit(
-                    event.target.getAttribute('data-auto-submit-store'),
-                    event.target.checked
-                );
             });
         });
     }

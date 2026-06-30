@@ -99,8 +99,41 @@ function isNologinDashboardEntry() {
     return document.cookie.split(';').some((c) => c.trim().startsWith('dashboard_nologin='));
 }
 
-/** Settings cog on sales dashboard - MIC and admin logins only, not wall/kiosk tablets. */
+/** Cached /api/me profile for layout and permission-driven chrome. */
+let dashboardUserProfile = null;
+
+async function loadDashboardUserProfile() {
+    if (dashboardUserProfile) return dashboardUserProfile;
+    if (isKioskDashboardEntry() || isNologinDashboardEntry()) {
+        dashboardUserProfile = {
+            layoutCapabilities: { showBackNav: false, showSettings: false },
+            canStartAudits: false,
+        };
+        return dashboardUserProfile;
+    }
+    try {
+        const res = await fetch(withStore(`${window.location.origin}/api/me`), { credentials: 'include' });
+        if (!res.ok) return null;
+        const me = await res.json();
+        if (me.success) dashboardUserProfile = me;
+    } catch {
+        /* ignore */
+    }
+    return dashboardUserProfile;
+}
+
+function shouldShowDashboardBackNav() {
+    if (dashboardUserProfile?.layoutCapabilities) {
+        return Boolean(dashboardUserProfile.layoutCapabilities.showBackNav);
+    }
+    return !isKioskDashboardEntry() && !isNologinDashboardEntry();
+}
+
+/** Settings cog on sales dashboard - from profile, not URL/cookie heuristics. */
 function shouldShowDashboardSettings() {
+    if (dashboardUserProfile?.layoutCapabilities) {
+        return Boolean(dashboardUserProfile.layoutCapabilities.showSettings);
+    }
     if (isKioskDashboardEntry() || isNologinDashboardEntry()) return false;
     if (isAdminStoreDashboard() || isMicStoreDashboard()) return true;
     return (
@@ -108,6 +141,14 @@ function shouldShowDashboardSettings() {
         /^\/MIC\/(teststore|\d{3,6})\/?$/i.test(shellPathname()) ||
         /^\/(teststore|\d{3,6})\/?$/i.test(window.location.pathname)
     );
+}
+
+function auditActionLabel() {
+    const fromProfile = dashboardUserProfile?.tileVisibility?.auditAction;
+    if (fromProfile) return fromProfile;
+    if (dashboardUserProfile?.canStartAudits === false) return 'View';
+    if (dashboardUserProfile?.canStartAudits === true) return 'Start';
+    return isAdminStoreDashboard() ? 'View' : 'Start';
 }
 
 function withStore(url) {
@@ -2347,7 +2388,7 @@ function updateAuditsPanel() {
               .map((name) => {
                   const formPath = auditFormPath(name);
                   if (formPath) {
-                      const auditAction = isAdminStoreDashboard() ? 'View' : 'Start';
+                      const auditAction = auditActionLabel();
                       return `<div class="audit-item"><a class="audit-chip audit-chip--link" href="${escapeHtml(formPath)}" aria-label="${auditAction} ${escapeHtml(name)}">${escapeHtml(name)}</a></div>`;
                   }
                   return `<div class="audit-item"><button type="button" class="audit-chip" data-audit="${encodeURIComponent(
@@ -2605,34 +2646,13 @@ function updateGrid() {
 /* -----------------------------------------------------------
    First paint - dashboard layout, header, empty grid, popup mount point
 ----------------------------------------------------------- */
-function renderDashboard() {
-    app.classList.remove('app-boot-loading');
-    app.removeAttribute('aria-busy');
-    app.innerHTML = `
-        <div id="rotate-hint" class="rotate-hint" hidden aria-hidden="true">
-            <div class="rotate-hint-card">
-                <div class="rotate-hint-icon" aria-hidden="true">↻</div>
-                <h2>Rotate to landscape</h2>
-                <p>The sales grid is built for a wide view. Turn your phone sideways for the best layout.</p>
-                <a class="rotate-hint-back" href="${isAdminStoreDashboard() ? (window.AppPaths?.overview?.() || '/overview') : '/'}">← ${
-                    isAdminStoreDashboard() ? 'Admin overview' : 'All stores'
-                }</a>
-            </div>
-        </div>
-        <div class="dashboard${isAdminStoreDashboard() ? ' dashboard--admin-store' : ''}">
-            ${
-                isAdminStoreDashboard()
-                    ? '<div class="nav-back-host" id="admin-store-nav-back"></div>'
-                    : ''
-            }
-            <div class="dashboard-portrait-chrome" hidden>
-                ${buildPortraitTabsHtml()}
-            </div>
-            ${
-                isAdminStoreDashboard()
-                    ? ''
-                    : `
-            <div class="dashboard-header">
+function buildDashboardHeaderHtml() {
+    if (isKioskDashboardEntry() || isNologinDashboardEntry()) return '';
+    const adminPickerRow = isAdminStoreDashboard()
+        ? '<div class="dashboard-header__store-picker" id="dashboard-header-store-picker"><div id="admin-store-tabs"></div></div>'
+        : '';
+    return `
+            <div class="dashboard-header${isAdminStoreDashboard() ? ' dashboard-header--admin-area' : ''}">
                 <div class="dashboard-title">
                     <div class="dashboard-title-desktop">
                         <h1>SALES DASHBOARD</h1>
@@ -2651,17 +2671,29 @@ function renderDashboard() {
                         <span id="last-updated" class="top-info-value">--:--</span>
                     </div>
                 </div>
-            </div>`
-            }
-            ${
-                isAdminStoreDashboard()
-                    ? `
-            <span id="time-display" class="dashboard-admin-clock-sink" hidden aria-hidden="true">${formatTime(new Date())}</span>
-            <span id="last-updated" class="dashboard-admin-clock-sink" hidden aria-hidden="true">--:--</span>
-            <p id="store-label" class="store-label" hidden aria-hidden="true"></p>`
-                    : ''
-            }
+                ${adminPickerRow}
+            </div>`;
+}
 
+function renderDashboard() {
+    app.classList.remove('app-boot-loading');
+    app.removeAttribute('aria-busy');
+    const overviewHref = window.AppPaths?.overview?.() || '/overview';
+    const showChrome = shouldShowDashboardBackNav() || shouldShowDashboardSettings();
+    app.innerHTML = `
+        <div id="rotate-hint" class="rotate-hint" hidden aria-hidden="true">
+            <div class="rotate-hint-card">
+                <div class="rotate-hint-icon" aria-hidden="true">↻</div>
+                <h2>Rotate to landscape</h2>
+                <p>The sales grid is built for a wide view. Turn your phone sideways for the best layout.</p>
+                <a class="rotate-hint-back" href="${overviewHref}">← Overview</a>
+            </div>
+        </div>
+        <div class="dashboard${isAdminStoreDashboard() ? ' dashboard--admin-store' : ''}">
+            <div class="dashboard-portrait-chrome" hidden>
+                ${buildPortraitTabsHtml()}
+            </div>
+            ${buildDashboardHeaderHtml()}
             <div id="sales-status" class="sales-status" role="status" aria-live="polite" hidden></div>
             <div id="audit-schedule-status" class="audit-schedule-status" role="alert" aria-live="assertive" hidden></div>
 
@@ -2730,31 +2762,12 @@ function renderDashboard() {
     applyPortraitTabVisibility();
     bindDashboardSettings();
     const isKioskEntry = isKioskDashboardEntry();
-    const isMicStoreEntry =
-        !isKioskEntry &&
-        (isMicStoreDashboard() ||
-            document.cookie.split(';').some((c) => c.trim() === 'dashboard_entry=store') ||
-            /^\/MIC\/(teststore|\d{3,6})\/?$/i.test(window.location.pathname) ||
-            /^\/\d{3,6}\/?$/i.test(window.location.pathname) ||
-            /^\/teststore\/?$/i.test(window.location.pathname));
-    if (STORE_NUMBER && window.DashboardNavBack) {
-        if (isAdminStoreDashboard()) {
-            window.DashboardNavBack.mountBackButton(document.getElementById('admin-store-nav-back'), {
-                fallback: window.AppPaths?.adminOverview?.() || '/Admin/Overview',
-                alwaysFallback: true,
-            });
-        } else if (isMicStoreEntry) {
-            window.DashboardNavBack.mountBackButton(document.getElementById('dashboard-nav-back'), {
-                fallback: window.AppPaths?.overview?.() || '/overview',
-                alwaysFallback: true,
-            });
-        } else if (!isKioskEntry) {
-            window.DashboardNavBack.mountBackButton(document.getElementById('dashboard-nav-back'), {
-                fallback: window.AppPaths?.overview?.() || '/overview',
-                alwaysFallback: true,
-                fadeToStores: true,
-            });
-        }
+    if (showChrome && window.DashboardNavBack) {
+        window.DashboardNavBack.mountBackButton(document.getElementById('dashboard-nav-back'), {
+            fallback: overviewHref,
+            alwaysFallback: true,
+            fadeToStores: !isAdminStoreDashboard(),
+        });
     }
 
     if (isAdminStoreDashboard()) {
@@ -2842,7 +2855,7 @@ function applyDashboardScale() {
     const viewH = getMobileLayoutHeight();
     const dash = document.querySelector('.dashboard');
     const isAdminStore = document.body.classList.contains('dashboard-page--admin-store');
-    const chromeOffset = isAdminStore ? 110 : 0;
+    const chromeOffset = isAdminStore ? 140 : 0;
     const layoutH = Math.max(320, viewH - chromeOffset);
 
     if (portrait) {
@@ -2932,6 +2945,7 @@ function initMobileLandscape() {
    Boot - render dashboard shell, then start clock & sales sync
 ----------------------------------------------------------- */
 async function bootSalesDashboard() {
+    await loadDashboardUserProfile();
     syncDashboardLayoutMode();
     lastPortraitLayout = isPortraitMobileView();
     applyDashboardScale();

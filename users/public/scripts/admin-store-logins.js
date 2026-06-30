@@ -9,15 +9,18 @@
     let browseScope = { market: '', area: '', storeNumber: '' };
     let currentStore = '';
     let storeDetail = null;
+    let reportEmail = '';
+    let savingReportEmail = false;
 
     const SERVICE_LABELS = {
         mmx: 'MMX',
         lifelenz: 'LifeLenz',
         smg: 'SMG',
         nsf: 'NSF',
+        'report-email': 'Report email',
     };
 
-    const SERVICES = ['mmx', 'lifelenz', 'smg', 'nsf'];
+    const SERVICES = ['mmx', 'lifelenz', 'smg', 'nsf', 'report-email'];
 
     const VERIFY_STATUS_STEPS = {
         mmx: [
@@ -68,6 +71,82 @@
             }
         }
         return parts.length ? parts.join(' · ') : '-';
+    }
+
+    async function loadReportEmail(storeNumber) {
+        const store = String(storeNumber || '').trim();
+        if (!store) {
+            reportEmail = '';
+            return;
+        }
+        try {
+            const res = await fetch(`/api/tacaudit/settings?store=${encodeURIComponent(store)}`, {
+                credentials: 'include',
+            });
+            if (!res.ok) return;
+            const data = await res.json().catch(() => ({}));
+            reportEmail = String(data.settings?.reportEmail || '').trim();
+        } catch {
+            /* ignore */
+        }
+    }
+
+    async function saveReportEmail(storeNumber) {
+        const store = String(storeNumber || '').trim();
+        if (!store) return;
+        const root = getRoot();
+        const input = root?.querySelector('#admin-store-logins-report-email');
+        const btn = root?.querySelector('#admin-store-logins-save-report-email');
+        const errEl = root?.querySelector('#admin-store-logins-report-email-error');
+        const email = String(input?.value || '').trim();
+        if (errEl) errEl.textContent = '';
+        savingReportEmail = true;
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Saving…';
+        }
+        try {
+            const res = await fetch('/api/tacaudit/settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ store, reportEmail: email }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) throw new Error(data.error || 'Could not save email.');
+            reportEmail = String(data.settings?.reportEmail || email).trim();
+            if (input) input.value = reportEmail;
+        } catch (err) {
+            if (errEl) errEl.textContent = err.message || 'Could not save email.';
+        } finally {
+            savingReportEmail = false;
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Save email';
+            }
+        }
+    }
+
+    function renderReportEmailBlock() {
+        return `
+            <section class="admin-store-logins-section admin-store-logins-report-email">
+                <h3>Report email</h3>
+                <p class="mic-settings-pref-hint">Completed audit PDFs for this store are emailed here.</p>
+                <div class="mic-settings-store-email">
+                    <label class="mic-settings-field-label" for="admin-store-logins-report-email">Report email</label>
+                    <input type="email" id="admin-store-logins-report-email" value="${escapeAttr(reportEmail)}" placeholder="store@example.com" autocomplete="email" />
+                    <button type="button" class="mic-settings-btn mic-settings-btn--primary" id="admin-store-logins-save-report-email"${savingReportEmail ? ' disabled' : ''}>Save email</button>
+                </div>
+                <p class="admin-modal-error" id="admin-store-logins-report-email-error" role="alert"></p>
+            </section>`;
+    }
+
+    function bindReportEmailControls() {
+        const root = getRoot();
+        if (!root) return;
+        root.querySelector('#admin-store-logins-save-report-email')?.addEventListener('click', () => {
+            void saveReportEmail(currentStore);
+        });
     }
 
     function sectionHeader(title, subtitle) {
@@ -163,7 +242,7 @@
             <div class="admin-modal admin-modal--wide admin-store-logins-view" data-store-logins-view="main">
                 ${sectionHeader(
                     'Store logins',
-                    'Use the org tree to pick a market, area, and store, then configure MMX, LifeLenz, SMG, and NSF credentials.'
+                    'Use the org tree to pick a market, area, and store, then configure MMX, LifeLenz, SMG, NSF credentials, and report email.'
                 )}
                 <div id="admin-store-logins-browse-scope" class="admin-accounts-browse-scope admin-accounts-org-nav"></div>
                 <div id="admin-store-logins-content" class="admin-store-logins-content" hidden>
@@ -417,6 +496,7 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) throw new Error(data.error || 'Could not load store login detail.');
         storeDetail = data;
+        await loadReportEmail(currentStore);
         renderEditPanel();
     }
 
@@ -440,6 +520,12 @@
 
         if (!currentStore) {
             body.innerHTML = '';
+            return;
+        }
+
+        if (activeTab === 'report-email') {
+            body.innerHTML = renderReportEmailBlock();
+            bindReportEmailControls();
             return;
         }
 

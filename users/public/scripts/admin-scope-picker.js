@@ -157,7 +157,54 @@
         return Object.values(tree?.storesByArea || {}).some((rows) => rows?.length > 0);
     }
 
-    function buildNavigatorRows(tree, scope, scopePrefix = 'browse') {
+    function buildCompactSelectNavigator(tree, scope, scopePrefix = 'browse') {
+        tree = normalizeScopeTree(tree);
+        const resolved = resolveBrowseScope(tree, scope, scope.storeNumber || '');
+        const parts = [];
+
+        const areas = orderedAreas(tree.areas || []);
+        if (areas.length >= 1) {
+            const options = areas
+                .map((area) => {
+                    const selected = String(area) === String(resolved.area);
+                    return `<option value="${escapeAttr(area)}"${selected ? ' selected' : ''}>${escapeHtml(areaChipLabel(area))}</option>`;
+                })
+                .join('');
+            parts.push(`
+                <label class="admin-scope-picker-field">
+                    <span class="admin-scope-picker-field-label">Area</span>
+                    <select data-browse-scope="${escapeAttr(`${scopePrefix}-area`)}" aria-label="Area">${options}</select>
+                </label>`);
+        }
+
+        const stores = resolved.area ? (tree.storesByArea || {})[resolved.area] || [] : [];
+        if (stores.length >= 1) {
+            const options = stores
+                .map((row) => {
+                    const selected = String(row.storeNumber) === String(resolved.storeNumber);
+                    return `<option value="${escapeAttr(row.storeNumber)}"${selected ? ' selected' : ''}>${escapeHtml(String(row.storeNumber))}</option>`;
+                })
+                .join('');
+            parts.push(`
+                <label class="admin-scope-picker-field">
+                    <span class="admin-scope-picker-field-label">Store</span>
+                    <select data-browse-scope="${escapeAttr(`${scopePrefix}-store`)}" aria-label="Store">${options}</select>
+                </label>`);
+        }
+
+        const finalScope = resolveBrowseScope(tree, resolved, '');
+        return {
+            html:
+                parts.length > 0
+                    ? `<div class="admin-scope-picker-compact">${parts.join('')}</div>`
+                    : treeHasStores(tree)
+                      ? ''
+                      : '<p class="admin-scope-picker-empty">No stores available.</p>',
+            scope: finalScope,
+        };
+    }
+
+    function buildNavigatorRows(tree, scope, scopePrefix = 'browse', layout = 'chips') {
         tree = normalizeScopeTree(tree);
         const resolved = resolveBrowseScope(tree, scope, scope.storeNumber || '');
         const rows = [];
@@ -216,17 +263,21 @@
         return list.filter((row) => allowed.has(String(row.storeNumber)));
     }
 
-    function mountInline(host, { tree, initialScope = {}, preferredStore = '', onChange, scopePrefix = 'inline' } = {}) {
+    function mountInline(host, { tree, initialScope = {}, preferredStore = '', onChange, scopePrefix = 'inline', layout = 'chips' } = {}) {
         if (!host || !tree) return null;
 
         let scope = { area: '', storeNumber: '', ...initialScope };
         let treeRef = normalizeScopeTree(tree);
+        let layoutMode = layout;
 
         function render() {
             if (preferredStore && !scope.storeNumber) {
                 scope = resolveBrowseScope(treeRef, scope, preferredStore);
             }
-            const built = buildNavigatorRows(treeRef, scope, scopePrefix);
+            const built =
+                layoutMode === 'select'
+                    ? buildCompactSelectNavigator(treeRef, scope, scopePrefix)
+                    : buildNavigatorRows(treeRef, scope, scopePrefix);
             scope = built.scope;
             host.innerHTML = built.html;
         }
@@ -235,9 +286,22 @@
             host.dataset.scopeInlineWired = '1';
             host.addEventListener('click', (event) => {
                 const chip = event.target.closest('[data-browse-scope]');
-                if (!chip) return;
+                if (!chip || chip.tagName === 'SELECT') return;
                 const name = chip.dataset.browseScope || '';
                 const value = chip.dataset.browseValue || '';
+                if (name === `${scopePrefix}-area`) {
+                    scope = { ...scope, area: value, storeNumber: '' };
+                } else if (name === `${scopePrefix}-store`) {
+                    scope = { ...scope, storeNumber: value };
+                }
+                render();
+                onChange?.({ ...scope });
+            });
+            host.addEventListener('change', (event) => {
+                const select = event.target.closest('select[data-browse-scope]');
+                if (!select) return;
+                const name = select.dataset.browseScope || '';
+                const value = select.value || '';
                 if (name === `${scopePrefix}-area`) {
                     scope = { ...scope, area: value, storeNumber: '' };
                 } else if (name === `${scopePrefix}-store`) {

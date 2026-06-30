@@ -7,7 +7,12 @@
         if (!host) return;
         const fallback = options.fallback || '/login';
         const ariaLabel = String(options.label || 'Back').replace(/^←\s*/, '').trim() || 'Back';
-        host.classList.add('nav-back-host', 'nav-back-host--floating');
+        host.classList.add('nav-back-host');
+        if (options.embedded) {
+            host.classList.add('nav-back-host--embedded');
+        } else {
+            host.classList.add('nav-back-host--floating');
+        }
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'nav-back-bubble';

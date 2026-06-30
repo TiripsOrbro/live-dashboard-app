@@ -82,6 +82,10 @@ dashboard/data/mmx-task-active.json
 dashboard/data/mmx-task-lock
 dashboard/data/mmx-preempt-request.json
 
+# 5AM reports runtime data
+dashboard/data/five-am-reports-config.json
+dashboard/data/five-am-reports/
+
 # Legacy root paths (until migration complete)
 data/upselling/
 data/mic/

@@ -5,9 +5,8 @@
 
     let settingsOpen = false;
     let settingsPanelBound = false;
-    let activeSettingsTab = 'account';
+    let activeSettingsTab = 'preferences';
     let bindOptions = {};
-    let savingReportEmail = false;
     let settingsCogClickBound = false;
 
     function settingsBasePath() {
@@ -48,27 +47,17 @@
 
     function renderPanel(options = {}) {
         const darkHint = options.darkModeHint || 'Dark background and tiles on this page.';
-        const hasStoreTab = Boolean(options.storeNumber);
-        const email = String(options.reportEmail || '').trim();
 
         return `
         <div id="mic-settings-picker" class="mic-item-picker" hidden>
             <div class="mic-item-picker-panel mic-settings-panel mic-settings-panel--tabbed">
                 <h2>Settings</h2>
                 <div class="mic-settings-tabs" role="tablist" aria-label="Settings sections">
-                    <button type="button" class="mic-settings-tab is-active" role="tab" data-settings-tab="account" aria-selected="true">Account</button>
-                    <button type="button" class="mic-settings-tab" role="tab" data-settings-tab="preferences" aria-selected="false">Preferences</button>
-                    ${hasStoreTab ? '<button type="button" class="mic-settings-tab" role="tab" data-settings-tab="store" aria-selected="false">Store</button>' : ''}
+                    <button type="button" class="mic-settings-tab is-active" role="tab" data-settings-tab="preferences" aria-selected="true">Preferences</button>
                     <button type="button" class="mic-settings-tab" role="tab" data-settings-tab="general" aria-selected="false">General</button>
                 </div>
                 <div class="mic-settings-tabpanels">
-                    <div class="mic-settings-tabpanel is-active" data-settings-panel="account" role="tabpanel">
-                        <div class="mic-settings-actions">
-                            <button type="button" class="mic-settings-btn" data-action="change-password">Change password</button>
-                            <button type="button" class="mic-settings-btn mic-settings-btn--danger" data-action="logout">Sign out</button>
-                        </div>
-                    </div>
-                    <div class="mic-settings-tabpanel" data-settings-panel="preferences" role="tabpanel" hidden>
+                    <div class="mic-settings-tabpanel is-active" data-settings-panel="preferences" role="tabpanel">
                         <div class="mic-settings-pref-block">
                             <div class="mic-settings-toggle-row">
                                 <span class="mic-settings-toggle-label" id="mic-dark-mode-label">Dark mode</span>
@@ -124,51 +113,19 @@
                             </div>
                         </div>
                     </div>
-                    ${
-                        hasStoreTab
-                            ? `<div class="mic-settings-tabpanel" data-settings-panel="store" role="tabpanel" hidden>
-                        <p class="mic-settings-pref-hint">Completed audit PDFs for this store are emailed here.</p>
-                        <div class="mic-settings-store-email">
-                            <label class="mic-settings-field-label" for="mic-report-email-input">Report email</label>
-                            <input type="email" id="mic-report-email-input" value="${escapeAttr(email)}" placeholder="store@example.com" autocomplete="email" />
-                            <button type="button" class="mic-settings-btn mic-settings-btn--primary" id="mic-save-report-email-btn"${savingReportEmail ? ' disabled' : ''}>
-                                ${savingReportEmail ? 'Saving…' : 'Save email'}
-                            </button>
-                        </div>
-                    </div>`
-                            : ''
-                    }
                     <div class="mic-settings-tabpanel" data-settings-panel="general" role="tabpanel" hidden>
                         <div class="mic-settings-actions">
-                            <button type="button" class="mic-settings-btn" data-action="feature-requests" hidden>Feature requests</button>
-                            <button type="button" class="mic-settings-btn" data-action="bug-reports">Report a bug</button>
+                            <button type="button" class="mic-settings-btn" data-action="change-password">Change password</button>
                             <button type="button" class="mic-settings-btn" data-action="changelog">What's new</button>
                             <button type="button" class="mic-settings-btn" data-action="hard-refresh">Refresh page</button>
                         </div>
                     </div>
                 </div>
+                <button type="button" class="mic-settings-btn mic-settings-btn--danger mic-settings-sign-out" data-action="logout">Sign out</button>
                 <button type="button" class="mic-settings-admin-btn" id="mic-settings-admin-btn" hidden>Admin settings</button>
                 <button type="button" class="mic-settings-close" id="mic-settings-close">Close</button>
             </div>
         </div>`;
-    }
-
-    async function loadStoreReportEmail() {
-        const store = String(bindOptions.storeNumber || '').trim();
-        if (!store) return;
-        try {
-            const res = await fetch(`/api/tacaudit/settings?store=${encodeURIComponent(store)}`, {
-                credentials: 'include',
-            });
-            if (!res.ok) return;
-            const data = await res.json().catch(() => ({}));
-            const email = String(data.settings?.reportEmail || '').trim();
-            bindOptions.reportEmail = email;
-            const input = document.getElementById('mic-report-email-input');
-            if (input) input.value = email;
-        } catch {
-            /* ignore */
-        }
     }
 
     function applyColourBlindMode(enabled) {
@@ -208,10 +165,6 @@
 
     function setStoreContext(options = {}) {
         bindOptions = { ...bindOptions, ...options };
-        const input = document.getElementById('mic-report-email-input');
-        if (input && options.reportEmail !== undefined) {
-            input.value = String(options.reportEmail || '').trim();
-        }
     }
 
     async function loadMicPreferences() {
@@ -374,42 +327,6 @@
         }
     }
 
-    async function saveReportEmail() {
-        const store = String(bindOptions.storeNumber || '').trim();
-        if (!store) return;
-        const input = document.getElementById('mic-report-email-input');
-        const btn = document.getElementById('mic-save-report-email-btn');
-        const email = String(input?.value || '').trim();
-        savingReportEmail = true;
-        if (btn) {
-            btn.disabled = true;
-            btn.textContent = 'Saving…';
-        }
-        try {
-            const res = await fetch('/api/tacaudit/settings', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ store, reportEmail: email }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data.success) throw new Error(data.error || 'Could not save email.');
-            const saved = data.settings?.reportEmail || email;
-            bindOptions.reportEmail = saved;
-            if (typeof bindOptions.onReportEmailSaved === 'function') {
-                bindOptions.onReportEmailSaved(saved);
-            }
-        } catch (err) {
-            alert(err.message || 'Could not save report email.');
-        } finally {
-            savingReportEmail = false;
-            if (btn) {
-                btn.disabled = false;
-                btn.textContent = 'Save email';
-            }
-        }
-    }
-
     function buildSettingsUrl(section = '', query = {}) {
         const params = new URLSearchParams();
         Object.entries(query).forEach(([key, value]) => {
@@ -424,16 +341,13 @@
         try {
             const res = await fetch('/api/me', { credentials: 'same-origin' });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data.success) return 'account';
+            if (!res.ok || !data.success) return 'preferences';
             if (global.AdminSettingsPage?.defaultSectionId) {
                 return global.AdminSettingsPage.defaultSectionId(data);
             }
-            if (data.canAccessAdminMenu || data.canManageStoreLogins) {
-                return data.canAccessAdminMenu ? 'accounts-create' : 'store-logins';
-            }
-            return 'account';
+            return 'preferences';
         } catch {
-            return 'account';
+            return 'preferences';
         }
     }
 
@@ -468,15 +382,9 @@
 
     function pageSectionHtml(sectionId, options = {}) {
         const darkHint = options.darkModeHint || 'Dark background and tiles on supported pages.';
-        const hasStore = Boolean(options.storeNumber);
-        const email = String(options.reportEmail || '').trim();
 
         if (sectionId === 'account') {
-            return `
-                <div class="mic-settings-actions">
-                    <button type="button" class="mic-settings-btn" data-action="change-password">Change password</button>
-                    <button type="button" class="mic-settings-btn mic-settings-btn--danger" data-action="logout">Sign out</button>
-                </div>`;
+            return '';
         }
         if (sectionId === 'preferences') {
             return `
@@ -537,20 +445,13 @@
                 </div>
                 </div>`;
         }
-        if (sectionId === 'store' && hasStore) {
-            return `
-                <p class="mic-settings-pref-hint">Completed audit PDFs for this store are emailed here.</p>
-                <div class="mic-settings-store-email">
-                    <label class="mic-settings-field-label" for="mic-report-email-input">Report email</label>
-                    <input type="email" id="mic-report-email-input" value="${escapeAttr(email)}" placeholder="store@example.com" autocomplete="email" />
-                    <button type="button" class="mic-settings-btn mic-settings-btn--primary" id="mic-save-report-email-btn">Save email</button>
-                </div>`;
+        if (sectionId === 'store') {
+            return '';
         }
         if (sectionId === 'general') {
             return `
                 <div class="mic-settings-actions">
-                    <button type="button" class="mic-settings-btn" data-action="feature-requests" hidden>Feature requests</button>
-                    <button type="button" class="mic-settings-btn" data-action="bug-reports">Report a bug</button>
+                    <button type="button" class="mic-settings-btn" data-action="change-password">Change password</button>
                     <button type="button" class="mic-settings-btn" data-action="changelog">What's new</button>
                     <button type="button" class="mic-settings-btn" data-action="hard-refresh">Refresh page</button>
                 </div>`;
@@ -558,48 +459,9 @@
         return '';
     }
 
-    function applyFeatureRequestLinkVisibility(root, data) {
-        if (!root || !data) return;
-        const btn = root.querySelector('[data-action="feature-requests"]');
-        if (!btn) return;
-        let canView = false;
-        if (global.AdminMenu?.profileCanViewFeatureRequests) {
-            canView = global.AdminMenu.profileCanViewFeatureRequests(data);
-        } else if (data.canViewFeatureRequests === true) {
-            canView = true;
-        } else if (data.canViewFeatureRequests !== false) {
-            if (data.isSuperAdmin) {
-                canView = true;
-            } else {
-                const rank = { it: 100, market: 80, area: 60, store: 40, manager: 40, mic: 20, tm: 10 };
-                const level = String(data.accountLevel || 'manager').toLowerCase();
-                canView = (rank[level] ?? 40) >= rank.mic;
-            }
-        }
-        btn.hidden = !canView;
-    }
-
-    async function syncFeatureRequestLinkVisibility(root) {
-        if (!root?.querySelector('[data-action="feature-requests"]')) return;
-        try {
-            const res = await fetch('/api/me', { credentials: 'same-origin' });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data.success) return;
-            applyFeatureRequestLinkVisibility(root, data);
-        } catch {
-            /* ignore */
-        }
-    }
-
     function wirePageSection(host, sectionId) {
         host.querySelector('[data-action="change-password"]')?.addEventListener('click', () => {
             global.DashboardAccount?.openChangePasswordModal?.();
-        });
-        host.querySelector('[data-action="feature-requests"]')?.addEventListener('click', () => {
-            void navigateToSettingsPage('feature-requests');
-        });
-        host.querySelector('[data-action="bug-reports"]')?.addEventListener('click', () => {
-            void navigateToSettingsPage('bug-reports');
         });
         host.querySelector('[data-action="changelog"]')?.addEventListener('click', () => {
             if (global.AppShell?.navigate) global.AppShell.navigate('/changelog');
@@ -611,15 +473,6 @@
                 return;
             }
             global.location.reload();
-        });
-        host.querySelector('[data-action="logout"]')?.addEventListener('click', () => {
-            global.location.href = '/logout';
-        });
-        if (sectionId === 'general') {
-            void syncFeatureRequestLinkVisibility(host);
-        }
-        host.querySelector('#mic-save-report-email-btn')?.addEventListener('click', () => {
-            void saveReportEmail();
         });
 
         if (sectionId === 'preferences') {
@@ -654,10 +507,6 @@
                 updateMicRoundedTilesToggle(prefs.micRoundedTiles);
             });
         }
-
-        if (sectionId === 'store' && bindOptions.storeNumber) {
-            void loadStoreReportEmail();
-        }
     }
 
     async function mountPageSection(sectionId, host, options = {}) {
@@ -666,7 +515,6 @@
         host.innerHTML = pageSectionHtml(sectionId, {
             darkModeHint: 'Dark background and tiles on supported pages.',
             storeNumber: options.storeNumber || bindOptions.storeNumber,
-            reportEmail: bindOptions.reportEmail,
         });
         wirePageSection(host, sectionId);
     }
@@ -677,10 +525,6 @@
         const picker = document.getElementById('mic-settings-picker');
         if (picker) picker.hidden = false;
         switchSettingsTab(activeSettingsTab);
-        const input = document.getElementById('mic-report-email-input');
-        if (input && bindOptions.reportEmail !== undefined) {
-            input.value = String(bindOptions.reportEmail || '').trim();
-        }
         loadMicPreferences().then((prefs) => {
             updateColourBlindToggle(prefs.colorBlind);
             updateMicDarkToggle(prefs.micDarkMode);
@@ -689,9 +533,6 @@
         });
         global.AdminStoreView?.mountSettingsBlock?.();
         global.AdminStoreView?.syncSettingsUi?.();
-        if (bindOptions.storeNumber) {
-            void loadStoreReportEmail();
-        }
     }
 
     function closeSettingsPanel() {
@@ -721,27 +562,12 @@
         picker.querySelectorAll('[data-settings-tab]').forEach((tabBtn) => {
             tabBtn.addEventListener('click', () => {
                 switchSettingsTab(tabBtn.dataset.settingsTab);
-                if (tabBtn.dataset.settingsTab === 'store') {
-                    void loadStoreReportEmail();
-                }
             });
         });
 
         picker.querySelector('[data-action="change-password"]')?.addEventListener('click', () => {
             closeSettingsPanel();
             global.DashboardAccount?.openChangePasswordModal?.();
-        });
-        picker.querySelector('[data-action="feature-requests"]')?.addEventListener('click', () => {
-            closeSettingsPanel();
-            void navigateToSettingsPage('feature-requests', {
-                storeNumber: bindOptions.storeNumber,
-            });
-        });
-        picker.querySelector('[data-action="bug-reports"]')?.addEventListener('click', () => {
-            closeSettingsPanel();
-            void navigateToSettingsPage('bug-reports', {
-                storeNumber: bindOptions.storeNumber,
-            });
         });
         picker.querySelector('[data-action="changelog"]')?.addEventListener('click', () => {
             closeSettingsPanel();
@@ -758,10 +584,6 @@
             global.location.href = '/logout';
         });
 
-        picker.querySelector('#mic-save-report-email-btn')?.addEventListener('click', () => {
-            void saveReportEmail();
-        });
-
         picker.querySelector('#mic-settings-admin-btn')?.addEventListener('click', () => {
             closeSettingsPanel();
             global.location.href = global.AdminMenu?.ADMIN_PAGE_PATH || '/Admin/Settings';
@@ -774,7 +596,6 @@
                     if (adminBtn && (data.canAccessAdminMenu || data.canManageStoreLogins)) {
                         adminBtn.hidden = false;
                     }
-                    applyFeatureRequestLinkVisibility(picker, data);
                     global.AdminMenu?.bind?.({
                         getViewAccountsOptions:
                             typeof bindOptions.getViewAccountsOptions === 'function'

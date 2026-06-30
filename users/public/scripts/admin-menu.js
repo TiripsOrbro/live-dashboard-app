@@ -1,17 +1,7 @@
 (function (global) {
     const ADMIN_PAGE_PATH = '/Admin/Settings';
-    const ACCOUNT_LEVEL_RANK = { it: 100, market: 80, area: 60, store: 40, manager: 40, mic: 20, tm: 10 };
 
     let profile = null;
-
-    function profileCanViewFeatureRequests(data) {
-        if (!data) return false;
-        if (data.canViewFeatureRequests === true) return true;
-        if (data.canViewFeatureRequests === false) return false;
-        if (data.isSuperAdmin) return true;
-        const level = String(data.accountLevel || 'manager').toLowerCase();
-        return (ACCOUNT_LEVEL_RANK[level] ?? 40) >= ACCOUNT_LEVEL_RANK.mic;
-    }
 
     function escapeAttr(value) {
         return String(value ?? '')
@@ -49,7 +39,7 @@
     function renderActionsHtml() {
         return `
                 <div class="admin-menu-actions mic-settings-actions">
-                    <button type="button" class="mic-settings-btn" data-admin-action="view-accounts">Store accounts</button>
+                    <button type="button" class="mic-settings-btn" data-admin-action="view-accounts">Existing accounts</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="store-logins" hidden>Store logins</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="smg-nsf" hidden>Setup SMG/NSF</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="forecast">Forecast tool</button>
@@ -77,7 +67,7 @@
             btn.hidden = !data.canAccessAdminMenu;
         });
         const featureRequestsBtn = root.querySelector('[data-admin-action="feature-requests"]');
-        if (featureRequestsBtn) featureRequestsBtn.hidden = !profileCanViewFeatureRequests(data);
+        if (featureRequestsBtn) featureRequestsBtn.hidden = !data.canViewFeatureRequests;
     }
 
     let bindOptions = {};

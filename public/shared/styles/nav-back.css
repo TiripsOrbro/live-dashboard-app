@@ -10,6 +10,16 @@
     display: block;
 }
 
+.nav-back-host--embedded {
+    position: static;
+    inset: auto;
+    top: auto;
+    left: auto;
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+}
+
 .nav-back-bubble {
     pointer-events: auto;
     display: flex;

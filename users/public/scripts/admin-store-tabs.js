@@ -2,7 +2,7 @@
  * Admin store dashboard - /Admin/qld-1|vic-1|wa-1 with in-page store switching.
  */
 (function (global) {
-    const MOBILE_MAX = 768;
+    const MOBILE_MAX = 900;
     const ADMIN_AREAS = ['VIC-1', 'WA-1', 'QLD-1'];
 
     function areaLabel(name) {
@@ -445,11 +445,16 @@
         if (!bar) {
             bar = document.createElement('div');
             bar.id = 'admin-store-tabs';
-            const backHost = document.getElementById('admin-store-nav-back');
-            if (backHost?.nextSibling) {
-                dashboard.insertBefore(bar, backHost.nextSibling);
+            const pickerHost = document.getElementById('dashboard-header-store-picker');
+            if (pickerHost) {
+                pickerHost.appendChild(bar);
             } else {
-                dashboard.prepend(bar);
+                const backHost = document.getElementById('admin-store-nav-back');
+                if (backHost?.nextSibling) {
+                    dashboard.insertBefore(bar, backHost.nextSibling);
+                } else {
+                    dashboard.prepend(bar);
+                }
             }
         }
 

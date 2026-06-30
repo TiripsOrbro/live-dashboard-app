@@ -8,6 +8,7 @@
     let scopeTree = null;
     let scopeNavigator = null;
     let browseScope = { market: '', area: '', storeNumber: '' };
+    let canEditItemCodes = false;
 
     function escapeHtml(text) {
         return String(text)
@@ -47,9 +48,65 @@
         });
     }
 
-    function bindRowControls() {
+    function displayMmxCode(item) {
+        return String(item.fileMmxCode || item.mmxCode || item.catalogMmxCode || item.itemCode || '').trim();
+    }
+
+    function displayVendorCode(item) {
+        return String(item.fileVendorCode || item.vendorCode || item.catalogMmxCode || item.itemCode || '').trim();
+    }
+
+    function displayFallbackCodes(item) {
+        const effective = formatFallbackCodes(item.fallbackCodes);
+        if (effective) return effective;
+        return formatFallbackCodes(item.fileFallbackCodes);
+    }
+
+    function applyItemCodeFields(row, item) {
+        const mmx = displayMmxCode(item);
+        const vendor = displayVendorCode(item);
+        const fallbacks = displayFallbackCodes(item);
+        const catalogMmx = String(item.catalogMmxCode || item.itemCode || '').trim();
+
+        row.dataset.catalogMmx = catalogMmx;
+        row.dataset.loadedMmx = mmx;
+        row.dataset.loadedVendor = vendor;
+        row.dataset.loadedFallbacks = fallbacks;
+        row.dataset.fileFallbacks = formatFallbackCodes(item.fileFallbackCodes);
+
+        const mmxInput = row.querySelector('[data-field="mmxCode"]');
+        const vendorInput = row.querySelector('[data-field="vendorCode"]');
+        const fallbackInput = row.querySelector('[data-field="fallbackCodes"]');
+        const codeLocked = !canEditItemCodes;
+        const lockedTitle = 'Area Manager or above can change item codes';
+        if (mmxInput) {
+            mmxInput.value = mmx;
+            mmxInput.readOnly = codeLocked;
+            mmxInput.classList.toggle('admin-buildto-code-input--locked', codeLocked);
+            mmxInput.title = codeLocked ? lockedTitle : 'MMX / Key Item Count code';
+        }
+        if (vendorInput) {
+            vendorInput.value = vendor;
+            vendorInput.readOnly = codeLocked;
+            vendorInput.classList.toggle('admin-buildto-code-input--locked', codeLocked);
+            vendorInput.title = codeLocked ? lockedTitle : 'Vendor order code';
+        }
+        if (fallbackInput) {
+            fallbackInput.value = fallbacks;
+            fallbackInput.placeholder = fallbacks ? '' : '—';
+            fallbackInput.readOnly = codeLocked;
+            fallbackInput.classList.toggle('admin-buildto-code-input--locked', codeLocked);
+            fallbackInput.title = codeLocked
+                ? lockedTitle
+                : 'Extra ISE/SOH codes, tried in order (comma-separated)';
+        }
+    }
+
+    function bindRowControls(itemsByCode) {
         const root = ensureBackdrop();
         root.querySelectorAll('tbody tr[data-item-code]').forEach((row) => {
+            const item = itemsByCode?.get(row.getAttribute('data-item-code'));
+            if (item) applyItemCodeFields(row, item);
             applyRuleTypeRow(row);
             const select = row.querySelector('[data-field="ruleType"]');
             if (select && !select.dataset.bound) {
@@ -73,18 +130,16 @@
                     <h2>Build to adjustments</h2>
                     <p class="admin-buildto-subtitle">Set build-to rules, item codes (MMX / vendor / fallbacks), and low-stock thresholds. Global, area, or per-store.</p>
                 </div>
-                <div class="admin-settings-segmented-tabs admin-accounts-org-nav">
+                <div id="admin-buildto-scope-tabs-wrap" class="admin-settings-segmented-tabs admin-accounts-org-nav">
                     <div class="admin-accounts-scope-row-wrap">
                         <span class="admin-accounts-scope-row-label">Scope</span>
-                        <div class="admin-accounts-scope-row admin-accounts-scope-row--equal" id="admin-buildto-tabs" role="tablist" style="--scope-cols: 1">
+                        <div class="admin-accounts-scope-row admin-accounts-scope-row--equal" id="admin-buildto-tabs" role="tablist" style="--scope-cols: 2">
                             <button type="button" class="admin-accounts-scope-chip" data-tab="global" id="admin-buildto-global-tab" hidden role="tab">Global</button>
                             <button type="button" class="admin-accounts-scope-chip" data-tab="store" role="tab">Stores</button>
                         </div>
                     </div>
                 </div>
-                <div id="admin-buildto-scope-wrap" class="admin-buildto-scope-wrap" hidden>
-                    <div id="admin-buildto-scope-nav" class="admin-buildto-scope-nav"></div>
-                </div>
+                <div id="admin-buildto-browse-scope" class="admin-accounts-browse-scope admin-accounts-org-nav"></div>
                 <div class="admin-modal-toolbar admin-buildto-toolbar">
                     <div class="admin-buildto-search-wrap">
                         <input type="search" id="admin-buildto-search" placeholder="Search items…" aria-label="Search items" />
@@ -152,7 +207,13 @@
             tab.classList.toggle('is-active', tab.dataset.tab === activeTab);
         });
         if (row) row.style.setProperty('--scope-cols', String(Math.max(visibleCount, 1)));
-        root.querySelector('#admin-buildto-scope-wrap').hidden = activeTab === 'global';
+
+        const globalTab = root.querySelector('#admin-buildto-global-tab');
+        const scopeTabsWrap = root.querySelector('#admin-buildto-scope-tabs-wrap');
+        if (scopeTabsWrap) scopeTabsWrap.hidden = Boolean(globalTab?.hidden);
+
+        const browseScopeHost = root.querySelector('#admin-buildto-browse-scope');
+        if (browseScopeHost) browseScopeHost.hidden = activeTab === 'global';
     }
 
     function formatFallbackCodes(codes) {
@@ -196,10 +257,10 @@
 
     function renderScopeNavigator() {
         const root = ensureBackdrop();
-        const host = root.querySelector('#admin-buildto-scope-nav');
+        const host = root.querySelector('#admin-buildto-browse-scope');
         if (!host) return;
         if (!scopeTree || !global.AdminScopePicker) {
-            host.innerHTML = '<p class="admin-accounts-meta">No stores available.</p>';
+            host.innerHTML = '<p class="admin-scope-picker-empty">No stores available.</p>';
             return;
         }
 
@@ -216,7 +277,7 @@
                 tree: scopeTree,
                 initialScope: browseScope,
                 preferredStore: browseScope.storeNumber,
-                scopePrefix: 'buildto',
+                scopePrefix: 'browse',
                 onChange: onScopeChange,
             });
         } else {
@@ -298,6 +359,7 @@
             body.innerHTML = '<p>No items match.</p>';
             return;
         }
+        const itemsByCode = new Map(items.map((item) => [String(item.itemCode), item]));
         body.innerHTML = `
             <table class="admin-table admin-buildto-table">
                 <thead>
@@ -323,7 +385,6 @@
                             const fixedValue = fixedDisplayValue(item);
                             const defaultWarn = item.defaultStockWarningDays ?? 5;
                             const warnValue = warnDisplayValue(item);
-                            const fallbacks = formatFallbackCodes(item.fallbackCodes);
                             const scopeFallbacks = formatFallbackCodes(item.scopeFallbackCodes);
                             return `
                         <tr data-item-code="${escapeHtml(item.itemCode)}"
@@ -338,20 +399,14 @@
                             data-default-stock-warning="${escapeHtml(defaultWarn)}"
                             data-initial-stock-warning="${item.stockWarningDays != null ? escapeHtml(item.stockWarningDays) : ''}"
                             data-initial-rule-type="${escapeHtml(ruleType)}"
-                            data-catalog-mmx="${escapeHtml(item.catalogMmxCode || item.itemCode)}"
-                            data-loaded-mmx="${escapeHtml(item.mmxCode || item.itemCode)}"
                             data-initial-mmx="${item.scopeMmxCode != null ? escapeHtml(item.scopeMmxCode) : ''}"
-                            data-catalog-vendor="${escapeHtml(item.catalogMmxCode || item.itemCode)}"
-                            data-loaded-vendor="${escapeHtml(item.vendorCode || item.itemCode)}"
                             data-initial-vendor="${item.scopeVendorCode != null ? escapeHtml(item.scopeVendorCode) : ''}"
-                            data-loaded-fallbacks="${escapeHtml(fallbacks)}"
-                            data-initial-fallbacks="${escapeHtml(scopeFallbacks)}"
-                            data-file-fallbacks="${escapeHtml(formatFallbackCodes(item.fileFallbackCodes))}">
+                            data-initial-fallbacks="${escapeHtml(scopeFallbacks)}">
                             <td class="admin-buildto-item-cell">${escapeHtml(item.name)}<span class="admin-accounts-meta">${escapeHtml(item.itemCode)}</span></td>
                             <td class="admin-buildto-vendor-cell">${escapeHtml(item.vendorLabel || item.vendorSlug)}</td>
-                            <td><input type="text" data-field="mmxCode" class="admin-buildto-code-input" value="${escapeHtml(item.mmxCode || item.itemCode)}" title="MMX / Key Item Count code" /></td>
-                            <td><input type="text" data-field="vendorCode" class="admin-buildto-code-input" value="${escapeHtml(item.vendorCode || item.itemCode)}" title="Vendor order code" /></td>
-                            <td><input type="text" data-field="fallbackCodes" class="admin-buildto-fallback-input" value="${escapeHtml(fallbacks)}" placeholder="${escapeHtml(formatFallbackCodes(item.fileFallbackCodes) || 'code1, code2')}" title="Extra ISE/SOH codes, tried in order (comma-separated)" /></td>
+                            <td><input type="text" data-field="mmxCode" class="admin-buildto-code-input" autocomplete="off" title="MMX / Key Item Count code" /></td>
+                            <td><input type="text" data-field="vendorCode" class="admin-buildto-code-input" autocomplete="off" title="Vendor order code" /></td>
+                            <td><input type="text" data-field="fallbackCodes" class="admin-buildto-fallback-input" autocomplete="off" title="Extra ISE/SOH codes, tried in order (comma-separated)" /></td>
                             <td>
                                 <select data-field="ruleType" class="admin-buildto-type-select">
                                     <option value="days" ${ruleType === 'days' ? 'selected' : ''}>Days</option>
@@ -370,7 +425,7 @@
                         .join('')}
                 </tbody>
             </table>`;
-        bindRowControls();
+        bindRowControls(itemsByCode);
     }
 
     function parseFallbackInput(value) {
@@ -388,6 +443,7 @@
     }
 
     function collectCodePatch(row, rule) {
+        if (!canEditItemCodes) return;
         const mmx = String(row.querySelector('[data-field="mmxCode"]')?.value || '').trim();
         const vendor = String(row.querySelector('[data-field="vendorCode"]')?.value || '').trim();
         const fallbacks = String(row.querySelector('[data-field="fallbackCodes"]')?.value || '').trim();
@@ -541,6 +597,7 @@
         if (!isInline()) root.hidden = false;
         root.querySelector('#admin-buildto-error').textContent = '';
         const me = await fetchProfile();
+        canEditItemCodes = Boolean(me.canEditGlobalBuildTo);
         const globalTab = root.querySelector('#admin-buildto-global-tab');
         if (me.canEditGlobalBuildTo) {
             globalTab.hidden = false;

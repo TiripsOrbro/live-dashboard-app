@@ -2287,6 +2287,33 @@ function nologinCookieClearOptions() {
     return cookieClearOptions(nologinCookieOptions());
 }
 
+function layoutCapabilitiesForClient(user, overviewScope) {
+    if (isNologinUser(user)) {
+        return {
+            showBackNav: false,
+            showSettings: false,
+            showScopeNav: false,
+            overviewMode: 'store',
+        };
+    }
+    return {
+        showBackNav: true,
+        showSettings: true,
+        showScopeNav: overviewScope !== 'store',
+        overviewMode: overviewScope,
+    };
+}
+
+function tileVisibilityForClient(user, overviewScope) {
+    return {
+        dfsc: canUserAccessDfsc(user),
+        areaStoresLeaderboard: overviewScope !== 'store',
+        storeSales: true,
+        auditAction: canUserStartAudits(user) ? 'Start' : 'View',
+        featureRequests: canUserViewFeatureRequests(user),
+    };
+}
+
 function userProfileForClient(user) {
     if (isNologinUser(user)) {
         const stores =
@@ -2313,9 +2340,12 @@ function userProfileForClient(user) {
             auditAutoCollapse: true,
             micRoundedTiles: true,
             nologin: true,
+            layoutCapabilities: layoutCapabilitiesForClient(user, 'store'),
+            tileVisibility: tileVisibilityForClient(user, 'store'),
         };
     }
     if (!user || user.username.startsWith('__')) {
+        const legacyScope = 'super';
         return {
             username: '',
             displayName: '',
@@ -2331,6 +2361,8 @@ function userProfileForClient(user) {
             micDarkMode: false,
             auditAutoCollapse: true,
             micRoundedTiles: true,
+            layoutCapabilities: layoutCapabilitiesForClient(user, legacyScope),
+            tileVisibility: tileVisibilityForClient(user, legacyScope),
         };
     }
     const overviewScope = getOverviewScope(user);
@@ -2384,6 +2416,8 @@ function userProfileForClient(user) {
         micRoundedTiles: user.micRoundedTiles !== false,
         mustChangePassword,
         passwordPolicy: mustChangePassword ? passwordPolicyForUser(user) : null,
+        layoutCapabilities: layoutCapabilitiesForClient(user, overviewScope),
+        tileVisibility: tileVisibilityForClient(user, overviewScope),
     };
 }
 

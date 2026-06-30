@@ -31,7 +31,6 @@ let micData = null;
 let pickerOpen = false;
 let pickerEscHandler = null;
 let micCanViewAdminAuditSummary = false;
-let stockLevelsChecking = false;
 const STOCK_LEVELS_MODE_KEY = 'stockLevelsCheckMode';
 let stockLevelsCheckMode = (() => {
     try {
@@ -104,65 +103,27 @@ async function pollSalesScrapeStatus() {
     }
 }
 
-const SMG_REPORTING_URL = 'https://reporting.smg.com/Index.aspx';
-
-const CURRENT_PROMO = {
-    label: 'Current Promo',
-    name: 'Nacho Cheese Dip Burrito',
-    imageUrl: '/images/promos/let-it-drip-banner.png',
-    pdfUrl: '/documents/promos/let-it-drip-frrop.pdf',
-};
-
-const MIC_OVERVIEW_TABS = [
-    { id: 'sales', label: 'Sales' },
-    { id: 'results', label: 'Results' },
-    { id: 'orders', label: 'Orders' },
-    { id: 'audits', label: 'Audits' },
-];
-const MIC_TAB_STORAGE_KEY = 'mic-overview-active-tab';
 const MIC_LAST_STORE_KEY = 'mic-last-store';
 
-let activeMicTab = sessionStorage.getItem(MIC_TAB_STORAGE_KEY) || 'sales';
-let micOverviewTabsBound = false;
+const MOS = () => window.MicOverviewShell;
+const MOT = () => window.MicOverviewTiles;
 
-const VOC_PLACEHOLDER = { count: 'TBD', osatPercent: null, accuracyPercent: null };
+const VOC_PLACEHOLDER = MOT()?.VOC_PLACEHOLDER ?? { count: 'TBD', osatPercent: null, accuracyPercent: null };
 
 function formatVocDisplay(voc = {}) {
-    if (voc.placeholder) {
-        return {
-            placeholder: true,
-            count: 'TBD',
-            osat: null,
-            acc: null,
-        };
-    }
-    return {
-        count: voc.count == null ? '-' : voc.count,
-        osat: voc.osatPercent,
-        acc: voc.accuracyPercent,
-    };
+    return MOT()?.formatVocDisplay?.(voc) ?? voc;
 }
 
 function formatMoney(value) {
-    const n = Number(value) || 0;
-    return `$${n.toLocaleString('en-AU')}`;
+    return MOT()?.formatMoney?.(value) ?? `$${Number(value) || 0}`;
 }
 
 function escapeHtml(value) {
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+    return MOS()?.escapeHtml?.(value) ?? String(value ?? '');
 }
 
 function formatTime(date) {
-    return date.toLocaleTimeString('en-AU', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true,
-        timeZone: TIME_ZONE,
-    });
+    return MOS()?.formatTime?.(date) ?? date.toLocaleTimeString();
 }
 
 function applyDashboardScale() {
@@ -170,78 +131,63 @@ function applyDashboardScale() {
 }
 
 function formatSssgDisplay(value) {
-    if (value == null || Number.isNaN(Number(value))) {
-        return { text: '-', toneClass: 'mic-sssg--na' };
-    }
-    const n = Number(value);
-    const sign = n > 0 ? '+' : '';
-    const toneClass = n > 0 ? 'mic-sssg--up' : n < 0 ? 'mic-sssg--down' : 'mic-sssg--na';
-    return { text: `${sign}${n}%`, toneClass };
+    return MOT()?.formatSssgDisplay?.(value) ?? { text: '-', toneClass: 'mic-sssg--na' };
 }
 
 function renderPromoBanner() {
-    return `
-        <a
-            class="admin-promo-banner"
-            href="${CURRENT_PROMO.pdfUrl}"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="${CURRENT_PROMO.label}: ${CURRENT_PROMO.name}. Tap to view FRROP."
-        >
-            <span class="admin-promo-banner-bg" aria-hidden="true">
-                <img src="${CURRENT_PROMO.imageUrl}" alt="">
-            </span>
-            <span class="admin-promo-banner-content">
-                <span class="admin-promo-banner-text">
-                    <span class="admin-promo-banner-label">${CURRENT_PROMO.label}</span>
-                    <span class="admin-promo-banner-name">${CURRENT_PROMO.name}</span>
-                </span>
-                <span class="admin-promo-banner-cta">View FRROP</span>
-            </span>
-        </a>
-    `;
+    return MOS()?.renderPromoBanner?.() ?? '';
 }
 
 function renderShell() {
     if (!canMaintainMicStoreOverview()) return;
-    document.documentElement?.classList?.add('mic-overview-page');
-    document.body?.classList?.add('mic-overview-page');
-    app.innerHTML = `
-        <div class="mic-page mic-page--admin" id="mic-page">
-            <header class="mic-header mic-header--admin">
-                <div class="mic-header-brand">
-                    <div>
-                        <h1>MIC OVERVIEW</h1>
-                        <p class="subtitle" id="mic-store-label">Store ${STORE_NUMBER}</p>
-                    </div>
-                </div>
-                ${renderPromoBanner()}
-                <div class="mic-header-actions">
-                    <div class="mic-clock">
-                        <span class="mic-clock-label">Current time</span>
-                        <span class="mic-clock-value" id="mic-clock">${formatTime(new Date())}</span>
-                        <span class="mic-sales-scrape-hint" id="mic-sales-scrape-hint" hidden>Sales · —</span>
-                    </div>
-                </div>
-            </header>
-            <nav
-                class="mic-overview-tabs"
-                id="mic-overview-tabs"
-                role="tablist"
-                aria-label="MIC overview sections"
-                hidden
-            ></nav>
-            <div class="mic-grid mic-grid--admin" id="mic-grid"></div>
-        </div>
-        ${window.MicSettings?.renderCog?.() || ''}
-        <!-- Daily item multiplier picker - disabled for now
-        <div id="mic-item-picker" class="mic-item-picker" hidden>
-            <div class="mic-item-picker-panel">
-                <h2>Select item for 3× points today</h2>
-                <div class="mic-item-list" id="mic-item-list"></div>
-            </div>
-        </div>
-        -->`;
+    MOS()?.mountShell?.(app, {
+        subtitle: STORE_NUMBER ? `Store ${STORE_NUMBER}` : 'Overview',
+        promoBannerHtml: renderPromoBanner(),
+    });
+}
+
+function isMicMobileView() {
+    return MOS()?.isMicMobileView?.() ?? window.matchMedia('(max-width: 900px)').matches;
+}
+
+function syncMicLayoutMode() {
+    return MOS()?.syncMicLayoutMode?.() ?? isMicMobileView();
+}
+
+function renderMicTabPanel(tabId, content) {
+    return MOT()?.renderMicTabPanel?.(tabId, content) ?? content;
+}
+
+function renderSssgTile(sales = {}, options = {}) {
+    return MOT()?.renderSssgTile?.(sales, options) ?? '';
+}
+
+function renderVocTile(voc, options = {}) {
+    return MOT()?.renderVocTile?.(voc, options) ?? '';
+}
+
+function applyMicOverviewTab(tabId) {
+    MOS()?.applyMicOverviewTab?.(tabId);
+}
+
+function syncSalesHourlyScroll() {
+    MOS()?.syncSalesHourlyScroll?.();
+}
+
+function syncMicOverviewTabs(mobile) {
+    MOS()?.syncMicOverviewTabs?.(mobile);
+}
+
+function renderBlankTile(options = {}) {
+    return MOT()?.renderBlankTile?.(options) ?? '';
+}
+
+function renderAdminLabelTile(options = {}) {
+    return MOT()?.renderAdminLabelTile?.(options) ?? '';
+}
+
+function renderEqualWidthRow(tileHtmlList, options = {}) {
+    return MOT()?.renderEqualWidthRow?.(tileHtmlList, options) ?? tileHtmlList.filter(Boolean).join('');
 }
 
 let micSalesFetchInFlight = false;
@@ -386,23 +332,6 @@ function renderMultiplierBlock(data) {
 }
 */
 
-function isMicMobileView() {
-    return window.matchMedia('(max-width: 900px)').matches;
-}
-
-let lastMicMobileLayout = null;
-
-function syncMicLayoutMode() {
-    const mobile = isMicMobileView();
-    document.body?.classList?.toggle('mic-overview--mobile', mobile);
-    document.documentElement?.classList?.toggle('mic-overview--mobile', mobile);
-    if (lastMicMobileLayout !== null && lastMicMobileLayout !== mobile && micData) {
-        renderTiles(micData);
-    }
-    lastMicMobileLayout = mobile;
-    return mobile;
-}
-
 function renderMiniDashboard(sales) {
     if (salesPlaceholderState(sales)?.show) {
         return `<div class="mic-mini-dashboard mic-mini-dashboard--loading">${renderSalesTileLoadingBody()}</div>`;
@@ -468,206 +397,10 @@ function renderStoreSalesTile(data, { tabbed = false } = {}) {
             <div class="mic-store-lead-list mic-store-lead-list--dashboard">
                 ${renderMiniDashboard(sales)}
                 ${mobile ? '' : `<a class="mic-store-lead-dashboard-link mic-store-lead-dashboard-link--plain" href="${escapeHtml(window.AppPaths?.micStore?.(STORE_NUMBER) || `/MIC/${STORE_NUMBER}`)}">Open full dashboard →</a>`}
-                ${mobile ? '' : renderSssgInlineBlock(sales)}
             </div>
+            ${mobile ? '' : renderSssgInlineBlock(sales)}
         </article>
     `;
-}
-
-function renderMicTabPanel(tabId, content) {
-    return `
-        <section
-            class="mic-tab-panel mic-tab-panel--${tabId}"
-            data-mic-tab-panel="${tabId}"
-            id="mic-tabpanel-${tabId}"
-            role="tabpanel"
-            aria-labelledby="mic-tab-${tabId}"
-        >
-            ${content}
-        </section>
-    `;
-}
-
-function renderSssgTile(sales = {}, { tabbed = false } = {}) {
-    const today = formatSssgDisplay(sales.sssgPercent);
-    const wtd = formatSssgDisplay(sales.sssgWtdPercent);
-    const hasData = today.text !== '-' || wtd.text !== '-';
-    const futureClass = hasData ? '' : ' mic-tile--future';
-    const posClass = tabbed ? '' : ' mic-tile--pos-sssg';
-    return `
-        <article class="mic-tile mic-tile--sssg mic-tile--metric-card${futureClass}${posClass}">
-            <div class="mic-tile-body mic-metric-card">
-                <div class="mic-metric-card__head">
-                    <div class="mic-tile-label">Today SSSG</div>
-                </div>
-                <div class="mic-sssg-grid">
-                    <div class="mic-sssg-value ${today.toneClass}">${escapeHtml(today.text)}</div>
-                    <div class="mic-sssg-footer">
-                        <span class="mic-sssg-wtd ${wtd.toneClass}">WTD ${escapeHtml(wtd.text)}</span>
-                    </div>
-                </div>
-            </div>
-        </article>
-    `;
-}
-
-function renderVocTile(voc, { tabbed = false, wide = false, inRow = false } = {}) {
-    const posClass =
-        tabbed || inRow ? '' : ` mic-tile--pos-voc${wide ? ' mic-tile--pos-voc-wide' : ''}`;
-    const osatText = voc.placeholder ? 'TBD%' : voc.osat == null ? '—' : `${voc.osat}%`;
-    const accText = voc.placeholder ? 'TBD%' : voc.acc == null ? '—' : `${voc.acc}%`;
-    return `
-        <a
-            class="mic-tile mic-tile--link mic-tile--voc mic-tile--metric-card${posClass}"
-            href="${SMG_REPORTING_URL}"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="VOC - open SMG reporting"
-        >
-            <div class="mic-tile-body mic-metric-card">
-                <div class="mic-metric-card__head">
-                    <div class="mic-tile-label">VOC</div>
-                </div>
-                <div class="mic-voc-grid">
-                    <div class="mic-voc-count">${voc.count}</div>
-                    <div class="mic-voc-metrics">
-                        <span class="mic-voc-metric">OSAT ${osatText}</span>
-                        <span class="mic-voc-metric">Acc ${accText}</span>
-                    </div>
-                </div>
-                <div class="mic-tile-sub mic-tile-sub--footnote">Pipeline coming soon</div>
-            </div>
-        </a>
-    `;
-}
-
-function renderMicOverviewTabsHtml() {
-    return MIC_OVERVIEW_TABS.map(({ id, label }) => {
-        const isActive = activeMicTab === id;
-        return `
-            <button
-                type="button"
-                class="mic-overview-tab${isActive ? ' is-active' : ''}"
-                role="tab"
-                id="mic-tab-${id}"
-                aria-selected="${isActive ? 'true' : 'false'}"
-                aria-controls="mic-tabpanel-${id}"
-                data-mic-overview-tab="${id}"
-            >${escapeHtml(label)}</button>
-        `;
-    }).join('');
-}
-
-function applyMicOverviewTab(tabId) {
-    if (!MIC_OVERVIEW_TABS.some((tab) => tab.id === tabId)) {
-        tabId = 'sales';
-    }
-    activeMicTab = tabId;
-    sessionStorage.setItem(MIC_TAB_STORAGE_KEY, tabId);
-
-    document.querySelectorAll('[data-mic-overview-tab]').forEach((button) => {
-        const isActive = button.dataset.micOverviewTab === tabId;
-        button.classList.toggle('is-active', isActive);
-        button.setAttribute('aria-selected', isActive ? 'true' : 'false');
-    });
-
-    const tabClasses = [
-        'mic-overview-tab--sales',
-        'mic-overview-tab--results',
-        'mic-overview-tab--orders',
-        'mic-overview-tab--audits',
-    ];
-    document.body.classList.remove(...tabClasses);
-    document.documentElement.classList.remove(...tabClasses);
-    document.body.classList.add(`mic-overview-tab--${tabId}`);
-    document.documentElement.classList.add(`mic-overview-tab--${tabId}`);
-
-    const grid = document.getElementById('mic-grid');
-    if (!grid) return;
-    grid.querySelectorAll('[data-mic-tab-panel]').forEach((panel) => {
-        const isActive = panel.dataset.micTabPanel === tabId;
-        panel.hidden = !isActive;
-        panel.classList.toggle('is-tab-active', isActive);
-    });
-
-    if (tabId === 'sales') {
-        requestAnimationFrame(syncSalesHourlyScroll);
-    }
-}
-
-function syncSalesHourlyScroll() {
-    if (!isMicMobileView() || activeMicTab !== 'sales') return;
-
-    const panel = document.querySelector('.mic-tab-panel--sales:not([hidden])');
-    const hourly = panel?.querySelector('.mic-mobile-hourly--scroll');
-    const body = hourly?.querySelector('.mic-mobile-hourly-body');
-    const head = hourly?.querySelector('.mic-mobile-hourly-head');
-    if (!panel || !hourly || !body) return;
-
-    const hourlyRect = hourly.getBoundingClientRect();
-    const headHeight = head?.offsetHeight || 0;
-    const link = panel.querySelector('.mic-meal-dashboard-link');
-    const bottomLimit = link
-        ? link.getBoundingClientRect().top
-        : panel.getBoundingClientRect().bottom;
-    const available = bottomLimit - hourlyRect.top - headHeight - 4;
-    const maxHeight = Math.max(120, Math.floor(available));
-
-    body.style.maxHeight = `${maxHeight}px`;
-    body.style.overflowY = 'auto';
-    body.style.webkitOverflowScrolling = 'touch';
-}
-
-function bindMicOverviewTabs() {
-    const nav = document.getElementById('mic-overview-tabs');
-    if (!nav || micOverviewTabsBound) return;
-    nav.addEventListener('click', (event) => {
-        const button = event.target.closest('[data-mic-overview-tab]');
-        if (!button) return;
-        applyMicOverviewTab(button.dataset.micOverviewTab);
-    });
-    micOverviewTabsBound = true;
-}
-
-function syncMicOverviewTabs(mobile) {
-    const nav = document.getElementById('mic-overview-tabs');
-    const tabClasses = [
-        'mic-overview-tab--sales',
-        'mic-overview-tab--results',
-        'mic-overview-tab--orders',
-        'mic-overview-tab--audits',
-    ];
-    if (!mobile) {
-        if (nav) nav.hidden = true;
-        document.body.classList.remove(...tabClasses);
-        document.documentElement.classList.remove(...tabClasses);
-        return;
-    }
-    if (!nav) return;
-    nav.hidden = false;
-    nav.innerHTML = renderMicOverviewTabsHtml();
-    bindMicOverviewTabs();
-}
-
-function renderBlankTile({ posClass = 'mic-tile--pos-blank' } = {}) {
-    return `<article class="mic-tile mic-tile--blank ${posClass}" aria-hidden="true"></article>`;
-}
-
-function renderAdminLabelTile({ label, posClass, sub = 'Coming soon', tabbed = false, inRow = false, href = '' }) {
-    const subHtml = sub
-        ? `<div class="mic-tile-sub">${escapeHtml(sub)}</div>`
-        : '';
-    const gridPosClass = tabbed || inRow ? '' : ` ${posClass}`;
-    const body = `
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">${escapeHtml(label)}</div>
-                ${subHtml}
-            </div>`;
-    if (href) {
-        return `
-        <a class="mic-tile mic-tile--link${gridPosClass}" href="${escapeHtml(href)}" aria-label="${escapeHtml(`${label} - ${sub}`)}">${body}</a>`;
-    }
-    return `<article class="mic-tile${gridPosClass}">${body}</article>`;
 }
 
 function shouldShowDfscTile(data) {
@@ -748,17 +481,6 @@ function renderTacauditHubLink({ tabbed = false } = {}) {
     if (!href) return '';
     const tabbedClass = tabbed ? ' mic-tacaudit-hub-link--tabbed' : '';
     return `<a class="mic-tacaudit-hub-link${tabbedClass}" href="${escapeHtml(href)}" aria-label="Go to TacAudit landing page">Go to TacAudit</a>`;
-}
-
-function renderEqualWidthRow(tileHtmlList, { rowNum, tabbed = false, extraClass = '' } = {}) {
-    const tiles = tileHtmlList.filter(Boolean);
-    if (!tiles.length) return '';
-    const colCount = tiles.length;
-    if (tabbed) {
-        return `<div class="mic-tab-tile-row mic-tab-tile-row--cols-${colCount}">${tiles.join('')}</div>`;
-    }
-    const rowClass = rowNum ? ` mic-grid-equal-row--row-${rowNum}` : '';
-    return `<div class="mic-grid-equal-row mic-grid-equal-row--cols-${colCount}${rowClass}${extraClass ? ` ${extraClass}` : ''}">${tiles.join('')}</div>`;
 }
 
 function renderDfscTile(data, { tabbed = false, inRow = false } = {}) {
@@ -923,7 +645,7 @@ function buildMicStockShortfallListHtml(items) {
     return `<ul class="mic-tile-stock-list" aria-label="Stock shortfalls">${rows}</ul>`;
 }
 
-function buildStockCheckTabsHtml(mode, checking) {
+function buildStockCheckTabsHtml(mode) {
     const tabs = [
         { id: 'with-on-order', label: 'On hand + on order' },
         { id: 'on-hand-only', label: 'Current on hand' },
@@ -931,15 +653,11 @@ function buildStockCheckTabsHtml(mode, checking) {
     const buttons = tabs
         .map((tab) => {
             const active = mode === tab.id ? ' is-active' : '';
-            const busy = checking && mode === tab.id;
-            const disabled = checking ? ' disabled' : '';
-            const ariaBusy = busy ? ' aria-busy="true"' : '';
             const ariaSelected = mode === tab.id ? 'true' : 'false';
-            const label = busy ? 'Checking…' : tab.label;
-            return `<button type="button" class="app-tab${active}" data-stock-check-mode="${tab.id}" role="tab" aria-selected="${ariaSelected}"${disabled}${ariaBusy}>${escapeHtml(label)}</button>`;
+            return `<button type="button" class="app-tab${active}" data-stock-check-mode="${tab.id}" role="tab" aria-selected="${ariaSelected}">${escapeHtml(tab.label)}</button>`;
         })
         .join('');
-    return `<div class="app-tabs mic-tile-stock-check-tabs" role="tablist" aria-label="Stock level check">${buttons}</div>`;
+    return `<div class="app-tabs mic-tile-stock-check-tabs" role="tablist" aria-label="Stock levels view">${buttons}</div>`;
 }
 
 function renderStockLevelsTile(data, { tabbed = false, inRow = false } = {}) {
@@ -957,7 +675,6 @@ function renderStockLevelsTile(data, { tabbed = false, inRow = false } = {}) {
     const warnClass = hasShortfalls ? ' mic-tile--stock-warn' : sc.stockLevelsChecked ? ' mic-tile--stock-ok' : '';
     const listClass = hasShortfalls && shortfallItems.length ? ' mic-tile--has-stock-list' : '';
     const posClass = tabbed || inRow ? '' : ' mic-tile--pos-stock-levels';
-    const checking = stockLevelsChecking;
     const checkMode = stockLevelsCheckMode;
     const shortfallListHtml = hasShortfalls ? buildMicStockShortfallListHtml(shortfallItems) : '';
     const viewLink =
@@ -971,115 +688,24 @@ function renderStockLevelsTile(data, { tabbed = false, inRow = false } = {}) {
                 <div class="mic-tile-sub">${escapeHtml(stockSub)}</div>
                 ${shortfallListHtml}
             </div>
-            ${buildStockCheckTabsHtml(checkMode, checking)}
+            ${buildStockCheckTabsHtml(checkMode)}
             ${viewLink}
         </article>`;
 }
 
-async function postCheckStockLevels(storeNumber, { onHandOnly = false } = {}) {
-    const body = {
-        ...(window.MmxUserLoginPrompt?.loginRequestBody?.() || {}),
-        onHandOnly: Boolean(onHandOnly),
-    };
-    const oh = onHandOnly ? '1' : '0';
-    return fetch(
-        `/api/stock-count/check-stock-levels?store=${encodeURIComponent(storeNumber)}&onHandOnly=${oh}`,
-        {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: {
-                Accept: 'application/json',
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(body),
-        }
-    );
-}
-
-async function runStockLevelsCheck(mode = stockLevelsCheckMode) {
-    if (stockLevelsChecking || !STORE_NUMBER) return;
-    stockLevelsCheckMode = mode === 'on-hand-only' ? 'on-hand-only' : 'with-on-order';
+// Switch the tile between the two pre-computed stock-levels results (no Macromatix download).
+// The 5AM job computes both modes; this just fetches the already-computed summary for the mode.
+async function switchStockLevelsMode(mode) {
+    const next = mode === 'on-hand-only' ? 'on-hand-only' : 'with-on-order';
+    if (next === stockLevelsCheckMode) return;
+    stockLevelsCheckMode = next;
     try {
         sessionStorage.setItem(STOCK_LEVELS_MODE_KEY, stockLevelsCheckMode);
     } catch {
         /* ignore */
     }
-    const onHandOnly = stockLevelsCheckMode === 'on-hand-only';
-    stockLevelsChecking = true;
+    await patchStockLevelsForMode();
     if (micData) renderTiles(micData);
-    try {
-        await window.MmxUserLoginPrompt?.ensureBeforeMmx?.(STORE_NUMBER, { purpose: 'check-levels' });
-        let res = await postCheckStockLevels(STORE_NUMBER, { onHandOnly });
-        let data = await res.json().catch(() => ({}));
-        if (res.status === 403 && data?.needsMmxUserLogin) {
-            await window.MmxUserLoginPrompt.ensureBeforeMmx(STORE_NUMBER, { purpose: 'check-levels' });
-            res = await postCheckStockLevels(STORE_NUMBER, { onHandOnly });
-            data = await res.json().catch(() => ({}));
-        }
-        if (res.status === 409) {
-            throw new Error(data.error || 'Stock count pipeline is busy - try again shortly.');
-        }
-        if (!res.ok || (!data.success && !data.accepted)) {
-            throw new Error(data.error || `Check failed (${res.status})`);
-        }
-        if (data.accepted) {
-            await pollStockLevelsCheckComplete(STORE_NUMBER, onHandOnly);
-        }
-    } catch (error) {
-        if (error.message === 'Macromatix login is required to continue.') {
-            return;
-        }
-        const msg = /524|502|503|504|gateway|timed out|timeout/i.test(String(error.message || ''))
-            ? 'Check is still running on the server - wait a minute and refresh the page.'
-            : error.message || 'Could not check stock levels.';
-        window.alert(msg);
-    } finally {
-        stockLevelsChecking = false;
-        await loadMicData();
-    }
-}
-
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function pollStockLevelsCheckComplete(storeNumber, onHandOnly = false) {
-    const oh = onHandOnly ? '1' : '0';
-    const maxWaitMs = 12 * 60 * 1000;
-    const startedAt = Date.now();
-    while (Date.now() - startedAt < maxWaitMs) {
-        await sleep(3000);
-        const statusRes = await fetch(
-            `/api/stock-count/pipeline-status?store=${encodeURIComponent(storeNumber)}`,
-            { credentials: 'same-origin', headers: { Accept: 'application/json' } }
-        );
-        const status = await statusRes.json().catch(() => ({}));
-        if (status.stage === 'check-levels-failed') {
-            const errMsg = status.lastError || 'Stock level check failed.';
-            if (window.MmxUserLoginPrompt?.isLoginRequiredError?.(errMsg)) {
-                await window.MmxUserLoginPrompt.ensureBeforeMmx(storeNumber, { purpose: 'check-levels' });
-                const retryRes = await postCheckStockLevels(storeNumber, { onHandOnly });
-                const retryData = await retryRes.json().catch(() => ({}));
-                if (retryRes.ok && (retryData.success || retryData.accepted)) {
-                    continue;
-                }
-            }
-            throw new Error(errMsg);
-        }
-        if (status.stage === 'checking-stock-levels' || status.inProgress) {
-            continue;
-        }
-        const summaryRes = await fetch(
-            `/api/stock-count/low-stock-summary?store=${encodeURIComponent(storeNumber)}&onHandOnly=${oh}`,
-            { credentials: 'same-origin', headers: { Accept: 'application/json' } }
-        );
-        const summary = await summaryRes.json().catch(() => ({}));
-        if (summary.success && summary.stockLevelsChecked) {
-            return summary;
-        }
-        if (!status.inProgress) return summary;
-    }
-    throw new Error('Stock level check timed out - try again in a minute.');
 }
 
 function bindStockLevelsCheck() {
@@ -1088,8 +714,8 @@ function bindStockLevelsCheck() {
             event.preventDefault();
             event.stopPropagation();
             const mode = btn.getAttribute('data-stock-check-mode');
-            if (!mode || stockLevelsChecking) return;
-            void runStockLevelsCheck(mode);
+            if (!mode) return;
+            void switchStockLevelsMode(mode);
         });
     });
 }
@@ -1279,7 +905,7 @@ function renderTiles(data) {
     bindStockLevelsCheck();
 
     if (mobile) {
-        applyMicOverviewTab(activeMicTab);
+        applyMicOverviewTab(MOS()?.getActiveTab?.() || 'sales');
         requestAnimationFrame(syncSalesHourlyScroll);
     }
 
@@ -1680,6 +1306,9 @@ async function initStoreOverview(me, { skipShell = false } = {}) {
         return;
     }
     window.MicOverviewScale?.bind?.();
+    MOS()?.setOnMobileLayoutChange?.(() => {
+        if (micData) renderTiles(micData);
+    });
     if (!skipShell) {
         renderShell();
         const hadCachedOverview = restoreCachedMicOverview();
@@ -1763,7 +1392,7 @@ async function init() {
             viewAs = '';
         }
 
-        if (scope !== 'store' && !viewAs) {
+        if (me.layoutCapabilities?.showScopeNav && !viewAs) {
             if (!window.MicOverviewMulti?.start) {
                 throw new Error('Overview scripts failed to load. Hard refresh the page (Ctrl+Shift+R).');
             }
@@ -1789,22 +1418,7 @@ window.MicOverviewView = {
     unmount() {
         stopMicStoreOverviewLoops();
         window.MicOverviewMulti?.stop?.();
-        document.documentElement?.classList?.remove(
-            'mic-overview-page',
-            'mic-overview--mobile',
-            'mic-overview-tab--sales',
-            'mic-overview-tab--results',
-            'mic-overview-tab--orders',
-            'mic-overview-tab--audits'
-        );
-        document.body?.classList?.remove(
-            'mic-overview-page',
-            'mic-overview--mobile',
-            'mic-overview-tab--sales',
-            'mic-overview-tab--results',
-            'mic-overview-tab--orders',
-            'mic-overview-tab--audits'
-        );
+        MOS()?.unmountPageClasses?.();
         const root = getAppRoot();
         if (root) root.innerHTML = '';
     },

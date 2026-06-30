@@ -18,15 +18,24 @@
 </head>
 <body class="admin-settings-page">
     <script src="/scripts/brand-mark.js"></script>
-    <div id="nav-back-host"></div>
     <div class="admin-settings-shell">
         <header class="admin-settings-header">
+            <div id="nav-back-host" class="admin-settings-header__back"></div>
             <h1 class="admin-settings-title">Settings</h1>
-            <nav id="admin-settings-nav" class="admin-settings-nav-wrap" role="tablist" aria-label="Settings sections"></nav>
+            <button type="button" id="admin-settings-nav-toggle" class="admin-settings-nav-toggle admin-settings-header__menu" aria-expanded="false" aria-controls="admin-settings-nav">Menu</button>
         </header>
-        <main class="admin-settings-main">
-            <div id="admin-settings-content" class="admin-settings-content" role="main"></div>
-        </main>
+        <div class="admin-settings-body">
+            <div id="admin-settings-nav-backdrop" class="admin-settings-nav-backdrop" hidden aria-hidden="true"></div>
+            <div class="admin-settings-sidebar-wrap">
+                <nav id="admin-settings-nav" class="admin-settings-sidebar" role="navigation" aria-label="Settings sections"></nav>
+                <div class="admin-settings-sidebar-footer">
+                    <button type="button" id="admin-settings-sign-out" class="admin-settings-sign-out">Sign out</button>
+                </div>
+            </div>
+            <main class="admin-settings-main">
+                <div id="admin-settings-content" class="admin-settings-content" role="main"></div>
+            </main>
+        </div>
     </div>
     <script src="/scripts/app-paths.js"></script>
     <script src="/scripts/page-transition.js"></script>
@@ -42,6 +51,7 @@
     <script src="/scripts/admin-accounts.js"></script>
     <script src="/scripts/admin-forecast.js"></script>
     <script src="/scripts/admin-build-to.js"></script>
+    <script src="/scripts/admin-five-am-reports.js"></script>
     <script src="/scripts/admin-store-logins.js"></script>
     <script src="/scripts/admin-smg-nsf.js"></script>
     <script src="/scripts/requests.js"></script>

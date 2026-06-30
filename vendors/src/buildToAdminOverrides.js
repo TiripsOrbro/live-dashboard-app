@@ -338,12 +338,51 @@ function patchOverrides({ global = null, areas = null, stores = null, settings =
     return writeOverridesDoc(doc);
 }
 
+const BUILD_TO_ITEM_CODE_KEYS = ['mmxCode', 'vendorCode', 'fallbackCodes'];
+
+function stripItemCodeFieldsFromScopePatch(scopePatch) {
+    if (!scopePatch || typeof scopePatch !== 'object') return scopePatch;
+    const out = {};
+    for (const [itemCode, rule] of Object.entries(scopePatch)) {
+        if (rule == null) {
+            out[itemCode] = rule;
+            continue;
+        }
+        if (typeof rule !== 'object') continue;
+        const next = { ...rule };
+        for (const key of BUILD_TO_ITEM_CODE_KEYS) delete next[key];
+        if (Object.keys(next).length) out[itemCode] = next;
+    }
+    return out;
+}
+
+/** Remove item-code overrides from a build-to patch (store managers may not edit codes). */
+function stripItemCodeFieldsFromBuildToPatch(patch) {
+    if (!patch || typeof patch !== 'object') return patch;
+    const out = { ...patch };
+    if (out.global) out.global = stripItemCodeFieldsFromScopePatch(out.global);
+    if (out.areas) {
+        out.areas = {};
+        for (const [area, areaPatch] of Object.entries(patch.areas)) {
+            out.areas[area] = stripItemCodeFieldsFromScopePatch(areaPatch);
+        }
+    }
+    if (out.stores) {
+        out.stores = {};
+        for (const [store, storePatch] of Object.entries(patch.stores)) {
+            out.stores[store] = stripItemCodeFieldsFromScopePatch(storePatch);
+        }
+    }
+    return out;
+}
+
 module.exports = {
     OVERRIDES_PATH,
     DEFAULT_STOCK_WARNING_DAYS,
     readOverridesDoc,
     writeOverridesDoc,
     patchOverrides,
+    stripItemCodeFieldsFromBuildToPatch,
     adminOverridesForStore,
     adminOverridesForScope,
     normalizeRule,

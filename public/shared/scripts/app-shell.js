@@ -112,6 +112,8 @@
             '/scripts/admin-store-view.js',
             '/scripts/mmx-user-login-prompt.js',
         ]);
+        await loadScript('/scripts/mic-overview-shell.js');
+        await loadScript('/scripts/mic-overview-tiles.js');
         await loadScript('/scripts/mic-overview-multi.js');
         await loadScript('/scripts/mic-dashboard.js');
     }
@@ -141,6 +143,8 @@
         '/scripts/admin-store-view.js',
         '/scripts/mic-mini-dashboard.js',
         '/scripts/core-countdown.js',
+        '/scripts/mic-overview-shell.js',
+        '/scripts/mic-overview-tiles.js',
         '/scripts/mic-overview-multi.js',
         '/scripts/mmx-user-login-prompt.js',
         '/scripts/mic-dashboard.js',
@@ -176,6 +180,7 @@
         '/scripts/admin-accounts.js',
         '/scripts/admin-forecast.js',
         '/scripts/admin-build-to.js',
+        '/scripts/admin-five-am-reports.js',
         '/scripts/admin-store-logins.js',
         '/scripts/admin-smg-nsf.js',
         '/scripts/requests.js',
@@ -253,7 +258,9 @@
             await global.MicOverviewView.mount(getAppEl());
             return;
         }
-        getAppEl().textContent = 'Overview failed to load.';
+        console.error('[AppShell] MicOverviewView missing after loading overview scripts');
+        getAppEl().textContent =
+            'Overview failed to load. Hard refresh the page (Ctrl+Shift+R) or sign in again.';
     }
 
     async function loadDashboardScripts() {

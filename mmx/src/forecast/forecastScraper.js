@@ -873,6 +873,7 @@ async function writeForecastPlanToMmx(storeNumber, plan, options = {}) {
     const headless = resolveForecastHeadless(options);
     try {
         const opened = await scraper.openMacromatixBrowser({
+            storeNumber: store,
             browserOptions: { headless, skipSlowMo: headless },
         });
         browser = opened.browser;
@@ -937,7 +938,10 @@ async function backfillStoreHistoryFromMmx(storeNumber, options = {}) {
     let browser;
     let imported = 0;
     try {
-        const opened = await scraper.openMacromatixBrowser({ launchOptions: { headless: true } });
+        const opened = await scraper.openMacromatixBrowser({
+            storeNumber: store,
+            launchOptions: { headless: true },
+        });
         browser = opened.browser;
         const { page } = opened;
         await scraper.loginPage(page, credentials.username, credentials.password);

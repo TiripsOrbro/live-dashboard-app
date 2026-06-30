@@ -152,7 +152,7 @@ function isoToLifeLenzDisplay(iso) {
     const dt = new Date(`${iso}T12:00:00`);
     const weekday = new Intl.DateTimeFormat('en-AU', { weekday: 'short' }).format(dt);
     const month = new Intl.DateTimeFormat('en-AU', { month: 'short' }).format(dt);
-    return { weekday, day: d, month, year: y, needle: `${weekday} ${d} ${month}` };
+    return { weekday, day: d, month, monthIdx: m - 1, year: y, needle: `${weekday} ${d} ${month}` };
 }
 
 async function isForecastDateActive(page, isoDate) {
@@ -177,18 +177,34 @@ async function setForecastDateViaUrl(page, isoDate) {
 }
 
 async function advanceForecastDateWithArrows(page, isoDate) {
-    for (let step = 0; step < 8; step += 1) {
+    const targetMs = Date.parse(`${isoDate}T12:00:00Z`);
+    for (let step = 0; step < 21; step += 1) {
         if (await isForecastDateActive(page, isoDate)) return true;
 
-        const advanced = await page.evaluate(() => {
-            const selectors = [
-                'a.next',
-                'button.next',
-                '[aria-label*="Next"]',
-                '[aria-label*="next"]',
-                '.fa-chevron-right',
-                '.icon-chevron-right',
-            ];
+        const currentIso = await page.evaluate(() => {
+            const match = location.href.match(/(\d{4}-\d{2}-\d{2})/);
+            return match ? match[1] : '';
+        });
+        const goForward = !currentIso || targetMs >= Date.parse(`${currentIso}T12:00:00Z`);
+
+        const advanced = await page.evaluate((forward) => {
+            const selectors = forward
+                ? [
+                      'a.next',
+                      'button.next',
+                      '[aria-label*="Next"]',
+                      '[aria-label*="next"]',
+                      '.fa-chevron-right',
+                      '.icon-chevron-right',
+                  ]
+                : [
+                      'a.prev',
+                      'button.prev',
+                      '[aria-label*="Previous"]',
+                      '[aria-label*="previous"]',
+                      '.fa-chevron-left',
+                      '.icon-chevron-left',
+                  ];
             for (const selector of selectors) {
                 const el = document.querySelector(selector);
                 if (!el) continue;
@@ -198,7 +214,7 @@ async function advanceForecastDateWithArrows(page, isoDate) {
                 return true;
             }
             return false;
-        });
+        }, goForward);
         if (!advanced) return false;
         await page.waitForTimeout(DATE_SETTLE_MS);
     }
@@ -228,28 +244,27 @@ async function setForecastDate(page, isoDate) {
     }
     await page.waitForTimeout(500);
 
-    const picked = await page.evaluate(({ day, month, year }) => {
+    const picked = await page.evaluate(({ day, monthIdx, year, isoDate }) => {
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const monthIdx = monthNames.indexOf(month);
-
-        const header = document.querySelector(
-            '.datepicker-days .datepicker-switch, .bootstrap-datetimepicker-widget .picker-switch, [class*="calendar"] [class*="switch"]'
-        );
-        const headerText = (header?.textContent || document.body?.innerText || '').replace(/\s+/g, ' ');
+        const want = monthIdx >= 0 ? `${monthNames[monthIdx]} ${year}` : '';
 
         const ensureMonth = () => {
-            if (monthIdx < 0) return;
-            const want = `${monthNames[monthIdx]} ${year}`;
-            if (new RegExp(want, 'i').test(headerText)) return;
-            for (let i = 0; i < 14; i += 1) {
-                const prev = document.querySelector('.prev, .datepicker-prev, [aria-label*="Previous"]');
-                const next = document.querySelector('.next, .datepicker-next, [aria-label*="Next"]');
+            if (!want) return;
+            for (let i = 0; i < 24; i += 1) {
                 const currentHeader = (
-                    document.querySelector('.datepicker-days .datepicker-switch, .bootstrap-datetimepicker-widget .picker-switch')?.textContent ||
-                    ''
+                    document.querySelector(
+                        '.datepicker-days .datepicker-switch, .bootstrap-datetimepicker-widget .picker-switch, [class*="calendar"] [class*="switch"]'
+                    )?.textContent || ''
                 ).replace(/\s+/g, ' ');
                 if (new RegExp(want, 'i').test(currentHeader)) return;
-                if (monthIdx < monthNames.findIndex((m) => currentHeader.includes(m))) {
+                const prev = document.querySelector('.prev, .datepicker-prev, [aria-label*="Previous"]');
+                const next = document.querySelector('.next, .datepicker-next, [aria-label*="Next"]');
+                const currentMonthIdx = monthNames.findIndex((name) => currentHeader.includes(name));
+                if (currentMonthIdx < 0 || monthIdx < 0) {
+                    next?.click();
+                    continue;
+                }
+                if (monthIdx < currentMonthIdx || (monthIdx === currentMonthIdx && !new RegExp(String(year), 'i').test(currentHeader))) {
                     prev?.click();
                 } else {
                     next?.click();
@@ -260,6 +275,12 @@ async function setForecastDate(page, isoDate) {
         ensureMonth();
 
         for (const cell of document.querySelectorAll('td.day, td[data-day], button, a, span')) {
+            const dataDay = cell.getAttribute?.('data-day') || '';
+            if (dataDay && dataDay.startsWith(isoDate)) {
+                if (cell.classList?.contains('disabled') || cell.getAttribute('aria-disabled') === 'true') continue;
+                cell.click();
+                return true;
+            }
             const text = (cell.textContent || '').trim();
             if (text !== String(day)) continue;
             if (cell.classList?.contains('old') || cell.classList?.contains('new')) continue;
@@ -268,7 +289,7 @@ async function setForecastDate(page, isoDate) {
             return true;
         }
         return false;
-    }, display);
+    }, { day: display.day, monthIdx: display.monthIdx, year: display.year, isoDate });
 
     if (!picked) {
         await page.keyboard.press('Escape').catch(() => null);

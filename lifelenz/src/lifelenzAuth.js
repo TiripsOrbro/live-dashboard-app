@@ -1,6 +1,7 @@
 const puppeteer = require('puppeteer');
 
-const { getPuppeteerLaunchOptions, closeBrowserQuietly } = require('../../mmx/src/macromatixScraper');
+const { getPuppeteerLaunchOptions } = require('../../mmx/src/macromatixScraper');
+const { trackBrowser, closeBrowserQuietly } = require('../../mmx/src/browserLifecycle');
 
 const LIFELENZ_ADMIN_URL = 'https://admin.lifelenz.com/au01/';
 const LIFELENZ_BUSINESS_EXPLORER_URL = /admin\.lifelenz\.com\/au\d+\/business-explorer/i;
@@ -392,6 +393,7 @@ async function createAuthenticatedLifeLenzSession(email, password, options = {})
     }
 
     const browser = await puppeteer.launch(getLifeLenzLaunchOptions(options));
+    trackBrowser(browser, 'lifelenz-session');
     const page = await browser.newPage();
     await prepareLifeLenzPage(page);
 
@@ -411,6 +413,7 @@ async function verifyLifeLenzLogin(email, password, options = {}) {
         browser = await puppeteer.launch(
             getLifeLenzLaunchOptions({ headless: true, skipSlowMo: true, ...options })
         );
+        trackBrowser(browser, 'lifelenz-login-verify');
         const page = await browser.newPage();
         await prepareLifeLenzPage(page);
         const stores = await performLifeLenzLogin(page, lifelenzEmail, lifelenzPassword);

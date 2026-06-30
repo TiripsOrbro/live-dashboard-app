@@ -461,6 +461,7 @@ function renderSquareOneTile(tile, { tabbed = false } = {}) {
 
 function countMicContentRows(data) {
     let rows = 2;
+    if (hasStoreMiddleExtras(data)) rows += 1;
     if (
         storeWeeklyAuditsForTiles(data).length > 0 ||
         dueSquareOneTiles(data).length > 0 ||
@@ -815,28 +816,44 @@ function renderCoreCountdownTile({ tabbed = false, inRow = false } = {}) {
     return window.CoreCountdown?.renderTileHtml?.({ tabbed, inRow }) || '';
 }
 
-function renderStoreTopRow(data) {
+function hasStoreMiddleExtras(data) {
     const voc = formatVocDisplay(data?.voc || {});
-    const tiles = [renderVocTile(voc, { inRow: true })];
-    if (shouldShowDfscTile(data)) {
-        tiles.push(renderDfscTile(data, { inRow: true }));
-    }
-    tiles.push(renderCoreCountdownTile({ inRow: true }));
-    if (!tiles.length) return '';
-    return renderEqualWidthRow(tiles, { rowNum: 'top' });
+    if (shouldShowDfscTile(data) && renderVocTile(voc, { inRow: true })) return true;
+    if (renderOpenActionsTile(data, { inRow: true })) return true;
+    if (renderSquareOneMiddleTile(data, { inRow: true })) return true;
+    if (shouldShowOrdersTile(data)) return true;
+    return false;
+}
+
+function renderStoreQuadGrid(data) {
+    const voc = formatVocDisplay(data?.voc || {});
+    const leftTop = renderDfscTile(data, { inRow: true }) || renderVocTile(voc, { inRow: true });
+    const leftBottom = renderCoreCountdownTile({ inRow: true });
+    const right = renderStockLevelsTile(data, { inRow: true });
+    if (!leftTop && !leftBottom && !right) return '';
+    const slot = (className, html) => (html ? `<div class="mic-store-quad-grid__slot ${className}">${html}</div>` : '');
+    return `
+        <div class="mic-store-quad-grid" aria-label="Store overview tiles">
+            ${slot('mic-store-quad-grid__slot--left-top', leftTop)}
+            ${slot('mic-store-quad-grid__slot--left-bottom', leftBottom)}
+            ${slot('mic-store-quad-grid__slot--right', right)}
+        </div>`;
 }
 
 function renderDesktopMiddleRow(data) {
-    const tiles = [
-        renderOpenActionsTile(data, { inRow: true }),
-        renderSquareOneMiddleTile(data, { inRow: true }),
-        renderDailyCountTile(data, { inRow: true }),
-    ].filter(Boolean);
+    const tiles = [];
+    const voc = formatVocDisplay(data?.voc || {});
+    if (shouldShowDfscTile(data)) {
+        const vocTile = renderVocTile(voc, { inRow: true });
+        if (vocTile) tiles.push(vocTile);
+    }
+    tiles.push(renderOpenActionsTile(data, { inRow: true }), renderSquareOneMiddleTile(data, { inRow: true }));
     if (shouldShowOrdersTile(data)) {
         tiles.push(renderOrdersToPlaceTile(data, { inRow: true }));
     }
-    tiles.push(renderStockLevelsTile(data, { inRow: true }));
-    return renderEqualWidthRow(tiles, { rowNum: 1, extraClass: 'mic-tile--pos-middle-row' });
+    const filtered = tiles.filter(Boolean);
+    if (!filtered.length) return '';
+    return renderEqualWidthRow(filtered, { rowNum: 'extras', extraClass: 'mic-tile--pos-middle-row' });
 }
 
 function renderMobileOrdersTab(data) {
@@ -844,7 +861,6 @@ function renderMobileOrdersTab(data) {
     if (shouldShowOrdersTile(data)) {
         tiles.push(renderOrdersToPlaceTile(data, { tabbed: true }));
     }
-    tiles.push(renderDailyCountTile(data, { tabbed: true }));
     tiles.push(renderStockLevelsTile(data, { tabbed: true }));
     return renderEqualWidthRow(tiles, { tabbed: true });
 }
@@ -860,11 +876,12 @@ function renderMobileAuditsTab(data) {
 }
 
 function renderDesktopTiles(data) {
+    const extras = hasStoreMiddleExtras(data);
     return `
         ${renderStoreSalesTile(data)}
-        ${renderStoreTopRow(data)}
+        ${renderStoreQuadGrid(data)}
         ${renderDesktopMiddleRow(data)}
-        ${renderWeeklyAuditTiles(data, { includeHub: true })}
+        ${renderWeeklyAuditTiles(data, { includeHub: true, rowNum: extras ? 3 : 2 })}
     `;
 }
 

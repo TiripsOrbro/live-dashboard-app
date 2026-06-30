@@ -1945,11 +1945,6 @@ body.dashboard-page--admin-store .dashboard-header {
     box-sizing: border-box;
 }
 
-body.dashboard-page--admin-store .dashboard-header .nav-back-host {
-    position: static;
-    top: auto;
-}
-
 body.dashboard-page--admin-store .dashboard-grid,
 body.dashboard-page--admin-store .dashboard-grid-footer,
 body.dashboard-page--admin-store .portrait-tab-panel {

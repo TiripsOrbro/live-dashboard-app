@@ -76,6 +76,8 @@ let lowStockAlerts = [];
 let lowStockPanelOpen = false;
 let levelsSummary = null;
 let levelsChecking = false;
+let levelsRefreshPercent = 0;
+let levelsRefreshTicker = null;
 const STOCK_LEVELS_MODE_KEY = 'stockLevelsCheckMode';
 let levelsCheckMode = (() => {
     try {
@@ -2926,13 +2928,16 @@ function buildLowStockWarningHtml() {
         )
         .join('');
     const toggleLabel = lowStockPanelOpen ? 'Hide items' : 'Show items';
+    const modeNote = levelsOnHandOnly()
+        ? 'Current on hand is below the configured warning threshold (days of stock).'
+        : 'On hand + on order is below the configured warning threshold (days of stock).';
     return `
         <div class="stock-count-status stock-count-status--warning stock-count-low-stock" role="status">
             <div class="stock-count-low-stock-head">
                 <strong>${lowStockAlerts.length} item${lowStockAlerts.length === 1 ? '' : 's'} under stock warning</strong>
                 <button type="button" class="stock-count-btn stock-count-btn--secondary stock-count-btn--compact" id="sc-low-stock-toggle">${escapeHtml(toggleLabel)}</button>
             </div>
-            <p class="stock-count-low-stock-note">On hand + on order is below the configured warning threshold (days of stock).</p>
+            <p class="stock-count-low-stock-note">${escapeHtml(modeNote)}</p>
             ${
                 lowStockPanelOpen
                     ? `<table class="stock-count-table stock-count-low-stock-table">
@@ -3059,15 +3064,62 @@ function buildStockCheckTabsHtml(mode, checking) {
     const buttons = tabs
         .map((tab) => {
             const active = mode === tab.id ? ' is-active' : '';
-            const busy = checking && mode === tab.id;
             const disabled = checking ? ' disabled' : '';
-            const ariaBusy = busy ? ' aria-busy="true"' : '';
             const ariaSelected = mode === tab.id ? 'true' : 'false';
-            const label = busy ? 'Checking Macromatix…' : tab.label;
-            return `<button type="button" class="app-tab${active}" data-stock-check-mode="${tab.id}" role="tab" aria-selected="${ariaSelected}"${disabled}${ariaBusy}>${escapeHtml(label)}</button>`;
+            return `<button type="button" class="app-tab${active}" data-stock-check-mode="${tab.id}" role="tab" aria-selected="${ariaSelected}"${disabled}>${escapeHtml(tab.label)}</button>`;
         })
         .join('');
     return `<div class="app-tabs stock-count-levels-check-tabs" role="tablist" aria-label="Stock level check">${buttons}</div>`;
+}
+
+function levelsProgressTargetFromLabel(label) {
+    const text = String(label || '').toLowerCase();
+    if (/calculat|shortfall/i.test(text)) return 88;
+    if (/download|report|macromatix/i.test(text)) return 52;
+    if (/start/i.test(text)) return 12;
+    return 28;
+}
+
+function updateLevelsRefreshProgressDom() {
+    const bar = document.querySelector('.stock-count-levels-refresh-progress .stock-count-progress-bar');
+    if (!bar) return;
+    const pct = Math.max(0, Math.min(100, levelsRefreshPercent));
+    bar.style.width = `${pct.toFixed(1)}%`;
+    const shell = bar.closest('.stock-count-progress-shell');
+    if (shell) shell.setAttribute('aria-valuenow', String(Math.round(pct)));
+}
+
+function startLevelsRefreshTicker() {
+    stopLevelsRefreshTicker();
+    levelsRefreshTicker = setInterval(() => {
+        const target = levelsProgressTargetFromLabel(statusMessage);
+        if (target > levelsRefreshPercent) {
+            levelsRefreshPercent = Math.min(target, levelsRefreshPercent + 1.5);
+        }
+        updateLevelsRefreshProgressDom();
+    }, 250);
+}
+
+function stopLevelsRefreshTicker() {
+    if (levelsRefreshTicker) {
+        clearInterval(levelsRefreshTicker);
+        levelsRefreshTicker = null;
+    }
+}
+
+function buildLevelsRefreshControlHtml() {
+    if (levelsChecking) {
+        const pct = Math.max(0, Math.min(100, levelsRefreshPercent));
+        const label = statusMessage ? escapeHtml(statusMessage) : 'Refreshing from Macromatix…';
+        return `
+            <div class="stock-count-levels-refresh-progress" role="status" aria-live="polite">
+                <div class="stock-count-progress-shell stock-count-progress-shell--determinate" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}" aria-label="Refreshing stock levels">
+                    <div class="stock-count-progress-bar" style="width:${pct.toFixed(1)}%"></div>
+                </div>
+                <p class="stock-count-levels-refresh-label">${label}</p>
+            </div>`;
+    }
+    return `<button type="button" class="stock-count-btn stock-count-btn--primary stock-count-levels-refresh" id="sc-levels-refresh">Refresh data</button>`;
 }
 
 function levelsSummaryUrl() {
@@ -3078,6 +3130,11 @@ function levelsSummaryUrl() {
 async function loadLevelsSummary() {
     const { res, data } = await fetchJson(levelsSummaryUrl());
     if (!res.ok || !data.success) throw new Error(data.error || 'Could not load stock levels.');
+    applyLevelsSummary(data);
+    return data;
+}
+
+function applyLevelsSummary(data) {
     levelsSummary = data;
     lowStockAlerts = Array.isArray(data.lowStockAlerts)
         ? data.lowStockAlerts
@@ -3085,7 +3142,28 @@ async function loadLevelsSummary() {
           ? data.lowStockItems
           : [];
     lowStockPanelOpen = lowStockAlerts.length > 0;
-    return data;
+}
+
+async function switchLevelsMode(mode) {
+    if (levelsChecking) return;
+    const next = mode === 'on-hand-only' ? 'on-hand-only' : 'with-on-order';
+    if (next === levelsCheckMode) return;
+    levelsCheckMode = next;
+    try {
+        sessionStorage.setItem(STOCK_LEVELS_MODE_KEY, levelsCheckMode);
+    } catch {
+        /* ignore */
+    }
+    statusMessage = '';
+    statusKind = '';
+    try {
+        await loadLevelsSummary();
+        renderLevelsView();
+    } catch (error) {
+        statusMessage = error.message || 'Could not load stock levels.';
+        statusKind = 'error';
+        renderLevelsView();
+    }
 }
 
 async function pollStockLevelsCheckComplete() {
@@ -3135,18 +3213,14 @@ async function postCheckStockLevels() {
     );
 }
 
-async function runLevelsCheck(mode) {
+async function refreshLevelsData() {
     if (levelsChecking) return;
-    if (mode) {
-        levelsCheckMode = mode === 'on-hand-only' ? 'on-hand-only' : 'with-on-order';
-        try {
-            sessionStorage.setItem(STOCK_LEVELS_MODE_KEY, levelsCheckMode);
-        } catch {
-            /* ignore */
-        }
-    }
     levelsChecking = true;
+    levelsRefreshPercent = 8;
+    statusMessage = 'Starting Macromatix download…';
+    statusKind = '';
     renderLevelsView();
+    startLevelsRefreshTicker();
     try {
         await ensureMmxUserLoginBeforeLevelsCheck();
         let { res, data } = await postCheckStockLevels();
@@ -3163,14 +3237,10 @@ async function runLevelsCheck(mode) {
         if (data.accepted) {
             await pollStockLevelsCheckComplete();
         } else {
-            levelsSummary = data;
-            lowStockAlerts = Array.isArray(data.lowStockAlerts)
-                ? data.lowStockAlerts
-                : Array.isArray(data.lowStockItems)
-                  ? data.lowStockItems
-                  : [];
-            lowStockPanelOpen = lowStockAlerts.length > 0;
+            applyLevelsSummary(data);
         }
+        levelsRefreshPercent = 100;
+        updateLevelsRefreshProgressDom();
     } catch (error) {
         if (error.message === 'Macromatix login is required to continue.') {
             statusMessage = '';
@@ -3183,6 +3253,8 @@ async function runLevelsCheck(mode) {
         }
     } finally {
         levelsChecking = false;
+        stopLevelsRefreshTicker();
+        if (!statusKind) statusMessage = '';
         renderLevelsView();
     }
 }
@@ -3195,10 +3267,11 @@ function renderLevelsView() {
             ? `${count} item${count === 1 ? '' : 's'} under ${threshold} days stock`
             : levelsSummary?.stockLevelsChecked
               ? `No stock shortfalls (under ${threshold} days)`
-              : 'Run a check to refresh on-hand from Macromatix');
-    const statusHtml = statusMessage
-        ? `<div class="stock-count-status${statusKind ? ` stock-count-status--${statusKind}` : ''}" role="status">${escapeHtml(statusMessage)}</div>`
-        : '';
+              : 'Use Refresh data to pull on-hand from Macromatix');
+    const statusHtml =
+        statusMessage && (!levelsChecking || statusKind)
+            ? `<div class="stock-count-status${statusKind ? ` stock-count-status--${statusKind}` : ''}" role="status">${escapeHtml(statusMessage)}</div>`
+            : '';
     const lowStockHtml = buildLowStockWarningHtml();
     app.innerHTML = `
         <div class="stock-count stock-count--levels">
@@ -3211,7 +3284,10 @@ function renderLevelsView() {
             </header>
             ${statusHtml}
             <div class="stock-count-levels-actions">
-                ${buildStockCheckTabsHtml(levelsCheckMode, levelsChecking)}
+                <div class="stock-count-levels-actions-row">
+                    ${buildStockCheckTabsHtml(levelsCheckMode, levelsChecking)}
+                    ${buildLevelsRefreshControlHtml()}
+                </div>
             </div>
             ${lowStockHtml}
         </div>`;
@@ -3222,10 +3298,14 @@ function renderLevelsView() {
         btn.addEventListener('click', () => {
             const mode = btn.getAttribute('data-stock-check-mode');
             if (!mode || levelsChecking) return;
-            statusMessage = '';
-            statusKind = '';
-            void runLevelsCheck(mode);
+            void switchLevelsMode(mode);
         });
+    });
+    app.querySelector('#sc-levels-refresh')?.addEventListener('click', () => {
+        if (levelsChecking) return;
+        statusMessage = '';
+        statusKind = '';
+        void refreshLevelsData();
     });
     app.querySelector('#sc-low-stock-toggle')?.addEventListener('click', () => {
         lowStockPanelOpen = !lowStockPanelOpen;
@@ -3263,8 +3343,33 @@ async function init() {
     if (IS_LEVELS) {
         try {
             await loadLevelsSummary();
-            document.title = `Stock levels - Store ${STORE_NUMBER}`;
-            renderLevelsView();
+            const pipeline = await fetchPipelineStatusOrNull();
+            if (pipeline.ok && pipeline.status?.stage === 'checking-stock-levels') {
+                levelsChecking = true;
+                levelsRefreshPercent = levelsProgressTargetFromLabel(pipeline.status.stepLabel);
+                statusMessage = pipeline.status.stepLabel || 'Refreshing from Macromatix…';
+                statusKind = '';
+                document.title = `Stock levels - Store ${STORE_NUMBER}`;
+                renderLevelsView();
+                startLevelsRefreshTicker();
+                try {
+                    await pollStockLevelsCheckComplete();
+                    levelsRefreshPercent = 100;
+                } catch (error) {
+                    statusMessage = shouldRecoverGatewayError(error.message)
+                        ? 'Check is still running on the server - wait a minute and refresh.'
+                        : error.message || 'Could not check stock levels.';
+                    statusKind = 'error';
+                } finally {
+                    levelsChecking = false;
+                    stopLevelsRefreshTicker();
+                    if (!statusKind) statusMessage = '';
+                    renderLevelsView();
+                }
+            } else {
+                document.title = `Stock levels - Store ${STORE_NUMBER}`;
+                renderLevelsView();
+            }
         } catch (error) {
             app.innerHTML = `<div class="stock-count"><p class="stock-count-status stock-count-status--error">${escapeHtml(error.message)}</p><p><a class="stock-count-back" href="${escapeHtml(dashboardPath())}">← Dashboard</a></p></div>`;
         }
@@ -3334,6 +3439,7 @@ function teardownStockCountView() {
         autoSaveTimer = null;
     }
     stopMmxProgressTicker();
+    stopLevelsRefreshTicker();
     mmxPollGeneration += 1;
     mmxPollInFlight = null;
     if (stockCountToastTimer) {

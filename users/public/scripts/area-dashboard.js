@@ -53,20 +53,6 @@ function areaKeyFromPath() {
     return (pathMatch ? pathMatch[1] : codeMatch ? codeMatch[1].toUpperCase() : '') || '';
 }
 
-function mountAdminNavBack() {
-    if (!isAdminView || !window.DashboardNavBack) return;
-    const header = document.querySelector('.dashboard-header .top-info');
-    if (!header || document.getElementById('area-admin-nav-back')) return;
-    const host = document.createElement('div');
-    host.className = 'nav-back-host';
-    host.id = 'area-admin-nav-back';
-    header.prepend(host);
-    window.DashboardNavBack.mountBackButton(host, {
-        fallback: window.AppPaths?.overview?.() || '/overview',
-        alwaysFallback: true,
-    });
-}
-
 function cacheAreaPayload(data) {
     if (!data) return;
     const aliases = new Set(
@@ -438,7 +424,6 @@ function applyAreaView(data) {
     }
     renderDashboards(dashboards);
 
-    mountAdminNavBack();
     renderOutstandingLists(data);
 }
 

@@ -6,6 +6,12 @@ const {
     isSalesScrapeAbortRequested,
     MmxWorkAbortedError,
 } = require('../../src/services/salesScrapeAbort');
+const {
+    trackBrowser,
+    closeBrowserQuietly,
+    closeAllTrackedBrowsers,
+    getTrackedBrowserCount,
+} = require('./browserLifecycle');
 const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../../stores/src/storeList');
 const { getStoreScrapePhase, formatScrapeWindow } = require('../../src/services/scrapeSchedule');
 
@@ -310,15 +316,6 @@ function notifyStoreOrdersComplete(storeNumber, dateKey) {
         .catch((err) => {
             console.warn(`[Macromatix] Store ${storeNumber} orders-complete cleanup failed:`, err.message);
         });
-}
-
-async function closeBrowserQuietly(browser, label) {
-    if (!browser) return;
-    try {
-        await browser.close();
-    } catch (error) {
-        console.warn(`[Macromatix] Browser close failed during ${label}:`, error.message);
-    }
 }
 
 /*
@@ -2263,6 +2260,7 @@ async function verifyMacromatixLogin(username, password) {
     let browser;
     try {
         browser = await puppeteer.launch(getPuppeteerLaunchOptions({ skipSlowMo: true }));
+        trackBrowser(browser, 'mmx-login-verify');
         const page = await browser.newPage();
         await page.setViewport({ width: 1280, height: 720 });
         await applyResourceBlocking(page);
@@ -2584,6 +2582,7 @@ async function scrapeMacromatix(options = {}) {
             console.log('[Macromatix] Visible browser (SCRAPER_HEADLESS=false/0); use SCRAPER_SLOW_MO_MS only when debugging');
         }
         browser = await puppeteer.launch(launchOpts);
+        trackBrowser(browser, 'scrape-macromatix');
         if (typeof options.onBrowser === 'function') {
             options.onBrowser(browser);
         }
@@ -2782,6 +2781,7 @@ async function listStores() {
     let browser;
     try {
         browser = await puppeteer.launch(getPuppeteerLaunchOptions());
+        trackBrowser(browser, 'list-stores');
         const page = await browser.newPage();
         await page.setViewport({ width: 1280, height: 720 });
         await applyResourceBlocking(page);
@@ -2835,6 +2835,7 @@ async function openMacromatixBrowser(options = {}) {
         skipSlowMo: options.browserOptions?.skipSlowMo ?? options.launchOptions?.skipSlowMo,
     });
     const browser = await puppeteer.launch(launchOpts);
+    trackBrowser(browser, storeNumber ? `open-mmx:${storeNumber}` : 'open-mmx');
     if (!launchOpts.headless) {
         console.log('[Macromatix] Visible browser - watch for Edge/Chrome window (headed mode)');
     }
@@ -2876,6 +2877,9 @@ module.exports.useSingleStoreLoginMode = useSingleStoreLoginMode;
 module.exports.assertMacromatixAuthenticated = assertMacromatixAuthenticated;
 module.exports.isMacromatixLoginPage = isMacromatixLoginPage;
 module.exports.closeBrowserQuietly = closeBrowserQuietly;
+module.exports.closeAllTrackedBrowsers = closeAllTrackedBrowsers;
+module.exports.getTrackedBrowserCount = getTrackedBrowserCount;
+module.exports.trackBrowser = trackBrowser;
 module.exports.getPuppeteerLaunchOptions = getPuppeteerLaunchOptions;
 module.exports.applyResourceBlocking = applyResourceBlocking;
 module.exports.probePendingOrdersForStores = probePendingOrdersForStores;

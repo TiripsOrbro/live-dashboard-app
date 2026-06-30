@@ -3,15 +3,39 @@
         <path fill="currentColor" d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
     </svg>`;
 
+    function resolveFloatingHost(host) {
+        if (!host.id) {
+            if (host.parentElement !== document.body) {
+                document.body.insertBefore(host, document.body.firstChild);
+            }
+            return host;
+        }
+        let resolved = document.getElementById(host.id);
+        if (!resolved) {
+            resolved = host;
+        } else if (resolved !== host) {
+            host.remove();
+        }
+        if (resolved.parentElement !== document.body) {
+            document.body.insertBefore(resolved, document.body.firstChild);
+        }
+        return resolved;
+    }
+
     function mountBackButton(host, options = {}) {
         if (!host) return;
         const fallback = options.fallback || '/login';
         const ariaLabel = String(options.label || 'Back').replace(/^←\s*/, '').trim() || 'Back';
+        if (!options.embedded) {
+            host = resolveFloatingHost(host);
+        }
         host.classList.add('nav-back-host');
         if (options.embedded) {
             host.classList.add('nav-back-host--embedded');
+            host.classList.remove('nav-back-host--floating');
         } else {
             host.classList.add('nav-back-host--floating');
+            host.classList.remove('nav-back-host--embedded');
         }
         const btn = document.createElement('button');
         btn.type = 'button';

@@ -2,10 +2,44 @@
 @import url('/styles/app-tabs.css');
 
 /* Full-page settings — /Admin/Settings */
+html.page-scroll:has(body.admin-settings-page) {
+    overflow: hidden;
+    height: 100%;
+    max-height: 100dvh;
+}
+
+html.page-scroll body.admin-settings-page {
+    height: 100%;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+}
+
+/* Beat page-scroll.css generic #app / shell rules so the sidebar fills the viewport. */
+html.page-scroll body.admin-settings-page #app {
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+    overflow: hidden;
+}
+
+html.page-scroll body.admin-settings-page .app-shell-viewport,
+html.page-scroll body.admin-settings-page .app-shell-view {
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
 body.admin-settings-page {
     margin: 0;
+    display: flex;
+    flex-direction: column;
     min-height: 100vh;
     min-height: 100dvh;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
     background: var(--grey);
     color: var(--charcoal);
     color-scheme: light;
@@ -14,6 +48,26 @@ body.admin-settings-page {
     font-size: var(--font-size-4);
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+}
+
+body.admin-settings-page .app-shell-viewport {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+    max-height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+body.admin-settings-page .app-shell-view {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
+    max-height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 body.admin-settings-page .admin-settings-shell,
@@ -39,22 +93,23 @@ body.admin-settings-page .admin-settings-header .nav-back-bubble:hover {
 html.mic-overview-page body.admin-settings-page .app-shell-view #app,
 html.admin-overview-page body.admin-settings-page .app-shell-view #app,
 body.admin-settings-page #app {
-    display: block;
-    flex: none;
-    height: auto;
-    min-height: 100vh;
-    min-height: 100dvh;
-    max-height: none;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
     padding: 0;
-    overflow: visible;
+    overflow: hidden;
 }
 
 .admin-settings-shell {
     display: flex;
     flex-direction: column;
     width: 100%;
-    min-height: 100vh;
-    min-height: 100dvh;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
     box-sizing: border-box;
 }
 
@@ -77,8 +132,7 @@ body.admin-settings-page #app {
     border-bottom: var(--cell-border) color-mix(in srgb, var(--white) 18%, var(--charcoal));
     background: var(--charcoal);
     color: var(--white);
-    position: sticky;
-    top: 0;
+    flex-shrink: 0;
     z-index: 150;
 }
 
@@ -144,18 +198,20 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
 
 .admin-settings-body {
     display: flex;
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
     width: 100%;
     position: relative;
+    align-items: stretch;
 }
 
 .admin-settings-sidebar-wrap {
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
+    align-self: stretch;
     width: 240px;
-    min-height: 0;
+    min-height: 100%;
     box-sizing: border-box;
     border-right: var(--cell-border) color-mix(in srgb, var(--charcoal) 12%, transparent);
     background: var(--white);
@@ -403,6 +459,7 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
     flex: 1;
     width: 100%;
     min-width: 0;
+    min-height: 0;
     box-sizing: border-box;
     padding: calc(16px * var(--dashboard-scale)) max(1.25rem, env(safe-area-inset-right))
         calc(24px * var(--dashboard-scale)) max(1.25rem, env(safe-area-inset-left));
@@ -493,9 +550,11 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
 }
 
 .app-shell-view:has(.admin-settings-shell) {
-    overflow: auto;
+    overflow: hidden;
     min-height: 100vh;
     min-height: 100dvh;
+    height: 100%;
+    max-height: 100dvh;
 }
 
 .admin-settings-content .admin-modal--build-to,

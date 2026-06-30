@@ -1,5 +1,7 @@
 /** Cooperative abort for forecast MMX browser when MIC work preempts. */
 
+const { closeBrowserQuietly } = require('../../mmx/src/browserLifecycle');
+
 class MmxForecastAbortedError extends Error {
     constructor(reason = 'Forecast MMX aborted') {
         super(reason);
@@ -33,7 +35,7 @@ function requestForecastMmxAbort(reason) {
     if (!browser) return false;
     console.log(`[MMX Queue] Aborting in-flight forecast MMX - ${reason}`);
     activeBrowser = null;
-    browser.close().catch(() => {});
+    closeBrowserQuietly(browser, `forecast-mmx-abort:${reason}`).catch(() => {});
     return true;
 }
 

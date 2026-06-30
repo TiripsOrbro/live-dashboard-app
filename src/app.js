@@ -40,6 +40,11 @@ const {
     clearSalesScrapeBrowser,
 } = require('./services/salesScrapeAbort');
 require('../dashboard/src/forecastMmxAbort');
+const {
+    closeBrowserQuietly,
+    closeAllTrackedBrowsers,
+    getTrackedBrowserCount,
+} = require('../mmx/src/browserLifecycle');
 const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./services/storeList');
 const {
     TEST_STORE_SLUG,
@@ -1525,7 +1530,7 @@ async function scrapeWithRetry(scrapeOptions = {}) {
                 async () => {
                     if (!activeBrowser) return;
                     console.warn('API: Closing active browser after scrape timeout');
-                    await activeBrowser.close();
+                    await closeBrowserQuietly(activeBrowser, 'scrape-timeout');
                     clearSalesScrapeBrowser(activeBrowser);
                 }
             );
@@ -8087,6 +8092,21 @@ function startFiveAmReportsScheduler() {
     setInterval(() => void maybeRunFiveAmReports(), FIVE_AM_REPORTS_CHECK_MS);
 }
 
+function startMemoryDiagnostics() {
+    if (!/^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_MEMORY_LOG ?? '').trim())) {
+        return;
+    }
+    const intervalMs = Math.max(60_000, Number(process.env.DASHBOARD_MEMORY_LOG_INTERVAL_MS || 30 * 60 * 1000));
+    const logMemory = () => {
+        const rssMb = Math.round(process.memoryUsage().rss / 1024 / 1024);
+        console.log(
+            `[Dashboard] Memory RSS ${rssMb} MB, tracked browsers ${getTrackedBrowserCount()}`
+        );
+    };
+    logMemory();
+    setInterval(logMemory, intervalMs).unref();
+}
+
 (function logDashboardAuthMode() {
     if (usersFileConfigured()) {
         console.log(`[Auth] ${readUsersFileSync().length} dashboard account(s) from ${path.basename(resolveUsersFilePath())}`);
@@ -8110,20 +8130,29 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     }
     startActionsDigestScheduler();
     startFiveAmReportsScheduler();
+    startMemoryDiagnostics();
 });
 
 // Graceful shutdown so PM2 restarts / systemctl stop release the port cleanly.
 let shuttingDown = false;
-function shutdown(signal) {
+async function shutdown(signal) {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(`[Dashboard] ${signal} received - closing server…`);
+    console.log(`[Dashboard] ${signal} received - closing browsers and server…`);
     cancelSchedulerHandle(salesScrapeSchedulerTimer);
     const force = setTimeout(() => {
         console.warn('[Dashboard] Forced exit after shutdown timeout');
         process.exit(0);
     }, 10000);
     force.unref();
+    try {
+        await Promise.race([
+            closeAllTrackedBrowsers('shutdown'),
+            new Promise((resolve) => setTimeout(resolve, 8000)),
+        ]);
+    } catch (err) {
+        console.warn('[Dashboard] Browser shutdown failed:', err.message);
+    }
     server.close(() => {
         clearTimeout(force);
         console.log('[Dashboard] Server closed - exiting');

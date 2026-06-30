@@ -1,5 +1,7 @@
 ﻿/** Cooperative abort for dashboard sales scrape when stock count / orders take MMX. */
 
+const { closeBrowserQuietly } = require('../../mmx/src/browserLifecycle');
+
 class MmxWorkAbortedError extends Error {
     constructor(reason = 'MMX work aborted') {
         super(reason);
@@ -10,6 +12,9 @@ class MmxWorkAbortedError extends Error {
 
 let abortRequested = false;
 let activeBrowser = null;
+let abortCloseTimer = null;
+
+const ABORT_FORCE_CLOSE_MS = Number(process.env.SALES_SCRAPE_ABORT_CLOSE_MS || 2500);
 
 function isSalesScrapeAbortRequested() {
     return abortRequested;
@@ -17,6 +22,10 @@ function isSalesScrapeAbortRequested() {
 
 function resetSalesScrapeAbort() {
     abortRequested = false;
+    if (abortCloseTimer) {
+        clearTimeout(abortCloseTimer);
+        abortCloseTimer = null;
+    }
 }
 
 function registerSalesScrapeBrowser(browser) {
@@ -31,9 +40,16 @@ function requestSalesScrapeAbort(reason) {
     if (abortRequested) return true;
     abortRequested = true;
     console.log(`[MMX Resource] Aborting in-flight sales scrape - ${reason}`);
-    // Cooperative abort: scrape checks the flag and closes its own browser. Forcing
-    // browser.close() here races workers mid-page.evaluate and causes "Session closed"
-    // retry storms instead of a clean handoff to MIC stock-count work.
+    // Cooperative abort: scrape checks the flag and closes its own browser. A delayed
+    // force-close avoids racing workers mid-page.evaluate (immediate close caused retry storms).
+    if (abortCloseTimer) clearTimeout(abortCloseTimer);
+    abortCloseTimer = setTimeout(() => {
+        abortCloseTimer = null;
+        const browser = activeBrowser;
+        if (!browser) return;
+        activeBrowser = null;
+        closeBrowserQuietly(browser, `sales-scrape-abort:${reason}`).catch(() => {});
+    }, ABORT_FORCE_CLOSE_MS);
     return true;
 }
 

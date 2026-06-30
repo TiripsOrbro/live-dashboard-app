@@ -774,8 +774,59 @@ html.admin-overview-page .app-shell-view #app > .mic-page--admin {
     grid-row: 1;
 }
 
+.mic-grid--admin > .mic-store-quad-grid {
+    grid-column: 2 / -1;
+    grid-row: 1 / 3;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: var(--admin-grid-gap, calc(14px * var(--dashboard-scale)));
+    min-height: 0;
+    height: 100%;
+    align-self: stretch;
+    overflow: visible;
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-sizing: border-box;
+}
+
+.mic-store-quad-grid__slot {
+    min-height: 0;
+    height: 100%;
+    display: flex;
+}
+
+.mic-store-quad-grid__slot > .mic-tile,
+.mic-store-quad-grid__slot > a.mic-tile {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.mic-store-quad-grid__slot--left-top {
+    grid-column: 1;
+    grid-row: 1;
+}
+
+.mic-store-quad-grid__slot--left-bottom {
+    grid-column: 1;
+    grid-row: 2;
+}
+
+.mic-store-quad-grid__slot--right {
+    grid-column: 2;
+    grid-row: 1 / -1;
+}
+
 .mic-grid--admin > .mic-grid-equal-row--row-1 {
     grid-row: 2;
+}
+
+.mic-grid--admin > .mic-grid-equal-row--row-extras {
+    grid-row: 3;
 }
 
 .mic-grid--admin > .mic-grid-equal-row--row-2,
@@ -783,8 +834,40 @@ html.admin-overview-page .app-shell-view #app > .mic-page--admin {
     grid-row: 3;
 }
 
-.mic-grid--admin > .mic-grid-equal-row--row-3 {
+.mic-grid--admin > .mic-grid-equal-row--row-3,
+.mic-grid--admin > .mic-tacaudit-access.mic-grid-equal-row--row-3 {
     grid-row: 4;
+}
+
+.mic-grid--admin .mic-store-quad-grid__slot > .mic-tile,
+.mic-grid--admin .mic-store-quad-grid__slot > a.mic-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: var(--white);
+    border: var(--mic-tile-border);
+    border-radius: var(--mic-tile-radius, 0);
+    box-shadow: var(--mic-tile-shadow, none);
+    overflow: visible;
+}
+
+.mic-grid--admin .mic-store-quad-grid__slot > .mic-tile.mic-tile--core-countdown,
+.mic-grid--admin .mic-store-quad-grid__slot > a.mic-tile.mic-tile--core-countdown {
+    overflow: hidden;
+    background: color-mix(in srgb, var(--tb-purple, #702082) 68%, black);
+}
+
+.mic-grid--admin .mic-store-quad-grid__slot > .mic-tile.mic-tile--stock-levels {
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: calc(18px * var(--dashboard-scale)) 0 0;
+    overflow: hidden;
+}
+
+.mic-grid--admin .mic-store-quad-grid__slot > .mic-tile.mic-tile--stock-levels .mic-tile-body {
+    justify-content: flex-start;
 }
 
 .mic-grid--admin > .mic-tile--pos-tacaudit-summary-row {
@@ -3242,7 +3325,31 @@ html:not(.mic-flat-tiles) .mic-tile--stock-levels {
     max-height: calc(96px * var(--dashboard-scale));
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     text-align: left;
+}
+
+.mic-tile-stock-list::-webkit-scrollbar {
+    display: none;
+}
+
+.mic-store-quad-grid__slot--right .mic-tile-stock-list {
+    max-height: none;
+}
+
+.mic-store-quad-grid__slot--right .mic-tile-stock-item {
+    font-size: calc(0.9rem * var(--dashboard-scale));
+    padding: calc(5px * var(--dashboard-scale)) 0;
+    line-height: 1.4;
+}
+
+.mic-store-quad-grid__slot--right .mic-tile-stock-item-name {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .mic-tile-stock-item {
@@ -4284,7 +4391,8 @@ button.mic-tile.mic-tile--link {
     .mic-grid--admin .mic-tacaudit-access,
     .mic-grid--admin .mic-tile--pos-middle-row,
     .mic-grid--admin .mic-tile--pos-dfsc,
-    .mic-grid--admin .mic-tile--pos-square-one {
+    .mic-grid--admin .mic-tile--pos-square-one,
+    .mic-grid--admin > .mic-store-quad-grid {
         grid-column: auto;
         grid-row: auto;
     }

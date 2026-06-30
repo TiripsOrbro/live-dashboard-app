@@ -52,7 +52,8 @@ module.exports = {
             min_uptime: '20s',
             restart_delay: 5000,
             // A leaked Chromium can grow memory over days; recycle before the Pi runs out.
-            max_memory_restart: '600M',
+            // Pi 4 (4GB): default 900M. Override via PM2_DASHBOARD_MAX_MEMORY in .env (e.g. 1G).
+            max_memory_restart: env.PM2_DASHBOARD_MAX_MEMORY || '900M',
             kill_timeout: 15000,
             env,
         },

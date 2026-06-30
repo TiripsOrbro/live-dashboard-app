@@ -2662,7 +2662,6 @@ function buildDashboardHeaderHtml() {
                     <p id="store-label" class="store-label">${currentStoreLabel ? `Store ${currentStoreLabel}` : ''}</p>
                 </div>
                 <div class="top-info">
-                    <div class="nav-back-host" id="dashboard-nav-back"></div>
                     <div class="top-info-group">
                         <span class="top-info-label">Current Time</span>
                         <span id="time-display" class="top-info-value">${formatTime(new Date())}</span>
@@ -2762,13 +2761,20 @@ function renderDashboard() {
     showGridSkeleton();
     applyPortraitTabVisibility();
     bindDashboardSettings();
-    const isKioskEntry = isKioskDashboardEntry();
-    if (showChrome && window.DashboardNavBack) {
-        window.DashboardNavBack.mountBackButton(document.getElementById('dashboard-nav-back'), {
+    const showBackNav = shouldShowDashboardBackNav();
+    let backHost = document.getElementById('dashboard-nav-back');
+    if (showBackNav && window.DashboardNavBack) {
+        if (!backHost) {
+            backHost = document.createElement('div');
+            backHost.id = 'dashboard-nav-back';
+        }
+        window.DashboardNavBack.mountBackButton(backHost, {
             fallback: overviewHref,
             alwaysFallback: true,
             fadeToStores: !isAdminStoreDashboard(),
         });
+    } else if (backHost) {
+        backHost.remove();
     }
 
     if (isAdminStoreDashboard()) {

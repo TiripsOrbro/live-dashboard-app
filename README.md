@@ -103,8 +103,8 @@ SCRAPER_EXECUTABLE_PATH=/usr/bin/chromium
 SCRAPER_HEADLESS=true
 
 # Speed: scrape stores in parallel using isolated browser sessions (each logs in once).
-# Default 3. Lower to 2 if a Pi runs low on memory; set 1 to force sequential.
-SCRAPER_CONCURRENCY=3
+# Pi 4 (4GB): use 2 for 9–15 stores. Dev / 8GB+: 3–4. Set 1 to force sequential.
+SCRAPER_CONCURRENCY=2
 # Abort image/media/font requests for faster page loads (default on). Set 0 to disable.
 SCRAPER_BLOCK_RESOURCES=true
 
@@ -294,7 +294,7 @@ pm2 save
 pm2 startup                      # run the command it prints (once) to survive reboot
 ```
 
-`ecosystem.config.cjs` loads `.env`, restarts on crash, and recycles the process if memory passes ~600 MB (guards against a long-running Chromium leak).
+`ecosystem.config.cjs` loads `.env`, restarts on crash, and recycles the dashboard process if memory passes **900 MB** by default on Pi 4 (4GB). Override with `PM2_DASHBOARD_MAX_MEMORY=1G` in `.env` if needed. Hardened browser teardown prevents Chromium child processes from lingering between scrapes.
 
 Useful commands:
 

@@ -146,6 +146,24 @@ async function switchToDayView(page) {
     await page.waitForTimeout(SETTLE_MS);
 }
 
+const LIFELENZ_TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
+
+function getMelbourneTodayIso(date = new Date()) {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: LIFELENZ_TIME_ZONE }).format(date);
+}
+
+function addDaysToIso(iso, days) {
+    const [y, m, d] = String(iso || '').split('-').map(Number);
+    if (!y || !m || !d) return '';
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + (Number(days) || 0));
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+function getMelbourneTomorrowIso(date = new Date()) {
+    return addDaysToIso(getMelbourneTodayIso(date), 1);
+}
+
 function isoToLifeLenzDisplay(iso) {
     const [y, m, d] = String(iso || '').split('-').map(Number);
     if (!y || !m || !d) return '';
@@ -167,24 +185,46 @@ async function readActiveForecastIsoDate(page) {
 
         const monthMap = {
             jan: '01',
+            january: '01',
             feb: '02',
+            february: '02',
             mar: '03',
+            march: '03',
             apr: '04',
+            april: '04',
             may: '05',
             jun: '06',
+            june: '06',
             jul: '07',
+            july: '07',
             aug: '08',
+            august: '08',
             sep: '09',
+            sept: '09',
+            september: '09',
             oct: '10',
+            october: '10',
             nov: '11',
+            november: '11',
             dec: '12',
+            december: '12',
         };
 
-        const wordsMatch = text.match(/(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})/);
+        const wordsMatch = text.match(/(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})/);
         if (wordsMatch) {
-            const month = monthMap[wordsMatch[2].slice(0, 3).toLowerCase()];
+            const monthKey = wordsMatch[2].toLowerCase();
+            const month = monthMap[monthKey] || monthMap[monthKey.slice(0, 3)];
             if (month) {
                 return `${wordsMatch[3]}-${month}-${String(Number(wordsMatch[1])).padStart(2, '0')}`;
+            }
+        }
+
+        const commaMatch = text.match(/[A-Za-z]+,\s*(\d{1,2})\s+([A-Za-z]{3,9})\s+(\d{4})/);
+        if (commaMatch) {
+            const monthKey = commaMatch[2].toLowerCase();
+            const month = monthMap[monthKey] || monthMap[monthKey.slice(0, 3)];
+            if (month) {
+                return `${commaMatch[3]}-${month}-${String(Number(commaMatch[1])).padStart(2, '0')}`;
             }
         }
 
@@ -205,26 +245,17 @@ async function readActiveForecastIsoDate(page) {
 async function isForecastDateActive(page, isoDate) {
     const activeIso = await readActiveForecastIsoDate(page);
     if (activeIso === isoDate) return true;
-    const href = page.url();
-    if (href.includes(isoDate)) return true;
-    const display = isoToLifeLenzDisplay(isoDate);
-    if (!display?.needle) return false;
-    return page.evaluate(
-        ({ needle, day, month, year }) => {
-            const dateEl = document.querySelector('.display-date, a.display-date, [aria-label="Open calendar picker"]');
-            const text = (dateEl?.textContent || '').replace(/\s+/g, ' ').trim();
-            if (
-                text &&
-                new RegExp(`\\b${day}\\b`).test(text) &&
-                new RegExp(month, 'i').test(text) &&
-                new RegExp(String(year)).test(text)
-            ) {
-                return true;
-            }
-            return (document.body?.innerText || '').includes(needle);
-        },
-        { needle: display.needle, day: display.day, month: display.month, year: display.year }
-    );
+    return page.url().includes(isoDate);
+}
+
+async function waitForForecastDateToolbar(page) {
+    await page
+        .waitForSelector('.display-date, a.display-date, [aria-label="Open calendar picker"]', {
+            visible: true,
+            timeout: 15000,
+        })
+        .catch(() => null);
+    await page.waitForTimeout(400);
 }
 
 function buildForecastUrlsForDate(currentUrl, isoDate) {
@@ -271,49 +302,83 @@ async function setForecastDateViaUrl(page, isoDate) {
 }
 
 async function clickForecastDateArrow(page, forward) {
+    const iconSelectors = forward
+        ? ['.glyphicon-chevron-right', '.fa-chevron-right', '.icon-chevron-right']
+        : ['.glyphicon-chevron-left', '.fa-chevron-left', '.icon-chevron-left'];
+    const controlSelectors = forward
+        ? ['a.next', 'button.next', '[aria-label*="Next day"]', '[aria-label*="next day"]', '[aria-label*="Next"]']
+        : [
+              'a.prev',
+              'button.prev',
+              '[aria-label*="Previous day"]',
+              '[aria-label*="previous day"]',
+              '[aria-label*="Previous"]',
+          ];
+
+    for (const selector of [...iconSelectors, ...controlSelectors]) {
+        const handles = await page.$$(selector);
+        for (const handle of handles) {
+            const shouldClick = await handle.evaluate((el, goForward) => {
+                if (el.closest('.datepicker, .bootstrap-datetimepicker-widget, .datepicker-dropdown')) return false;
+                const displayDate = document.querySelector(
+                    '.display-date, a.display-date, [aria-label="Open calendar picker"]'
+                );
+                if (!displayDate) return false;
+                const displayRect = displayDate.getBoundingClientRect();
+                const target = el.closest('a, button') || el;
+                const targetRect = target.getBoundingClientRect();
+                if (displayRect.width <= 0 || targetRect.width <= 0) return false;
+                if (Math.abs(targetRect.top - displayRect.top) > 96) return false;
+                const displayMid = displayRect.left + displayRect.width / 2;
+                const targetMid = targetRect.left + targetRect.width / 2;
+                return goForward ? targetMid > displayMid : targetMid < displayMid;
+            }, forward);
+            if (!shouldClick) continue;
+            const clickHandle = await handle.evaluateHandle((el) => el.closest('a, button') || el);
+            const clickEl = clickHandle.asElement();
+            if (!clickEl) continue;
+            await clickEl.click().catch(() => null);
+            return true;
+        }
+    }
+
     return page.evaluate((goForward) => {
-        const dateRoots = [
-            document.querySelector('.display-date')?.closest('div, nav, header, section, form'),
+        const displayDate = document.querySelector('.display-date, a.display-date, [aria-label="Open calendar picker"]');
+        const roots = [
+            displayDate?.closest('div, nav, header, section, form, table, tr, td'),
             document.querySelector('.calendar-unit-link.day')?.closest('div, nav, section, form'),
-            document.querySelector('[class*="date-nav"]')?.closest('div, nav, section, form'),
         ].filter(Boolean);
 
         const selectors = goForward
-            ? [
-                  '[aria-label*="Next day"]',
-                  '[aria-label*="next day"]',
-                  'a.next',
-                  'button.next',
-                  '[aria-label*="Next"]',
-                  '[aria-label*="next"]',
-                  '.fa-chevron-right',
-                  '.icon-chevron-right',
-              ]
-            : [
-                  '[aria-label*="Previous day"]',
-                  '[aria-label*="previous day"]',
-                  'a.prev',
-                  'button.prev',
-                  '[aria-label*="Previous"]',
-                  '[aria-label*="previous"]',
-                  '.fa-chevron-left',
-                  '.icon-chevron-left',
-              ];
+            ? ['.glyphicon-chevron-right', '.fa-chevron-right', 'a.next', 'button.next']
+            : ['.glyphicon-chevron-left', '.fa-chevron-left', 'a.prev', 'button.prev'];
 
-        const roots = dateRoots.length ? dateRoots : [document.body];
-        for (const root of roots) {
+        for (const root of roots.length ? roots : [document.body]) {
             for (const selector of selectors) {
                 for (const el of root.querySelectorAll(selector)) {
                     if (el.closest('.datepicker, .bootstrap-datetimepicker-widget, .datepicker-dropdown')) continue;
-                    const r = el.getBoundingClientRect();
+                    const target = el.closest('a, button') || el;
+                    const r = target.getBoundingClientRect();
                     if (r.width <= 0 || r.height <= 0) continue;
-                    el.click();
+                    target.click();
                     return true;
                 }
             }
         }
         return false;
     }, forward);
+}
+
+async function advanceForecastDateByDays(page, dayCount) {
+    const steps = Math.max(0, Number(dayCount) || 0);
+    if (!steps) return true;
+
+    for (let step = 0; step < steps; step += 1) {
+        const clicked = await clickForecastDateArrow(page, true);
+        if (!clicked) return false;
+        await page.waitForTimeout(DATE_SETTLE_MS);
+    }
+    return true;
 }
 
 async function advanceForecastDateWithArrows(page, isoDate) {
@@ -462,26 +527,57 @@ async function waitForForecastDate(page, isoDate, timeoutMs = 15000) {
 }
 
 async function setForecastDate(page, isoDate) {
-    if (await isForecastDateActive(page, isoDate)) {
+    const target = String(isoDate || '').trim();
+    if (!target) throw new Error('Forecast date is required.');
+
+    if (await isForecastDateActive(page, target)) {
         await page.waitForTimeout(500);
         return;
     }
 
-    if (await setForecastDateViaUrl(page, isoDate)) return;
-    if (await advanceForecastDateWithArrows(page, isoDate)) return;
-
-    const display = isoToLifeLenzDisplay(isoDate);
-    if (!display) throw new Error(`Invalid forecast date: ${isoDate}`);
-
-    if (await pickForecastDateFromCalendar(page, isoDate, display)) return;
-
-    if (await setForecastDateViaUrl(page, isoDate)) return;
-    if (await advanceForecastDateWithArrows(page, isoDate)) return;
-    if (await waitForForecastDate(page, isoDate, 3000)) return;
-
     const currentIso = await readActiveForecastIsoDate(page);
+    const tomorrowIso = getMelbourneTomorrowIso();
+    console.log(
+        `[LifeLenz forecast] Navigating from ${currentIso || 'unknown'} to ${target}` +
+            (target === tomorrowIso ? ' (tomorrow)' : '')
+    );
+
+    if (target === tomorrowIso) {
+        if (await clickByText(page, ['a', 'button', 'span'], /^tomorrow$/i)) {
+            await page.waitForTimeout(DATE_SETTLE_MS);
+            if (await isForecastDateActive(page, target)) return;
+        }
+        if (!currentIso || currentIso === getMelbourneTodayIso()) {
+            if (await advanceForecastDateByDays(page, 1) && (await isForecastDateActive(page, target))) return;
+        }
+    }
+
+    if (currentIso && /^\d{4}-\d{2}-\d{2}$/.test(currentIso) && /^\d{4}-\d{2}-\d{2}$/.test(target)) {
+        const dayOffset = Math.round(
+            (Date.parse(`${target}T12:00:00Z`) - Date.parse(`${currentIso}T12:00:00Z`)) / 86400000
+        );
+        if (dayOffset > 0 && dayOffset <= 14) {
+            if (await advanceForecastDateByDays(page, dayOffset) && (await isForecastDateActive(page, target))) {
+                return;
+            }
+        }
+    }
+
+    if (await setForecastDateViaUrl(page, target)) return;
+    if (await advanceForecastDateWithArrows(page, target)) return;
+
+    const display = isoToLifeLenzDisplay(target);
+    if (!display) throw new Error(`Invalid forecast date: ${target}`);
+
+    if (await pickForecastDateFromCalendar(page, target, display)) return;
+
+    if (await setForecastDateViaUrl(page, target)) return;
+    if (await advanceForecastDateWithArrows(page, target)) return;
+    if (await waitForForecastDate(page, target, 3000)) return;
+
+    const showing = await readActiveForecastIsoDate(page);
     throw new Error(
-        `Could not select date ${isoDate} in LifeLenz calendar` + (currentIso ? ` (showing ${currentIso})` : '') + '.'
+        `Could not select date ${target} in LifeLenz calendar` + (showing ? ` (showing ${showing})` : '') + '.'
     );
 }
 
@@ -636,6 +732,7 @@ async function writeForecastPlanOnPage(page, storeNumber, plan, accessibleStores
     await selectStoreInLifeLenz(page, store);
     await navigateToForecast(page);
     await switchToDayView(page);
+    await waitForForecastDateToolbar(page);
 
     const applied = [];
     for (const day of plan || []) {

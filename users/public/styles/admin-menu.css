@@ -2280,11 +2280,15 @@ html.mic-dark-mode .admin-forecast-update-badge--user {
     padding: 0;
     overflow: hidden;
     background: var(--grey, #ececec);
+    display: flex;
+    flex-direction: column;
+    max-height: min(92vh, 900px);
 }
 
 .admin-modal--forecast-preview .admin-forecast-preview-header {
     padding: 1.25rem 1.5rem 0.75rem;
     background: #fff;
+    flex-shrink: 0;
 }
 
 .admin-modal--forecast-preview .admin-forecast-preview-header h2 {
@@ -2298,10 +2302,34 @@ html.mic-dark-mode .admin-forecast-update-badge--user {
     padding: 0 1.5rem 1.25rem;
 }
 
+.admin-forecast-preview-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.admin-forecast-preview-scroll .admin-forecast-preview-adjustments {
+    margin: 0.75rem 1.5rem 0;
+}
+
+.admin-forecast-preview-scroll .admin-forecast-preview-body-wrap {
+    padding-top: 0.75rem;
+}
+
+.admin-forecast-preview-scroll #admin-forecast-preview-error {
+    margin: 0.5rem 1.5rem 0;
+}
+
+.admin-forecast-preview-scroll .admin-forecast-preview-lifelenz-note {
+    margin: 0.35rem 1.5rem 0.75rem;
+}
+
 .admin-forecast-store-tabs {
     padding: 0 1.5rem 0.75rem;
     background: #fff;
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    flex-shrink: 0;
 }
 
 .admin-forecast-store-tabs .admin-accounts-scope-row-wrap {
@@ -2357,10 +2385,7 @@ html.mic-dark-mode .admin-forecast-update-badge--user {
     background: #fff;
     border-top: 1px solid rgba(0, 0, 0, 0.08);
     margin-top: 0;
-}
-
-.admin-modal--forecast-preview #admin-forecast-preview-error {
-    margin: 0.5rem 1.5rem 0;
+    flex-shrink: 0;
 }
 
 html.mic-dark-mode .admin-modal--forecast-preview {
@@ -3404,14 +3429,11 @@ html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-entry {
     padding: 0 1.5rem 0.75rem;
     background: #fff;
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    flex-shrink: 0;
 }
 
 .admin-modal--forecast-preview .admin-forecast-preview-target .admin-forecast-target-wrap {
     margin-bottom: 0.35rem;
-}
-
-.admin-forecast-preview-target #admin-forecast-preview-load {
-    margin-top: 0.35rem;
 }
 
 html.mic-dark-mode .admin-forecast-preview-target {

@@ -179,8 +179,8 @@
             payload.targetScope === 'this-week' ||
             (payload.targetScope === 'week' && payload.weekStart && payload.weekStart === weeks[0]);
         hint.textContent = partial
-            ? `${desc}. Current week updates start from tomorrow only. Click Load preview when ready.`
-            : `${desc}. Choose the week to update, then click Load preview.`;
+            ? `${desc}. Current week updates start from tomorrow only.`
+            : desc;
     }
 
     function resetPreviewForTargetChange() {
@@ -188,8 +188,6 @@
         previewActiveStore = null;
         const root = previewBackdrop;
         if (!root) return;
-        root.querySelector('#admin-forecast-preview-body').innerHTML =
-            '<p class="admin-accounts-meta">Choose update timeframe above, then click <strong>Load preview</strong>.</p>';
         root.querySelector('#admin-forecast-preview-stores').innerHTML = '';
         root.querySelector('#admin-forecast-preview-stores').hidden = true;
         root.querySelector('#admin-forecast-preview-adjustments').hidden = true;
@@ -198,7 +196,14 @@
             submitBtn.disabled = true;
             submitBtn.textContent = 'Submit forecast';
         }
+        const targetErr = validatePreviewTarget();
+        if (targetErr) {
+            root.querySelector('#admin-forecast-preview-error').textContent = targetErr;
+            root.querySelector('#admin-forecast-preview-body').innerHTML = '';
+            return;
+        }
         root.querySelector('#admin-forecast-preview-error').textContent = '';
+        void reloadPreviewForTarget();
     }
 
     function describeForecastTarget(payload) {
@@ -667,15 +672,16 @@
                         </label>
                     </div>
                     <p class="admin-accounts-meta" id="admin-forecast-preview-target-hint"></p>
-                    <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-preview-load">Load preview</button>
                 </div>
                 <div class="admin-forecast-store-tabs" id="admin-forecast-preview-stores" hidden></div>
-                <div id="admin-forecast-preview-adjustments" class="admin-forecast-preview-adjustments" hidden></div>
-                <div class="admin-forecast-preview-body-wrap">
-                    <div id="admin-forecast-preview-body"></div>
+                <div class="admin-forecast-preview-scroll">
+                    <div id="admin-forecast-preview-adjustments" class="admin-forecast-preview-adjustments" hidden></div>
+                    <div class="admin-forecast-preview-body-wrap">
+                        <div id="admin-forecast-preview-body"></div>
+                    </div>
+                    <p id="admin-forecast-preview-error" class="admin-modal-error" role="alert"></p>
+                    <p id="admin-forecast-preview-lifelenz-note" class="admin-accounts-meta admin-forecast-preview-lifelenz-note" hidden></p>
                 </div>
-                <p id="admin-forecast-preview-error" class="admin-modal-error" role="alert"></p>
-                <p id="admin-forecast-preview-lifelenz-note" class="admin-accounts-meta admin-forecast-preview-lifelenz-note" hidden></p>
                 <div class="admin-modal-actions admin-modal-actions--split">
                     <button type="button" class="mic-settings-btn" id="admin-forecast-preview-cancel">Cancel</button>
                     <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-preview-submit">Submit forecast</button>
@@ -701,9 +707,6 @@
         previewBackdrop.querySelector('#admin-forecast-preview-target-day')?.addEventListener('change', () => {
             updatePreviewTargetHint(previewBackdrop);
             resetPreviewForTargetChange();
-        });
-        previewBackdrop.querySelector('#admin-forecast-preview-load')?.addEventListener('click', () => {
-            void reloadPreviewForTarget();
         });
         previewBackdrop.querySelector('#admin-forecast-preview-stores')?.addEventListener('click', (event) => {
             const tab = event.target.closest('[data-preview-store]');
@@ -2467,19 +2470,16 @@
         const targetErr = validatePreviewTarget();
         if (targetErr) {
             root.querySelector('#admin-forecast-preview-error').textContent = targetErr;
+            root.querySelector('#admin-forecast-preview-body').innerHTML = '';
             return;
         }
+        root.querySelector('#admin-forecast-preview-adjustments').hidden = true;
         root.querySelector('#admin-forecast-preview-error').textContent = '';
         root.querySelector('#admin-forecast-preview-body').innerHTML = '<p>Loading preview…</p>';
         const submitBtn = root.querySelector('#admin-forecast-preview-submit');
-        const loadBtn = root.querySelector('#admin-forecast-preview-load');
         if (submitBtn) {
             submitBtn.disabled = true;
             submitBtn.textContent = 'Submit forecast';
-        }
-        if (loadBtn) {
-            loadBtn.disabled = true;
-            loadBtn.textContent = 'Loading…';
         }
         try {
             previewData = await fetchPreview(stores);
@@ -2490,11 +2490,6 @@
         } catch (error) {
             root.querySelector('#admin-forecast-preview-error').textContent = error.message;
             root.querySelector('#admin-forecast-preview-body').innerHTML = '';
-        } finally {
-            if (loadBtn) {
-                loadBtn.disabled = false;
-                loadBtn.textContent = 'Load preview';
-            }
         }
     }
 
@@ -2508,8 +2503,7 @@
         previewData = null;
         previewActiveStore = null;
         root.querySelector('#admin-forecast-preview-error').textContent = '';
-        root.querySelector('#admin-forecast-preview-body').innerHTML =
-            '<p class="admin-accounts-meta">Choose update timeframe above, then click <strong>Load preview</strong>.</p>';
+        root.querySelector('#admin-forecast-preview-body').innerHTML = '<p>Loading preview…</p>';
         root.querySelector('#admin-forecast-preview-stores').innerHTML = '';
         root.querySelector('#admin-forecast-preview-stores').hidden = true;
         root.querySelector('#admin-forecast-preview-adjustments').hidden = true;
@@ -2519,6 +2513,7 @@
         const targetErr = validatePreviewTarget();
         if (targetErr) {
             root.querySelector('#admin-forecast-preview-error').textContent = targetErr;
+            root.querySelector('#admin-forecast-preview-body').innerHTML = '';
             return;
         }
         try {
@@ -2526,6 +2521,7 @@
         } catch (error) {
             root.querySelector('#admin-forecast-preview-error').textContent = error.message;
         }
+        void reloadPreviewForTarget();
         if (focusSubmit) {
             root.querySelector('#admin-forecast-preview-target-scope')?.focus();
         }
@@ -2538,7 +2534,7 @@
 
         if (!previewData?.previews?.some((row) => row.ok)) {
             previewRoot.querySelector('#admin-forecast-preview-error').textContent =
-                'Load preview for your chosen timeframe before submitting.';
+                'Wait for the preview to finish loading before submitting.';
             return;
         }
 

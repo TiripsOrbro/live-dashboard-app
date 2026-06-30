@@ -194,9 +194,15 @@
 
     function adminStoreHref(storeNumber) {
         const num = String(storeNumber || '').replace(/[^0-9]/g, '');
-        return num
-            ? global.AppPaths?.adminStore?.(num) || `/Admin/${encodeURIComponent(num)}`
-            : global.AppPaths?.overview?.() || '/overview';
+        if (!num) return global.AppPaths?.overview?.() || '/overview';
+        const areaCode = global.AdminStoreTabs?.areaFromPath?.() || '';
+        if (areaCode) {
+            return (
+                global.AppPaths?.adminAreaWithStore?.(areaCode, num) ||
+                `/Admin/${encodeURIComponent(areaCode)}?store=${encodeURIComponent(num)}`
+            );
+        }
+        return global.AppPaths?.adminStore?.(num) || `/Admin/${encodeURIComponent(num)}`;
     }
 
     function renderOutstandingLists(data) {

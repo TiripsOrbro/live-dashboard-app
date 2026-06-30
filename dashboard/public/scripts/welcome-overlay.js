@@ -1,4 +1,5 @@
 /** Post-login welcome overlay - dashboard / store list load underneath while this plays. */
+(function welcomeOverlayModule() {
 const WELCOME_PENDING_KEY = 'dashboard-welcome-pending';
 
 const TIMING = {
@@ -156,4 +157,5 @@ async function runWelcomeSequence(welcomeName) {
     const pending = consumeWelcomePending();
     if (!pending) return;
     void runWelcomeSequence(pending.welcomeName);
+})();
 })();

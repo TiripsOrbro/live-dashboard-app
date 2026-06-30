@@ -1,6 +1,7 @@
 /* -----------------------------------------------------------
    Root element - dashboard mounts here (`#app`)
 ----------------------------------------------------------- */
+if (!window.SalesDashboardView) {
 function shellPathname() {
     return window.__SHELL_ROUTE__?.pathname ?? window.location.pathname;
 }
@@ -3015,3 +3016,5 @@ window.SalesDashboardView = {
 if (!window.__APP_SHELL__) {
     bootSalesDashboard();
 }
+
+} /* end SalesDashboardView guard — safe to skip on repeat shell loads */

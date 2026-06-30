@@ -261,15 +261,21 @@
         );
     }
 
-    function areaCodeFromName(name) {
-        const m = String(name || '').match(/(\d+)/);
-        return m ? `A${Number(m[1])}` : '';
+    function adminAreaSlug(area) {
+        const key = String(area?.areaKey || '').trim().toLowerCase();
+        if (key) return key;
+        const fromPaths = global.AppPaths?.areaCodeFromName?.(area?.name);
+        if (fromPaths) return fromPaths;
+        const m = String(area?.name || '').match(/(\d+)/);
+        if (!m) return '';
+        const legacyMap = { 1: 'qld-1', 2: 'qld-1', 21: 'vic-1', 22: 'vic-1' };
+        return legacyMap[Number(m[1])] || '';
     }
 
     function adminStoreSnapOptions(area) {
         return {
             storeBasePath: '/Admin',
-            adminAreaCode: areaCodeFromName(area?.name),
+            adminAreaCode: adminAreaSlug(area),
             adminAreaLinkOnly: true,
         };
     }

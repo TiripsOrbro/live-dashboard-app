@@ -52,18 +52,61 @@
         return `${url}${sep}v=${encodeURIComponent(token)}`;
     }
 
+    /** After load, verify scripts that register a global view/export actually did so. */
+    const SCRIPT_READY_CHECKS = {
+        '/scripts/dashboard.js': () => global.SalesDashboardView?.mount,
+    };
+
+    function scriptBasePath(url) {
+        return String(url || '').split('?')[0];
+    }
+
+    function findShellScript(basePath) {
+        return document.querySelector(`script[data-shell-src="${basePath}"]`);
+    }
+
     function loadScript(src, { force = false, bust } = {}) {
         const url = String(src || '').trim();
         if (!url) return Promise.resolve();
+        const basePath = scriptBasePath(url);
+        const readyCheck = SCRIPT_READY_CHECKS[basePath];
+
+        if (!force && typeof readyCheck === 'function' && readyCheck()) {
+            const hit = Promise.resolve();
+            if (!scriptCache.has(url)) scriptCache.set(url, hit);
+            return hit;
+        }
+
         if (!force && scriptCache.has(url)) return scriptCache.get(url);
-        if (force) scriptCache.delete(url);
+
+        if (!force && findShellScript(basePath)) {
+            const hit = Promise.resolve();
+            scriptCache.set(url, hit);
+            return hit;
+        }
+
+        if (force) {
+            scriptCache.delete(url);
+            findShellScript(basePath)?.remove();
+        }
+
         const promise = new Promise((resolve, reject) => {
             const el = document.createElement('script');
+            el.dataset.shellSrc = basePath;
             el.src = scriptSrc(url, { bust });
             el.async = false;
-            el.onload = () => resolve();
+            el.onload = () => {
+                if (typeof readyCheck === 'function' && !readyCheck()) {
+                    scriptCache.delete(url);
+                    el.remove();
+                    reject(new Error(`${basePath} loaded but did not register expected exports`));
+                    return;
+                }
+                resolve();
+            };
             el.onerror = () => {
                 scriptCache.delete(url);
+                el.remove();
                 reject(new Error(`Failed to load ${url}`));
             };
             document.body.appendChild(el);
@@ -164,6 +207,8 @@
         '/scripts/admin-area-panel.js',
         '/scripts/admin-scope-picker.js',
         '/scripts/stock-count-notify.js',
+        '/scripts/popup-timing.js',
+        '/scripts/popup-content.js',
         '/scripts/dashboard.js',
     ];
 
@@ -283,6 +328,7 @@
             '/scripts/admin-area-panel.js',
             '/scripts/admin-scope-picker.js',
         ]);
+        await loadScriptBatch(['/scripts/popup-timing.js', '/scripts/popup-content.js']);
         await loadScript('/scripts/dashboard.js');
     }
 
@@ -291,13 +337,23 @@
             await loadDashboardScripts();
         }
         function clearDashboardScriptCache() {
-            for (const url of SHARED_DASHBOARD_SCRIPTS) scriptCache.delete(url);
             scriptCache.delete('/scripts/dashboard.js');
+            findShellScript('/scripts/dashboard.js')?.remove();
         }
-        await loadDashboardScriptsWithRetry();
-        if (!global.SalesDashboardView?.mount) {
+        try {
+            await loadDashboardScriptsWithRetry();
+        } catch (err) {
+            console.warn('[AppShell] dashboard script load failed, retrying:', err);
             clearDashboardScriptCache();
             await loadDashboardScriptsWithRetry();
+        }
+        if (!global.SalesDashboardView?.mount) {
+            clearDashboardScriptCache();
+            try {
+                await loadScript('/scripts/dashboard.js', { force: true, bust: String(Date.now()) });
+            } catch (err) {
+                console.error('[AppShell] dashboard.js retry failed:', err);
+            }
         }
         if (global.SalesDashboardView?.mount) {
             await global.SalesDashboardView.mount(getAppEl());

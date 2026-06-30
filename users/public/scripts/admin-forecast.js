@@ -15,6 +15,8 @@
     let previewData = null;
     let previewActiveStore = null;
     let previewAdjustmentsSaveTimer = null;
+    let pendingSubmitTarget = null;
+    let previewTargetReloadTimer = null;
     let statusPayload = null;
     let storeAreaByNumber = {};
     let activeArea = '';
@@ -62,12 +64,70 @@
         return weekStart;
     }
 
-    function syncForecastTargetFields(root, scope) {
+    function syncForecastTargetFields(root, scope, ids = {}) {
         if (!root) return;
-        const weekWrap = root.querySelector('#admin-forecast-target-week-wrap');
-        const dayWrap = root.querySelector('#admin-forecast-target-day-wrap');
+        const weekWrap = root.querySelector(ids.weekWrap || '#admin-forecast-target-week-wrap');
+        const dayWrap = root.querySelector(ids.dayWrap || '#admin-forecast-target-day-wrap');
         if (weekWrap) weekWrap.hidden = scope !== 'week';
         if (dayWrap) dayWrap.hidden = scope !== 'day';
+    }
+
+    function getForecastTargetPayloadFromRoot(root, ids = {}) {
+        const scope =
+            root?.querySelector(ids.scope || '#admin-forecast-target-scope')?.value || 'week-after';
+        const payload = { targetScope: scope };
+        if (scope === 'week') {
+            payload.weekStart = String(
+                root?.querySelector(ids.weekStart || '#admin-forecast-target-week-start')?.value || ''
+            ).trim();
+        } else if (scope === 'day') {
+            payload.date = String(
+                root?.querySelector(ids.day || '#admin-forecast-target-day')?.value || ''
+            ).trim();
+        }
+        return payload;
+    }
+
+    function getForecastTargetPayload() {
+        return getForecastTargetPayloadFromRoot(getRoot());
+    }
+
+    const PREVIEW_TARGET_IDS = {
+        scope: '#admin-forecast-preview-target-scope',
+        weekWrap: '#admin-forecast-preview-target-week-wrap',
+        weekStart: '#admin-forecast-preview-target-week-start',
+        dayWrap: '#admin-forecast-preview-target-day-wrap',
+        day: '#admin-forecast-preview-target-day',
+    };
+
+    function getPreviewTargetPayload() {
+        const root = previewBackdrop;
+        return getForecastTargetPayloadFromRoot(root, PREVIEW_TARGET_IDS);
+    }
+
+    function getActiveForecastTargetPayload() {
+        if (previewBackdrop && !previewBackdrop.hidden) {
+            return getPreviewTargetPayload();
+        }
+        return pendingSubmitTarget || getForecastTargetPayload();
+    }
+
+    function validateForecastTargetPayload(payload) {
+        if (payload.targetScope === 'week' && !payload.weekStart) {
+            return 'Choose a week starting date for the custom week target.';
+        }
+        if (payload.targetScope === 'day' && !payload.date) {
+            return 'Choose a day for the single-day forecast target.';
+        }
+        return '';
+    }
+
+    function validateForecastTarget() {
+        return validateForecastTargetPayload(getForecastTargetPayload());
+    }
+
+    function validatePreviewTarget() {
+        return validateForecastTargetPayload(getPreviewTargetPayload());
     }
 
     function renderForecastTargetControls(root, payload) {
@@ -90,34 +150,45 @@
         }
     }
 
-    function getForecastTargetPayload() {
-        const root = getRoot();
-        const scope = root?.querySelector('#admin-forecast-target-scope')?.value || 'week-after';
-        const payload = { targetScope: scope };
-        if (scope === 'week') {
-            payload.weekStart = String(root?.querySelector('#admin-forecast-target-week-start')?.value || '').trim();
-        } else if (scope === 'day') {
-            payload.date = String(root?.querySelector('#admin-forecast-target-day')?.value || '').trim();
+    function renderPreviewTargetControls(root, payload) {
+        const scopeEl = root.querySelector(PREVIEW_TARGET_IDS.scope);
+        const weekStartEl = root.querySelector(PREVIEW_TARGET_IDS.weekStart);
+        const dayEl = root.querySelector(PREVIEW_TARGET_IDS.day);
+        if (!scopeEl) return;
+
+        const main = getForecastTargetPayload();
+        const weeks = payload?.targetWeeks || statusPayload?.targetWeeks || [];
+        scopeEl.value = main.targetScope || 'week-after';
+        syncForecastTargetFields(root, scopeEl.value, PREVIEW_TARGET_IDS);
+
+        if (weekStartEl) {
+            weekStartEl.value = main.weekStart || weeks[0] || weekStartEl.value || '';
         }
-        return payload;
+        if (dayEl) {
+            dayEl.value = main.date || dayEl.value || '';
+        }
+        updatePreviewTargetHint(root);
     }
 
-    function validateForecastTarget() {
-        const payload = getForecastTargetPayload();
-        if (payload.targetScope === 'week' && !payload.weekStart) {
-            return 'Choose a week starting date for the custom week target.';
-        }
-        if (payload.targetScope === 'day' && !payload.date) {
-            return 'Choose a day for the single-day forecast target.';
-        }
-        return '';
+    function updatePreviewTargetHint(root) {
+        const hint = root?.querySelector('#admin-forecast-preview-target-hint');
+        if (!hint) return;
+        const payload = getPreviewTargetPayload();
+        const desc = describeForecastTarget(payload);
+        const weeks = statusPayload?.targetWeeks || [];
+        const partial =
+            payload.targetScope === 'this-week' ||
+            (payload.targetScope === 'week' && payload.weekStart && payload.weekStart === weeks[0]);
+        hint.textContent = partial
+            ? `${desc}. Current week updates start from tomorrow only.`
+            : `${desc}. Change the timeframe here before submitting.`;
     }
 
     function describeForecastTarget(payload) {
         const target = payload || getForecastTargetPayload();
         const weeks = statusPayload?.targetWeeks || [];
         if (target.targetScope === 'this-week' && weeks[0]) {
-            return `This week (${formatShortDate(weeks[0])} – ${formatShortDate(addDaysToIso(weeks[0], 6))})`;
+            return `This week from tomorrow (${formatShortDate(addDaysToIso(weeks[0], 1))} – ${formatShortDate(addDaysToIso(weeks[0], 6))})`;
         }
         if (target.targetScope === 'next-week' && weeks[1]) {
             return `Next week (${formatShortDate(weeks[1])} – ${formatShortDate(addDaysToIso(weeks[1], 6))})`;
@@ -126,7 +197,11 @@
             return `Week after (${formatShortDate(weeks[2])} – ${formatShortDate(addDaysToIso(weeks[2], 6))})`;
         }
         if (target.targetScope === 'week' && target.weekStart) {
-            return `Week starting ${formatShortDate(target.weekStart)} (7 days)`;
+            const isCurrent = target.weekStart === weeks[0];
+            const end = formatShortDate(addDaysToIso(target.weekStart, 6));
+            return isCurrent
+                ? `This week from tomorrow (${formatShortDate(addDaysToIso(target.weekStart, 1))} – ${end})`
+                : `Week starting ${formatShortDate(target.weekStart)} (7 days)`;
         }
         if (target.targetScope === 'day' && target.date) {
             return `Single day ${formatShortDate(target.date)}`;
@@ -556,6 +631,26 @@
                     <h2 id="admin-forecast-preview-title">Forecast preview</h2>
                     <p class="admin-accounts-meta" id="admin-forecast-preview-meta"></p>
                 </div>
+                <div class="admin-forecast-preview-target" id="admin-forecast-preview-target-panel">
+                    <div class="admin-forecast-target-wrap" id="admin-forecast-preview-target-wrap">
+                        <label class="admin-forecast-target-scope-label">Update timeframe
+                            <select id="admin-forecast-preview-target-scope">
+                                <option value="this-week">This week (from tomorrow)</option>
+                                <option value="next-week">Next week</option>
+                                <option value="week-after" selected>Week after</option>
+                                <option value="week">Week starting…</option>
+                                <option value="day">Single day</option>
+                            </select>
+                        </label>
+                        <label class="admin-forecast-target-week-start-label" id="admin-forecast-preview-target-week-wrap" hidden>Week starting
+                            <input type="date" id="admin-forecast-preview-target-week-start" />
+                        </label>
+                        <label class="admin-forecast-target-day-label" id="admin-forecast-preview-target-day-wrap" hidden>Day
+                            <input type="date" id="admin-forecast-preview-target-day" />
+                        </label>
+                    </div>
+                    <p class="admin-accounts-meta" id="admin-forecast-preview-target-hint"></p>
+                </div>
                 <div class="admin-forecast-store-tabs" id="admin-forecast-preview-stores" hidden></div>
                 <div id="admin-forecast-preview-adjustments" class="admin-forecast-preview-adjustments" hidden></div>
                 <div class="admin-forecast-preview-body-wrap">
@@ -575,6 +670,19 @@
         previewBackdrop.querySelector('#admin-forecast-preview-cancel')?.addEventListener('click', closePreview);
         previewBackdrop.querySelector('#admin-forecast-preview-submit')?.addEventListener('click', () => {
             void confirmSubmit();
+        });
+        previewBackdrop.querySelector('#admin-forecast-preview-target-scope')?.addEventListener('change', (event) => {
+            syncForecastTargetFields(previewBackdrop, event.target.value, PREVIEW_TARGET_IDS);
+            updatePreviewTargetHint(previewBackdrop);
+            schedulePreviewTargetReload();
+        });
+        previewBackdrop.querySelector('#admin-forecast-preview-target-week-start')?.addEventListener('change', () => {
+            updatePreviewTargetHint(previewBackdrop);
+            schedulePreviewTargetReload();
+        });
+        previewBackdrop.querySelector('#admin-forecast-preview-target-day')?.addEventListener('change', () => {
+            updatePreviewTargetHint(previewBackdrop);
+            schedulePreviewTargetReload();
         });
         previewBackdrop.querySelector('#admin-forecast-preview-stores')?.addEventListener('click', (event) => {
             const tab = event.target.closest('[data-preview-store]');
@@ -631,7 +739,7 @@
     }
 
     async function runStoresWithProgress(storeNumbers, onEvent) {
-        const body = { storeNumbers, streamProgress: true, ...getForecastTargetPayload() };
+        const body = { storeNumbers, streamProgress: true, ...getActiveForecastTargetPayload() };
         if (sessionLifeLenzCredentials) {
             body.lifelenzCredentials = {
                 email: sessionLifeLenzCredentials.email,
@@ -943,6 +1051,7 @@
     function closeProgress(refreshMain = false) {
         if (progressBackdrop) progressBackdrop.hidden = true;
         progressState = null;
+        pendingSubmitTarget = null;
         if (refreshMain) {
             const mainRoot = ensureBackdrop();
             void refresh(mainRoot);
@@ -1456,6 +1565,7 @@
     function closePreview() {
         if (previewBackdrop) previewBackdrop.hidden = true;
         pendingSubmitStores = [];
+        pendingSubmitTarget = null;
         previewData = null;
         previewActiveStore = null;
     }
@@ -1781,7 +1891,7 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
-            body: JSON.stringify({ storeNumbers, ...getForecastTargetPayload() }),
+            body: JSON.stringify({ storeNumbers, ...getActiveForecastTargetPayload() }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) {
@@ -2329,17 +2439,56 @@
         btn?.focus();
     }
 
+    async function reloadPreviewForTarget() {
+        const root = ensurePreviewBackdrop();
+        const stores = pendingSubmitStores.slice();
+        if (!stores.length) return;
+        const targetErr = validatePreviewTarget();
+        if (targetErr) {
+            root.querySelector('#admin-forecast-preview-error').textContent = targetErr;
+            return;
+        }
+        root.querySelector('#admin-forecast-preview-error').textContent = '';
+        root.querySelector('#admin-forecast-preview-body').innerHTML = '<p>Loading preview…</p>';
+        const submitBtn = root.querySelector('#admin-forecast-preview-submit');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submit forecast';
+        }
+        try {
+            previewData = await fetchPreview(stores);
+            const first = previewData.previews?.find((row) => row.ok);
+            if (!first) throw new Error('No preview available.');
+            if (submitBtn) submitBtn.disabled = false;
+            renderPreviewStore(previewActiveStore || first.storeNumber);
+        } catch (error) {
+            root.querySelector('#admin-forecast-preview-error').textContent = error.message;
+            root.querySelector('#admin-forecast-preview-body').innerHTML = '';
+        }
+    }
+
+    function schedulePreviewTargetReload() {
+        if (previewTargetReloadTimer) clearTimeout(previewTargetReloadTimer);
+        previewTargetReloadTimer = setTimeout(() => {
+            previewTargetReloadTimer = null;
+            void reloadPreviewForTarget();
+        }, 350);
+    }
+
     async function openPreview(storeNumbers, { focusSubmit = false } = {}) {
         pendingSubmitStores = storeNumbers.slice();
         const root = ensurePreviewBackdrop();
         const mainRoot = getRoot();
         if (mainRoot) mainRoot.querySelector('#admin-forecast-error').textContent = '';
-        const targetErr = validateForecastTarget();
+        renderPreviewTargetControls(root, statusPayload);
+        root.hidden = false;
+        const targetErr = validatePreviewTarget();
         if (targetErr) {
-            if (mainRoot) mainRoot.querySelector('#admin-forecast-error').textContent = targetErr;
+            root.querySelector('#admin-forecast-preview-error').textContent = targetErr;
+            root.querySelector('#admin-forecast-preview-body').innerHTML = '';
+            root.querySelector('#admin-forecast-preview-stores').innerHTML = '';
             return;
         }
-        root.hidden = false;
         root.querySelector('#admin-forecast-preview-error').textContent = '';
         root.querySelector('#admin-forecast-preview-body').innerHTML = '<p>Loading preview…</p>';
         root.querySelector('#admin-forecast-preview-stores').innerHTML = '';
@@ -2365,13 +2514,21 @@
         const stores = pendingSubmitStores.slice();
         if (!stores.length) return;
 
+        const targetErr = validatePreviewTarget();
+        if (targetErr) {
+            previewRoot.querySelector('#admin-forecast-preview-error').textContent = targetErr;
+            return;
+        }
+
         const previewSnapshot = previewData;
+        const submitTarget = getPreviewTargetPayload();
 
         previewRoot.querySelector('#admin-forecast-preview-error').textContent = '';
         previewRoot.querySelector('#admin-forecast-preview-submit').disabled = true;
         previewRoot.querySelector('#admin-forecast-preview-cancel').disabled = true;
 
         closePreview();
+        pendingSubmitTarget = submitTarget;
         openProgress(stores, previewSnapshot);
 
         try {
@@ -2734,22 +2891,12 @@
     async function submitOne(storeNumber) {
         const root = ensureBackdrop();
         root.querySelector('#admin-forecast-error').textContent = '';
-        const targetErr = validateForecastTarget();
-        if (targetErr) {
-            root.querySelector('#admin-forecast-error').textContent = targetErr;
-            return;
-        }
         await openPreview([storeNumber], { focusSubmit: true });
     }
 
     async function runAll() {
         const root = ensureBackdrop();
         root.querySelector('#admin-forecast-error').textContent = '';
-        const targetErr = validateForecastTarget();
-        if (targetErr) {
-            root.querySelector('#admin-forecast-error').textContent = targetErr;
-            return;
-        }
         const data = statusPayload || (await fetchStatus());
         const storeNumbers = storesInActiveArea(
             Object.entries(data.history?.stores || {})

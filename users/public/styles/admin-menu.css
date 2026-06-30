@@ -3400,6 +3400,21 @@ html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-entry {
     color: #eee;
 }
 
+.admin-forecast-preview-target {
+    padding: 0 1.5rem 0.75rem;
+    background: #fff;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.admin-modal--forecast-preview .admin-forecast-preview-target .admin-forecast-target-wrap {
+    margin-bottom: 0.35rem;
+}
+
+html.mic-dark-mode .admin-forecast-preview-target {
+    background: #1e1e24;
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
 .admin-forecast-target-wrap {
     display: flex;
     flex-wrap: wrap;

@@ -54,6 +54,19 @@ function datesForWeekStart(weekStart) {
     return dates;
 }
 
+/** When submitting the current calendar week, only update from tomorrow onwards. */
+function submitDatesForWeek(weekStart, fromDate = new Date()) {
+    const dates = datesForWeekStart(weekStart);
+    const currentWeekStart = getSelectableForecastWeekStarts(fromDate)[0];
+    if (weekStart !== currentWeekStart) return dates;
+    const tomorrow = addDaysToIso(getMelbourneTodayIso(fromDate), 1);
+    const filtered = dates.filter((date) => date >= tomorrow);
+    if (!filtered.length) {
+        throw new Error('No remaining days to update this week (submissions start from tomorrow).');
+    }
+    return filtered;
+}
+
 /**
  * Resolve which calendar dates to forecast/submit.
  * @param {object} options
@@ -68,7 +81,13 @@ function resolveForecastTarget(options = {}) {
 
     if (scope === 'this-week') {
         const weekStart = weeks[0];
-        return { scope, targetWeeks: [weekStart], dates: datesForWeekStart(weekStart), weekStart };
+        return {
+            scope,
+            targetWeeks: [weekStart],
+            dates: submitDatesForWeek(weekStart, fromDate),
+            weekStart,
+            partialCurrentWeek: true,
+        };
     }
     if (scope === 'next-week') {
         const weekStart = weeks[1];
@@ -87,7 +106,14 @@ function resolveForecastTarget(options = {}) {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
             throw new Error('weekStart is required for custom week forecast (YYYY-MM-DD).');
         }
-        return { scope, targetWeeks: [weekStart], dates: datesForWeekStart(weekStart), weekStart };
+        const dates = submitDatesForWeek(weekStart, fromDate);
+        return {
+            scope,
+            targetWeeks: [weekStart],
+            dates,
+            weekStart,
+            partialCurrentWeek: weekStart === weeks[0] && dates.length < 7,
+        };
     }
     // week-after (default; matches legacy 2-weeks-out behaviour)
     const weekStart = weeks[2];
@@ -199,6 +225,7 @@ module.exports = {
     getTargetForecastWeekStarts,
     resolveForecastTarget,
     datesForWeekStart,
+    submitDatesForWeek,
     addDaysToIso,
     readLedger,
     writeLedger,

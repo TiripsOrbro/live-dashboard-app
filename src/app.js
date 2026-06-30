@@ -644,13 +644,24 @@ function redirectNologinUserToWallDashboard(req, res, storeNumber) {
     return true;
 }
 
+function forbiddenRedirectPath(user) {
+    if (!user) return '/login';
+    if (isNologinUser(user)) {
+        const stores = user.stores === '*' ? [] : Array.isArray(user.stores) ? user.stores : [user.stores];
+        const store = String(stores[0] || '').trim();
+        if (store) return `/nologin/${store}`;
+    }
+    const dest = getLoginRedirectPath(user);
+    return dest === '/login' ? getMicOverviewPath() : dest;
+}
+
 function sendForbidden(req, res, message = 'You do not have access to this store.') {
     if (isApiRequest(req)) {
         res.status(403).json({ success: false, error: message });
         return;
     }
     const user = getRequestUser(req);
-    res.redirect(getLoginRedirectPath(user));
+    res.redirect(forbiddenRedirectPath(user));
 }
 
 function wantsJsonResponse(req) {
@@ -968,7 +979,11 @@ app.get('/login', (req, res) => {
             return;
         }
         const dest = getLoginRedirectPath(user);
-        res.redirect(dest === '/login' ? '/login' : dest);
+        if (dest === '/login') {
+            res.sendFile(path.join(paths.users.public, 'login.html'));
+            return;
+        }
+        res.redirect(dest);
         return;
     }
     res.sendFile(path.join(paths.users.public, 'login.html'));
@@ -2802,8 +2817,12 @@ function sendShellOrLegacy(req, res, legacyFn, title = 'Dashboard') {
 function sendOverviewPage(req, res) {
     if (dashboardEntryFromRequest(req) === 'kiosk') {
         const user = req.dashboardUser || getRequestUser(req);
-        res.redirect(getKioskRedirectPath(user));
-        return;
+        if (user && (isSuperAdminUser(user) || hasMultiStoreScope(user))) {
+            res.clearCookie(ENTRY_COOKIE, sessionCookieClearOptions());
+        } else {
+            res.redirect(getKioskRedirectPath(user));
+            return;
+        }
     }
     const user = req.dashboardUser || getRequestUser(req);
     if (!user) {
@@ -3210,6 +3229,10 @@ app.get('/mmx-setup', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     if (!isRealDashboardUser(user)) {
         res.redirect('/login');
+        return;
+    }
+    if (userNeedsMmxSetup(user.username)) {
+        res.sendFile(path.join(paths.users.public, 'mmx-setup.html'));
         return;
     }
     res.redirect(getLoginRedirectPath(user, 'mic'));

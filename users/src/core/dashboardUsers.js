@@ -2254,6 +2254,8 @@ function getLoginRedirectPath(user, mode = 'mic') {
     if (isSuperAdminUser(user) || hasMultiStoreScope(user)) return getMicOverviewPath();
     const store = singleStoreForUser(user);
     if (store) return getMicOverviewPath();
+    // Authenticated crew accounts always land on overview (store picker when needed).
+    if (isRealDashboardUser(user)) return getMicOverviewPath();
     return '/login';
 }
 

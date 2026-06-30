@@ -2440,13 +2440,35 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
     max-height: min(92vh, 820px);
     display: flex;
     flex-direction: column;
+    overflow: hidden;
 }
 
-.admin-modal--forecast-progress #admin-forecast-progress-working {
+.admin-forecast-progress-body {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+}
+
+.admin-modal--forecast-progress .admin-forecast-progress-stage[hidden] {
+    display: none !important;
+}
+
+.admin-modal--forecast-progress #admin-forecast-progress-working:not([hidden]) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.admin-modal--forecast-progress #admin-forecast-progress-done:not([hidden]) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .admin-modal-actions--progress {
@@ -2578,6 +2600,7 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
     flex-wrap: wrap;
     gap: 0.5rem;
     margin-top: 0.75rem;
+    flex-shrink: 0;
 }
 
 .admin-forecast-manual-actions {
@@ -2772,10 +2795,17 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
 }
 
 .admin-forecast-progress-done {
-    padding: 0.25rem 0 0;
+    padding: 0;
 }
 
-.admin-forecast-progress-done h2 {
+.admin-forecast-progress-done-header {
+    flex-shrink: 0;
+    text-align: center;
+    padding-bottom: 0.75rem;
+}
+
+.admin-forecast-progress-done h2,
+.admin-forecast-progress-done-header h2 {
     margin: 0 0 0.35rem;
     text-align: center;
     font-size: 1.25rem;
@@ -2783,11 +2813,12 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
 
 .admin-forecast-progress-done-meta {
     text-align: center;
-    margin: 0 0 1rem;
+    margin: 0;
 }
 
 .admin-forecast-progress-done-results {
-    max-height: min(52vh, 480px);
+    flex: 1;
+    min-height: 0;
     overflow: auto;
 }
 

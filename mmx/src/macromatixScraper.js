@@ -2350,7 +2350,15 @@ function resolveMacromatixCredentialsForStore(storeNumber, options = {}) {
 }
 
 function resolveMacromatixCredentials(options = {}) {
-    const storeNumber = String(options.storeNumber || '').trim();
+    const storeNumber = String(options.storeNumber || options.store || '').trim();
+    const preResolved = options.credentials;
+    if (preResolved?.username && preResolved?.password) {
+        return {
+            username: preResolved.username,
+            password: preResolved.password,
+            source: preResolved.source || 'explicit credentials',
+        };
+    }
     const oneTimeUser = String(options.mmxUsername || options.username || '').trim();
     const oneTimePass = String(options.mmxPassword ?? options.password ?? '');
     if (oneTimeUser && oneTimePass) {
@@ -2799,8 +2807,11 @@ async function submitStockCountToMacromatix(page, storeNumber, vendorSlug, aggre
 
 /** Launch Puppeteer, log in, and return `{ browser, page }` for one-off automation (e.g. report downloads). */
 async function openMacromatixBrowser(options = {}) {
-    const storeNumber = String(options.storeNumber || '').trim();
-    const { username, password, source } = resolveMacromatixCredentials(options);
+    const storeNumber = String(options.storeNumber || options.store || '').trim();
+    const { username, password, source } = resolveMacromatixCredentials({
+        ...options,
+        storeNumber,
+    });
     if (!String(username || '').trim() || !String(password || '').trim()) {
         const storeHint = storeNumber
             ? ` Configure Macromatix login in Admin menu → Setup Store Logins for store ${storeNumber}.`

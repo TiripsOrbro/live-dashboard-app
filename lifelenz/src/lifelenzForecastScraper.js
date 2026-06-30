@@ -155,70 +155,310 @@ function isoToLifeLenzDisplay(iso) {
     return { weekday, day: d, month, monthIdx: m - 1, year: y, needle: `${weekday} ${d} ${month}` };
 }
 
+async function readActiveForecastIsoDate(page) {
+    return page.evaluate(() => {
+        const href = location.href || '';
+        const urlMatch = href.match(/(\d{4}-\d{2}-\d{2})/);
+        if (urlMatch) return urlMatch[1];
+
+        const dateEl = document.querySelector('.display-date, a.display-date, [aria-label="Open calendar picker"]');
+        const text = (dateEl?.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!text) return '';
+
+        const monthMap = {
+            jan: '01',
+            feb: '02',
+            mar: '03',
+            apr: '04',
+            may: '05',
+            jun: '06',
+            jul: '07',
+            aug: '08',
+            sep: '09',
+            oct: '10',
+            nov: '11',
+            dec: '12',
+        };
+
+        const wordsMatch = text.match(/(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})/);
+        if (wordsMatch) {
+            const month = monthMap[wordsMatch[2].slice(0, 3).toLowerCase()];
+            if (month) {
+                return `${wordsMatch[3]}-${month}-${String(Number(wordsMatch[1])).padStart(2, '0')}`;
+            }
+        }
+
+        const slashMatch = text.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (slashMatch) {
+            const left = Number(slashMatch[1]);
+            const right = Number(slashMatch[2]);
+            const year = Number(slashMatch[3]);
+            const month = right <= 12 ? right : left;
+            const day = right <= 12 ? left : right;
+            return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+
+        return '';
+    });
+}
+
 async function isForecastDateActive(page, isoDate) {
-    const href = await page.url();
-    if (href.includes(`/${isoDate}`)) return true;
+    const activeIso = await readActiveForecastIsoDate(page);
+    if (activeIso === isoDate) return true;
+    const href = page.url();
+    if (href.includes(isoDate)) return true;
     const display = isoToLifeLenzDisplay(isoDate);
     if (!display?.needle) return false;
-    return page.evaluate((needle) => (document.body?.innerText || '').includes(needle), display.needle);
+    return page.evaluate(
+        ({ needle, day, month, year }) => {
+            const dateEl = document.querySelector('.display-date, a.display-date, [aria-label="Open calendar picker"]');
+            const text = (dateEl?.textContent || '').replace(/\s+/g, ' ').trim();
+            if (
+                text &&
+                new RegExp(`\\b${day}\\b`).test(text) &&
+                new RegExp(month, 'i').test(text) &&
+                new RegExp(String(year)).test(text)
+            ) {
+                return true;
+            }
+            return (document.body?.innerText || '').includes(needle);
+        },
+        { needle: display.needle, day: display.day, month: display.month, year: display.year }
+    );
+}
+
+function buildForecastUrlsForDate(currentUrl, isoDate) {
+    const out = [];
+    if (!isoDate) return out;
+    if (currentUrl.includes(isoDate)) out.push(currentUrl);
+    if (/\d{4}-\d{2}-\d{2}/.test(currentUrl)) {
+        out.push(currentUrl.replace(/\d{4}-\d{2}-\d{2}/g, isoDate));
+    }
+    try {
+        const url = new URL(currentUrl);
+        if (/\d{4}-\d{2}-\d{2}/.test(url.hash)) {
+            url.hash = url.hash.replace(/\d{4}-\d{2}-\d{2}/g, isoDate);
+            out.push(url.toString());
+        }
+        if (url.searchParams.has('date')) {
+            const next = new URL(url.toString());
+            next.searchParams.set('date', isoDate);
+            out.push(next.toString());
+        }
+        const basePath = url.pathname.replace(/\/$/, '');
+        out.push(`${url.origin}${basePath}/${isoDate}${url.search}${url.hash}`);
+        if (url.hash) {
+            out.push(`${url.origin}${basePath}${url.search}${url.hash.replace(/\d{4}-\d{2}-\d{2}/g, isoDate)}`);
+        }
+    } catch {
+        /* ignore malformed URLs */
+    }
+    return [...new Set(out.filter(Boolean))];
 }
 
 async function setForecastDateViaUrl(page, isoDate) {
     const current = page.url();
-    if (current.includes(`/${isoDate}`) || current.endsWith(isoDate)) return true;
-    if (!/\d{4}-\d{2}-\d{2}/.test(current)) return false;
+    if (current.includes(isoDate)) return true;
 
-    const nextUrl = current.replace(/\d{4}-\d{2}-\d{2}/, isoDate);
-    if (nextUrl === current) return false;
+    const candidates = buildForecastUrlsForDate(current, isoDate);
+    for (const nextUrl of candidates) {
+        if (nextUrl === current) continue;
+        await page.goto(nextUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => null);
+        await page.waitForTimeout(DATE_SETTLE_MS);
+        if (await isForecastDateActive(page, isoDate)) return true;
+    }
+    return false;
+}
 
-    await page.goto(nextUrl, { waitUntil: 'networkidle2', timeout: 30000 }).catch(() => null);
-    await page.waitForTimeout(DATE_SETTLE_MS);
-    return await isForecastDateActive(page, isoDate);
+async function clickForecastDateArrow(page, forward) {
+    return page.evaluate((goForward) => {
+        const dateRoots = [
+            document.querySelector('.display-date')?.closest('div, nav, header, section, form'),
+            document.querySelector('.calendar-unit-link.day')?.closest('div, nav, section, form'),
+            document.querySelector('[class*="date-nav"]')?.closest('div, nav, section, form'),
+        ].filter(Boolean);
+
+        const selectors = goForward
+            ? [
+                  '[aria-label*="Next day"]',
+                  '[aria-label*="next day"]',
+                  'a.next',
+                  'button.next',
+                  '[aria-label*="Next"]',
+                  '[aria-label*="next"]',
+                  '.fa-chevron-right',
+                  '.icon-chevron-right',
+              ]
+            : [
+                  '[aria-label*="Previous day"]',
+                  '[aria-label*="previous day"]',
+                  'a.prev',
+                  'button.prev',
+                  '[aria-label*="Previous"]',
+                  '[aria-label*="previous"]',
+                  '.fa-chevron-left',
+                  '.icon-chevron-left',
+              ];
+
+        const roots = dateRoots.length ? dateRoots : [document.body];
+        for (const root of roots) {
+            for (const selector of selectors) {
+                for (const el of root.querySelectorAll(selector)) {
+                    if (el.closest('.datepicker, .bootstrap-datetimepicker-widget, .datepicker-dropdown')) continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.width <= 0 || r.height <= 0) continue;
+                    el.click();
+                    return true;
+                }
+            }
+        }
+        return false;
+    }, forward);
 }
 
 async function advanceForecastDateWithArrows(page, isoDate) {
     const targetMs = Date.parse(`${isoDate}T12:00:00Z`);
-    for (let step = 0; step < 21; step += 1) {
+    for (let step = 0; step < 45; step += 1) {
         if (await isForecastDateActive(page, isoDate)) return true;
 
-        const currentIso = await page.evaluate(() => {
-            const match = location.href.match(/(\d{4}-\d{2}-\d{2})/);
-            return match ? match[1] : '';
-        });
+        const currentIso = await readActiveForecastIsoDate(page);
         const goForward = !currentIso || targetMs >= Date.parse(`${currentIso}T12:00:00Z`);
-
-        const advanced = await page.evaluate((forward) => {
-            const selectors = forward
-                ? [
-                      'a.next',
-                      'button.next',
-                      '[aria-label*="Next"]',
-                      '[aria-label*="next"]',
-                      '.fa-chevron-right',
-                      '.icon-chevron-right',
-                  ]
-                : [
-                      'a.prev',
-                      'button.prev',
-                      '[aria-label*="Previous"]',
-                      '[aria-label*="previous"]',
-                      '.fa-chevron-left',
-                      '.icon-chevron-left',
-                  ];
-            for (const selector of selectors) {
-                const el = document.querySelector(selector);
-                if (!el) continue;
-                const r = el.getBoundingClientRect();
-                if (r.width <= 0 || r.height <= 0) continue;
-                el.click();
-                return true;
-            }
-            return false;
-        }, goForward);
+        const advanced = await clickForecastDateArrow(page, goForward);
         if (!advanced) return false;
         await page.waitForTimeout(DATE_SETTLE_MS);
     }
     return await isForecastDateActive(page, isoDate);
+}
+
+async function openForecastCalendarPicker(page) {
+    await page.keyboard.press('Escape').catch(() => null);
+    await page.waitForTimeout(200);
+
+    const dateTrigger = await page.$('.display-date, a.display-date, [aria-label="Open calendar picker"]');
+    if (dateTrigger) {
+        await dateTrigger.click();
+    } else {
+        const clicked = await clickByText(
+            page,
+            ['a', 'button', 'span'],
+            /\d{1,2}\s+[A-Za-z]{3}\s+\d{4}|\d{1,2}\/\d{1,2}\/\d{4}/
+        );
+        if (!clicked) return false;
+    }
+    await page.waitForTimeout(500);
+    return page.evaluate(() => {
+        const widgetSelectors = [
+            '.datepicker.datepicker-dropdown',
+            '.bootstrap-datetimepicker-widget.dropdown-menu',
+            '.bootstrap-datetimepicker-widget',
+            '.datepicker:not(.datepicker-inline)',
+        ];
+        return widgetSelectors.some((selector) => {
+            const el = document.querySelector(selector);
+            return el && el.getBoundingClientRect().width > 0;
+        });
+    });
+}
+
+async function pickForecastDateFromCalendar(page, isoDate, display) {
+    const opened = await openForecastCalendarPicker(page);
+    if (!opened) return false;
+
+    const picked = await page.evaluate(({ day, monthIdx, year, isoDate: targetIso }) => {
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const want = monthIdx >= 0 ? `${monthNames[monthIdx]} ${year}` : '';
+
+        const widgetSelectors = [
+            '.datepicker.datepicker-dropdown',
+            '.bootstrap-datetimepicker-widget.dropdown-menu',
+            '.bootstrap-datetimepicker-widget',
+            '.datepicker:not(.datepicker-inline)',
+        ];
+        let widget = null;
+        for (const selector of widgetSelectors) {
+            const candidate = document.querySelector(selector);
+            if (candidate && candidate.getBoundingClientRect().width > 0) {
+                widget = candidate;
+                break;
+            }
+        }
+        if (!widget) return false;
+
+        const readHeader = () =>
+            (
+                widget.querySelector(
+                    '.datepicker-days .datepicker-switch, .bootstrap-datetimepicker-widget .picker-switch, .picker-switch, [class*="switch"]'
+                )?.textContent || ''
+            ).replace(/\s+/g, ' ');
+
+        const ensureMonth = () => {
+            if (!want) return;
+            for (let i = 0; i < 24; i += 1) {
+                const currentHeader = readHeader();
+                if (new RegExp(want, 'i').test(currentHeader)) return;
+                const prev = widget.querySelector('.prev, th.prev, .datepicker-prev, [aria-label*="Previous"]');
+                const next = widget.querySelector('.next, th.next, .datepicker-next, [aria-label*="Next"]');
+                const currentMonthIdx = monthNames.findIndex((name) => currentHeader.includes(name));
+                if (currentMonthIdx < 0 || monthIdx < 0) {
+                    next?.click();
+                    continue;
+                }
+                if (
+                    monthIdx < currentMonthIdx ||
+                    (monthIdx === currentMonthIdx && !new RegExp(String(year), 'i').test(currentHeader))
+                ) {
+                    prev?.click();
+                } else {
+                    next?.click();
+                }
+            }
+        };
+
+        ensureMonth();
+
+        const dayCells = widget.querySelectorAll('td.day, td[data-day], td[data-date], button.day, a.day, span.day');
+        for (const cell of dayCells) {
+            const dataDay = cell.getAttribute?.('data-day') || cell.getAttribute?.('data-date') || '';
+            if (dataDay) {
+                const normalized = dataDay.replace(/\//g, '-');
+                if (
+                    normalized.startsWith(targetIso) ||
+                    normalized.includes(targetIso.slice(5)) ||
+                    (dataDay.includes(String(day)) && dataDay.includes(String(year)))
+                ) {
+                    if (cell.classList?.contains('disabled') || cell.getAttribute('aria-disabled') === 'true') continue;
+                    if (cell.classList?.contains('old') || cell.classList?.contains('new')) continue;
+                    cell.click();
+                    return true;
+                }
+            }
+            const text = (cell.textContent || '').trim();
+            if (text !== String(day)) continue;
+            if (cell.classList?.contains('old') || cell.classList?.contains('new')) continue;
+            if (cell.classList?.contains('disabled') || cell.getAttribute('aria-disabled') === 'true') continue;
+            cell.click();
+            return true;
+        }
+        return false;
+    }, { day: display.day, monthIdx: display.monthIdx, year: display.year, isoDate });
+
+    if (!picked) {
+        await page.keyboard.press('Escape').catch(() => null);
+        return false;
+    }
+
+    await page.waitForTimeout(DATE_SETTLE_MS);
+    await page.keyboard.press('Escape').catch(() => null);
+    return await isForecastDateActive(page, isoDate);
+}
+
+async function waitForForecastDate(page, isoDate, timeoutMs = 15000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+        if (await isForecastDateActive(page, isoDate)) return true;
+        await page.waitForTimeout(300);
+    }
+    return false;
 }
 
 async function setForecastDate(page, isoDate) {
@@ -233,72 +473,16 @@ async function setForecastDate(page, isoDate) {
     const display = isoToLifeLenzDisplay(isoDate);
     if (!display) throw new Error(`Invalid forecast date: ${isoDate}`);
 
-    await page.keyboard.press('Escape').catch(() => null);
-    await page.waitForTimeout(200);
+    if (await pickForecastDateFromCalendar(page, isoDate, display)) return;
 
-    const dateTrigger = await page.$('.display-date, a.display-date, [aria-label="Open calendar picker"]');
-    if (dateTrigger) {
-        await dateTrigger.click();
-    } else {
-        await clickByText(page, ['a', 'button'], /\d{1,2}\s+[A-Za-z]{3}\s+\d{4}/);
-    }
-    await page.waitForTimeout(500);
+    if (await setForecastDateViaUrl(page, isoDate)) return;
+    if (await advanceForecastDateWithArrows(page, isoDate)) return;
+    if (await waitForForecastDate(page, isoDate, 3000)) return;
 
-    const picked = await page.evaluate(({ day, monthIdx, year, isoDate }) => {
-        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const want = monthIdx >= 0 ? `${monthNames[monthIdx]} ${year}` : '';
-
-        const ensureMonth = () => {
-            if (!want) return;
-            for (let i = 0; i < 24; i += 1) {
-                const currentHeader = (
-                    document.querySelector(
-                        '.datepicker-days .datepicker-switch, .bootstrap-datetimepicker-widget .picker-switch, [class*="calendar"] [class*="switch"]'
-                    )?.textContent || ''
-                ).replace(/\s+/g, ' ');
-                if (new RegExp(want, 'i').test(currentHeader)) return;
-                const prev = document.querySelector('.prev, .datepicker-prev, [aria-label*="Previous"]');
-                const next = document.querySelector('.next, .datepicker-next, [aria-label*="Next"]');
-                const currentMonthIdx = monthNames.findIndex((name) => currentHeader.includes(name));
-                if (currentMonthIdx < 0 || monthIdx < 0) {
-                    next?.click();
-                    continue;
-                }
-                if (monthIdx < currentMonthIdx || (monthIdx === currentMonthIdx && !new RegExp(String(year), 'i').test(currentHeader))) {
-                    prev?.click();
-                } else {
-                    next?.click();
-                }
-            }
-        };
-
-        ensureMonth();
-
-        for (const cell of document.querySelectorAll('td.day, td[data-day], button, a, span')) {
-            const dataDay = cell.getAttribute?.('data-day') || '';
-            if (dataDay && dataDay.startsWith(isoDate)) {
-                if (cell.classList?.contains('disabled') || cell.getAttribute('aria-disabled') === 'true') continue;
-                cell.click();
-                return true;
-            }
-            const text = (cell.textContent || '').trim();
-            if (text !== String(day)) continue;
-            if (cell.classList?.contains('old') || cell.classList?.contains('new')) continue;
-            if (cell.classList?.contains('disabled') || cell.getAttribute('aria-disabled') === 'true') continue;
-            cell.click();
-            return true;
-        }
-        return false;
-    }, { day: display.day, monthIdx: display.monthIdx, year: display.year, isoDate });
-
-    if (!picked) {
-        await page.keyboard.press('Escape').catch(() => null);
-        if (await setForecastDateViaUrl(page, isoDate)) return;
-        throw new Error(`Could not select date ${isoDate} in LifeLenz calendar.`);
-    }
-
-    await page.waitForTimeout(DATE_SETTLE_MS);
-    await page.keyboard.press('Escape').catch(() => null);
+    const currentIso = await readActiveForecastIsoDate(page);
+    throw new Error(
+        `Could not select date ${isoDate} in LifeLenz calendar` + (currentIso ? ` (showing ${currentIso})` : '') + '.'
+    );
 }
 
 const DAY_PART_INPUT_COUNT = 9;

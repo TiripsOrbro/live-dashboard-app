@@ -1023,41 +1023,49 @@
     }
 
     function ensureProgressBackdrop() {
+        if (progressBackdrop && !progressBackdrop.querySelector('.admin-forecast-progress-body')) {
+            progressBackdrop.remove();
+            progressBackdrop = null;
+        }
         if (progressBackdrop) return progressBackdrop;
         progressBackdrop = document.createElement('div');
         progressBackdrop.className = 'admin-modal-backdrop admin-modal-backdrop--stacked admin-modal-backdrop--progress';
         progressBackdrop.hidden = true;
         progressBackdrop.innerHTML = `
             <div class="admin-modal admin-modal--wide admin-modal--forecast-progress" role="dialog" aria-modal="true">
-                <div id="admin-forecast-progress-working">
-                    <h2 id="admin-forecast-progress-title">Submitting forecast</h2>
-                    <p class="admin-accounts-meta" id="admin-forecast-progress-meta"></p>
-                    <div class="admin-forecast-progress-unified">
-                        <div class="admin-forecast-progress-week">
-                            <div class="admin-forecast-progress-week-head" aria-hidden="true">
-                                <span>Day</span>
-                                <span>MMX hours</span>
-                                <span>LifeLenz</span>
+                <div class="admin-forecast-progress-body">
+                    <div id="admin-forecast-progress-working" class="admin-forecast-progress-stage">
+                        <h2 id="admin-forecast-progress-title">Submitting forecast</h2>
+                        <p class="admin-accounts-meta" id="admin-forecast-progress-meta"></p>
+                        <div class="admin-forecast-progress-unified">
+                            <div class="admin-forecast-progress-week">
+                                <div class="admin-forecast-progress-week-head" aria-hidden="true">
+                                    <span>Day</span>
+                                    <span>MMX hours</span>
+                                    <span>LifeLenz</span>
+                                </div>
+                                <ol class="admin-forecast-progress-week-rows" id="admin-forecast-progress-week-rows"></ol>
                             </div>
-                            <ol class="admin-forecast-progress-week-rows" id="admin-forecast-progress-week-rows"></ol>
-                        </div>
-                        <div class="admin-forecast-progress-detail-split">
-                            <section class="admin-forecast-progress-detail-pane">
-                                <h3 class="admin-forecast-progress-pane-title">Macromatix hours</h3>
-                                <div class="admin-forecast-progress-detail" id="admin-forecast-progress-mmx-detail"></div>
-                            </section>
-                            <section class="admin-forecast-progress-detail-pane">
-                                <h3 class="admin-forecast-progress-pane-title">LifeLenz day parts</h3>
-                                <div class="admin-forecast-progress-detail admin-forecast-progress-detail--lifelenz" id="admin-forecast-progress-lifelenz-detail"></div>
-                            </section>
+                            <div class="admin-forecast-progress-detail-split">
+                                <section class="admin-forecast-progress-detail-pane">
+                                    <h3 class="admin-forecast-progress-pane-title">Macromatix hours</h3>
+                                    <div class="admin-forecast-progress-detail" id="admin-forecast-progress-mmx-detail"></div>
+                                </section>
+                                <section class="admin-forecast-progress-detail-pane">
+                                    <h3 class="admin-forecast-progress-pane-title">LifeLenz day parts</h3>
+                                    <div class="admin-forecast-progress-detail admin-forecast-progress-detail--lifelenz" id="admin-forecast-progress-lifelenz-detail"></div>
+                                </section>
+                            </div>
                         </div>
                     </div>
-                </div>
-                <div id="admin-forecast-progress-done" class="admin-forecast-progress-done" hidden>
-                    <h2>Forecast entered</h2>
-                    <p class="admin-accounts-meta" id="admin-forecast-progress-done-meta"></p>
-                    <div id="admin-forecast-progress-done-results" class="admin-forecast-progress-done-results"></div>
-                    <div id="admin-forecast-progress-manual-actions" class="admin-forecast-progress-manual-actions" hidden></div>
+                    <div id="admin-forecast-progress-done" class="admin-forecast-progress-stage admin-forecast-progress-done" hidden>
+                        <div class="admin-forecast-progress-done-header">
+                            <h2 id="admin-forecast-progress-done-title">Forecast entered</h2>
+                            <p class="admin-accounts-meta admin-forecast-progress-done-meta" id="admin-forecast-progress-done-meta"></p>
+                        </div>
+                        <div id="admin-forecast-progress-done-results" class="admin-forecast-progress-done-results"></div>
+                        <div id="admin-forecast-progress-manual-actions" class="admin-forecast-progress-manual-actions" hidden></div>
+                    </div>
                 </div>
                 <p id="admin-forecast-progress-error" class="admin-modal-error" role="alert"></p>
                 <div class="admin-modal-actions admin-modal-actions--progress">
@@ -1320,7 +1328,7 @@
     function renderProgressWorking() {
         const root = ensureProgressBackdrop();
         const state = progressState;
-        if (!state) return;
+        if (!state || state.complete) return;
 
         root.querySelector('#admin-forecast-progress-working').hidden = false;
         root.querySelector('#admin-forecast-progress-done').hidden = true;
@@ -1491,6 +1499,7 @@
     function renderProgressComplete(payload) {
         const root = ensureProgressBackdrop();
         const state = progressState;
+        if (state) state.complete = true;
         root.querySelector('#admin-forecast-progress-working').hidden = true;
         root.querySelector('#admin-forecast-progress-done').hidden = false;
         setProgressCloseEnabled(root, true, { label: 'Done' });
@@ -1507,6 +1516,14 @@
         const storeLabel = firstStore
             ? `${firstStore}${firstPreview?.storeName && firstPreview.storeName !== firstStore ? ` · ${firstPreview.storeName}` : ''}`
             : '';
+
+        const mmxFailed = mmxResults.some((row) => !row.ok);
+        const llFailed = !lifelenzSkipped && lifelenzResults.some((row) => !row.ok);
+        const doneTitle = root.querySelector('#admin-forecast-progress-done-title');
+        if (doneTitle) {
+            doneTitle.textContent =
+                mmxFailed || llFailed ? 'Forecast finished with errors' : 'Forecast entered';
+        }
 
         root.querySelector('#admin-forecast-progress-done-meta').textContent = [
             weekStart ? `Week starting ${formatShortDate(weekStart)}` : '',
@@ -1546,7 +1563,6 @@
         }
 
         if (state) {
-            state.complete = true;
             state.results = payload;
         }
         void (async () => {

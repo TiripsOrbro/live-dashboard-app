@@ -22,6 +22,7 @@ users/data/account-audit.log
 users/data/mmx-users/
 users/data/lifelenz-users/
 users/data/webauthn/
+users/data/.dashboard-auth-secret
 
 # Debug screenshots dumped by probe/debug scripts
 scripts/*.png

@@ -17,6 +17,7 @@ const { getAreaIds } = require('../../../stores/src/areasConfig');
 const USERS_PATH = path.join(paths.root, '.Users');
 const ACCOUNT_AUDIT_LOG = path.join(paths.users.data, 'account-audit.log');
 const AUTH_EVENTS_LOG = path.join(paths.users.data, 'auth-events.log');
+const PERSISTED_AUTH_SECRET_FILE = path.join(paths.users.data, '.dashboard-auth-secret');
 const ACCOUNTS_FILE_NAME = 'accounts.users';
 
 const ROLE_FOLDER_ORDER = ['admins', 'area-coaches', 'stores', 'managers', 'mics', 'tms'];
@@ -1824,20 +1825,50 @@ function lookupDisplayName(username) {
     return '';
 }
 
-// Fail closed: without a configured secret, sign tokens with a random
-// per-process key instead of a predictable default. Tokens cannot be forged,
-// but sessions will not survive a server restart until a secret is set.
-let generatedAuthSecret = null;
+// Without a configured secret, sign tokens with a persistent file-backed key
+// (or a one-time random key if the file cannot be written). Set
+// DASHBOARD_AUTH_SECRET in .env so sessions survive deploys across machines.
+function readPersistedAuthSecret() {
+    try {
+        if (!fs.existsSync(PERSISTED_AUTH_SECRET_FILE)) return '';
+        return String(fs.readFileSync(PERSISTED_AUTH_SECRET_FILE, 'utf8')).trim();
+    } catch {
+        return '';
+    }
+}
+
+function writePersistedAuthSecret(secret) {
+    try {
+        fs.mkdirSync(paths.users.data, { recursive: true });
+        fs.writeFileSync(PERSISTED_AUTH_SECRET_FILE, secret, { encoding: 'utf8', mode: 0o600 });
+        return true;
+    } catch (err) {
+        console.warn('[auth] Could not persist session secret:', err.message);
+        return false;
+    }
+}
+
+let ephemeralAuthSecret = null;
 function authSecret() {
     const configured = String(process.env.DASHBOARD_AUTH_SECRET || process.env.DASHBOARD_ACCESS_KEY || '').trim();
     if (configured) return configured;
-    if (!generatedAuthSecret) {
-        generatedAuthSecret = crypto.randomBytes(32).toString('hex');
-        console.warn(
-            '[auth] DASHBOARD_AUTH_SECRET / DASHBOARD_ACCESS_KEY not set; using a random per-process session secret. Sessions will reset on every restart.'
-        );
+
+    const persisted = readPersistedAuthSecret();
+    if (persisted) return persisted;
+
+    if (!ephemeralAuthSecret) {
+        ephemeralAuthSecret = crypto.randomBytes(32).toString('hex');
+        if (writePersistedAuthSecret(ephemeralAuthSecret)) {
+            console.warn(
+                '[auth] DASHBOARD_AUTH_SECRET not set; created a persistent session secret on disk. Set DASHBOARD_AUTH_SECRET in .env for explicit control.'
+            );
+        } else {
+            console.warn(
+                '[auth] DASHBOARD_AUTH_SECRET not set and secret file could not be written; sessions will reset on every process restart.'
+            );
+        }
     }
-    return generatedAuthSecret;
+    return ephemeralAuthSecret;
 }
 
 function signSessionPayload(payload) {

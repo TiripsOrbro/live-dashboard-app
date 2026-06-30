@@ -3410,6 +3410,10 @@ html.mic-dark-mode .admin-modal--store-logins .admin-store-logins-entry {
     margin-bottom: 0.35rem;
 }
 
+.admin-forecast-preview-target #admin-forecast-preview-load {
+    margin-top: 0.35rem;
+}
+
 html.mic-dark-mode .admin-forecast-preview-target {
     background: #1e1e24;
     border-color: rgba(255, 255, 255, 0.12);

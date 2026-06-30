@@ -529,6 +529,7 @@ const {
     removeFallback,
     clearServiceCredentials,
     storeHasServiceCredentials,
+    listCredentialCandidates,
 } = require('./services/storeCredentials');
 const { getSmgPeriodConfig, saveSmgPeriodConfig } = require('../smg/src/smgPeriodConfig');
 const { getNsfRoundConfig, saveNsfRoundConfig, defaultRoundsForYear } = require('../nsf/src/nsfRoundConfig');

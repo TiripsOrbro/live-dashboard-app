@@ -55,7 +55,7 @@ const { getAllMarketLabels, getAreasForMarket } = require('../../../stores/src/m
 const { readArchiveIndex, mergeHistoryWithArchive, ARCHIVE_RETENTION_DAYS } = require('./tacauditArchive');
 const { getAuditTypeConfig, isValidAuditType } = require('./auditRegistry');
 const { getSettings } = require('./tacauditStore');
-const { countOpenActionsForStore, summarizeStoreActions, scanStoreOpenActions } = require('./tacauditActions');
+const { countOpenActionsForStore, listOpenActionsForStores, summarizeStoreActions, scanStoreOpenActions } = require('./tacauditActions');
 const { getDefaultActionDueDate } = require('./storeActionsStore');
 
 const HISTORY_LISTERS = {

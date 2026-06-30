@@ -89,6 +89,15 @@ After import, open **Admin menu → Forecast tool**. The **History** column turn
 
 After backfill, the server appends one finalized day per store automatically **after close** each trading day.
 
+Older days roll into a **compact archive** (hourly totals kept; heavy `actualRaw` grids dropped). Default retention:
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `FORECAST_HISTORY_DAYS` | 35 | Hot window used for forecast calculations |
+| `FORECAST_HISTORY_ARCHIVE_DAYS` | 182 (~26 weeks) | How far back the sales history UI can browse |
+
+Set `FORECAST_HISTORY_ARCHIVE_DAYS` equal to `FORECAST_HISTORY_DAYS` to disable archiving and delete data after the hot window (previous behaviour).
+
 ## Minimum data to run forecast
 
 - **35 days** ideal (5 samples per weekday)

@@ -293,9 +293,11 @@
                     <label class="admin-forecast-week-start-label">Week starting
                         <input type="date" id="admin-forecast-history-week-start" />
                     </label>
-                    <button type="button" class="mic-settings-btn" id="admin-forecast-history-prev-week" title="Previous week">← Prev</button>
-                    <button type="button" class="mic-settings-btn" id="admin-forecast-history-next-week" title="Next week">Next →</button>
-                    <button type="button" class="mic-settings-btn" id="admin-forecast-history-add">Add day</button>
+                    <div class="admin-forecast-history-nav">
+                        <button type="button" class="mic-settings-btn" id="admin-forecast-history-prev-week" title="Previous week">← Prev</button>
+                        <button type="button" class="mic-settings-btn" id="admin-forecast-history-next-week" title="Next week">Next →</button>
+                        <button type="button" class="mic-settings-btn" id="admin-forecast-history-add">Add day</button>
+                    </div>
                 </div>
                 <div id="admin-forecast-history-edit" class="admin-forecast-history-edit" hidden></div>
                 <div id="admin-forecast-history-body"></div>
@@ -1479,6 +1481,67 @@
         return map[String(source || '').trim()] || (source ? String(source) : '');
     }
 
+    function isPastMissingHistoryDay(row, grid) {
+        if (!row || row.hasData) return false;
+        const asOf = String(grid?.asOf || historyDateBounds?.newest || '').trim();
+        const date = String(row.date || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) return false;
+        return date < asOf;
+    }
+
+    async function saveHistoryDay(payload) {
+        const root = ensureHistoryBackdrop();
+        root.querySelector('#admin-forecast-history-error').textContent = '';
+        const res = await fetch('/api/admin/forecast/history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) throw new Error(data.error || 'Could not save history day.');
+        if (data.dateBounds) historyDateBounds = data.dateBounds;
+        closeHistoryEditForm();
+        historyForecastWeek = null;
+        await loadHistoryGrid(historyStoreNumber, historyGridData?.weekStart || historyWeekStart);
+        if (statusPayload && getRoot()) {
+            const statusRes = await fetchStatus();
+            statusPayload = statusRes;
+            renderTable(getRoot(), statusPayload);
+        }
+    }
+
+    async function submitInlineHistoryRow(rowIdx, container) {
+        const row = historyGridData?.rows?.[rowIdx];
+        if (!row || !historyStoreNumber || !container) return;
+        const root = ensureHistoryBackdrop();
+        const hourColumns = historyGridData?.hourColumns || [];
+        const values = [];
+        for (let hourIdx = 0; hourIdx < hourColumns.length; hourIdx += 1) {
+            const col = hourColumns[hourIdx];
+            if (col.hour < row.openHour || col.hour >= row.closeHour) continue;
+            const input = container.querySelector(
+                `input[data-history-inline-row="${rowIdx}"][data-hour-idx="${hourIdx}"]`
+            );
+            values.push(input ? Number(input.value) || 0 : 0);
+        }
+        if (!values.some((v) => v > 0)) {
+            root.querySelector('#admin-forecast-history-error').textContent = 'Enter at least one hourly value.';
+            return;
+        }
+        try {
+            await saveHistoryDay({
+                store: historyStoreNumber,
+                date: row.date,
+                openHour: row.openHour ?? historyGridData?.openHour,
+                closeHour: row.closeHour ?? historyGridData?.closeHour,
+                actual: values,
+            });
+        } catch (error) {
+            root.querySelector('#admin-forecast-history-error').textContent = error.message;
+        }
+    }
+
     function closeHistoryEditForm() {
         historyEditState = null;
         const panel = historyBackdrop?.querySelector('#admin-forecast-history-edit');
@@ -1517,8 +1580,10 @@
             .join('');
 
         const boundsHint = historyDateBounds
-            ? `Allowed dates: ${historyDateBounds.oldest} to ${historyDateBounds.newest}`
-            : 'Within the last 35 days';
+            ? historyDateBounds.archiveDays > historyDateBounds.hotDays
+                ? `Browse ${historyDateBounds.archiveDays} days (${historyDateBounds.oldest} to ${historyDateBounds.newest}). Forecast uses the latest ${historyDateBounds.hotDays} days.`
+                : `Allowed dates: ${historyDateBounds.oldest} to ${historyDateBounds.newest}`
+            : 'Within the loaded date range';
 
         panel.hidden = false;
         panel.innerHTML = `
@@ -1560,23 +1625,7 @@
         payload.actual = values;
 
         try {
-            const res = await fetch('/api/admin/forecast/history', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify(payload),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data.success) throw new Error(data.error || 'Could not save history day.');
-            if (data.dateBounds) historyDateBounds = data.dateBounds;
-            closeHistoryEditForm();
-            historyForecastWeek = null;
-            await loadHistoryGrid(historyStoreNumber, historyGridData?.weekStart || historyWeekStart);
-            if (statusPayload && getRoot()) {
-                const statusRes = await fetchStatus();
-                statusPayload = statusRes;
-                renderTable(getRoot(), statusPayload);
-            }
+            await saveHistoryDay(payload);
         } catch (error) {
             root.querySelector('#admin-forecast-history-error').textContent = error.message;
         }
@@ -1632,16 +1681,34 @@
                 const badge = sourceLabel
                     ? `<span class="admin-forecast-history-source admin-forecast-history-source--${escapeHtml(String(row.source || '').replace(/[^a-z0-9-]/gi, ''))}">${escapeHtml(sourceLabel)}</span>`
                     : '';
+                const pastMissing = isPastMissingHistoryDay(row, grid);
                 const rowClass = row.hasData ? '' : ' admin-history-week-row--missing';
+                const hourColumns = grid.hourColumns || [];
                 const cells = (row.values || [])
-                    .map((v) => {
+                    .map((v, hourIdx) => {
+                        const col = hourColumns[hourIdx];
+                        const inHours = col && col.hour >= row.openHour && col.hour < row.closeHour;
+                        if (pastMissing && inHours) {
+                            return `<td class="admin-history-num admin-history-inline-cell">
+                                <input type="number" min="0" step="0.01" class="admin-history-inline-input"
+                                    data-history-inline-row="${rowIdx}" data-hour-idx="${hourIdx}"
+                                    value="" placeholder="0" aria-label="${escapeHtml(col.label)}" />
+                            </td>`;
+                        }
                         const text = v == null ? '—' : formatMoney(v);
                         return `<td class="admin-history-num">${text}</td>`;
                     })
                     .join('');
                 const totalText = row.dayTotal != null ? formatMoney(row.dayTotal) : '—';
-                const editLabel = row.hasData ? 'Edit' : 'Fill';
-                return `<tr class="admin-history-week-row${rowClass}" data-history-row="${rowIdx}">
+                let actionCell;
+                if (row.hasData) {
+                    actionCell = `<button type="button" class="admin-forecast-history-col-edit" data-history-edit-row="${rowIdx}">Edit</button>`;
+                } else if (pastMissing) {
+                    actionCell = `<button type="button" class="admin-forecast-history-col-edit admin-forecast-history-col-save" data-history-inline-save data-inline-row="${rowIdx}">Save</button>`;
+                } else {
+                    actionCell = `<button type="button" class="admin-forecast-history-col-edit" data-history-edit-row="${rowIdx}">Fill</button>`;
+                }
+                return `<tr class="admin-history-week-row${rowClass}${pastMissing ? ' admin-history-week-row--inline-edit' : ''}" data-history-row="${rowIdx}">
                     <th scope="row" class="admin-history-day-label">
                         <span class="admin-history-col-label">${escapeHtml(row.weekdayLabel || '')}</span>
                         <span class="admin-accounts-meta">${escapeHtml(formatShortDate(row.date))}</span>
@@ -1649,7 +1716,7 @@
                     </th>
                     ${cells}
                     <td class="admin-history-num admin-history-total">${totalText}</td>
-                    <td><button type="button" class="admin-forecast-history-col-edit" data-history-row="${rowIdx}">${escapeHtml(editLabel)}</button></td>
+                    <td>${actionCell}</td>
                 </tr>`;
             })
             .join('');
@@ -1667,12 +1734,17 @@
                     <tbody>${rows}</tbody>
                 </table>
             </div>`;
-        container.querySelectorAll('[data-history-row]').forEach((btn) => {
-            if (btn.tagName !== 'BUTTON') return;
+        container.querySelectorAll('[data-history-edit-row]').forEach((btn) => {
             btn.addEventListener('click', () => {
-                const idx = Number(btn.getAttribute('data-history-row'));
+                const idx = Number(btn.getAttribute('data-history-edit-row'));
                 const row = grid.rows[idx];
                 openHistoryEditForm(row);
+            });
+        });
+        container.querySelectorAll('[data-history-inline-save]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const idx = Number(btn.getAttribute('data-inline-row'));
+                void submitInlineHistoryRow(idx, container);
             });
         });
     }
@@ -2401,10 +2473,18 @@
         root.querySelector('#admin-forecast-history-error').textContent = '';
         await loadHistoryGrid(storeNumber, historyWeekStart);
         if (focusManual && historyGridData?.rows) {
-            const firstGap = historyGridData.rows.find((row) => !row.hasData);
-            if (firstGap) {
-                firstGap._highlight = true;
-                openHistoryEditForm(firstGap);
+            const firstPastGap = historyGridData.rows.find(
+                (row) => isPastMissingHistoryDay(row, historyGridData)
+            );
+            if (firstPastGap) {
+                const rowIdx = historyGridData.rows.indexOf(firstPastGap);
+                requestAnimationFrame(() => {
+                    const input = root.querySelector(`input[data-history-inline-row="${rowIdx}"]`);
+                    input?.focus();
+                });
+            } else {
+                const firstGap = historyGridData.rows.find((row) => !row.hasData);
+                if (firstGap) openHistoryEditForm(firstGap);
             }
         }
     }

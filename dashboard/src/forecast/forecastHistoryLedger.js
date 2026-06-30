@@ -8,6 +8,10 @@ const { getStoreDateKey } = require('../sssg/sssgWeeklyLedger');
 const paths = require('../../../src/paths');
 const HISTORY_DIR = path.join(paths.dashboard.data, 'forecast-history');
 const HISTORY_DAYS = Number(process.env.FORECAST_HISTORY_DAYS || 35);
+const ARCHIVE_DAYS = Math.max(
+    HISTORY_DAYS,
+    Number(process.env.FORECAST_HISTORY_ARCHIVE_DAYS || 182)
+);
 const MIN_WEEKDAY_SAMPLES = 3;
 
 function historyFilePath(storeNumber) {
@@ -37,6 +41,7 @@ function readStoreHistory(storeNumber) {
             ...raw,
             storeNumber: String(raw.storeNumber || storeNumber).trim(),
             days: raw.days && typeof raw.days === 'object' ? raw.days : {},
+            archive: raw.archive && typeof raw.archive === 'object' ? raw.archive : {},
         };
     } catch {
         return emptyStoreHistory(storeNumber);
@@ -72,12 +77,53 @@ function sumHourly(values) {
     return values.reduce((sum, v) => sum + (Number(v) || 0), 0);
 }
 
+function getHistoryDayEntry(doc, dateKey) {
+    const date = String(dateKey || '').trim();
+    if (!date || !doc) return null;
+    return doc.days?.[date] || doc.archive?.[date] || null;
+}
+
+function compactHistoryDayForArchive(day) {
+    if (!day) return null;
+    return {
+        date: day.date,
+        weekday: day.weekday,
+        openHour: day.openHour,
+        closeHour: day.closeHour,
+        actual: Array.isArray(day.actual) ? day.actual : [],
+        actualTotal: day.actualTotal,
+        finalized: day.finalized !== false,
+        source: day.source,
+        archivedAt: new Date().toISOString(),
+    };
+}
+
+function pruneArchive(doc) {
+    if (!doc?.archive || ARCHIVE_DAYS <= HISTORY_DAYS) return doc;
+    const timeZone = String(doc.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne').trim();
+    const asOfIso = new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date());
+    const oldestArchive = addDaysToIso(asOfIso, -(ARCHIVE_DAYS - 1));
+    for (const key of Object.keys(doc.archive)) {
+        if (key < oldestArchive) delete doc.archive[key];
+    }
+    if (!Object.keys(doc.archive).length) delete doc.archive;
+    return doc;
+}
+
 function pruneOldDays(doc, keepDays = HISTORY_DAYS) {
     const keys = Object.keys(doc.days || {}).sort();
     while (keys.length > keepDays) {
         const oldest = keys.shift();
+        if (ARCHIVE_DAYS > HISTORY_DAYS) {
+            const day = doc.days[oldest];
+            if (day) {
+                if (!doc.archive) doc.archive = {};
+                doc.archive[oldest] = compactHistoryDayForArchive(day);
+            }
+        }
         delete doc.days[oldest];
     }
+    pruneArchive(doc);
     return doc;
 }
 
@@ -132,6 +178,7 @@ function recordForecastHistoryDay(storeNumber, dateKey, entry, options = {}) {
         capturedAt: new Date().toISOString(),
         source: String(options.source || 'live').trim(),
     };
+    if (doc.archive?.[date]) delete doc.archive[date];
     pruneOldDays(doc);
     writeStoreHistory(doc);
     return doc.days[date];
@@ -441,7 +488,7 @@ function buildHistoryHourGrid(storeNumber, options = {}) {
     for (let weeksAgo = maxWeeks - 1; weeksAgo >= 0; weeksAgo -= 1) {
         const weekStart = addDaysToIso(currentWeekStart, -7 * weeksAgo);
         const date = calendarDateForWeekdayIndex(weekStart, weekdayIndex);
-        const day = date ? doc.days?.[date] : null;
+        const day = date ? getHistoryDayEntry(doc, date) : null;
         const hourly = [];
         if (day?.actual?.length) {
             for (let h = open; h < close; h += 1) {
@@ -537,7 +584,7 @@ function buildHistoryWeekGrid(storeNumber, options = {}) {
 
     for (let offset = 0; offset < 7; offset += 1) {
         const date = addDaysToIso(weekStart, offset);
-        const day = doc.days?.[date] || null;
+        const day = getHistoryDayEntry(doc, date) || null;
         const refDate = new Date(`${date}T12:00:00`);
         const hoursResolved = parsedStore
             ? resolveHours(parsedStore, refDate)
@@ -735,8 +782,15 @@ function distributeDayTotalToHourly(total, weekday, storeNumber, options = {}) {
 
 function historyDateBounds(timeZone) {
     const asOfIso = new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date());
-    const oldest = addDaysToIso(asOfIso, -(HISTORY_DAYS - 1));
-    return { asOfIso, oldest, newest: asOfIso };
+    const retentionDays = ARCHIVE_DAYS > HISTORY_DAYS ? ARCHIVE_DAYS : HISTORY_DAYS;
+    const oldest = addDaysToIso(asOfIso, -(retentionDays - 1));
+    return {
+        asOfIso,
+        oldest,
+        newest: asOfIso,
+        hotDays: HISTORY_DAYS,
+        archiveDays: ARCHIVE_DAYS,
+    };
 }
 
 function validateHistoryDate(dateKey, storeNumber) {
@@ -744,9 +798,13 @@ function validateHistoryDate(dateKey, storeNumber) {
         throw new Error('date must be YYYY-MM-DD.');
     }
     const doc = readStoreHistory(storeNumber);
-    const { oldest, newest } = historyDateBounds(doc.timeZone);
+    const { oldest, newest, hotDays, archiveDays } = historyDateBounds(doc.timeZone);
     if (dateKey < oldest || dateKey > newest) {
-        throw new Error(`date must be within the last ${HISTORY_DAYS} days (${oldest} to ${newest}).`);
+        const windowLabel =
+            archiveDays > hotDays
+                ? `the last ${archiveDays} days (${oldest} to ${newest})`
+                : `the last ${hotDays} days (${oldest} to ${newest})`;
+        throw new Error(`date must be within ${windowLabel}.`);
     }
     return doc;
 }
@@ -804,7 +862,7 @@ function buildHistoryDayEntry(storeNumber, dateKey) {
           };
     const openHour = hoursResolved.openHour;
     const closeHour = hoursResolved.closeHour;
-    const existing = doc.days?.[date] || null;
+    const existing = getHistoryDayEntry(doc, date);
     const dayOpen = Number.isFinite(existing?.openHour) ? existing.openHour : openHour;
 
     const hours = [];
@@ -857,10 +915,12 @@ function deleteHistoryDay(storeNumber, dateKey, options = {}) {
 module.exports = {
     HISTORY_DIR,
     HISTORY_DAYS,
+    ARCHIVE_DAYS,
     RAW_BASE_HOUR,
     historyFilePath,
     readStoreHistory,
     writeStoreHistory,
+    getHistoryDayEntry,
     recordForecastHistoryDay,
     recordForecastHistoryFromStore,
     listHistoryDays,

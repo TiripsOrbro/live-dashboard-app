@@ -1,7 +1,15 @@
 const app = document.getElementById('app');
-const pathMatch = window.location.pathname.match(/\/(teststore|\d{3,6})\/daily-stock-count\/?$/i);
-const STORE_NUMBER = pathMatch ? pathMatch[1].toLowerCase() : '';
+
+let STORE_NUMBER = '';
 const DAILY_COUNT_STORE_KEY = 'daily-count-store';
+
+function syncDailyStockCountRoute(pathname) {
+    const path = String(pathname || window.__SHELL_ROUTE__?.pathname || window.location.pathname || '');
+    const pathMatch = path.match(/\/(teststore|\d{3,6})\/daily-stock-count\/?$/i);
+    STORE_NUMBER = pathMatch ? pathMatch[1].toLowerCase() : '';
+}
+
+syncDailyStockCountRoute();
 
 let catalog = null;
 let accessibleStores = [];
@@ -692,4 +700,19 @@ async function init() {
     }
 }
 
-init();
+window.DailyStockCountView = {
+    async mount() {
+        syncDailyStockCountRoute();
+        await init();
+    },
+    unmount() {
+        mmxPollInFlight = null;
+        document.documentElement.classList.remove('stock-count-page');
+        document.body.classList.remove('stock-count-page');
+        if (app) app.innerHTML = '';
+    },
+};
+
+if (!window.__APP_SHELL__) {
+    init();
+}

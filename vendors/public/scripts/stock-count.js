@@ -1,9 +1,20 @@
 const app = document.getElementById('app');
-const pathMatch = window.location.pathname.match(/\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)/i);
-const STORE_NUMBER = pathMatch ? pathMatch[1].toLowerCase() : '';
-const VENDOR_SLUG = pathMatch ? pathMatch[2] : '';
-const IS_COMBINED = VENDOR_SLUG === 'combined';
-const IS_LEVELS = VENDOR_SLUG === 'levels';
+
+let STORE_NUMBER = '';
+let VENDOR_SLUG = '';
+let IS_COMBINED = false;
+let IS_LEVELS = false;
+
+function syncStockCountRoute(pathname) {
+    const path = String(pathname || window.__SHELL_ROUTE__?.pathname || window.location.pathname || '');
+    const pathMatch = path.match(/\/(teststore|\d{3,6})\/stock-count\/([a-z0-9-]+)/i);
+    STORE_NUMBER = pathMatch ? pathMatch[1].toLowerCase() : '';
+    VENDOR_SLUG = pathMatch ? pathMatch[2] : '';
+    IS_COMBINED = VENDOR_SLUG === 'combined';
+    IS_LEVELS = VENDOR_SLUG === 'levels';
+}
+
+syncStockCountRoute();
 
 let catalog = null;
 let draft = null;
@@ -1967,7 +1978,12 @@ async function tryResumePipelineOnLoad() {
     return false;
 }
 
+let mmxVisibilityRecoveryBound = false;
+let stockCountAttentionBound = false;
+
 function setupMmxPipelineVisibilityRecovery() {
+    if (mmxVisibilityRecoveryBound) return;
+    mmxVisibilityRecoveryBound = true;
     const onVisible = () => {
         if (document.visibilityState && document.visibilityState !== 'visible') return;
         if (!processing && !mmxProcessingError && !readMmxUiWatch()) return;
@@ -3206,19 +3222,22 @@ async function init() {
     document.documentElement.classList.add('stock-count-page');
     document.body.classList.add('stock-count-page');
     setupMmxPipelineVisibilityRecovery();
-    window.addEventListener('stock-count-attention', (event) => {
-        const { title, body, kind } = event.detail || {};
-        if (!title || !body) return;
-        const toastKind =
-            kind === 'error'
-                ? 'error'
-                : kind === 'variances' || kind === 'warn'
-                  ? 'warn'
-                  : kind === 'confirm' || kind === 'ok'
-                    ? 'ok'
-                    : 'info';
-        showStockCountToast(title, body, toastKind);
-    });
+    if (!stockCountAttentionBound) {
+        stockCountAttentionBound = true;
+        window.addEventListener('stock-count-attention', (event) => {
+            const { title, body, kind } = event.detail || {};
+            if (!title || !body) return;
+            const toastKind =
+                kind === 'error'
+                    ? 'error'
+                    : kind === 'variances' || kind === 'warn'
+                      ? 'warn'
+                      : kind === 'confirm' || kind === 'ok'
+                        ? 'ok'
+                        : 'info';
+            showStockCountToast(title, body, toastKind);
+        });
+    }
     if (!STORE_NUMBER || !VENDOR_SLUG) {
         app.textContent = 'Invalid stock count URL.';
         return;
@@ -3294,4 +3313,34 @@ async function init() {
     }
 }
 
-void init();
+function teardownStockCountView() {
+    if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = null;
+    }
+    stopMmxProgressTicker();
+    mmxPollGeneration += 1;
+    mmxPollInFlight = null;
+    if (stockCountToastTimer) {
+        clearTimeout(stockCountToastTimer);
+        stockCountToastTimer = null;
+    }
+}
+
+window.StockCountView = {
+    async mount() {
+        syncStockCountRoute();
+        teardownStockCountView();
+        await init();
+    },
+    unmount() {
+        teardownStockCountView();
+        document.documentElement.classList.remove('stock-count-page');
+        document.body.classList.remove('stock-count-page');
+        if (app) app.innerHTML = '';
+    },
+};
+
+if (!window.__APP_SHELL__) {
+    void init();
+}

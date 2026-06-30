@@ -191,6 +191,9 @@
     const SHARED_STOCK_COUNT_SCRIPTS = [
         '/scripts/page-transition.js',
         '/scripts/nav-back.js',
+        '/scripts/stock-count-notify.js',
+        '/scripts/variance-catalog-match.js',
+        '/scripts/mmx-user-login-prompt.js',
         '/scripts/stock-count.js',
     ];
 
@@ -314,24 +317,49 @@
         getAppEl().textContent = 'Admin settings failed to load.';
     }
 
+    function ensureStockCountStyles() {
+        if (document.getElementById('shell-stock-count-css')) return;
+        const link = document.createElement('link');
+        link.id = 'shell-stock-count-css';
+        link.rel = 'stylesheet';
+        link.href = '/styles/stock-count.css';
+        document.head.appendChild(link);
+    }
+
     async function mountStockCount() {
         document.body.classList.add('stock-count-page');
+        ensureStockCountStyles();
         await loadScriptChain(SHARED_STOCK_COUNT_SCRIPTS);
+        if (!global.StockCountView?.mount) {
+            for (const url of SHARED_STOCK_COUNT_SCRIPTS) scriptCache.delete(url);
+            await loadScriptChain(SHARED_STOCK_COUNT_SCRIPTS);
+        }
         if (global.StockCountView?.mount) {
-            await global.StockCountView.mount(getAppEl());
+            await global.StockCountView.mount();
             return;
         }
-        getAppEl().textContent = 'Stock count failed to load.';
+        console.error('[AppShell] StockCountView missing after loading stock count scripts');
+        getAppEl().textContent =
+            'Stock count failed to load. Hard refresh the page (Ctrl+Shift+R).';
     }
 
     async function mountDailyStockCount() {
         document.body.classList.add('stock-count-page');
+        ensureStockCountStyles();
         await loadScript('/scripts/page-transition.js');
         await loadScript('/scripts/nav-back.js');
         await loadScript('/scripts/daily-stock-count.js');
-        if (global.DailyStockCountView?.mount) {
-            await global.DailyStockCountView.mount(getAppEl());
+        if (!global.DailyStockCountView?.mount) {
+            scriptCache.delete('/scripts/daily-stock-count.js');
+            await loadScript('/scripts/daily-stock-count.js', { force: true });
         }
+        if (global.DailyStockCountView?.mount) {
+            await global.DailyStockCountView.mount();
+            return;
+        }
+        console.error('[AppShell] DailyStockCountView missing after loading daily stock count scripts');
+        getAppEl().textContent =
+            'Daily stock count failed to load. Hard refresh the page (Ctrl+Shift+R).';
     }
 
     async function ensureTacauditViewLoaded() {

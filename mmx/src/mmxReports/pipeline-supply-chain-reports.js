@@ -712,6 +712,7 @@ async function expandTargetAreaCollapsedNode(page, areaLabel) {
             if (!rtIn) continue;
             const text = (rtIn.textContent || '').replace(/\s+/g, ' ').trim();
             if (!matches(text)) continue;
+            plus.scrollIntoView?.({ block: 'center', inline: 'nearest' });
             plus.click();
             return text;
         }
@@ -908,6 +909,25 @@ async function expandScmTreeOneLevel(page, opts = {}) {
     return clicked;
 }
 
+/** Expand one collapsed node — target area first, else deepest visible .rtPlus (often Area 22). */
+async function expandOneSequentialCollapsedNode(page, areaLabel) {
+    const target = await expandTargetAreaCollapsedNode(page, areaLabel);
+    if (target) return { label: target, kind: 'target-area' };
+    return page.evaluate(() => {
+        const plusList = [...document.querySelectorAll('.rtPlus')];
+        for (let i = plusList.length - 1; i >= 0; i--) {
+            const plus = plusList[i];
+            const mid = plus.closest('.rtMid, .rtTop');
+            const rtIn = mid?.querySelector('.rtIn');
+            const text = (rtIn?.textContent || '').replace(/\s+/g, ' ').trim();
+            plus.scrollIntoView?.({ block: 'center', inline: 'nearest' });
+            plus.click();
+            return { label: text || `rtPlus[${i}]`, kind: 'deepest' };
+        }
+        return null;
+    });
+}
+
 async function waitUntilStoreVisibleInTree(page, storeNumber, timeoutMs) {
     const num = String(storeNumber || '').replace(/\D/g, '').trim();
     const cfg = getStoreConfig(num) || {};
@@ -939,9 +959,11 @@ async function waitUntilStoreVisibleInTree(page, storeNumber, timeoutMs) {
         await expandScmPathToStore(page, num);
         if (await storeVisibleInTree(page, num)) continue;
 
-        const expanded = await expandTargetAreaCollapsedNode(page, areaLabel);
+        const expanded = await expandOneSequentialCollapsedNode(page, areaLabel);
         if (expanded) {
-            log.info(`SCM store tree: expanding target area "${expanded}"`);
+            log.info(
+                `SCM store tree: expanding ${expanded.kind} node "${expanded.label}"`
+            );
             await waitForAspPostback(page, { timeoutMs: postbackMs }).catch(() => {});
             await page.waitForTimeout(500);
         }

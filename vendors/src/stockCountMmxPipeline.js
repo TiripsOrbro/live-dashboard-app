@@ -537,46 +537,50 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         parallelReportDownload: options.parallelReportDownload,
     };
     const mmxOpts = withStoreMmxOptions(storeNumber, options);
-    const useParallel =
+    let useParallel =
         parallelReportDownloadEnabled(downloadOpts) &&
         (idsToDownload.length >= 2 || downloadOpts.parallelReportDownload || downloadOpts.forceDownload);
+    if (downloadOpts.parallelReportDownload === false) {
+        useParallel = false;
+    }
 
     const { acquireMmxResource, releaseMmxResource } = require('../../mmx/src/mmxResourceGate');
     let scrapePaused = false;
-    try {
-        acquireMmxResource(`build-to report download (store ${storeNumber})`);
-        scrapePaused = true;
 
-    if (useParallel) {
+    async function runReportDownload(parallel) {
+        if (parallel) {
+            log.info(
+                options.forceDownload
+                    ? `Re-downloading ${idsToDownload.join(', ')} for store ${storeNumber} (${idsToDownload.length} parallel browsers)`
+                    : `Reports missing for store ${storeNumber} - downloading ${idsToDownload.join(', ')} in ${idsToDownload.length} parallel browsers`
+            );
+            await downloadBuildToReportsParallel(storeNumber, {
+                ...mmxOpts,
+                ...downloadOpts,
+                onReportStep: (reportId, label) =>
+                    touchPipelineStep(storeNumber, `${labelForIds[reportId] || reportId}: ${label}`),
+            });
+            return;
+        }
+        if (options.page) {
+            log.info(
+                options.forceDownload
+                    ? `Re-downloading ${idsToDownload.join(', ')} for store ${storeNumber} (current MMX session)`
+                    : `Reports missing for store ${storeNumber} - downloading ${idsToDownload.join(', ')} via current MMX session`
+            );
+            await downloadReportsForStores({
+                ...downloadOpts,
+                ...mmxOpts,
+                page: options.page,
+                browser: options.browser || null,
+                onReportStep: (label) => touchPipelineStep(storeNumber, label),
+            });
+            return;
+        }
         log.info(
             options.forceDownload
-                ? `Re-downloading ${idsToDownload.join(', ')} for store ${storeNumber} (${idsToDownload.length} parallel browsers)`
-                : `Reports missing for store ${storeNumber} - downloading ${idsToDownload.join(', ')} in ${idsToDownload.length} parallel browsers`
-        );
-        await downloadBuildToReportsParallel(storeNumber, {
-            ...mmxOpts,
-            ...downloadOpts,
-            onReportStep: (reportId, label) =>
-                touchPipelineStep(storeNumber, `${labelForIds[reportId] || reportId}: ${label}`),
-        });
-    } else if (options.page) {
-        log.info(
-            options.forceDownload
-                ? `Re-downloading ${idsToDownload.join(', ')} for store ${storeNumber} (current MMX session)`
-                : `Reports missing for store ${storeNumber} - downloading ${idsToDownload.join(', ')} via current MMX session`
-        );
-        await downloadReportsForStores({
-            ...downloadOpts,
-            ...mmxOpts,
-            page: options.page,
-            browser: options.browser || null,
-            onReportStep: (label) => touchPipelineStep(storeNumber, label),
-        });
-    } else {
-        log.info(
-            options.forceDownload
-                ? `Re-downloading ${idsToDownload.join(', ')} for store ${storeNumber}`
-                : `Reports missing for store ${storeNumber} - downloading ${idsToDownload.join(', ')} in a separate browser pass`
+                ? `Re-downloading ${idsToDownload.join(', ')} for store ${storeNumber} (single browser)`
+                : `Reports missing for store ${storeNumber} - downloading ${idsToDownload.join(', ')} in one browser`
         );
         let browser;
         let page;
@@ -593,6 +597,31 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
             await closeBrowserQuietly(browser, 'pre-order report download');
         }
     }
+
+    try {
+        acquireMmxResource(`build-to report download (store ${storeNumber})`);
+        scrapePaused = true;
+
+        try {
+            await runReportDownload(useParallel);
+        } catch (downloadErr) {
+            const retrySequential =
+                useParallel &&
+                /SCM|store tree|did not produce a file|Reports incomplete/i.test(
+                    String(downloadErr?.message || downloadErr)
+                );
+            if (retrySequential) {
+                log.warn(
+                    `Store ${storeNumber}: parallel report download failed - retrying single-browser sequential download (${downloadErr.message})`
+                );
+                await updateCheckpoint(storeNumber, {
+                    stepLabel: 'Retrying report download in one browser…',
+                });
+                await runReportDownload(false);
+            } else {
+                throw downloadErr;
+            }
+        }
 
     const { normalizeMacromatixExportsForStore } = require('../../mmx/src/mmxReports/pipeline-download-reports');
     const storeReportDir = path.join(reportsDir, String(storeNumber));
@@ -1686,7 +1715,7 @@ async function checkStockLevelsForStore(storeNumber, options = {}) {
         try {
             await updateCheckpoint(storeNumber, {
                 stage: 'checking-stock-levels',
-                stepLabel: 'Downloading Macromatix reports (3 parallel browsers)…',
+                stepLabel: 'Downloading Macromatix reports (single browser)…',
                 lastError: null,
                 failedAtStep: null,
             });
@@ -1694,7 +1723,7 @@ async function checkStockLevelsForStore(storeNumber, options = {}) {
 
             await ensureReportsForOrders(storeNumber, {
                 forceDownload: true,
-                parallelReportDownload: true,
+                parallelReportDownload: false,
                 dateKey: options.dateKey,
                 ...withStoreMmxOptions(storeNumber, options),
             });

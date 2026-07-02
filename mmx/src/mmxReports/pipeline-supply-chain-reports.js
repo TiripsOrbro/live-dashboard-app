@@ -565,14 +565,14 @@ async function listScmStoreTreeLabels(page) {
 
 async function waitForScmStoreTreeAfterDates(page) {
     await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
-    const treeMs = Number(process.env.MMX_SCM_TREE_AFTER_DATE_MS || 1200);
+    const treeMs = Number(process.env.MMX_SCM_TREE_AFTER_DATE_MS || 3500);
     await page
         .waitForFunction(
             () => Boolean(document.querySelector('.RadTreeView .rtMid, .RadTreeView .rtPlus, .RadTreeView')),
             { timeout: treeMs, polling: 80 }
         )
         .catch(() => {});
-    await page.waitForTimeout(Number(process.env.MMX_SCM_TREE_AFTER_DATE_PAD_MS || 200));
+    await page.waitForTimeout(Number(process.env.MMX_SCM_TREE_AFTER_DATE_PAD_MS || 350));
 }
 
 function parseAreaNumber(areaLabel) {
@@ -717,20 +717,23 @@ async function scmAreaRowsVisible(page) {
 }
 
 /**
- * Zone Filter tree after SOH date is set: All → Collins → TBA Market 1 are usually
- * already expanded; only the store's TBA Area N row (from .storelist) needs [+] clicked.
+ * Zone Filter tree: expand Collins → TBA Market 1 → store's TBA Area N (from .storelist), then wait for the store row.
  */
 async function expandScmPathToStore(page, storeNumber) {
     const num = String(storeNumber || '').replace(/\D/g, '').trim();
     const cfg = getStoreConfig(num) || {};
     const areaLabel = String(cfg.area || 'Area 22').trim();
-    const marketPostback = Number(process.env.MMX_SCM_TREE_NODE_POSTBACK_MS || 4000);
-    const areaPostback = Number(process.env.MMX_SCM_TREE_AREA_POSTBACK_MS || 10000);
+    const marketPostback = Number(process.env.MMX_SCM_TREE_NODE_POSTBACK_MS || 5000);
+    const areaPostback = Number(process.env.MMX_SCM_TREE_AREA_POSTBACK_MS || 12000);
 
-    if (!(await scmAreaRowsVisible(page))) {
-        await expandTreeNodeByNeedle(page, 'tba market 1', { postbackMs: marketPostback });
-    }
+    await expandTreeNodeByNeedle(page, 'collins food group', { postbackMs: marketPostback });
+    await expandTreeNodeByNeedle(page, 'tba market 1', { postbackMs: marketPostback });
     await expandTreeNodeByAreaLabel(page, areaLabel, { postbackMs: areaPostback });
+    if (await waitForStoreRowInTree(page, num, areaPostback)) {
+        return storeVisibleInTree(page, num);
+    }
+    // Area expand postback can lag on the Pi — one more expand pass before giving up.
+    await expandTreeNodeByAreaLabel(page, areaLabel, { postbackMs: areaPostback, settleMs: 450 });
     await waitForStoreRowInTree(page, num, areaPostback);
     return storeVisibleInTree(page, num);
 }
@@ -1654,10 +1657,13 @@ async function configureAndGenerateReport(page, report, reportNav, hooks = {}) {
     }
 
     if (report.scmTreeStoreNumber) {
+        if (!hasEndDate) {
+            await waitForScmStoreTreeAfterDates(page);
+        }
         log.info(`SCM store tree: loading store picker for ${report.scmTreeStoreNumber}`);
         await emit(`selecting store ${report.scmTreeStoreNumber} in tree…`);
         await selectScmStoreCheckboxInTree(page, report.scmTreeStoreNumber, report.storeName, {
-            skipDateWait: !report.endDate,
+            skipDateWait: true,
         });
     } else if (!report.skipStoreSelection && report.storeName) {
         await emit('selecting store…');

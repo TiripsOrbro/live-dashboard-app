@@ -1621,10 +1621,16 @@ function applyPipelineStatusToUi(status) {
 
 function pipelineFailureFromStatus(status) {
     if (!status?.lastError) return null;
-    if (status.stage !== 'prepare-failed' && status.stage !== 'apply-failed') return null;
+    const stage = status.stage || 'idle';
+    const failedStage =
+        stage === 'prepare-failed' ||
+        stage === 'apply-failed' ||
+        stage === 'check-levels-failed' ||
+        (stage === 'applied-orders-pending' && status.lastError && !status.workLive);
+    if (!failedStage) return null;
     return {
         message: status.lastError,
-        failedAtStep: status.failedAtStep || status.stepLabel || pipelineStageLabel(status.stage),
+        failedAtStep: status.failedAtStep || status.stepLabel || pipelineStageLabel(stage),
     };
 }
 
@@ -1632,7 +1638,11 @@ function pipelineFailureFromStatus(status) {
 function pipelineOrdersActuallyComplete(status) {
     if (!status?.ordersComplete) return false;
     if (status.inProgress) return false;
+    if (status.lastError) return false;
     const stage = status.stage || 'idle';
+    if (stage === 'prepare-failed' || stage === 'apply-failed' || stage === 'check-levels-failed') {
+        return false;
+    }
     if (stage === 'completed' || stage === 'idle') return true;
     return false;
 }

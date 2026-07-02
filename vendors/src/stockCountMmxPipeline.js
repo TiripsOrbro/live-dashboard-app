@@ -1204,12 +1204,15 @@ async function getStockCountPipelineStatus(storeNumber) {
     }
 
     // mmxSentAt is set when the count is applied, not when scheduled orders finish - only
-    // treat all-vendors-sent as orders complete when the pipeline is not actively running.
-    if (
+    // treat all-vendors-sent as orders complete when the pipeline is idle and not failed.
+    const ordersMaybeDone =
         !payload.ordersComplete &&
         !payload.inProgress &&
-        (await stockCountMmxOrdersComplete(storeNumber, dateKey))
-    ) {
+        !PIPELINE_TERMINAL_FAIL_STAGES.has(stage) &&
+        stage !== 'applied-orders-pending' &&
+        !checkpoint?.lastError &&
+        (await stockCountMmxOrdersComplete(storeNumber, dateKey));
+    if (ordersMaybeDone) {
         payload.ordersComplete = true;
         if (stage === 'idle') {
             payload.stage = 'completed';
@@ -1241,6 +1244,17 @@ const PIPELINE_TERMINAL_FAIL_STAGES = new Set(['prepare-failed', 'apply-failed',
 async function clearStockCountPipelineFailure(storeNumber) {
     const cp = await getCheckpoint(storeNumber);
     if (!cp || !PIPELINE_TERMINAL_FAIL_STAGES.has(cp.stage)) return false;
+    const dateKey = cp.dateKey || melbourneDateKey();
+    const vendorSlugs = Array.isArray(cp.vendorSlugs) ? cp.vendorSlugs : [];
+    if (vendorSlugs.length) {
+        const { clearMmxSentForVendorSlugs } = require('./stockCountState');
+        const cleared = await clearMmxSentForVendorSlugs(storeNumber, vendorSlugs, dateKey);
+        if (cleared) {
+            log.info(
+                `Store ${storeNumber}: cleared mmxSent for ${cleared} vendor(s) before retry (${dateKey})`
+            );
+        }
+    }
     await clearCheckpoint(storeNumber);
     return true;
 }
@@ -1404,6 +1418,18 @@ async function resumeStockCountPipeline(storeNumber, options = {}) {
             await recordStockCountPrepareFailure(storeNumber, error);
         });
         return { success: true, accepted: true, resumedFrom: 'prepare', stage: 'preparing' };
+    }
+
+    if (stage === 'check-levels-failed') {
+        await clearStockCountPipelineFailure(storeNumber);
+        void checkStockLevelsForStore(storeNumber, {
+            ...mmxOpts,
+            onHandOnly: Boolean(checkpoint.stockLevelsOnHandOnly),
+        }).catch(async (error) => {
+            console.error(`[StockCount] Resume check levels failed - store ${storeNumber}:`, error);
+            await recordStockCountCheckFailure(storeNumber, error);
+        });
+        return { success: true, accepted: true, resumedFrom: 'check-levels', stage: 'checking-stock-levels' };
     }
 
     throw new Error(`Cannot resume from stage "${stage}". Send to Macromatix again.`);

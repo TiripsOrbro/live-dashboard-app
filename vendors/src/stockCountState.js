@@ -360,6 +360,32 @@ async function ensureMmxSentRecord(storeNumber, vendorSlug, dateKey = melbourneD
     return day.mmxSentAt;
 }
 
+/** Clear mmxSentAt so Send to MMX can run the full pipeline again after a failed attempt. */
+async function clearMmxSentForVendorSlugs(storeNumber, vendorSlugs, dateKey = melbourneDateKey()) {
+    const slugs = [...new Set((vendorSlugs || []).map((s) => String(s || '').trim()).filter(Boolean))];
+    if (!slugs.length) return 0;
+
+    const all = await getStateAll();
+    const sk = storeKey(storeNumber);
+    const store = all.stores[sk];
+    if (!store) return 0;
+
+    let cleared = 0;
+    for (const vendorSlug of slugs) {
+        const vk = vendorSlugKey(vendorSlug);
+        const day = store[vk]?.[dateKey];
+        if (!day?.mmxSentAt) continue;
+        day.mmxSentAt = null;
+        day.updatedAt = new Date().toISOString();
+        cleared++;
+    }
+    if (cleared) {
+        stateCache = all;
+        await writeStateFile(all);
+    }
+    return cleared;
+}
+
 async function getMmxSentVendorSlugs(storeNumber, dateKey = melbourneDateKey()) {
     const all = await getStateAll();
     const sk = storeKey(storeNumber);
@@ -438,6 +464,7 @@ module.exports = {
     submitStockCount,
     reopenStockCount,
     markMmxSent,
+    clearMmxSentForVendorSlugs,
     ensureMmxSentRecord,
     getMmxSentVendorSlugs,
     getSubmittedVendorSlugs,

@@ -18,6 +18,15 @@ const {
 } = require('./mmxReports/util-files');
 const log = require('./mmxReports/util-logging');
 
+/** One store's build-to download at a time — avoids Pi RAM/session contention across stores. */
+let reportDownloadChain = Promise.resolve();
+
+function withReportDownloadMutex(fn) {
+    const run = reportDownloadChain.then(() => fn());
+    reportDownloadChain = run.catch(() => {});
+    return run;
+}
+
 const paths = require('../../src/paths');
 const REPORTS_DIR = paths.vendors.reports;
 const PIPELINE_PATH = path.join(paths.mmx.config, 'reports-pipeline.json');
@@ -586,6 +595,10 @@ function promoteParallelFile(mainDir, filePath) {
  * Avoids three concurrent Macromatix logins fighting over the SCM store tree.
  */
 async function downloadBuildToReportsParallel(storeNumber, options = {}) {
+    return withReportDownloadMutex(() => downloadBuildToReportsParallelWork(storeNumber, options));
+}
+
+async function downloadBuildToReportsParallelWork(storeNumber, options = {}) {
     const num = String(storeNumber).replace(/\D/g, '');
     const cfg = getStoreConfig(num);
     const store = cfg || { storeNumber: num, storeName: num };

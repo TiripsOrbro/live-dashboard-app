@@ -541,6 +541,12 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         parallelReportDownloadEnabled(downloadOpts) &&
         (idsToDownload.length >= 2 || downloadOpts.parallelReportDownload || downloadOpts.forceDownload);
 
+    const { acquireMmxResource, releaseMmxResource } = require('../../mmx/src/mmxResourceGate');
+    let scrapePaused = false;
+    try {
+        acquireMmxResource(`build-to report download (store ${storeNumber})`);
+        scrapePaused = true;
+
     if (useParallel) {
         log.info(
             options.forceDownload
@@ -630,6 +636,11 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         soh: path.basename(files.stockOnHand || ''),
         soo: path.basename(files.stockOnOrder || ''),
     });
+    } finally {
+        if (scrapePaused) {
+            releaseMmxResource(`build-to report download finished (store ${storeNumber})`);
+        }
+    }
 }
 
 /** @deprecated Prefer ensureReportsForOrders */

@@ -626,7 +626,7 @@ async function expandTreeNodeByNeedle(page, needle, opts = {}) {
     return true;
 }
 
-/** Find a RadTreeView area row and click rtPlus/rtMinus on its .rtMid/.rtTop host. */
+/** Find a RadTreeView area row and click rtPlus/rtMinus (or label) on its .rtMid host. */
 async function clickAreaTreeToggle(page, areaNum, action = 'expand') {
     return page.evaluate(
         ({ num, act }) => {
@@ -635,12 +635,8 @@ async function clickAreaTreeToggle(page, areaNum, action = 'expand') {
                 if (lower.includes(`tba area ${num}`)) return true;
                 return new RegExp(`\\barea\\s+${num}(\\b|\\s*\\()`, 'i').test(text);
             };
-            for (const li of document.querySelectorAll('.RadTreeView .rtLI, .rtLI')) {
-                const rtIn = li.querySelector('.rtIn');
-                if (!rtIn) continue;
-                const text = (rtIn.textContent || '').replace(/\s+/g, ' ').trim();
-                if (!matchesArea(text)) continue;
-                const host = li.querySelector('.rtMid, .rtTop') || li;
+            const tryHost = (host, text) => {
+                if (!host) return null;
                 const plus = host.querySelector('.rtPlus');
                 const minus = host.querySelector('.rtMinus');
                 if (act === 'collapse' && minus) {
@@ -654,11 +650,76 @@ async function clickAreaTreeToggle(page, areaNum, action = 'expand') {
                 if (act === 'expand' && minus) {
                     return { action: 'already-expanded', label: text };
                 }
+                if (act === 'expand') {
+                    const rtIn = host.querySelector('.rtIn');
+                    if (rtIn) {
+                        rtIn.click();
+                        return { action: 'label-click', label: text };
+                    }
+                }
+                return null;
+            };
+            const rows = [];
+            const seen = new Set();
+            const add = (el) => {
+                if (!el || seen.has(el)) return;
+                seen.add(el);
+                rows.push(el);
+            };
+            for (const mid of document.querySelectorAll('.rtMid')) add(mid);
+            for (const li of document.querySelectorAll('.RadTreeView .rtLI, .rtLI')) add(li);
+            for (const label of document.querySelectorAll('label')) {
+                if (label.querySelector('.rtIn')) add(label);
+            }
+            for (const row of rows) {
+                const rtIn = row.querySelector('.rtIn');
+                if (!rtIn) continue;
+                const text = (rtIn.textContent || '').replace(/\s+/g, ' ').trim();
+                if (!matchesArea(text)) continue;
+                const host =
+                    row.classList?.contains('rtMid') || row.classList?.contains('rtTop')
+                        ? row
+                        : row.querySelector('.rtMid, .rtTop') || row.closest('.rtMid, .rtTop') || row;
+                const hit = tryHost(host, text);
+                if (hit) return hit;
             }
             return null;
         },
         { num: areaNum, act: action }
     );
+}
+
+async function waitAfterAreaTreeAction(page, action, postbackMs) {
+    if (action === 'expand' || action === 'collapse' || action === 'label-click') {
+        await waitForAspPostback(page, { timeoutMs: postbackMs }).catch(() => {});
+        await page.waitForTimeout(action === 'label-click' ? 500 : 400);
+    }
+}
+
+/** Click the next collapsed tree node — prefer area needle, else first visible .rtPlus. */
+async function expandNextCollapsedTreeNode(page, preferNeedle = '') {
+    return page.evaluate((needle) => {
+        const want = String(needle || '').toLowerCase();
+        const plusNodes = [...document.querySelectorAll('.rtPlus')];
+        if (want) {
+            for (const plus of plusNodes) {
+                const host = plus.closest('.rtMid, .rtTop, .rtLI') || plus.parentElement;
+                const rtIn = host?.querySelector('.rtIn');
+                const text = (rtIn?.textContent || host?.textContent || '').toLowerCase();
+                if (text.includes(want)) {
+                    plus.click();
+                    return (rtIn?.textContent || text).replace(/\s+/g, ' ').trim().slice(0, 72);
+                }
+            }
+        }
+        if (plusNodes[0]) {
+            plusNodes[0].click();
+            const host = plusNodes[0].closest('.rtMid, .rtTop, .rtLI');
+            const rtIn = host?.querySelector('.rtIn');
+            return (rtIn?.textContent || 'rtPlus').replace(/\s+/g, ' ').trim().slice(0, 72);
+        }
+        return null;
+    }, preferNeedle);
 }
 
 /** Expand a specific TBA Area N row (avoids matching "Area 2" when looking for "Area 22"). */
@@ -673,10 +734,13 @@ async function expandTreeNodeByAreaLabel(page, areaLabel, opts = {}) {
         log.warn(`SCM store tree: area row not found for "${areaLabel}"`);
         return false;
     }
-    if (result.action === 'expand') {
-        log.info(`SCM store tree: expanding area "${result.label}"`);
-        await waitForAspPostback(page, { timeoutMs: postbackMs }).catch(() => {});
-        await page.waitForTimeout(Number(opts.settleMs || 400));
+    if (result.action === 'expand' || result.action === 'label-click') {
+        log.info(
+            `SCM store tree: expanding area "${result.label}"${result.action === 'label-click' ? ' (label click)' : ''}`
+        );
+        await waitAfterAreaTreeAction(page, result.action, postbackMs);
+    } else if (result.action === 'already-expanded') {
+        log.info(`SCM store tree: area "${result.label}" shows expanded - waiting for store rows`);
     }
     return true;
 }
@@ -699,11 +763,12 @@ async function refreshAreaNodeIfStoreHidden(page, areaLabel, storeNumber) {
             await page.waitForTimeout(350);
         }
         const reexpanded = await clickAreaTreeToggle(page, areaNum, 'expand');
-        if (reexpanded?.action === 'expand') {
+        if (reexpanded?.action === 'expand' || reexpanded?.action === 'label-click') {
             log.info(`SCM store tree: re-expanding area "${reexpanded.label}"`);
-            await waitForAspPostback(page, { timeoutMs: postbackMs }).catch(() => {});
-            await page.waitForTimeout(450);
+            await waitAfterAreaTreeAction(page, reexpanded.action, postbackMs);
         }
+    } else if (state.action === 'expand' || state.action === 'label-click') {
+        await waitAfterAreaTreeAction(page, state.action, postbackMs);
     }
 
     return waitForStoreRowInTree(page, num, postbackMs);
@@ -813,6 +878,10 @@ async function waitUntilStoreVisibleInTree(page, storeNumber, timeoutMs) {
     const num = String(storeNumber || '').replace(/\D/g, '').trim();
     const cfg = getStoreConfig(num) || {};
     const areaLabel = String(cfg.area || 'Area 22').trim();
+    const areaNum = parseAreaNumber(areaLabel);
+    const areaNeedle = areaNum ? `tba area ${areaNum}` : areaLabel.toLowerCase();
+    const postbackMs = Number(process.env.MMX_SCM_TREE_AREA_POSTBACK_MS || 18000);
+
     if (await expandScmPathToStore(page, num)) {
         log.info(`SCM store tree: store ${num} visible in tree`);
         return true;
@@ -830,7 +899,17 @@ async function waitUntilStoreVisibleInTree(page, storeNumber, timeoutMs) {
             lastLog = Date.now();
         }
         await refreshAreaNodeIfStoreHidden(page, areaLabel, num);
+        if (await storeVisibleInTree(page, num)) continue;
+
         await expandScmPathToStore(page, num);
+        if (await storeVisibleInTree(page, num)) continue;
+
+        const expanded = await expandNextCollapsedTreeNode(page, areaNeedle);
+        if (expanded) {
+            log.info(`SCM store tree: expanding collapsed node "${expanded}"`);
+            await waitForAspPostback(page, { timeoutMs: postbackMs }).catch(() => {});
+            await page.waitForTimeout(450);
+        }
     }
     return storeVisibleInTree(page, num);
 }

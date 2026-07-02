@@ -223,7 +223,7 @@
         if (status.credentialedStores != null) {
             parts.push(`${status.storesWithSalesData ?? 0}/${status.credentialedStores} stores with live sales`);
         }
-        if (status.deferred) parts.push('MMX busy — scrape queued');
+        if (status.deferred) parts.push('MMX busy, scrape queued');
         if (status.inFlight) parts.push('Scrape in progress');
         if (status.salesUpdatedAt) {
             try {
@@ -242,7 +242,7 @@
         }
         const title = parts.join(' · ');
         if (status.inFlight) return { text: 'Sales · updating', title };
-        if (!status.salesUpdatedAt) return { text: 'Sales · —', title };
+        if (!status.salesUpdatedAt) return { text: 'Sales · n/a', title };
         try {
             const time = new Date(status.salesUpdatedAt).toLocaleTimeString('en-AU', {
                 timeZone: tz,
@@ -252,7 +252,7 @@
             });
             return { text: `Sales · ${time}`, title };
         } catch {
-            return { text: 'Sales · —', title };
+            return { text: 'Sales · n/a', title };
         }
     }
 

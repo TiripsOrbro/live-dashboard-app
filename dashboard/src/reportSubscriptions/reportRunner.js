@@ -38,12 +38,59 @@ function emitProgress(options, event) {
     }
 }
 
-function resolveStoresForScope(scopeType, scopeId) {
+const HOURLY_BACKFILL_LOG_SKIP_TYPES = new Set(['day-saved', 'day-read', 'day-batch-start']);
+
+function enrichHourlyBackfillProgress(store, event = {}) {
+    const type = String(event.type || '').trim();
+    const date = String(event.date || '').trim();
+    const enriched = { storeNumber: store, ...event };
+    if (type === 'day-start' && date) {
+        enriched.message = `Store ${store}: filling ${date}…`;
+    }
+    return enriched;
+}
+
+function shouldEmitHourlyBackfillLog(event = {}) {
+    return !HOURLY_BACKFILL_LOG_SKIP_TYPES.has(String(event.type || '').trim());
+}
+
+function formatHourlyStoreDoneMessage(store, coverage, forecastReadiness, skippedDays = []) {
+    const missing = [...(coverage?.missingDays || [])];
+    const incomplete = [...new Set([...missing, ...skippedDays.map((d) => String(d || '').trim()).filter(Boolean)])].sort();
+    if (incomplete.length) {
+        return `Store ${store}: incomplete — ${incomplete.join(', ')}`;
+    }
+    if (forecastReadiness?.ready) {
+        return `Store ${store}: complete.`;
+    }
+    const gaps = forecastReadiness?.weekdayGaps?.length
+        ? ` (forecast needs ${forecastReadiness.weekdayGaps.join(', ')})`
+        : ' (forecast history still needed)';
+    return `Store ${store}: report data complete${gaps}`;
+}
+
+function resolveStoresForScope(scopeType, scopeId, { includedStoreNumbers = null } = {}) {
     const type = String(scopeType || 'store').trim();
     const id = String(scopeId || '').trim();
     const stores = getStoreList();
-    if (type === 'area') return stores.filter((s) => String(s.area || '') === id);
-    return stores.filter((s) => String(s.storeNumber) === id);
+    let matched;
+    if (type === 'area') matched = stores.filter((s) => String(s.area || '') === id);
+    else matched = stores.filter((s) => String(s.storeNumber) === id);
+
+    if (type === 'area' && Array.isArray(includedStoreNumbers) && includedStoreNumbers.length) {
+        const allowed = new Set(includedStoreNumbers.map((s) => String(s || '').trim()).filter(Boolean));
+        matched = matched.filter((s) => allowed.has(String(s.storeNumber)));
+    }
+    return matched;
+}
+
+function resolveScopeStoreFilter(options = {}) {
+    const fromSubscription = options.subscription?.includedStoreNumbers;
+    if (Array.isArray(fromSubscription) && fromSubscription.length) return fromSubscription;
+    if (Array.isArray(options.includedStoreNumbers) && options.includedStoreNumbers.length) {
+        return options.includedStoreNumbers;
+    }
+    return null;
 }
 
 function resolveHourlyBackfillDateRange(dateRange = {}) {
@@ -110,6 +157,7 @@ async function backfillMissingHourlySales(storeNumber, dateRange = {}, options =
     });
 
     let browser;
+    const skippedDays = [];
     acquireMmxResource(`report hourly backfill store ${store}`);
     try {
         emitProgress(options, {
@@ -130,7 +178,12 @@ async function backfillMissingHourlySales(storeNumber, dateRange = {}, options =
 
         const scraped = await scraper.scrapeMissingHistoricalDays(page, missing, {
             timeZone: process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne',
-            onProgress: (ev) => emitProgress(options, { storeNumber: store, ...ev }),
+            onProgress: (ev) => {
+                const enriched = enrichHourlyBackfillProgress(store, ev);
+                if (shouldEmitHourlyBackfillLog(enriched)) {
+                    emitProgress(options, enriched);
+                }
+            },
         });
         for (const data of scraped) {
             const iso = data.dateIso;
@@ -138,11 +191,12 @@ async function backfillMissingHourlySales(storeNumber, dateRange = {}, options =
             const actualRaw = data.actual || [];
             const total = sumHourly(actualRaw);
             if (total <= 0) {
+                skippedDays.push(iso);
                 emitProgress(options, {
                     type: 'day-skipped',
                     storeNumber: store,
                     date: iso,
-                    message: `Store ${store}: ${iso} — no sales data (skipped).`,
+                    message: `Store ${store}: ${iso} — no sales data.`,
                 });
                 continue;
             }
@@ -152,13 +206,6 @@ async function backfillMissingHourlySales(storeNumber, dateRange = {}, options =
                 { actualRaw, actualFormat: 'raw-mmx' },
                 { source: 'mmx-report-backfill', finalized: true, force: Boolean(options.force) }
             );
-            emitProgress(options, {
-                type: 'day-saved',
-                storeNumber: store,
-                date: iso,
-                total: Math.round(total * 100) / 100,
-                message: `Store ${store}: ${iso} — saved $${Math.round(total * 100) / 100} to forecast history.`,
-            });
         }
     } finally {
         await scraper.closeBrowserQuietly(browser, 'report hourly backfill');
@@ -172,9 +219,8 @@ async function backfillMissingHourlySales(storeNumber, dateRange = {}, options =
         storeNumber: store,
         coverage: finalCoverage,
         forecastReadiness: finalForecast,
-        message: finalForecast.ready
-            ? `Store ${store}: ${finalCoverage.presentDays}/${finalCoverage.totalDays} report days ready; forecast history ready.`
-            : `Store ${store}: ${finalCoverage.presentDays}/${finalCoverage.totalDays} report days; forecast needs ${finalForecast.weekdayGaps?.length ? finalForecast.weekdayGaps.join(', ') : 'more history'}.`,
+        skippedDays,
+        message: formatHourlyStoreDoneMessage(store, finalCoverage, finalForecast, skippedDays),
     });
     return { ...finalCoverage, forecastReadiness: finalForecast, backfillRange };
 }
@@ -376,7 +422,9 @@ async function generateReportForStore(reportType, storeNumber, dateRange = {}, o
 }
 
 async function generateReportBundle({ reportType, scopeType, scopeId, dateRange = {}, options = {} }) {
-    const stores = resolveStoresForScope(scopeType, scopeId);
+    const stores = resolveStoresForScope(scopeType, scopeId, {
+        includedStoreNumbers: resolveScopeStoreFilter(options),
+    });
     if (!stores.length) throw new Error('No stores matched the selected scope.');
 
     const attachments = [];
@@ -470,7 +518,9 @@ function formatScopeDoneMessage({ reportType, storeCount, statuses, ready, forec
 }
 
 async function backfillScopeData({ reportType, scopeType, scopeId, dateRange = {}, options = {} }) {
-    const stores = resolveStoresForScope(scopeType, scopeId);
+    const stores = resolveStoresForScope(scopeType, scopeId, {
+        includedStoreNumbers: resolveScopeStoreFilter(options),
+    });
     if (!stores.length) throw new Error('No stores matched the selected scope.');
     emitProgress(options, {
         type: 'scope-start',
@@ -569,6 +619,7 @@ async function runReportActionStream({ action, reportType, scopeType, scopeId, d
             backfill: options.backfill !== false,
             force: Boolean(options.force),
             onProgress,
+            recipients: options.recipients,
         });
         emitProgress({ onProgress }, {
             type: 'email-result',
@@ -595,12 +646,27 @@ async function sendSubscriptionReport(subscription, options = {}) {
         scopeType: subscription.scopeType,
         scopeId: subscription.scopeId,
         dateRange,
-        options: { backfill: options.backfill !== false, force: Boolean(options.force), onProgress: options.onProgress },
+        options: {
+            backfill: options.backfill !== false,
+            force: Boolean(options.force),
+            onProgress: options.onProgress,
+            subscription,
+        },
     });
 
     if (options.downloadOnly) {
         return { ok: true, downloadOnly: true, ...bundle };
     }
+
+    const recipients = (() => {
+        if (Array.isArray(options.recipients) && options.recipients.length) {
+            return options.recipients.map((r) => String(r || '').trim()).filter(Boolean);
+        }
+        return Array.isArray(subscription.recipients)
+            ? subscription.recipients.map((r) => String(r || '').trim()).filter(Boolean)
+            : [];
+    })();
+    if (!recipients.length) throw new Error('At least one recipient email is required.');
 
     const label = reportTypeLabel(subscription.reportType);
     const scopeLabel =
@@ -611,11 +677,11 @@ async function sendSubscriptionReport(subscription, options = {}) {
 
     emitProgress(options, {
         type: 'info',
-        message: `Sending email to ${subscription.recipients.join(', ')}…`,
+        message: `Sending email to ${recipients.join(', ')}…`,
     });
 
     const emailResult = await sendReportEmail({
-        to: subscription.recipients,
+        to: recipients,
         subject: `${label} — ${scopeLabel} (${rangeLabel})`,
         body: `Attached: ${label} for ${scopeLabel}.\nPeriod: ${rangeLabel}.`,
         attachments: bundle.attachments.map((a) => ({
@@ -632,8 +698,8 @@ async function sendSubscriptionReport(subscription, options = {}) {
     return { ok: emailResult.ok !== false, email: emailResult, ...bundle };
 }
 
-function assessDataStatusForScope({ reportType, scopeType, scopeId, dateRange = {} }) {
-    const stores = resolveStoresForScope(scopeType, scopeId);
+function assessDataStatusForScope({ reportType, scopeType, scopeId, dateRange = {}, includedStoreNumbers = null }) {
+    const stores = resolveStoresForScope(scopeType, scopeId, { includedStoreNumbers });
     const perStore = stores.map((row) => {
         const coverage =
             reportType === 'ise-trimmed-average'

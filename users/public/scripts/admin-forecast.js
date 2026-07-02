@@ -46,6 +46,20 @@
         { value: 0, label: 'Sun' },
     ];
 
+    // LifeLenz day-part buckets in sidebar order (mirrors lifelenz/src/lifelenzDayParts.js).
+    const LIFELENZ_DAY_PARTS = [
+        { key: 'overnightFirst', label: 'OVERNIGHT', hours: [5] },
+        { key: 'breakfast', label: 'BREAKFAST', hours: [6, 7, 8, 9] },
+        { key: 'morning', label: 'MORNING', hours: [10, 11] },
+        { key: 'lunch', label: 'LUNCH', hours: [12, 13] },
+        { key: 'afternoon', label: 'AFTERNOON', hours: [14, 15, 16] },
+        { key: 'dinner', label: 'DINNER', hours: [17, 18, 19] },
+        { key: 'afterDinner', label: 'AFTER DINNER', hours: [20, 21] },
+        { key: 'lateNight', label: 'LATE NIGHT', hours: [22, 23] },
+        { key: 'overnightSecond', label: 'OVERNIGHT', hours: [0, 1, 2, 3, 4] },
+    ];
+    const DAY_PART_HOURS = new Map(LIFELENZ_DAY_PARTS.map((part) => [part.key, part.hours]));
+
     function addDaysToIso(iso, days) {
         const parts = String(iso || '').split('-').map(Number);
         if (parts.length < 3) return iso;
@@ -1846,11 +1860,11 @@
                                     value="" placeholder="0" aria-label="${escapeHtml(col.label)}" />
                             </td>`;
                         }
-                        const text = v == null ? '—' : formatMoney(v);
+                        const text = v == null ? '-' : formatMoney(v);
                         return `<td class="admin-history-num">${text}</td>`;
                     })
                     .join('');
-                const totalText = row.dayTotal != null ? formatMoney(row.dayTotal) : '—';
+                const totalText = row.dayTotal != null ? formatMoney(row.dayTotal) : '-';
                 let actionCell;
                 if (row.hasData) {
                     actionCell = `<button type="button" class="admin-forecast-history-col-edit" data-history-edit-row="${rowIdx}">Edit</button>`;
@@ -2102,7 +2116,7 @@
                             onOverride != null
                                 ? `<button type="button" class="admin-forecast-override-btn" data-override-scope="hour" data-override-date="${escapeHtml(row.date)}" data-override-hour="${col.hour}" title="Override hour">±</button>`
                                 : '';
-                        return `<td class="admin-history-num admin-forecast-cell-with-override">${badge}${val != null ? formatMoney(val) : '—'}${overrideBtn}</td>`;
+                        return `<td class="admin-history-num admin-forecast-cell-with-override">${badge}${val != null ? formatMoney(val) : '-'}${overrideBtn}</td>`;
                     })
                     .join('');
                 const dayBadge = overrideBadgeForCell(adjustments, row.date, null);
@@ -2117,7 +2131,7 @@
                         ${updateBadge}
                     </th>
                     ${cells}
-                    <td class="admin-history-num admin-history-total">${dayBadge}${row.dayTotal != null ? formatMoney(row.dayTotal) : '—'} ${dayOverrideBtn}</td>
+                    <td class="admin-history-num admin-history-total">${dayBadge}${row.dayTotal != null ? formatMoney(row.dayTotal) : '-'} ${dayOverrideBtn}</td>
                 </tr>`;
             })
             .join('');
@@ -2262,6 +2276,10 @@
         const dayLabel = day?.weekdayLabel || formatShortDate(rule.date);
         if (rule.scope === 'hour') {
             return `${dayLabel} ${rule.hour != null ? `hr ${rule.hour}` : ''} ${valueLabel}`;
+        }
+        if (rule.scope === 'daypart') {
+            const part = LIFELENZ_DAY_PARTS.find((p) => p.key === rule.dayPartKey);
+            return `${dayLabel} ${part?.label || rule.dayPartKey} ${valueLabel}`;
         }
         return `${dayLabel} ${valueLabel}`;
     }
@@ -2663,12 +2681,62 @@
         return [...day.baseHourly.entries()].filter(([, value]) => value != null);
     }
 
-    // Day total when no explicit day override: base total shifted by locked hour edits.
+    // Base (unadjusted) dollar total for a day part, summed from base hourly values.
+    function dayPartBaseTotal(day, partKey) {
+        const hours = DAY_PART_HOURS.get(partKey) || [];
+        let total = 0;
+        for (const hour of hours) {
+            const baseVal = day.baseHourly.get(hour);
+            if (baseVal != null) total += Number(baseVal) || 0;
+        }
+        return round2(total);
+    }
+
+    // Copy of the hour locks, extended with day-part rules resolved to per-hour values.
+    // Mirrors foldDayPartRulesIntoLocked() on the server: each ruled bucket spreads its
+    // target total across its unlocked hours proportionally to base shape.
+    function effectiveLockedForDay(day) {
+        const locked = new Map(day.locked);
+        if (!day.dayPartRules?.size) return locked;
+        for (const [partKey, rule] of day.dayPartRules) {
+            if (!rule?.hasRule) continue;
+            const hours = DAY_PART_HOURS.get(partKey) || [];
+            const inPart = hours
+                .map((hour) => [hour, day.baseHourly.get(hour)])
+                .filter(([, baseVal]) => baseVal != null);
+            if (!inPart.length) continue;
+            const unlockedInPart = inPart.filter(([hour]) => !day.locked.has(hour));
+            const lockedSum = inPart.reduce(
+                (sum, [hour]) => (day.locked.has(hour) ? sum + (Number(day.locked.get(hour)) || 0) : sum),
+                0
+            );
+            const remainder = round2(rule.total - lockedSum);
+            const baseUnlockedTotal = unlockedInPart.reduce((sum, [, baseVal]) => sum + (Number(baseVal) || 0), 0);
+            unlockedInPart.forEach(([hour, baseVal]) => {
+                let value;
+                if (baseUnlockedTotal <= 0) value = remainder / unlockedInPart.length;
+                else value = remainder * ((Number(baseVal) || 0) / baseUnlockedTotal);
+                locked.set(hour, round2(value));
+            });
+            if (unlockedInPart.length) {
+                const shaped = round2(unlockedInPart.reduce((sum, [hour]) => sum + (locked.get(hour) || 0), 0));
+                const fix = round2(remainder - shaped);
+                if (Math.abs(fix) >= 0.01) {
+                    const lastHour = unlockedInPart[unlockedInPart.length - 1][0];
+                    locked.set(lastHour, round2((locked.get(lastHour) || 0) + fix));
+                }
+            }
+        }
+        return locked;
+    }
+
+    // Day total when no explicit day override: base total shifted by locked hour and day-part edits.
     function overrideNaturalTotal(day) {
-        let total = day.baseTotal;
-        for (const [hour, value] of day.locked) {
-            const base = Number(day.baseHourly.get(hour)) || 0;
-            total += (Number(value) || 0) - base;
+        const active = overrideActiveHours(day);
+        const locked = effectiveLockedForDay(day);
+        let total = 0;
+        for (const [hour, baseVal] of active) {
+            total += locked.has(hour) ? Number(locked.get(hour)) || 0 : Number(baseVal) || 0;
         }
         return round2(total);
     }
@@ -2677,31 +2745,40 @@
         return day.hasDayRule ? round2(day.total) : overrideNaturalTotal(day);
     }
 
-    function overrideDayChanged(day) {
-        return day.locked.size > 0 || day.hasDayRule;
+    function dayHasDayPartRules(day) {
+        for (const rule of day.dayPartRules?.values() || []) {
+            if (rule?.hasRule) return true;
+        }
+        return false;
     }
 
-    // Mirrors the server's reshape logic: locked hours keep their value, the rest
-    // of the day total is spread across unlocked hours proportionally to base shape.
+    function overrideDayChanged(day) {
+        return day.locked.size > 0 || day.hasDayRule || dayHasDayPartRules(day);
+    }
+
+    // Mirrors the server's reshape logic: locked hours (including day-part targets) keep
+    // their value, the rest of the day total is spread across the remaining unlocked hours
+    // proportionally to base shape.
     function computeOverrideDayValues(day) {
         const active = overrideActiveHours(day);
+        const locked = effectiveLockedForDay(day);
         const values = new Map();
         if (!day.hasDayRule) {
             for (const [hour, baseVal] of active) {
-                values.set(hour, day.locked.has(hour) ? round2(day.locked.get(hour)) : round2(baseVal));
+                values.set(hour, locked.has(hour) ? round2(locked.get(hour)) : round2(baseVal));
             }
             return values;
         }
-        const unlocked = active.filter(([hour]) => !day.locked.has(hour));
+        const unlocked = active.filter(([hour]) => !locked.has(hour));
         const lockedSum = active.reduce(
-            (sum, [hour]) => sum + (day.locked.has(hour) ? Number(day.locked.get(hour)) || 0 : 0),
+            (sum, [hour]) => sum + (locked.has(hour) ? Number(locked.get(hour)) || 0 : 0),
             0
         );
         const remainder = round2(day.total - lockedSum);
         const baseUnlockedTotal = unlocked.reduce((sum, [, baseVal]) => sum + (Number(baseVal) || 0), 0);
         for (const [hour, baseVal] of active) {
-            if (day.locked.has(hour)) {
-                values.set(hour, round2(day.locked.get(hour)));
+            if (locked.has(hour)) {
+                values.set(hour, round2(locked.get(hour)));
             } else if (baseUnlockedTotal <= 0) {
                 values.set(hour, round2(remainder / unlocked.length));
             } else {
@@ -2717,6 +2794,17 @@
             }
         }
         return values;
+    }
+
+    // Current resolved dollar total for a day part, summed from the computed hourly values.
+    function currentDayPartTotal(day, partKey, dayValues) {
+        const values = dayValues || computeOverrideDayValues(day);
+        const hours = DAY_PART_HOURS.get(partKey) || [];
+        let total = 0;
+        for (const hour of hours) {
+            if (values.has(hour)) total += Number(values.get(hour)) || 0;
+        }
+        return round2(total);
     }
 
     function buildOverrideState(preview) {
@@ -2741,7 +2829,17 @@
                 );
             }
             const hasDayRule = hasWeekRule || rules.some((r) => r.scope === 'day' && r.date === col.date);
-            const day = { date: col.date, weekdayLabel: col.weekdayLabel, baseHourly, baseTotal, locked, hasDayRule, total: baseTotal };
+            const dayPartRules = new Map();
+            const day = { date: col.date, weekdayLabel: col.weekdayLabel, baseHourly, baseTotal, locked, dayPartRules, hasDayRule, total: baseTotal };
+            for (const rule of rules) {
+                if (rule.scope !== 'daypart' || rule.date !== col.date) continue;
+                const baseTotalForPart = dayPartBaseTotal(day, rule.dayPartKey);
+                const total =
+                    rule.mode === 'percent'
+                        ? round2(baseTotalForPart * (1 + Number(rule.value) / 100))
+                        : round2(baseTotalForPart + Number(rule.value));
+                dayPartRules.set(rule.dayPartKey, { hasRule: true, total });
+            }
             day.total = hasDayRule ? round2(grid.dayTotals?.[idx] ?? baseTotal) : overrideNaturalTotal(day);
             return day;
         });
@@ -2849,7 +2947,7 @@
                 const cells = st.days
                     .map((day, dayIdx) => {
                         const baseVal = day.baseHourly.get(hourCol.hour);
-                        if (baseVal == null) return '<td class="admin-history-num">—</td>';
+                        if (baseVal == null) return '<td class="admin-history-num">-</td>';
                         const value = perDayValues[dayIdx].get(hourCol.hour) || 0;
                         const base = Number(baseVal) || 0;
                         // % mode shows the change vs the base forecast for that hour.
@@ -2901,6 +2999,40 @@
                 return `<td class="admin-history-num"><button type="button" class="admin-forecast-history-col-edit admin-forecast-override-reset-day" data-ov-reset-day="${dayIdx}"${disabled}>Reset day</button></td>`;
             })
             .join('');
+        const dayPartRows = LIFELENZ_DAY_PARTS
+            .map((part) => {
+                const cells = st.days
+                    .map((day, dayIdx) => {
+                        const hasHours = (DAY_PART_HOURS.get(part.key) || []).some(
+                            (hour) => day.baseHourly.get(hour) != null
+                        );
+                        if (!hasHours) return '<td class="admin-history-num">-</td>';
+                        const baseTotal = dayPartBaseTotal(day, part.key);
+                        const total = currentDayPartTotal(day, part.key, perDayValues[dayIdx]);
+                        const changedCls = day.dayPartRules.get(part.key)?.hasRule
+                            ? ' admin-forecast-override-input--changed'
+                            : '';
+                        const display = isPct
+                            ? baseTotal > 0
+                                ? round2((total / baseTotal - 1) * 100)
+                                : 0
+                            : Math.round(total);
+                        const hint = isPct
+                            ? `<span class="admin-forecast-override-dollar-hint">${formatMoney(total)}</span>`
+                            : '';
+                        return `<td class="admin-history-num admin-forecast-override-cell">
+                            <span class="admin-forecast-override-input-wrap">
+                                <input type="number" min="${isPct ? '-100' : '0'}" step="${isPct ? '0.01' : '1'}" class="admin-forecast-override-input${changedCls}"
+                                    data-ov-daypart="${part.key}" data-ov-day="${dayIdx}" value="${display}"
+                                    aria-label="${escapeHtml(`${day.weekdayLabel || day.date} ${part.label}`)}" />
+                                <span class="admin-forecast-override-unit">${isPct ? '%' : '$'}</span>
+                            </span>${hint}
+                        </td>`;
+                    })
+                    .join('');
+                return `<tr><th scope="row" class="admin-history-hour">${escapeHtml(part.label)}</th>${cells}</tr>`;
+            })
+            .join('');
         body.innerHTML = `
             <div class="admin-history-grid-wrap admin-forecast-preview-grid-wrap">
                 <table class="admin-table admin-history-grid admin-forecast-override-grid">
@@ -2911,6 +3043,16 @@
                         <tr><th scope="row">Reset</th>${resetCells}</tr>
                     </tfoot>
                 </table>
+            </div>
+            <div class="admin-forecast-override-dayparts">
+                <h3 class="admin-forecast-history-heading">LifeLenz day parts</h3>
+                <p class="admin-accounts-meta">Editing a day part reshapes its hours above; these totals are what LifeLenz receives on submit.</p>
+                <div class="admin-history-grid-wrap admin-forecast-preview-grid-wrap">
+                    <table class="admin-table admin-history-grid admin-forecast-override-grid">
+                        <thead><tr><th scope="col">Day part</th>${head}</tr></thead>
+                        <tbody>${dayPartRows}</tbody>
+                    </table>
+                </div>
             </div>`;
         const weekTotalEl = root.querySelector('#admin-forecast-override-week-total');
         if (weekTotalEl) {
@@ -2930,14 +3072,24 @@
                 onOverrideDayTotalChange(Number(input.getAttribute('data-ov-total')), input.value);
             });
         });
+        body.querySelectorAll('input[data-ov-daypart]').forEach((input) => {
+            input.addEventListener('change', () => {
+                onOverrideDayPartChange(
+                    Number(input.getAttribute('data-ov-day')),
+                    input.getAttribute('data-ov-daypart'),
+                    input.value
+                );
+            });
+        });
         body.querySelectorAll('[data-ov-reset-day]').forEach((btn) => {
             btn.addEventListener('click', () => resetOverrideDay(Number(btn.getAttribute('data-ov-reset-day'))));
         });
         if (focus) {
-            const selector =
-                focus.type === 'total'
-                    ? `input[data-ov-total="${focus.dayIdx}"]`
-                    : `input[data-ov-day="${focus.dayIdx}"][data-ov-hour="${focus.hour}"]`;
+            let selector;
+            if (focus.type === 'total') selector = `input[data-ov-total="${focus.dayIdx}"]`;
+            else if (focus.type === 'daypart')
+                selector = `input[data-ov-daypart="${focus.partKey}"][data-ov-day="${focus.dayIdx}"]`;
+            else selector = `input[data-ov-day="${focus.dayIdx}"][data-ov-hour="${focus.hour}"]`;
             body.querySelector(selector)?.focus();
         }
     }
@@ -2980,10 +3132,33 @@
         renderOverrideForecastGrid({ type: 'total', dayIdx });
     }
 
+    function onOverrideDayPartChange(dayIdx, partKey, rawValue) {
+        const day = overrideState?.days?.[dayIdx];
+        if (!day || !DAY_PART_HOURS.has(partKey)) return;
+        const baseTotal = dayPartBaseTotal(day, partKey);
+        let total;
+        if (overrideState.displayMode === 'percent') {
+            const pct = Math.max(-100, Number(rawValue) || 0);
+            total = Math.max(0, round2(baseTotal * (1 + pct / 100)));
+        } else {
+            total = Math.max(0, round2(Number(rawValue) || 0));
+        }
+        // Treat an edit back to the base bucket total as clearing the day-part rule.
+        if (Math.round(total) === Math.round(baseTotal)) {
+            day.dayPartRules.delete(partKey);
+        } else {
+            day.dayPartRules.set(partKey, { hasRule: true, total });
+        }
+        if (!day.hasDayRule) day.total = overrideNaturalTotal(day);
+        overrideState.dirty = true;
+        renderOverrideForecastGrid({ type: 'daypart', dayIdx, partKey });
+    }
+
     function resetOverrideDay(dayIdx) {
         const day = overrideState?.days?.[dayIdx];
         if (!day) return;
         day.locked.clear();
+        day.dayPartRules.clear();
         day.hasDayRule = false;
         day.total = day.baseTotal;
         overrideState.dirty = true;
@@ -2994,11 +3169,20 @@
         if (!overrideState) return;
         for (const day of overrideState.days) {
             day.locked.clear();
+            day.dayPartRules.clear();
             day.hasDayRule = false;
             day.total = day.baseTotal;
         }
         overrideState.dirty = true;
         renderOverrideForecastGrid();
+    }
+
+    // Whether an hour belongs to a day part that currently has an active rule.
+    function hourInRuledDayPart(day, hour) {
+        for (const [partKey, rule] of day.dayPartRules || []) {
+            if (rule?.hasRule && (DAY_PART_HOURS.get(partKey) || []).includes(hour)) return true;
+        }
+        return false;
     }
 
     function buildOverrideRules() {
@@ -3009,9 +3193,15 @@
             for (const [hour, value] of day.locked) {
                 const base = Number(day.baseHourly.get(hour)) || 0;
                 const delta = round2(value - base);
-                // Zero-delta locks only matter when a day rule reshapes around them.
-                if (!wantsDayRule && Math.abs(delta) < 0.01) continue;
+                // Zero-delta locks only matter when a day or day-part rule reshapes around them.
+                if (!wantsDayRule && !hourInRuledDayPart(day, hour) && Math.abs(delta) < 0.01) continue;
                 rules.push({ scope: 'hour', date: day.date, hour, mode: 'dollar', value: delta });
+            }
+            for (const [partKey, rule] of day.dayPartRules || []) {
+                if (!rule?.hasRule) continue;
+                const delta = round2(rule.total - dayPartBaseTotal(day, partKey));
+                if (Math.abs(delta) < 0.01) continue;
+                rules.push({ scope: 'daypart', date: day.date, dayPartKey: partKey, mode: 'dollar', value: delta });
             }
             if (wantsDayRule) {
                 rules.push({ scope: 'day', date: day.date, mode: 'dollar', value: round2(day.total - day.baseTotal) });
@@ -3196,6 +3386,18 @@
         return backfillProgressBackdrop;
     }
 
+    const BACKFILL_PROGRESS_TIME_FORMAT = { hour: 'numeric', minute: '2-digit' };
+    const BACKFILL_PROGRESS_LOG_SKIP_TYPES = new Set(['day-saved', 'day-read', 'day-batch-start', 'keepalive']);
+
+    function shouldShowBackfillProgressEvent(event) {
+        return !BACKFILL_PROGRESS_LOG_SKIP_TYPES.has(String(event?.type || '').trim());
+    }
+
+    function formatBackfillProgressTime(event) {
+        const ts = event?.ts ? new Date(event.ts) : new Date();
+        return ts.toLocaleTimeString(undefined, BACKFILL_PROGRESS_TIME_FORMAT);
+    }
+
     function backfillProgressLogClass(type, success) {
         const key = String(type || '').trim();
         if (key === 'complete') return success ? 'admin-report-sub-progress-line--ok' : 'admin-report-sub-progress-line--error';
@@ -3207,12 +3409,12 @@
     }
 
     function appendBackfillProgressLine(logEl, event) {
-        if (!logEl || !event) return;
+        if (!logEl || !event || !shouldShowBackfillProgressEvent(event)) return;
         const li = document.createElement('li');
         const type = String(event.type || 'info');
         const ok = type === 'complete' ? event.success !== false : true;
         li.className = ['admin-report-sub-progress-line', backfillProgressLogClass(type, ok)].filter(Boolean).join(' ');
-        const time = event.ts ? new Date(event.ts).toLocaleTimeString() : new Date().toLocaleTimeString();
+        const time = formatBackfillProgressTime(event);
         const msg = event.message || event.error || JSON.stringify(event);
         li.textContent = `[${time}] ${msg}`;
         logEl.appendChild(li);

@@ -3,12 +3,13 @@ const path = require('path');
 const crypto = require('crypto');
 
 const paths = require('../../../src/paths');
+const { getStoreList } = require('../../../stores/src/storeList');
 
 const SETTINGS_FILE = path.join(paths.dashboard.data, 'report-subscriptions.json');
 const TIME_ZONE = String(process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne').trim();
 const DEFAULT_SCHEDULE_HOUR = (() => {
-    const h = Number(process.env.REPORT_SUBSCRIPTIONS_DEFAULT_HOUR ?? 6);
-    return Number.isFinite(h) && h >= 0 && h <= 23 ? Math.floor(h) : 6;
+    const h = Number(process.env.REPORT_SUBSCRIPTIONS_DEFAULT_HOUR ?? 7);
+    return Number.isFinite(h) && h >= 0 && h <= 23 ? Math.floor(h) : 7;
 })();
 
 function defaultSettings() {
@@ -57,6 +58,29 @@ function resolveDefaultDateRange(dateRange = {}) {
     const endDate = addDaysToIso(melbourneTodayIso(), -Math.max(0, endOffsetDays));
     const startDate = addDaysToIso(endDate, -(Math.max(1, days) - 1));
     return { startDate, endDate, days: Math.max(1, days), endOffsetDays: Math.max(0, endOffsetDays) };
+}
+
+function normalizeIncludedStoreNumbers(scopeType, scopeId, input, existing) {
+    if (String(scopeType || '').trim() !== 'area') return null;
+    const areaId = String(scopeId || '').trim();
+    const raw =
+        input.includedStoreNumbers !== undefined ? input.includedStoreNumbers : existing?.includedStoreNumbers;
+    if (raw == null) return null;
+    if (!Array.isArray(raw)) return null;
+    const areaSet = new Set(
+        getStoreList()
+            .filter((row) => String(row.area || '') === areaId)
+            .map((row) => String(row.storeNumber || '').trim())
+            .filter(Boolean)
+    );
+    const filtered = [
+        ...new Set(raw.map((value) => String(value || '').trim()).filter((value) => areaSet.has(value))),
+    ].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    if (!filtered.length) {
+        throw new Error('Select at least one store for the area subscription.');
+    }
+    if (filtered.length === areaSet.size) return null;
+    return filtered;
 }
 
 function normalizeSubscription(input = {}, existing = null) {
@@ -127,6 +151,8 @@ function normalizeSubscription(input = {}, existing = null) {
         return '';
     })();
 
+    const includedStoreNumbers = normalizeIncludedStoreNumbers(scopeType, scopeId, input, existing);
+
     return {
         id: existing?.id || crypto.randomUUID(),
         ownerUsername,
@@ -139,6 +165,7 @@ function normalizeSubscription(input = {}, existing = null) {
         frequency,
         scheduleHour,
         scheduleDayOfWeek: frequency === 'weekly' ? scheduleDayOfWeek : null,
+        includedStoreNumbers,
         lastSentDate: existing?.lastSentDate || null,
         createdAt: existing?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),

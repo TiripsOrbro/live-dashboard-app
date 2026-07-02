@@ -29,8 +29,8 @@ function localHourMinute(date = new Date()) {
 }
 
 function scheduleHour() {
-    const h = Number(process.env.FORECAST_SCHEDULE_HOUR ?? 5);
-    return Number.isFinite(h) && h >= 0 && h <= 23 ? Math.floor(h) : 5;
+    const h = Number(process.env.FORECAST_SCHEDULE_HOUR ?? 7);
+    return Number.isFinite(h) && h >= 0 && h <= 23 ? Math.floor(h) : 7;
 }
 
 function scheduleWindowMinutes() {

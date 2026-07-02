@@ -3,10 +3,12 @@ const path = require('path');
 
 const paths = require('../../../src/paths');
 const { addDaysToIso } = require('./forecastHistoryLedger');
+const { LIFELENZ_DAY_PARTS } = require('../../../lifelenz/src/lifelenzDayParts');
 
 const ADJUSTMENTS_DIR = path.join(paths.dashboard.data, 'forecast-adjustments');
 const MAX_PERCENT = 100;
 const MAX_DOLLAR = 50000;
+const DAY_PART_KEYS = new Set(LIFELENZ_DAY_PARTS.map((part) => part.key));
 
 function adjustmentsFilePath(weekStart, storeNumber) {
     const week = String(weekStart || '').replace(/[^0-9-]/g, '');
@@ -45,8 +47,8 @@ function readAdjustments(storeNumber, weekStart) {
 function validateRule(rule, weekStart) {
     if (!rule || typeof rule !== 'object') throw new Error('Invalid adjustment rule.');
     const scope = String(rule.scope || '').trim();
-    if (scope !== 'week' && scope !== 'day' && scope !== 'hour') {
-        throw new Error('Adjustment scope must be week, day, or hour.');
+    if (scope !== 'week' && scope !== 'day' && scope !== 'hour' && scope !== 'daypart') {
+        throw new Error('Adjustment scope must be week, day, hour, or daypart.');
     }
     const mode = String(rule.mode || '').trim();
     if (mode !== 'percent' && mode !== 'dollar') throw new Error('Adjustment mode must be percent or dollar.');
@@ -60,7 +62,7 @@ function validateRule(rule, weekStart) {
         throw new Error(`Dollar adjustment must be between -$${MAX_DOLLAR} and $${MAX_DOLLAR}.`);
     }
 
-    if (scope === 'day' || scope === 'hour') {
+    if (scope === 'day' || scope === 'hour' || scope === 'daypart') {
         const date = String(rule.date || '').trim();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Day/hour adjustment requires a valid date.');
         const weekEnd = addDaysToIso(weekStart, 6);
@@ -79,6 +81,13 @@ function validateRule(rule, weekStart) {
                 mode,
                 value: Math.round(value * 100) / 100,
             };
+        }
+        if (scope === 'daypart') {
+            const dayPartKey = String(rule.dayPartKey || '').trim();
+            if (!DAY_PART_KEYS.has(dayPartKey)) {
+                throw new Error('Day-part adjustment requires a valid dayPartKey.');
+            }
+            return { scope: 'daypart', date, dayPartKey, mode, value: Math.round(value * 100) / 100 };
         }
         return { scope: 'day', date, mode, value: Math.round(value * 100) / 100 };
     }

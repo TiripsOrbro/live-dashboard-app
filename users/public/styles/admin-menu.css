@@ -471,13 +471,13 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
     min-height: 0;
     box-sizing: border-box;
     padding: calc(16px * var(--dashboard-scale)) max(1.25rem, env(safe-area-inset-right))
-        calc(24px * var(--dashboard-scale)) max(1.25rem, env(safe-area-inset-left));
+        max(calc(16px * var(--dashboard-scale)), env(safe-area-inset-bottom))
+        max(1.25rem, env(safe-area-inset-left));
     overflow: auto;
 }
 
 .admin-settings-content {
     width: 100%;
-    min-height: 100%;
     box-sizing: border-box;
 }
 
@@ -3772,6 +3772,18 @@ html.mic-dark-mode .admin-forecast-mode-toggle-btn.is-active {
     gap: 0.4rem;
 }
 
+.admin-forecast-override-dayparts {
+    margin-top: 1.25rem;
+}
+
+.admin-forecast-override-dayparts .admin-forecast-history-heading {
+    margin-bottom: 0.15rem;
+}
+
+.admin-forecast-override-dayparts .admin-accounts-meta {
+    margin: 0 0 0.5rem;
+}
+
 .admin-forecast-override-cell {
     padding: 0.15rem 0.3rem;
 }
@@ -4026,6 +4038,78 @@ html.mic-dark-mode .admin-forecast-override-unit {
     margin: 0.5rem 0 0.75rem;
 }
 
+.admin-report-sub-setup-area-stores {
+    margin: 0.25rem 0 0.75rem;
+}
+
+.admin-report-sub-setup-area-stores-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+}
+
+.admin-report-sub-stores-picker-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.admin-report-sub-stores-picker-list {
+    list-style: none;
+    margin: 0 0 1rem;
+    padding: 0;
+    max-height: min(50vh, 420px);
+    overflow-y: auto;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.65);
+}
+
+.admin-report-sub-stores-picker-item + .admin-report-sub-stores-picker-item {
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.admin-report-sub-stores-picker-label {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.65rem 0.75rem;
+    cursor: pointer;
+}
+
+.admin-report-sub-stores-picker-label input {
+    flex-shrink: 0;
+}
+
+html.mic-dark-mode .admin-report-sub-stores-picker-list {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+html.mic-dark-mode .admin-report-sub-stores-picker-item + .admin-report-sub-stores-picker-item {
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.admin-report-sub-send-modal .admin-report-sub-send-recipients-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin: 0.75rem 0 0.35rem;
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.admin-report-sub-send-modal .admin-report-sub-send-recipients-label input {
+    font-weight: 400;
+}
+
+.admin-report-sub-send-hint {
+    margin: 0 0 0.75rem;
+}
+
 .admin-report-sub-status-list {
     margin: 0.35rem 0 0;
     padding-left: 1.1rem;
@@ -4098,8 +4182,8 @@ html.mic-dark-mode .admin-report-sub-cell-status {
 }
 
 .admin-report-sub-progress-log-wrap {
-    max-height: min(50vh, 420px);
-    overflow: auto;
+    height: min(50vh, 420px);
+    overflow-y: auto;
     border: 1px solid rgba(0, 0, 0, 0.12);
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.03);

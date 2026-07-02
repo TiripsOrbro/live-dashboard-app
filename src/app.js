@@ -3936,6 +3936,36 @@ function reportActionDateRange(reportType, body = {}) {
     };
 }
 
+function parseIncludedStoreNumbers(source = {}) {
+    if (!source || typeof source !== 'object') return null;
+    if (Array.isArray(source.includedStoreNumbers)) {
+        const values = source.includedStoreNumbers.map((value) => String(value || '').trim()).filter(Boolean);
+        return values.length ? values : null;
+    }
+    const raw = String(source.includedStoreNumbers || '').trim();
+    if (!raw) return null;
+    const values = raw
+        .split(/[,;\s]+/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+    return values.length ? values : null;
+}
+
+function parseRecipients(source = {}) {
+    if (!source || typeof source !== 'object') return null;
+    if (Array.isArray(source.recipients)) {
+        const values = source.recipients.map((value) => String(value || '').trim()).filter(Boolean);
+        return values.length ? values : null;
+    }
+    const raw = String(source.recipients || '').trim();
+    if (!raw) return null;
+    const values = raw
+        .split(/[,;\s]+/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+    return values.length ? values : null;
+}
+
 app.get('/api/admin/report-subscriptions', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     if (!canUserAccessAdminMenu(user)) {
@@ -4082,6 +4112,7 @@ app.get('/api/admin/report-subscriptions/data-status', (req, res) => {
             scopeType,
             scopeId,
             dateRange,
+            includedStoreNumbers: parseIncludedStoreNumbers(req.query),
         });
         res.json({ success: true, ...status });
     } catch (err) {
@@ -4134,7 +4165,11 @@ app.post('/api/admin/report-subscriptions/generate', async (req, res) => {
             scopeType,
             scopeId,
             dateRange,
-            options: { backfill: canUserEditGlobalBuildTo(user), force },
+            options: {
+                backfill: canUserEditGlobalBuildTo(user),
+                force,
+                includedStoreNumbers: parseIncludedStoreNumbers(body),
+            },
         });
         const attachment = bundle.attachments?.[0];
         if (!attachment) {
@@ -4230,6 +4265,8 @@ app.post('/api/admin/report-subscriptions/run-stream', async (req, res) => {
                     action === 'backfill' ||
                     ((action === 'download' || action === 'send') && canUserEditGlobalBuildTo(user)),
                 subscription,
+                includedStoreNumbers: parseIncludedStoreNumbers(body),
+                recipients: action === 'send' ? parseRecipients(body) : null,
                 onProgress: writeEvent,
             },
         });
@@ -4262,6 +4299,7 @@ app.post('/api/admin/report-subscriptions/:id/send-now', async (req, res) => {
         const result = await sendSubscriptionReport(existing, {
             backfill: true,
             force: Boolean(req.body?.force),
+            recipients: parseRecipients(req.body),
         });
         res.json({
             success: true,
@@ -4308,7 +4346,7 @@ app.put('/api/admin/five-am-reports/stores', (req, res) => {
         const pulling = Boolean(enabled) && !hasTodayData;
         res.json({ success: true, store, enabled: Boolean(enabled), pulling });
         // When enabling a store that has no data for today yet, pull it now rather than
-        // waiting for the next 5AM run. Runs in the background (per-store MMX lock applies).
+        // waiting for the next scheduled daily run. Runs in the background (per-store MMX lock applies).
         if (pulling) {
             void runFiveAmReportsForStore(store).catch((err) => {
                 console.warn(`[5AMReports] Immediate run for ${store} failed:`, err.message);
@@ -8514,13 +8552,13 @@ function startActionsDigestScheduler() {
     setInterval(() => void maybeSendActionsDigests(), ACTIONS_DIGEST_CHECK_MS);
 }
 
-// --- 5AM reports: automated daily stock-levels check for admin-enabled stores ---
+// --- Daily reports: automated stock-levels check for admin-enabled stores (default 7 AM) ---
 const FIVE_AM_REPORTS_ENABLED = /^(1|true|yes|on)$/i.test(
     String(process.env.FIVE_AM_REPORTS_ENABLED ?? '1').trim()
 );
 const FIVE_AM_REPORTS_HOUR = (() => {
-    const h = Number(process.env.FIVE_AM_REPORTS_HOUR ?? 5);
-    return Number.isFinite(h) && h >= 0 && h <= 23 ? Math.floor(h) : 5;
+    const h = Number(process.env.FIVE_AM_REPORTS_HOUR ?? 7);
+    return Number.isFinite(h) && h >= 0 && h <= 23 ? Math.floor(h) : 7;
 })();
 const FIVE_AM_REPORTS_CHECK_MS = 15 * 60 * 1000;
 let fiveAmReportsRunning = false;

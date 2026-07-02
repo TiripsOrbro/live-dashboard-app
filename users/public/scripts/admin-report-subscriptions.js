@@ -12,6 +12,10 @@
 
     let pageHost = null;
     let setupBackdrop = null;
+    let storesPickerBackdrop = null;
+    let sendNowBackdrop = null;
+    /** @type {string[] | null} */
+    let storesPickerSnapshot = null;
     let progressBackdrop = null;
     let progressRunning = false;
     /** @type {{ reportType: string, scopeType: string, scopeId: string, dateRange: object } | null} */
@@ -22,7 +26,7 @@
     let canManage = false;
     let canManageAreaScope = false;
     let canBackfillData = false;
-    let defaultScheduleHour = 6;
+    let defaultScheduleHour = 7;
     let scheduleTimeZone = 'Australia/Melbourne';
     let emailFrom = 'TacoBellAudits@gmail.com';
     let scopeTree = null;
@@ -69,7 +73,7 @@
     }
 
     function reportTypeLabel(type) {
-        return REPORT_TYPES[String(type || '').trim()] || String(type || '—');
+        return REPORT_TYPES[String(type || '').trim()] || String(type || '-');
     }
 
     function isIseReport(reportType) {
@@ -174,7 +178,7 @@
 
     function formatScheduleTime(hour) {
         const normalized = normalizeHour(hour);
-        if (normalized == null) return '—';
+        if (normalized == null) return '-';
         const meridiem = normalized >= 12 ? 'PM' : 'AM';
         const displayHour = normalized % 12 || 12;
         return `${displayHour}:00 ${meridiem}`;
@@ -182,7 +186,7 @@
 
     function hourToTimeInputValue(hour) {
         const normalized = normalizeHour(hour);
-        if (normalized == null) return '06:00';
+        if (normalized == null) return '07:00';
         return `${String(normalized).padStart(2, '0')}:00`;
     }
 
@@ -204,12 +208,271 @@
         return { startDate: fmt(start), endDate: fmt(end) };
     }
 
+    function allStoreNumbersInArea(areaId) {
+        return storesInArea(areaId)
+            .map((row) => String(row.storeNumber || '').trim())
+            .filter(Boolean);
+    }
+
+    function resolveIncludedStoreNumbers(sub, areaId) {
+        const all = allStoreNumbersInArea(areaId);
+        const raw = sub?.includedStoreNumbers;
+        if (!Array.isArray(raw) || !raw.length) return [...all];
+        const allowed = new Set(raw.map((value) => String(value)));
+        return all.filter((store) => allowed.has(store));
+    }
+
+    function formatAreaStoresLabel(areaId, includedStoreNumbers) {
+        const total = allStoreNumbersInArea(areaId).length;
+        const count = Array.isArray(includedStoreNumbers) ? includedStoreNumbers.length : total;
+        if (!total) return 'No stores';
+        if (count >= total) return `All ${total} store${total === 1 ? '' : 's'}`;
+        return `${count} of ${total} store${total === 1 ? '' : 's'}`;
+    }
+
+    function readSetupIncludedStoreNumbers() {
+        if (!setupContext || setupContext.scopeType !== 'area') return null;
+        const selected = Array.isArray(setupContext.includedStoreNumbers)
+            ? setupContext.includedStoreNumbers.map((value) => String(value)).filter(Boolean)
+            : allStoreNumbersInArea(setupContext.scopeId);
+        return selected.length ? selected : null;
+    }
+
+    function syncSetupAreaStoresRow() {
+        const modal = setupBackdrop;
+        if (!modal || !setupContext) return;
+        const row = modal.querySelector('#admin-report-sub-setup-area-stores');
+        const isArea = setupContext.scopeType === 'area';
+        if (row) row.hidden = !isArea;
+        if (!isArea) return;
+        updateAreaStoresSummary();
+    }
+
+    function updateAreaStoresSummary() {
+        const modal = setupBackdrop;
+        if (!modal || !setupContext || setupContext.scopeType !== 'area') return;
+        const summaryEl = modal.querySelector('#admin-report-sub-setup-stores-summary');
+        const chooseBtn = modal.querySelector('#admin-report-sub-setup-choose-stores');
+        const label = formatAreaStoresLabel(setupContext.scopeId, readSetupIncludedStoreNumbers());
+        if (summaryEl) summaryEl.textContent = label;
+        if (chooseBtn) chooseBtn.textContent = `Choose stores (${label})`;
+    }
+
+    function ensureStoresPickerModal() {
+        if (storesPickerBackdrop) return storesPickerBackdrop;
+        storesPickerBackdrop = document.createElement('div');
+        storesPickerBackdrop.className =
+            'admin-modal-backdrop admin-modal-backdrop--stacked admin-report-sub-stores-picker-backdrop';
+        storesPickerBackdrop.hidden = true;
+        storesPickerBackdrop.innerHTML = `
+            <div class="admin-modal admin-modal--wide admin-report-sub-stores-picker-modal" role="dialog" aria-modal="true" aria-labelledby="admin-report-sub-stores-picker-title">
+                <h2 id="admin-report-sub-stores-picker-title">Stores in subscription</h2>
+                <p class="admin-accounts-meta" id="admin-report-sub-stores-picker-scope"></p>
+                <div class="admin-report-sub-stores-picker-actions">
+                    <button type="button" class="mic-settings-btn" id="admin-report-sub-stores-picker-all">Select all</button>
+                    <button type="button" class="mic-settings-btn" id="admin-report-sub-stores-picker-none">Clear all</button>
+                </div>
+                <ul class="admin-report-sub-stores-picker-list" id="admin-report-sub-stores-picker-list"></ul>
+                <div class="admin-report-sub-form-actions">
+                    <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-report-sub-stores-picker-done">Done</button>
+                    <button type="button" id="admin-report-sub-stores-picker-cancel">Cancel</button>
+                </div>
+                <p class="admin-modal-error" id="admin-report-sub-stores-picker-error" role="alert"></p>
+            </div>`;
+        document.body.appendChild(storesPickerBackdrop);
+
+        storesPickerBackdrop.addEventListener('click', (event) => {
+            if (event.target === storesPickerBackdrop) closeStoresPicker(false);
+        });
+        storesPickerBackdrop.querySelector('#admin-report-sub-stores-picker-cancel')?.addEventListener('click', () =>
+            closeStoresPicker(false)
+        );
+        storesPickerBackdrop.querySelector('#admin-report-sub-stores-picker-done')?.addEventListener('click', () =>
+            closeStoresPicker(true)
+        );
+        storesPickerBackdrop.querySelector('#admin-report-sub-stores-picker-all')?.addEventListener('click', () => {
+            if (!setupContext || setupContext.scopeType !== 'area') return;
+            setupContext.includedStoreNumbers = allStoreNumbersInArea(setupContext.scopeId);
+            renderStoresPickerList();
+        });
+        storesPickerBackdrop.querySelector('#admin-report-sub-stores-picker-none')?.addEventListener('click', () => {
+            if (!setupContext) return;
+            setupContext.includedStoreNumbers = [];
+            renderStoresPickerList();
+        });
+
+        return storesPickerBackdrop;
+    }
+
+    function renderStoresPickerList() {
+        const modal = storesPickerBackdrop;
+        if (!modal || !setupContext || setupContext.scopeType !== 'area') return;
+        const listEl = modal.querySelector('#admin-report-sub-stores-picker-list');
+        if (!listEl) return;
+        const selected = new Set((setupContext.includedStoreNumbers || []).map((value) => String(value)));
+        const rows = storesInArea(setupContext.scopeId);
+        listEl.innerHTML = rows
+            .map((row) => {
+                const store = String(row.storeNumber);
+                const name = String(row.storeName || '').trim();
+                const checked = selected.has(store);
+                return `<li class="admin-report-sub-stores-picker-item">
+                    <label class="admin-report-sub-stores-picker-label">
+                        <input type="checkbox" data-report-sub-store-toggle="${escapeHtml(store)}"${checked ? ' checked' : ''} />
+                        <span>${escapeHtml(store)}${name ? ` <span class="admin-accounts-meta">${escapeHtml(name)}</span>` : ''}</span>
+                    </label>
+                </li>`;
+            })
+            .join('');
+
+        listEl.querySelectorAll('[data-report-sub-store-toggle]').forEach((input) => {
+            input.addEventListener('change', (event) => {
+                const store = event.target.getAttribute('data-report-sub-store-toggle') || '';
+                if (!store || !setupContext) return;
+                const current = new Set((setupContext.includedStoreNumbers || []).map((value) => String(value)));
+                if (event.target.checked) current.add(store);
+                else current.delete(store);
+                setupContext.includedStoreNumbers = [...current];
+                const errEl = modal.querySelector('#admin-report-sub-stores-picker-error');
+                if (errEl) errEl.textContent = '';
+            });
+        });
+    }
+
+    function openStoresPicker() {
+        if (!setupContext || setupContext.scopeType !== 'area') return;
+        const modal = ensureStoresPickerModal();
+        storesPickerSnapshot = [...(setupContext.includedStoreNumbers || [])];
+        modal.querySelector('#admin-report-sub-stores-picker-scope').textContent = scopeDisplayLabel(
+            setupContext.scopeType,
+            setupContext.scopeId
+        );
+        modal.querySelector('#admin-report-sub-stores-picker-error').textContent = '';
+        renderStoresPickerList();
+        modal.hidden = false;
+    }
+
+    function closeStoresPicker(apply) {
+        if (!storesPickerBackdrop) return;
+        if (!apply && setupContext && storesPickerSnapshot) {
+            setupContext.includedStoreNumbers = [...storesPickerSnapshot];
+        }
+        storesPickerSnapshot = null;
+        storesPickerBackdrop.hidden = true;
+        if (apply && setupContext) {
+            const count = readSetupIncludedStoreNumbers()?.length || 0;
+            const errEl = storesPickerBackdrop.querySelector('#admin-report-sub-stores-picker-error');
+            if (!count) {
+                if (errEl) errEl.textContent = 'Select at least one store.';
+                storesPickerBackdrop.hidden = false;
+                return;
+            }
+            updateAreaStoresSummary();
+            void refreshSetupDataStatus();
+        }
+    }
+
+    function parseRecipientsInput(raw) {
+        return String(raw || '')
+            .split(/[,;\s]+/)
+            .map((r) => r.trim())
+            .filter(Boolean);
+    }
+
+    function readSetupRecipientsForSend() {
+        const inputVal = String(setupBackdrop?.querySelector('#admin-report-sub-setup-recipients')?.value || '').trim();
+        if (inputVal) return inputVal;
+        const sub = setupContext?.subscription;
+        return Array.isArray(sub?.recipients) ? sub.recipients.filter(Boolean).join(', ') : '';
+    }
+
+    function ensureSendNowModal() {
+        if (sendNowBackdrop) return sendNowBackdrop;
+        sendNowBackdrop = document.createElement('div');
+        sendNowBackdrop.className =
+            'admin-modal-backdrop admin-modal-backdrop--stacked admin-report-sub-send-backdrop';
+        sendNowBackdrop.hidden = true;
+        sendNowBackdrop.innerHTML = `
+            <div class="admin-modal admin-modal--wide admin-report-sub-send-modal" role="dialog" aria-modal="true" aria-labelledby="admin-report-sub-send-title">
+                <h2 id="admin-report-sub-send-title">Send report now</h2>
+                <p class="admin-accounts-meta" id="admin-report-sub-send-scope"></p>
+                <label class="admin-report-sub-send-recipients-label">
+                    Send to
+                    <input type="text" id="admin-report-sub-send-recipients" placeholder="email@example.com, …" autocomplete="email" />
+                </label>
+                <p class="admin-accounts-meta admin-report-sub-send-hint">Prefilled from this subscription. Edit to send to a different address without changing the saved subscription.</p>
+                <div class="admin-report-sub-form-actions">
+                    <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-report-sub-send-confirm">Send</button>
+                    <button type="button" id="admin-report-sub-send-cancel">Cancel</button>
+                </div>
+                <p class="admin-modal-error" id="admin-report-sub-send-error" role="alert"></p>
+            </div>`;
+        document.body.appendChild(sendNowBackdrop);
+
+        sendNowBackdrop.addEventListener('click', (event) => {
+            if (event.target === sendNowBackdrop) closeSendNowModal();
+        });
+        sendNowBackdrop.querySelector('#admin-report-sub-send-cancel')?.addEventListener('click', closeSendNowModal);
+        sendNowBackdrop.querySelector('#admin-report-sub-send-confirm')?.addEventListener('click', () =>
+            void confirmSendNow()
+        );
+
+        return sendNowBackdrop;
+    }
+
+    function openSendNowModal() {
+        if (!setupContext?.subscription?.id) return;
+        const modal = ensureSendNowModal();
+        modal.querySelector('#admin-report-sub-send-scope').textContent = `${scopeDisplayLabel(
+            setupContext.scopeType,
+            setupContext.scopeId
+        )} · ${reportTypeLabel(setupContext.reportType)}`;
+        modal.querySelector('#admin-report-sub-send-recipients').value = readSetupRecipientsForSend();
+        modal.querySelector('#admin-report-sub-send-error').textContent = '';
+        modal.hidden = false;
+        modal.querySelector('#admin-report-sub-send-recipients')?.focus();
+    }
+
+    function closeSendNowModal() {
+        if (!sendNowBackdrop) return;
+        sendNowBackdrop.hidden = true;
+        sendNowBackdrop.querySelector('#admin-report-sub-send-error').textContent = '';
+    }
+
+    async function confirmSendNow() {
+        const modal = sendNowBackdrop;
+        const errEl = modal?.querySelector('#admin-report-sub-send-error');
+        const sub = setupContext?.subscription;
+        if (!modal || !sub?.id) return;
+
+        const recipients = parseRecipientsInput(modal.querySelector('#admin-report-sub-send-recipients')?.value);
+        if (!recipients.length) {
+            if (errEl) errEl.textContent = 'Enter at least one recipient email.';
+            return;
+        }
+
+        const confirmBtn = modal.querySelector('#admin-report-sub-send-confirm');
+        if (confirmBtn) {
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Sending…';
+        }
+        try {
+            closeSendNowModal();
+            await sendNowFromSetup(recipients);
+        } finally {
+            if (confirmBtn) {
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = 'Send';
+            }
+        }
+    }
+
     function scopeDisplayLabel(scopeType, scopeId) {
         if (scopeType === 'area') return `All stores in ${areaChipLabel(scopeId)}`;
         const stores = storesInArea(activeArea);
         const row = stores.find((entry) => String(entry.storeNumber) === String(scopeId));
         const name = String(row?.storeName || '').trim();
-        return name ? `Store ${scopeId} — ${name}` : `Store ${scopeId}`;
+        return name ? `Store ${scopeId}, ${name}` : `Store ${scopeId}`;
     }
 
     async function fetchProfile() {
@@ -268,16 +531,21 @@
         if (!sub) {
             return canManage
                 ? '<span class="admin-accounts-meta">Not set up</span>'
-                : '<span class="admin-accounts-meta">—</span>';
+                : '<span class="admin-accounts-meta">-</span>';
         }
         const enabled = sub.enabled !== false;
         const rangeLabel = formatRangeLabel(sub);
         const lastSent = sub.lastSentDate ? `Last sent ${sub.lastSentDate}` : 'Not sent yet';
         const recipientCount = Array.isArray(sub.recipients) ? sub.recipients.filter(Boolean).length : 0;
+        const areaStoresMeta =
+            String(sub.scopeType || '') === 'area'
+                ? `<span class="admin-report-sub-cell-meta">${escapeHtml(formatAreaStoresLabel(sub.scopeId, resolveIncludedStoreNumbers(sub, sub.scopeId)))}</span>`
+                : '';
         return `
             <div class="admin-report-sub-cell-summary${enabled ? '' : ' admin-report-sub-cell-summary--off'}">
                 ${renderCellToggle(sub)}
                 <span class="admin-report-sub-cell-meta">${escapeHtml(formatScheduleSummary(sub))} · ${recipientCount} recipient${recipientCount === 1 ? '' : 's'}</span>
+                ${areaStoresMeta}
                 <span class="admin-report-sub-cell-meta">${escapeHtml(rangeLabel)}</span>
                 <span class="admin-report-sub-cell-meta">${escapeHtml(lastSent)}</span>
             </div>`;
@@ -323,7 +591,7 @@
 
         const areaRow =
             activeArea && canManageAreaScope
-                ? renderMatrixRow('area', activeArea, `All stores — ${areaChipLabel(activeArea)}`, ' admin-report-sub-matrix-row--area')
+                ? renderMatrixRow('area', activeArea, `All stores, ${areaChipLabel(activeArea)}`, ' admin-report-sub-matrix-row--area')
                 : '';
 
         const storeRows = stores
@@ -357,8 +625,8 @@
             <div class="admin-modal admin-modal--inline admin-report-subscriptions">
                 <h2>Report subscriptions</h2>
                 <p class="admin-accounts-meta">
-                    Emailed CSV reports from ${escapeHtml(emailFrom)}. Each cell is one store${canManageAreaScope ? ' (or whole area)' : ''} and report type —
-                    use <strong>Set up</strong> to configure recipients, frequency, and schedule. Hourly sales default to the last 35 days; ISE reports use weekly snapshots ending yesterday.
+                    Emailed CSV reports from ${escapeHtml(emailFrom)}. Each cell is one store${canManageAreaScope ? ' (or whole area)' : ''} and report type.
+                    Use <strong>Set up</strong> to configure recipients, frequency, and schedule. Hourly sales default to the last 35 days; ISE reports use weekly snapshots ending yesterday.
                 </p>
                 <p class="admin-modal-error" id="admin-report-sub-error" role="alert"></p>
                 <div class="admin-settings-segmented-tabs admin-accounts-browse-scope admin-accounts-org-nav admin-report-sub-area-nav">
@@ -452,16 +720,24 @@
     }
 
     async function downloadReportSilent(payload) {
+        const body = {
+            reportType: payload.reportType,
+            scopeType: payload.scopeType,
+            scopeId: payload.scopeId,
+            dateRange: payload.dateRange,
+        };
+        if (
+            payload.scopeType === 'area' &&
+            Array.isArray(payload.includedStoreNumbers) &&
+            payload.includedStoreNumbers.length
+        ) {
+            body.includedStoreNumbers = payload.includedStoreNumbers;
+        }
         const res = await fetch('/api/admin/report-subscriptions/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
-            body: JSON.stringify({
-                reportType: payload.reportType,
-                scopeType: payload.scopeType,
-                scopeId: payload.scopeId,
-                dateRange: payload.dateRange,
-            }),
+            body: JSON.stringify(body),
         });
         const contentType = res.headers.get('Content-Type') || '';
         if (!res.ok) {
@@ -520,6 +796,18 @@
         return progressBackdrop;
     }
 
+    const PROGRESS_TIME_FORMAT = { hour: 'numeric', minute: '2-digit' };
+    const PROGRESS_LOG_SKIP_TYPES = new Set(['day-saved', 'day-read', 'day-batch-start', 'keepalive']);
+
+    function shouldShowProgressEvent(event) {
+        return !PROGRESS_LOG_SKIP_TYPES.has(String(event?.type || '').trim());
+    }
+
+    function formatProgressTime(event) {
+        const ts = event?.ts ? new Date(event.ts) : new Date();
+        return ts.toLocaleTimeString(undefined, PROGRESS_TIME_FORMAT);
+    }
+
     function progressLogClass(type, success) {
         const key = String(type || '').trim();
         if (key === 'complete') return success ? 'admin-report-sub-progress-line--ok' : 'admin-report-sub-progress-line--error';
@@ -531,12 +819,12 @@
     }
 
     function appendProgressLine(logEl, event) {
-        if (!logEl || !event) return;
+        if (!logEl || !event || !shouldShowProgressEvent(event)) return;
         const li = document.createElement('li');
         const type = String(event.type || 'info');
         const ok = type === 'complete' ? event.success !== false : true;
         li.className = ['admin-report-sub-progress-line', progressLogClass(type, ok)].filter(Boolean).join(' ');
-        const time = event.ts ? new Date(event.ts).toLocaleTimeString() : new Date().toLocaleTimeString();
+        const time = formatProgressTime(event);
         const msg = event.message || event.error || JSON.stringify(event);
         li.textContent = `[${time}] ${msg}`;
         logEl.appendChild(li);
@@ -677,19 +965,26 @@
         }
     }
 
-    function resolveBackfillStoreList(scopeType, scopeId) {
+    function resolveBackfillStoreList(scopeType, scopeId, includedStoreNumbers = null) {
         const type = String(scopeType || 'store').trim();
         const id = String(scopeId || '').trim();
         if (type === 'area') {
-            return storesInArea(id)
+            const all = storesInArea(id)
                 .map((row) => String(row.storeNumber || row.id || '').trim())
                 .filter(Boolean);
+            if (!Array.isArray(includedStoreNumbers) || !includedStoreNumbers.length) return all;
+            const allowed = new Set(includedStoreNumbers.map((value) => String(value)));
+            return all.filter((store) => allowed.has(store));
         }
         return id ? [id] : [];
     }
 
     async function runStoreByStoreBackfill(basePayload, { title, onComplete } = {}) {
-        const stores = resolveBackfillStoreList(basePayload.scopeType, basePayload.scopeId);
+        const stores = resolveBackfillStoreList(
+            basePayload.scopeType,
+            basePayload.scopeId,
+            basePayload.includedStoreNumbers
+        );
         if (stores.length <= 1) {
             return runStreamAction('backfill', basePayload, { title, onComplete });
         }
@@ -971,6 +1266,13 @@
                         <select id="admin-report-sub-setup-day"></select>
                     </label>
                 </div>
+                <div class="admin-report-sub-setup-area-stores" id="admin-report-sub-setup-area-stores" hidden>
+                    <div class="admin-report-sub-setup-area-stores-row">
+                        <span class="admin-accounts-meta">Stores tracked</span>
+                        <button type="button" class="mic-settings-btn" id="admin-report-sub-setup-choose-stores">Choose stores…</button>
+                    </div>
+                    <p class="admin-accounts-meta" id="admin-report-sub-setup-stores-summary"></p>
+                </div>
                 <div id="admin-report-sub-setup-status" class="admin-report-sub-setup-status"></div>
                 <div class="admin-report-sub-form-actions admin-report-sub-setup-actions">
                     <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-report-sub-setup-primary">Save subscription</button>
@@ -993,13 +1295,14 @@
             else void saveSetup();
         });
         setupBackdrop.querySelector('#admin-report-sub-setup-save-changes')?.addEventListener('click', () => void saveSetup());
-        setupBackdrop.querySelector('#admin-report-sub-setup-send')?.addEventListener('click', () => void sendNowFromSetup());
+        setupBackdrop.querySelector('#admin-report-sub-setup-send')?.addEventListener('click', openSendNowModal);
         setupBackdrop.querySelector('#admin-report-sub-setup-download')?.addEventListener('click', () => void downloadFromSetup(false));
         setupBackdrop.querySelector('#admin-report-sub-setup-backfill')?.addEventListener('click', () => void downloadFromSetup(true));
         setupBackdrop.querySelector('#admin-report-sub-setup-start')?.addEventListener('change', () => void refreshSetupDataStatus());
         setupBackdrop.querySelector('#admin-report-sub-setup-end')?.addEventListener('change', () => void refreshSetupDataStatus());
         setupBackdrop.querySelector('#admin-report-sub-setup-weeks')?.addEventListener('change', () => void refreshSetupDataStatus());
         setupBackdrop.querySelector('#admin-report-sub-setup-frequency')?.addEventListener('change', syncSetupScheduleFields);
+        setupBackdrop.querySelector('#admin-report-sub-setup-choose-stores')?.addEventListener('click', openStoresPicker);
 
         return setupBackdrop;
     }
@@ -1022,7 +1325,14 @@
     function openSetup({ scopeType, scopeId, reportType }) {
         if (!canManage) return;
         const sub = findSubscription(scopeType, scopeId, reportType);
-        setupContext = { scopeType, scopeId, reportType, subscription: sub };
+        setupContext = {
+            scopeType,
+            scopeId,
+            reportType,
+            subscription: sub,
+            includedStoreNumbers:
+                scopeType === 'area' ? resolveIncludedStoreNumbers(sub, scopeId) : null,
+        };
         const modal = ensureSetupModal();
         const defaults = defaultDateRange();
         const range = sub?.dateRange || defaults;
@@ -1054,12 +1364,16 @@
         modal.querySelector('#admin-report-sub-setup-status').innerHTML = '';
         syncSetupActions(sub);
         modal.querySelector('#admin-report-sub-setup-backfill').hidden = !canBackfillData;
+        syncSetupAreaStoresRow();
         modal.hidden = false;
         void refreshSetupDataStatus();
     }
 
     function closeSetup() {
         setupContext = null;
+        storesPickerSnapshot = null;
+        if (storesPickerBackdrop) storesPickerBackdrop.hidden = true;
+        if (sendNowBackdrop) sendNowBackdrop.hidden = true;
         if (setupBackdrop) setupBackdrop.hidden = true;
     }
 
@@ -1083,6 +1397,13 @@
             scheduleHour: scheduleHour != null ? scheduleHour : defaultScheduleHour,
             scheduleDayOfWeek: Number.isFinite(scheduleDayOfWeek) ? scheduleDayOfWeek : 1,
         };
+        if (setupContext.scopeType === 'area') {
+            const included = readSetupIncludedStoreNumbers();
+            if (!included?.length) return null;
+            const all = allStoreNumbersInArea(setupContext.scopeId);
+            base.includedStoreNumbers = included;
+            if (included.length >= all.length) base.includedStoreNumbers = null;
+        }
         if (isIseReport(setupContext.reportType)) {
             return {
                 ...base,
@@ -1106,7 +1427,7 @@
                 const cov = row.coverage || {};
                 let detail = '';
                 if (cov.missingDays?.length) {
-                    detail = `${cov.presentDays || 0}/${cov.totalDays || 0} days — missing ${cov.missingDays.length}`;
+                    detail = `${cov.presentDays || 0}/${cov.totalDays || 0} days, missing ${cov.missingDays.length}`;
                 } else if (cov.snapshotCount != null) {
                     detail = `${cov.snapshotCount}/${cov.weeksNeeded || 5} ISE snapshots`;
                 } else if (cov.ready) {
@@ -1163,6 +1484,10 @@
                 qs.set('startDate', startDate);
                 qs.set('endDate', endDate);
             }
+            const included = readSetupIncludedStoreNumbers();
+            if (setupContext.scopeType === 'area' && included?.length) {
+                qs.set('includedStoreNumbers', included.join(','));
+            }
             const res = await fetch(`/api/admin/report-subscriptions/data-status?${qs}`, {
                 credentials: 'same-origin',
             });
@@ -1182,6 +1507,10 @@
         if (!form) return;
         if (!form.recipients.length) {
             if (errEl) errEl.textContent = 'Enter at least one recipient email.';
+            return;
+        }
+        if (form.scopeType === 'area' && !readSetupIncludedStoreNumbers()?.length) {
+            if (errEl) errEl.textContent = 'Select at least one store for the area subscription.';
             return;
         }
 
@@ -1204,6 +1533,12 @@
                     ? { mode: 'ise-weeks', weeks: form.weeks, endOffsetDays: 1 }
                     : { mode: 'fixed', startDate: form.startDate, endDate: form.endDate },
             };
+            if (form.scopeType === 'area') {
+                payload.includedStoreNumbers =
+                    Array.isArray(form.includedStoreNumbers) && form.includedStoreNumbers.length
+                        ? form.includedStoreNumbers
+                        : null;
+            }
 
             let res;
             if (existing?.id) {
@@ -1235,8 +1570,13 @@
             setupContext = {
                 ...form,
                 subscription: data.subscription || existing,
+                includedStoreNumbers:
+                    form.scopeType === 'area'
+                        ? resolveIncludedStoreNumbers(data.subscription || existing, form.scopeId)
+                        : null,
             };
             syncSetupActions(setupContext.subscription);
+            syncSetupAreaStoresRow();
             modal.querySelector('#admin-report-sub-setup-title').textContent = 'Manage subscription';
             refreshMatrix();
             if (errEl) errEl.textContent = 'Subscription saved.';
@@ -1267,6 +1607,9 @@
                 ? { mode: 'ise-weeks', weeks: form.weeks, endOffsetDays: 1 }
                 : { startDate: form.startDate, endDate: form.endDate },
         };
+        if (form.scopeType === 'area' && Array.isArray(form.includedStoreNumbers) && form.includedStoreNumbers.length) {
+            payload.includedStoreNumbers = form.includedStoreNumbers;
+        }
         try {
             if (backfillOnly) {
                 const result = await runStoreByStoreBackfill(payload, {
@@ -1296,30 +1639,29 @@
         }
     }
 
-    async function sendNowFromSetup() {
+    async function sendNowFromSetup(recipients) {
         const modal = setupBackdrop;
         const errEl = modal?.querySelector('#admin-report-sub-setup-error');
         if (errEl) errEl.textContent = '';
         const sub = setupContext?.subscription;
         if (!sub?.id) return;
+        const resolvedRecipients = Array.isArray(recipients) && recipients.length ? recipients : null;
         const btn = modal.querySelector('#admin-report-sub-setup-send');
         if (btn) {
             btn.disabled = true;
             btn.textContent = 'Sending…';
         }
         try {
-            await runStreamAction(
-                'send',
-                { subscriptionId: sub.id },
-                {
-                    onComplete: async () => {
-                        const refreshed = await fetchSubscriptions();
-                        subscriptions = Array.isArray(refreshed.subscriptions) ? refreshed.subscriptions : subscriptions;
-                        setupContext.subscription = subscriptions.find((row) => row.id === sub.id) || sub;
-                        refreshMatrix();
-                    },
-                }
-            );
+            const payload = { subscriptionId: sub.id };
+            if (resolvedRecipients) payload.recipients = resolvedRecipients;
+            await runStreamAction('send', payload, {
+                onComplete: async () => {
+                    const refreshed = await fetchSubscriptions();
+                    subscriptions = Array.isArray(refreshed.subscriptions) ? refreshed.subscriptions : subscriptions;
+                    setupContext.subscription = subscriptions.find((row) => row.id === sub.id) || sub;
+                    refreshMatrix();
+                },
+            });
             if (errEl) errEl.textContent = 'See progress log for send result.';
         } catch (err) {
             if (errEl) errEl.textContent = err.message || 'Could not send report.';
@@ -1392,7 +1734,7 @@
             canManageAreaScope = Boolean(payload.canManageAreaScope);
             canBackfillData = Boolean(profile.canEditGlobalBuildTo);
             subscriptions = Array.isArray(payload.subscriptions) ? payload.subscriptions : [];
-            defaultScheduleHour = Number(payload.defaultScheduleHour ?? 6);
+            defaultScheduleHour = Number(payload.defaultScheduleHour ?? 7);
             scheduleTimeZone = String(payload.timeZone || scheduleTimeZone).trim() || scheduleTimeZone;
             emailFrom = String(payload.emailFrom || emailFrom).trim() || emailFrom;
             scopeTree = tree;

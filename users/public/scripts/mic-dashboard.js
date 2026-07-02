@@ -48,7 +48,7 @@ function formatSalesScrapeHint(status) {
     if (status.credentialedStores != null) {
         parts.push(`${status.storesWithSalesData ?? 0}/${status.credentialedStores} stores with live sales`);
     }
-    if (status.deferred) parts.push('MMX busy — scrape queued');
+    if (status.deferred) parts.push('MMX busy, scrape queued');
     if (status.inFlight) parts.push('Scrape in progress');
     if (status.salesUpdatedAt) {
         try {
@@ -67,7 +67,7 @@ function formatSalesScrapeHint(status) {
     }
     const title = parts.join(' · ');
     if (status.inFlight) return { text: 'Sales · updating', title };
-    if (!status.salesUpdatedAt) return { text: 'Sales · —', title };
+    if (!status.salesUpdatedAt) return { text: 'Sales · n/a', title };
     try {
         const time = new Date(status.salesUpdatedAt).toLocaleTimeString('en-AU', {
             timeZone: tz,
@@ -77,7 +77,7 @@ function formatSalesScrapeHint(status) {
         });
         return { text: `Sales · ${time}`, title };
     } catch {
-        return { text: 'Sales · —', title };
+        return { text: 'Sales · n/a', title };
     }
 }
 
@@ -627,7 +627,7 @@ function renderOrdersToPlaceTile(data, { tabbed = false, inRow = false } = {}) {
 
 function formatStockDaysLeft(days) {
     const n = Number(days);
-    if (!Number.isFinite(n)) return '—';
+    if (!Number.isFinite(n)) return '-';
     return n < 10 ? `${n}d` : `${Math.round(n)}d`;
 }
 
@@ -695,7 +695,7 @@ function renderStockLevelsTile(data, { tabbed = false, inRow = false } = {}) {
 }
 
 // Switch the tile between the two pre-computed stock-levels results (no Macromatix download).
-// The 5AM job computes both modes; this just fetches the already-computed summary for the mode.
+// The daily stock-levels job computes both modes; this just fetches the already-computed summary for the mode.
 async function switchStockLevelsMode(mode) {
     const next = mode === 'on-hand-only' ? 'on-hand-only' : 'with-on-order';
     if (next === stockLevelsCheckMode) return;

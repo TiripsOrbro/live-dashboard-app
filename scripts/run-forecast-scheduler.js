@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Daily 5 AM (Melbourne) - auto-submit forecasts for eligible stores when admin toggle is on.
+ * Daily 7 AM (Melbourne) - auto-submit forecasts for eligible stores when admin toggle is on.
  *
  * Usage:
  *   npm run forecast-scheduler
  *
  * Enable in .env:
  *   FORECAST_SCHEDULE_ENABLED=1
- *   FORECAST_SCHEDULE_HOUR=5
+ *   FORECAST_SCHEDULE_HOUR=7
  *   FORECAST_SCHEDULE_WINDOW_MIN=30
  *
  * Also enable in Admin → Forecast → "Daily auto-submit" (Area Manager+).

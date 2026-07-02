@@ -49,8 +49,8 @@
               : formatVocDisplay(vocRaw);
         const posClass =
             tabbed || inRow ? '' : ` mic-tile--pos-voc${wide ? ' mic-tile--pos-voc-wide' : ''}`;
-        const osatText = voc.placeholder ? 'TBD%' : voc.osat == null ? '—' : `${voc.osat}%`;
-        const accText = voc.placeholder ? 'TBD%' : voc.acc == null ? '—' : `${voc.acc}%`;
+        const osatText = voc.placeholder ? 'TBD%' : voc.osat == null ? '-' : `${voc.osat}%`;
+        const accText = voc.placeholder ? 'TBD%' : voc.acc == null ? '-' : `${voc.acc}%`;
         return `
         <a class="mic-tile mic-tile--link mic-tile--voc mic-tile--metric-card${posClass}" href="${SMG_REPORTING_URL}" target="_blank" rel="noopener noreferrer" aria-label="VOC - open SMG reporting">
             <div class="mic-tile-body mic-metric-card">

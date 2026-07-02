@@ -152,7 +152,7 @@
     }
 
     function formatDay(dateKey) {
-        if (!dateKey) return '—';
+        if (!dateKey) return '-';
         return escapeHtml(String(dateKey));
     }
 
@@ -243,10 +243,10 @@
         const root = getRoot();
         if (!root) return;
         const hour = Number(stockPayload?.scheduleHour ?? forecastPayload?.scheduleHour);
-        const hourLabel = Number.isFinite(hour) ? `${hour}:00` : '5:00';
+        const hourLabel = Number.isFinite(hour) ? `${hour}:00` : '7:00';
         const forecastLastRun = forecastPayload?.lastScheduledRun
             ? formatDay(forecastPayload.lastScheduledRun)
-            : '—';
+            : '-';
         const areaCount = Math.max(orderedAreas().length, 1);
         root.innerHTML = `
             <div class="admin-modal admin-modal--inline admin-five-am-reports">

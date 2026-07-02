@@ -327,7 +327,7 @@
                 resultEl.hidden = false;
                 resultEl.innerHTML = `
                     <strong>Account created for ${escapeHtml(data.username || username)}</strong>
-                    <span class="admin-accounts-meta">Copy this temporary password now — it will not be shown again.</span>
+                    <span class="admin-accounts-meta">Copy this temporary password now. It will not be shown again.</span>
                     <code>${escapeHtml(data.temporaryPassword || '')}</code>
                     <span class="admin-accounts-meta">${escapeHtml(data.message || '')}</span>`;
             }

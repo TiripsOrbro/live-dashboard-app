@@ -93,7 +93,7 @@
         }
         if (fallbackInput) {
             fallbackInput.value = fallbacks;
-            fallbackInput.placeholder = fallbacks ? '' : '—';
+            fallbackInput.placeholder = fallbacks ? '' : '-';
             fallbackInput.readOnly = codeLocked;
             fallbackInput.classList.toggle('admin-buildto-code-input--locked', codeLocked);
             fallbackInput.title = codeLocked

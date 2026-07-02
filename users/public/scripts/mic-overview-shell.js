@@ -199,7 +199,7 @@
                     <div class="mic-clock">
                         <span class="mic-clock-label">Current time</span>
                         <span class="mic-clock-value" id="mic-clock">${formatTime(new Date())}</span>
-                        <span class="mic-sales-scrape-hint" id="mic-sales-scrape-hint" hidden>Sales · —</span>
+                        <span class="mic-sales-scrape-hint" id="mic-sales-scrape-hint" hidden>Sales · n/a</span>
                     </div>
                 </div>
             </header>

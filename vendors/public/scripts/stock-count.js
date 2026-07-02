@@ -1605,7 +1605,7 @@ function syncMmxProgressHeartbeatDom() {
         hb.className = 'stock-count-mmx-progress-heartbeat';
         current.appendChild(hb);
     }
-    hb.textContent = ` — ${mmxStepHeartbeatText}`;
+    hb.textContent = ` · ${mmxStepHeartbeatText}`;
 }
 
 function applyPipelineStatusToUi(status) {
@@ -2597,7 +2597,7 @@ function buildMmxProgressHtml({ showHeading = true } = {}) {
 
             const heartbeat =
                 state === 'current' && mmxStepHeartbeatText
-                    ? `<span class="stock-count-mmx-progress-heartbeat"> — ${escapeHtml(mmxStepHeartbeatText)}</span>`
+                    ? `<span class="stock-count-mmx-progress-heartbeat"> · ${escapeHtml(mmxStepHeartbeatText)}</span>`
                     : '';
 
             return `<p class="stock-count-mmx-progress-line stock-count-mmx-progress-line--${state}">${escapeHtml(entry.text)}${heartbeat}${detail}</p>`;
@@ -2631,7 +2631,7 @@ function buildMmxWaitBody() {
     const notificationsOn =
         mmxNotifyEnabled || notify?.permissionState?.() === 'granted';
     if (notificationsOn) {
-        return `This usually takes several minutes. You can leave this page — we'll notify you when it's ready to review. Return when you see <strong>Complete</strong> or get the alert.`;
+        return `This usually takes several minutes. You can leave this page. We'll notify you when it's ready to review. Return when you see <strong>Complete</strong> or get the alert.`;
     }
     if (notify?.permissionState?.() === 'denied' || notify?.permissionState?.() === 'unsupported') {
         return `This usually takes several minutes. Stay on this screen until you see <strong>Complete</strong>.`;
@@ -2643,16 +2643,16 @@ function buildMmxNotifySection() {
     if (mmxProcessingError || mmxProcessingSuccess) return '';
     const notify = window.StockCountNotify;
     if (mmxNotifyEnabled || notify?.permissionState?.() === 'granted') {
-        return `<p class="stock-count-mmx-notify-hint stock-count-mmx-notify-hint--ok">Notifications on — safe to leave this page. We'll alert you when it's ready to review.</p>`;
+        return `<p class="stock-count-mmx-notify-hint stock-count-mmx-notify-hint--ok">Notifications are on. Safe to leave this page. We'll alert you when it's ready to review.</p>`;
     }
     if (mmxNotifyDenied || notify?.permissionState?.() === 'denied') {
         return `<p class="stock-count-mmx-notify-hint stock-count-mmx-notify-hint--denied">Notifications are blocked. Stay on this screen, or enable alerts in your browser's site settings.</p>`;
     }
     if (notify?.permissionState?.() === 'unsupported') {
-        return `<p class="stock-count-mmx-notify-hint">Your browser can't show background alerts — stay on this screen until you see <strong>Complete</strong>.</p>`;
+        return `<p class="stock-count-mmx-notify-hint">Your browser can't show background alerts. Stay on this screen until you see <strong>Complete</strong>.</p>`;
     }
     return `
-        <p class="stock-count-mmx-notify-hint">Need to leave? Tap below and allow notifications — we'll tell you when it's ready to review.</p>
+        <p class="stock-count-mmx-notify-hint">Need to leave? Tap below and allow notifications. We'll tell you when it's ready to review.</p>
         <button type="button" class="stock-count-btn stock-count-btn--notify" id="sc-mmx-notify-btn">Notify me when ready</button>`;
 }
 

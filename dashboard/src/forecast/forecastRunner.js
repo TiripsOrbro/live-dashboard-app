@@ -7,6 +7,7 @@ const {
 } = require('./forecastStatusLedger');
 const { saveManualEntryPacksForRun } = require('./forecastManualPack');
 const { loadAdjustmentRules } = require('./forecastAdjustmentsLedger');
+const { LIFELENZ_DAY_PARTS } = require('../../../lifelenz/src/lifelenzDayParts');
 const { recordForecastDayUpdate } = require('./forecastUpdateLedger');
 const { getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../../../stores/src/storeList');
 
@@ -264,16 +265,57 @@ function reshapeHourlyRespectingLocks(day, newTotal, baseDay, lockedHours) {
     return { ...day, forecastTotal: roundedTotal, hourly };
 }
 
-function applyHourOnlyAdjustments(day, baseDay, hourRules) {
-    if (!hourRules?.length) return day;
-    const hourly = (day.hourly || []).map((slot) => {
-        const rule = hourRules.find((r) => r.hour === slot.hour);
-        if (!rule) return { hour: slot.hour, forecast: Number(slot.forecast) || 0 };
-        const baseSlot = (baseDay.hourly || []).find((h) => h.hour === slot.hour);
-        const baseVal = baseSlot != null ? Number(baseSlot.forecast) || 0 : 0;
-        return { hour: slot.hour, forecast: applyAdjustmentValue(baseVal, rule) };
-    });
-    const forecastTotal = Math.round(hourly.reduce((sum, row) => sum + row.forecast, 0) * 100) / 100;
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
+/**
+ * Fold day-part rules into the locked-hours map by resolving each ruled bucket to
+ * its target dollar total and spreading it across the bucket's unlocked hours
+ * (proportional to base shape). Hour locks inside a bucket are preserved.
+ */
+function foldDayPartRulesIntoLocked(baseDay, dayPartRules, locked) {
+    if (!dayPartRules?.length) return locked;
+    const baseHourly = baseDay.hourly || [];
+    for (const rule of dayPartRules) {
+        const part = LIFELENZ_DAY_PARTS.find((p) => p.key === rule.dayPartKey);
+        if (!part) continue;
+        const inPart = baseHourly.filter((slot) => part.hours.includes(slot.hour));
+        if (!inPart.length) continue;
+
+        const basePartTotal = inPart.reduce((sum, slot) => sum + (Number(slot.forecast) || 0), 0);
+        const target = applyAdjustmentValue(basePartTotal, rule);
+        const unlockedInPart = inPart.filter((slot) => !locked.has(slot.hour));
+        const lockedSum = inPart.reduce(
+            (sum, slot) => (locked.has(slot.hour) ? sum + (Number(locked.get(slot.hour)) || 0) : sum),
+            0
+        );
+        const remainder = round2(target - lockedSum);
+        const baseUnlockedTotal = unlockedInPart.reduce((sum, slot) => sum + (Number(slot.forecast) || 0), 0);
+
+        unlockedInPart.forEach((slot) => {
+            let value;
+            if (baseUnlockedTotal <= 0) value = remainder / unlockedInPart.length;
+            else value = remainder * ((Number(slot.forecast) || 0) / baseUnlockedTotal);
+            locked.set(slot.hour, round2(value));
+        });
+        if (unlockedInPart.length) {
+            const shaped = round2(unlockedInPart.reduce((sum, slot) => sum + (locked.get(slot.hour) || 0), 0));
+            const fix = round2(remainder - shaped);
+            if (Math.abs(fix) >= 0.01) {
+                const lastHour = unlockedInPart[unlockedInPart.length - 1].hour;
+                locked.set(lastHour, round2((locked.get(lastHour) || 0) + fix));
+            }
+        }
+    }
+    return locked;
+}
+
+/** Apply a locked-hour map directly: locked hours take their value, others keep their current forecast. */
+function applyLockedValues(day, locked) {
+    const hourly = (day.hourly || []).map((slot) => ({
+        hour: slot.hour,
+        forecast: locked.has(slot.hour) ? round2(locked.get(slot.hour)) : Number(slot.forecast) || 0,
+    }));
+    const forecastTotal = round2(hourly.reduce((sum, row) => sum + row.forecast, 0));
     return { ...day, hourly, forecastTotal };
 }
 
@@ -287,6 +329,7 @@ function applyForecastAdjustments(plan, rules) {
     const weekRules = rules.filter((r) => r.scope === 'week');
     const dayRules = rules.filter((r) => r.scope === 'day');
     const hourRules = rules.filter((r) => r.scope === 'hour');
+    const daypartRules = rules.filter((r) => r.scope === 'daypart');
 
     for (const rule of weekRules) {
         if (rule.mode === 'percent') {
@@ -311,7 +354,9 @@ function applyForecastAdjustments(plan, rules) {
 
         const dayHourRules = hourRules.filter((r) => r.date === day.date);
         const dayDayRules = dayRules.filter((r) => r.date === day.date);
+        const dayPartRules = daypartRules.filter((r) => r.date === day.date);
         const locked = lockedHourValuesFromRules(baseDay, dayHourRules);
+        foldDayPartRulesIntoLocked(baseDay, dayPartRules, locked);
 
         if (dayDayRules.length) {
             let newTotal = day.forecastTotal;
@@ -324,9 +369,9 @@ function applyForecastAdjustments(plan, rules) {
             }
             const idx = days.findIndex((d) => d.date === day.date);
             days[idx] = reshapeHourlyRespectingLocks(day, newTotal, baseDay, locked);
-        } else if (dayHourRules.length) {
+        } else if (locked.size) {
             const idx = days.findIndex((d) => d.date === day.date);
-            days[idx] = applyHourOnlyAdjustments(day, baseDay, dayHourRules);
+            days[idx] = applyLockedValues(day, locked);
         }
     }
 

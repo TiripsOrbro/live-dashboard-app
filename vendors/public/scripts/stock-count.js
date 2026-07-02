@@ -1257,9 +1257,14 @@ function clearMmxUiWatch() {
 
 function pipelineLooksInProgress(status) {
     if (!status) return false;
-    if (typeof status.workLive === 'boolean') return status.workLive;
     if (status.inProgress) return true;
+    if (status.workLive) return true;
     return MMX_IN_PROGRESS_STAGES.has(status.stage);
+}
+
+function pipelineOrderStageActive(status) {
+    const stage = status?.stage || '';
+    return stage === 'filling-orders' || stage === 'applied-orders-pending' || stage === 'downloading-reports';
 }
 
 async function fetchPipelineStatusOrNull() {
@@ -1822,8 +1827,12 @@ async function pollStockCountPipelineUntilDone() {
         }
 
         idlePolls++;
-        if (!sawInProgress && idlePolls >= 20) break;
-        if (sawInProgress && idlePolls >= 30) {
+        const idlePollLimit = pipelineOrderStageActive(status)
+            ? 90
+            : sawInProgress
+              ? 30
+              : 20;
+        if (idlePolls >= idlePollLimit) {
             const verify = await fetchPipelineStatusOrNull();
             if (verify.ok && pipelineLooksInProgress(verify.status)) {
                 idlePolls = 0;

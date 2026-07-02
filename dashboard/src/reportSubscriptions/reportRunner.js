@@ -361,23 +361,27 @@ function buildAttachmentFilename(reportType, storeNumber, ext = 'csv') {
 }
 
 async function buildZipBuffer(files) {
-    let archiver;
     try {
-        archiver = require('archiver');
-    } catch {
+        const { ZipArchive } = await import('archiver');
+        return await new Promise((resolve, reject) => {
+            try {
+                const chunks = [];
+                const archive = new ZipArchive({ zlib: { level: 9 } });
+                archive.on('data', (chunk) => chunks.push(chunk));
+                archive.on('error', reject);
+                archive.on('end', () => resolve(Buffer.concat(chunks)));
+                for (const file of files) {
+                    archive.append(file.content, { name: file.filename });
+                }
+                void archive.finalize();
+            } catch (err) {
+                reject(err);
+            }
+        });
+    } catch (err) {
+        console.warn('[ReportRunner] ZIP build failed:', err.message);
         return null;
     }
-    return new Promise((resolve, reject) => {
-        const chunks = [];
-        const archive = archiver('zip', { zlib: { level: 9 } });
-        archive.on('data', (chunk) => chunks.push(chunk));
-        archive.on('error', reject);
-        archive.on('end', () => resolve(Buffer.concat(chunks)));
-        for (const file of files) {
-            archive.append(file.content, { name: file.filename });
-        }
-        archive.finalize();
-    });
 }
 
 async function generateReportForStore(reportType, storeNumber, dateRange = {}, options = {}) {
@@ -461,6 +465,10 @@ async function generateReportBundle({ reportType, scopeType, scopeId, dateRange 
             statuses,
             zip: true,
         };
+    }
+
+    if (attachments.length > 1) {
+        throw new Error('Could not build ZIP for multi-store report download.');
     }
 
     return { attachments, statuses, zip: false };

@@ -315,6 +315,7 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
             dateKey,
             vendorSlugs: toSend.map((row) => row.slug),
             lastError: '',
+            ordersCompletedVendorIds: [],
         });
         const cycle = await runStoreBuildToCycle(storeNumber, {
             ...options,
@@ -379,6 +380,7 @@ async function armSkipKeyItemCountPipeline(storeNumber, vendorSlug, options = {}
         lastError: '',
         failedAtStep: null,
         sessionId: null,
+        ordersCompletedVendorIds: [],
     });
     log.info(`Store ${storeNumber}: skip Key Item Count pipeline armed (${vendorSlugs.join(', ')})`);
 }
@@ -442,7 +444,7 @@ async function resolveToSend(storeNumber, vendorSlug, options = {}) {
     return { dateKey, toSend };
 }
 
-async function runVendorOrdersForStore(page, storeNumber, dateKey, orderPack = null) {
+async function runVendorOrdersForStore(page, storeNumber, dateKey, orderPack = null, orderOpts = {}) {
     const storeCfg = getStoreConfig(storeNumber) || { storeNumber, storeName: storeNumber };
     const storeLabel = storeSelectorLabel(storeCfg);
 
@@ -467,11 +469,20 @@ async function runVendorOrdersForStore(page, storeNumber, dateKey, orderPack = n
         },
         orderLinesByVendorId: byVendorId,
         onOrderStep: async (label) => touchPipelineStep(storeNumber, label),
+        onVendorOrderComplete: async (vendorId) => {
+            const cp = await getCheckpoint(storeNumber);
+            const completed = [...new Set([...(cp?.ordersCompletedVendorIds || []), vendorId])];
+            await updateCheckpoint(storeNumber, { ordersCompletedVendorIds: completed });
+        },
     };
 
     await touchPipelineStep(storeNumber, 'Opening scheduled orders in Macromatix');
     log.info(`Store ${storeNumber}: scheduled order entry only - no report downloads or other MMX tasks`);
-    const orderPipelineResult = await runVendorOrderEntry(page, settings, { continueOnError: true });
+    const skipVendorIds = Array.isArray(orderOpts.skipVendorIds) ? orderOpts.skipVendorIds : [];
+    const orderPipelineResult = await runVendorOrderEntry(page, settings, {
+        continueOnError: true,
+        skipVendorIds,
+    });
     orderPipelineResult.buildToSummary = {
         orderLineCount: buildTo.orderLines.length,
         totalCartons: buildTo.orderLines.reduce((s, l) => s + l.orderQty, 0),
@@ -856,9 +867,15 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
         await updateCheckpoint(storeNumber, {
             stage: 'filling-orders',
             stepLabel: 'Placing scheduled orders in Macromatix',
+            ordersCompletedVendorIds:
+                Array.isArray(options.skipVendorIds) && options.skipVendorIds.length
+                    ? options.skipVendorIds
+                    : [],
         });
         const orders = await timeStoreStage(storeNumber, 'fill-scheduled-orders', () =>
-            runVendorOrdersForStore(page, storeNumber, dateKey, orderPack)
+            runVendorOrdersForStore(page, storeNumber, dateKey, orderPack, {
+                skipVendorIds: options.skipVendorIds,
+            })
         );
         cycleSucceeded = true;
         log.info(`Store ${storeNumber} stage timings - ${formatTimings(getStageTimings(storeNumber))}`);
@@ -894,12 +911,39 @@ async function runOrdersAfterApply(storeNumber, dateKey, mmx = {}, pipelineOptio
 }
 
 async function resumeScheduledOrdersInNewBrowser(storeNumber, dateKey, options = {}) {
+    const checkpoint = await getCheckpoint(storeNumber);
+    const ordersOnly = checkpoint?.stage === 'filling-orders';
+    const skipVendorIds = Array.isArray(options.skipVendorIds)
+        ? options.skipVendorIds
+        : checkpoint?.ordersCompletedVendorIds || [];
+
     await beginStockCountMmxWork(`resume scheduled orders (store ${storeNumber})`, storeNumber);
     let browser;
     let page;
     try {
         ({ browser, page } = await openMacromatixBrowser(withStoreMmxOptions(storeNumber, options)));
-        const orders = await runOrdersAfterApply(storeNumber, dateKey, { page, browser }, options);
+        let orders;
+        if (ordersOnly) {
+            log.info(
+                `Store ${storeNumber}: resuming scheduled orders only (${skipVendorIds.length} vendor(s) already saved)`
+            );
+            await updateCheckpoint(storeNumber, {
+                stage: 'filling-orders',
+                stepLabel: 'Resuming scheduled orders in Macromatix',
+            });
+            const cycle = await runStoreBuildToCycle(storeNumber, {
+                ...withStoreMmxOptions(storeNumber, options),
+                dateKey,
+                page,
+                browser,
+                skipReportDownload: true,
+                skipVendorIds,
+                cleanupReports: false,
+            });
+            orders = cycle.orders;
+        } else {
+            orders = await runOrdersAfterApply(storeNumber, dateKey, { page, browser }, options);
+        }
         const orderFailures = formatOrderFailures(orders);
         return { orders, orderFailures };
     } finally {
@@ -1120,6 +1164,13 @@ const PIPELINE_EXCLUSIVE_STAGES = new Set([
 
 /** Active MMX work must hold the resource gate; if not, the checkpoint is stale after this grace. */
 const PIPELINE_ACTIVE_STALE_MS = Number(process.env.MMX_PIPELINE_ACTIVE_STALE_MS || 90 * 1000);
+const PIPELINE_ORDER_STALE_MS = Number(process.env.MMX_PIPELINE_ORDER_STALE_MS || 15 * 60 * 1000);
+
+function checkpointStaleThresholdMs(stage) {
+    const s = String(stage || '').trim();
+    if (s === 'filling-orders' || s === 'applied-orders-pending') return PIPELINE_ORDER_STALE_MS;
+    return PIPELINE_ACTIVE_STALE_MS;
+}
 
 function isStockCountExclusiveBusy(stage, checkpoint, storeNumber) {
     const s = String(stage || '').trim();
@@ -1166,11 +1217,11 @@ function isCheckpointStale(storeNumber, checkpoint, { onStartup = false } = {}) 
 
     if (stage === 'checking-stock-levels') {
         if (isLightweightMmxResourceBusy()) return false;
-    } else if (isMmxResourceBusy()) {
+    } else if (isMmxResourceBusy() || getLocalHoldCount(PRIORITY.MIC) > 0) {
         return false;
     }
     if (onStartup) return true;
-    return checkpointAgeMs(checkpoint) >= PIPELINE_ACTIVE_STALE_MS;
+    return checkpointAgeMs(checkpoint) >= checkpointStaleThresholdMs(stage);
 }
 
 async function clearStaleCheckpoint(storeNumber, checkpoint, reason) {
@@ -1200,7 +1251,9 @@ function pipelineWorkIsLive(storeNumber, checkpoint) {
         return preparedCheckpointHasLiveSession(storeNumber, checkpoint);
     }
     if (PIPELINE_EXCLUSIVE_STAGES.has(stage)) {
-        return isMmxResourceBusy();
+        if (isMmxResourceBusy()) return true;
+        if (getLocalHoldCount(PRIORITY.MIC) > 0) return true;
+        return false;
     }
     if (stage === 'checking-stock-levels') {
         return isLightweightMmxResourceBusy();
@@ -1419,7 +1472,7 @@ async function resumeStockCountPipeline(storeNumber, options = {}) {
 
     if (PIPELINE_IN_PROGRESS_STAGES.has(stage)) {
         const status = await getStockCountPipelineStatus(storeNumber);
-        if (status.workLive) {
+        if (status.workLive || (status.inProgress && status.stage === stage)) {
             return {
                 success: true,
                 accepted: false,

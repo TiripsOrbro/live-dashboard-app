@@ -176,7 +176,7 @@ async function fillOrderLineQuantities(page, lines, existingGrid = null, options
     const byCode = new Map(grid.rows.map((r) => [normalizeItemCode(r.itemCode), r]));
     const results = [];
     const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
-    const progressEvery = Math.max(1, Number(options.progressEvery) || 8);
+    const progressEvery = Math.max(1, Number(options.progressEvery) || 4);
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
@@ -189,6 +189,10 @@ async function fillOrderLineQuantities(page, lines, existingGrid = null, options
 
         if (onProgress && (i === 0 || (i + 1) % progressEvery === 0 || i === lines.length - 1)) {
             await onProgress(i + 1, lines.length);
+        }
+
+        if ((i + 1) % progressEvery === 0) {
+            refreshScrapePauseTimeout();
         }
 
         await typeQuantityIntoInput(page, row.inputId, line.quantity);
@@ -264,8 +268,9 @@ function matchVendorConfigForTableRow(tableRow, vendors) {
     );
 }
 
-function buildOrderQueue(parsed, vendorOrdersCfg, buildToByVendorId, { vendorIdFilter } = {}) {
+function buildOrderQueue(parsed, vendorOrdersCfg, buildToByVendorId, { vendorIdFilter, skipVendorIds } = {}) {
     const queue = [];
+    const skipIds = new Set((skipVendorIds || []).map((id) => String(id)));
 
     for (const tableRow of parsed.rows) {
         if (!rowIsOpenable(tableRow)) continue;
@@ -276,6 +281,10 @@ function buildOrderQueue(parsed, vendorOrdersCfg, buildToByVendorId, { vendorIdF
             continue;
         }
         if (vendorIdFilter && vendorCfg.id !== vendorIdFilter) continue;
+        if (skipIds.has(vendorCfg.id)) {
+            log.info(`Skip already completed vendor order: ${vendorCfg.label}`);
+            continue;
+        }
 
         const pack = buildToByVendorId[vendorCfg.id];
         queue.push({
@@ -332,7 +341,7 @@ async function processOneVendorOrder(page, settings, vendor, buildToEntries) {
             await orderStep(settings, `${vendor.label}: filling ${lines.length} item(s)`);
         }
         await fillOrderLineQuantities(page, lines, gridAfterClear, {
-            progressEvery: 8,
+            progressEvery: 4,
             onProgress: async (done, total) => {
                 await orderStep(settings, `${vendor.label}: filled ${done}/${total} items`);
             },
@@ -366,7 +375,10 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
             throw new Error('orderLinesByVendorId is required - run buildToOrderLines first');
         })();
 
-    const queue = buildOrderQueue(table, vendorOrdersCfg, buildToByVendorId, { vendorIdFilter });
+    const queue = buildOrderQueue(table, vendorOrdersCfg, buildToByVendorId, {
+        vendorIdFilter,
+        skipVendorIds: opts.skipVendorIds,
+    });
     if (!queue.length) {
         throw new Error(
             vendorIdFilter
@@ -397,6 +409,9 @@ async function runAllScheduledOrders(page, settings, opts = {}) {
         try {
             await processOneVendorOrder(page, settings, vendor, buildToEntries);
             refreshScrapePauseTimeout();
+            if (settings.onVendorOrderComplete) {
+                await settings.onVendorOrderComplete(vendor.id, vendor.label);
+            }
             processed.push({
                 vendorId: vendor.id,
                 label: vendor.label,

@@ -4168,7 +4168,7 @@ app.post('/api/admin/report-subscriptions/generate', async (req, res) => {
             scopeId,
             dateRange,
             options: {
-                backfill: canUserEditGlobalBuildTo(user),
+                backfill: body.backfill === false ? false : canUserEditGlobalBuildTo(user),
                 force,
                 includedStoreNumbers: parseIncludedStoreNumbers(body),
             },

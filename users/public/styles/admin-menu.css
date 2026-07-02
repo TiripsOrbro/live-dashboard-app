@@ -1913,9 +1913,12 @@ html.mic-dark-mode .admin-buildto-close-btn:hover {
     line-height: 1.35;
 }
 
-.admin-modal--history #admin-forecast-history-body {
+.admin-modal--history #admin-forecast-history-body,
+.admin-modal--history #admin-forecast-override-body {
     flex: 1 1 auto;
     min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .admin-modal--history .admin-modal-actions {
@@ -3703,6 +3706,7 @@ html.mic-dark-mode .admin-forecast-override-popover {
     align-items: center;
     gap: 0.5rem 1rem;
     margin-bottom: 0.75rem;
+    flex-shrink: 0;
 }
 
 .admin-forecast-mode-toggle {

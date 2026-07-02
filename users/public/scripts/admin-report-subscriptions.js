@@ -725,6 +725,7 @@
             scopeType: payload.scopeType,
             scopeId: payload.scopeId,
             dateRange: payload.dateRange,
+            backfill: false,
         };
         if (
             payload.scopeType === 'area' &&

@@ -1083,19 +1083,30 @@ function buildCreateAccountScopeTree(actor) {
     }
 
     const markets = [...marketsSet].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-    const defaultStore = singleStoreForUser(actor) || Object.values(storesByArea).flat()[0]?.storeNumber || '';
+    const singleStore = singleStoreForUser(actor);
+    let defaultStore = '';
     let defaultArea = '';
     let defaultMarket = '';
-    if (defaultStore) {
+    if (singleStore) {
+        defaultStore = String(singleStore);
         for (const [area, rows] of Object.entries(storesByArea)) {
-            if (rows.some((row) => row.storeNumber === String(defaultStore))) {
+            if (rows.some((row) => row.storeNumber === defaultStore)) {
                 defaultArea = area;
                 break;
             }
         }
+    } else {
+        const orderedAreas = getAreaIds().filter((area) => storesByArea[area]?.length);
+        if (orderedAreas.length) {
+            defaultArea = orderedAreas[0];
+            defaultStore = storesByArea[defaultArea][0]?.storeNumber || '';
+        }
     }
     if (!defaultArea && accessibleAreas.size === 1) {
         defaultArea = [...accessibleAreas][0];
+        if (!defaultStore && storesByArea[defaultArea]?.length) {
+            defaultStore = storesByArea[defaultArea][0].storeNumber;
+        }
     }
     if (defaultArea) {
         defaultMarket = getMarketForArea(defaultArea);

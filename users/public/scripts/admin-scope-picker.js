@@ -65,6 +65,10 @@
         const areas = tree.areas || [];
         if (area && !areas.includes(area)) area = '';
         if (!area && areas.length === 1) area = areas[0];
+        if (!area && !storeNumber) {
+            const ordered = orderedAreas(areas);
+            if (ordered.length) area = ordered[0];
+        }
         if (!area && tree.defaults?.area && areas.includes(tree.defaults.area)) area = tree.defaults.area;
 
         const stores = area ? tree.storesByArea[area] || [] : [];
@@ -77,6 +81,7 @@
         ) {
             storeNumber = tree.defaults.storeNumber;
         }
+        if (!storeNumber && stores.length) storeNumber = stores[0].storeNumber;
 
         return { area, storeNumber };
     }

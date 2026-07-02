@@ -11,7 +11,7 @@ const { downloadReportsForStores } = require('../../../mmx/src/mmxReportDownload
 const { recordIseSnapshotFromFile, writeStoreIseHistory, assessIseCoverage, resolveCoverageEndDate, weeklySnapshotAnchorDates, resolveIseWeeksDateRange } = require('./iseHistoryLedger');
 const { isoToMacromatixDate } = require('../../../mmx/src/mmxReports/util-dates');
 const { buildHistoricalHourlySalesCsv, assessHourlySalesCoverage, datesInRange } = require('./historicalHourlySalesCsv');
-const { buildIseTrimmedAverageCsv } = require('./iseTrimmedAverage');
+const { buildIseTrimmedAverageCsv, buildCombinedIseTrimmedAverageCsv } = require('./iseTrimmedAverage');
 const { sendReportEmail } = require('./reportEmailService');
 const {
     markSubscriptionSent,
@@ -360,6 +360,13 @@ function buildAttachmentFilename(reportType, storeNumber, ext = 'csv') {
     return `${slug}-store-${storeNumber}-${date}.${ext}`;
 }
 
+function buildScopeAttachmentFilename(reportType, scopeType, scopeId, ext = 'csv') {
+    const date = melbourneTodayIso();
+    const slug = String(reportType || 'report').replace(/[^a-z0-9]+/gi, '-');
+    const scope = String(scopeId || scopeType || 'all').replace(/[^a-z0-9]+/gi, '-');
+    return `${slug}-${scope}-${date}.${ext}`;
+}
+
 async function buildZipBuffer(files) {
     let archiver;
     try {
@@ -444,6 +451,22 @@ async function generateReportBundle({ reportType, scopeType, scopeId, dateRange 
                     ? assessHourlySalesCoverage(row.storeNumber, dateRange)
                     : assessIseCoverage(row.storeNumber, dateRange),
         });
+    }
+
+    if (reportType === 'ise-trimmed-average' && attachments.length > 1) {
+        const storeNumbers = stores.map((row) => row.storeNumber);
+        const csv = buildCombinedIseTrimmedAverageCsv(storeNumbers, dateRange);
+        return {
+            attachments: [
+                {
+                    filename: buildScopeAttachmentFilename(reportType, scopeType, scopeId, 'csv'),
+                    content: Buffer.from(csv, 'utf8'),
+                    contentType: 'text/csv',
+                },
+            ],
+            statuses,
+            zip: null,
+        };
     }
 
     if (attachments.length === 1) {

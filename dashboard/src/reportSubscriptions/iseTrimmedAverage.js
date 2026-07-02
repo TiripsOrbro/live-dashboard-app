@@ -154,7 +154,7 @@ function buildIseTrimmedAverageCsv(storeNumber, dateRange = {}) {
     rows.push(padRow(['Item', 'Description', ...columnMeta.map(() => '')]));
 
     for (const code of sortedItems) {
-        const sampleItem = snapshots.map((s) => s.items?.[code]).find(Boolean) || {};
+        const sampleItem = snapshots.map((s) => s?.items?.[code]).find(Boolean) || {};
         const line = [code, sampleItem.description || ''];
         for (const col of columnMeta) {
             if (col.type === 'gap') {
@@ -174,8 +174,24 @@ function buildIseTrimmedAverageCsv(storeNumber, dateRange = {}) {
     return rows.map((row) => row.map(csvEscape).join(',')).join('\n');
 }
 
+/**
+ * One CSV for multiple stores: each store block (label, headers, items) separated by a blank row.
+ */
+function buildCombinedIseTrimmedAverageCsv(storeNumbers, dateRange = {}) {
+    const sections = [];
+    for (const storeNumber of storeNumbers || []) {
+        const store = String(storeNumber || '').trim();
+        if (!store) continue;
+        sections.push(buildIseTrimmedAverageCsv(store, dateRange).trimEnd());
+    }
+    if (!sections.length) return '';
+    if (sections.length === 1) return `${sections[0]}\n`;
+    return `${sections.join('\n\n')}\n`;
+}
+
 module.exports = {
     buildIseTrimmedAverageCsv,
+    buildCombinedIseTrimmedAverageCsv,
     trimAverage,
     collectItemWeekdayValues,
 };

@@ -1643,9 +1643,13 @@ function pipelineFailureFromStatus(status) {
 function pipelineOrdersActuallyComplete(status) {
     if (!status?.ordersComplete) return false;
     if (status.inProgress) return false;
+    if (status.workLive) return false;
     if (status.lastError) return false;
     const stage = status.stage || 'idle';
     if (stage === 'prepare-failed' || stage === 'apply-failed' || stage === 'check-levels-failed') {
+        return false;
+    }
+    if (stage === 'downloading-reports' || stage === 'filling-orders' || stage === 'applied-orders-pending') {
         return false;
     }
     if (stage === 'completed' || stage === 'idle') return true;
@@ -1781,6 +1785,14 @@ async function pollStockCountPipelineUntilDone() {
         }
 
         if (pipelineOrdersActuallyComplete(status)) {
+            if (
+                mmxPipelineManualOnly &&
+                !sawInProgress &&
+                (status.stage === 'idle' || status.stage === 'completed')
+            ) {
+                idlePolls++;
+                if (idlePolls < 4) continue;
+            }
             if (pollSuperseded(pollGen)) return { superseded: true };
             finishMmxOrdersSuccess(pipelineSuccessPayload(status));
             return { autoApplied: true };

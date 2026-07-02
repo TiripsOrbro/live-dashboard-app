@@ -107,6 +107,7 @@ const {
     applyStockCountSession,
     cancelStockCountSession,
     discardStockCountMmxWork,
+    armSkipKeyItemCountPipeline,
     runScheduledOrdersOnly,
     checkStockLevelsForStore,
     getStockCountSendPlan,
@@ -5646,6 +5647,10 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
         const skipKeyItemCount = /^(1|true|yes|on)$/i.test(
             String(req.body?.skipKeyItemCount ?? req.query.skipKeyItemCount ?? '')
         );
+        const mmxOpts = mmxAutomationOptions(req, store, {
+            pendingVendorLabels: pendingVendorLabelsForStockCount(req, store),
+            skipKeyItemCount,
+        });
 
         if (skipKeyItemCount) {
             const user = req.dashboardUser || getRequestUser(req);
@@ -5662,6 +5667,7 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
             if (await clearStockCountPipelineFailure(store)) {
                 console.log(`[StockCount] Cleared prior pipeline failure before skip order - store ${store}`);
             }
+            await armSkipKeyItemCountPipeline(store, vendorSlug, mmxOpts);
         } else {
             const pipeline = await getStockCountPipelineStatus(store);
             if (isStockCountExclusiveActive(pipeline, store)) {
@@ -5683,10 +5689,6 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
         }
 
         console.log(`[StockCount] Send to MMX (prepare) - store ${store} vendor ${vendorSlug}`);
-        const mmxOpts = mmxAutomationOptions(req, store, {
-            pendingVendorLabels: pendingVendorLabelsForStockCount(req, store),
-            skipKeyItemCount,
-        });
         res.json({ success: true, accepted: true });
 
         void prepareStockCountForMmx(store, vendorSlug, mmxOpts).catch(async (error) => {

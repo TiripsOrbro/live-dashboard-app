@@ -225,6 +225,7 @@ function emitAttention(detail) {
         const ordersDone =
             status.ordersComplete &&
             !status.inProgress &&
+            !status.workLive &&
             (status.stage === 'completed' || status.stage === 'idle');
         if (ordersDone) {
             notifyOrdersReady(store, watch.vendorSlug, {

@@ -359,6 +359,30 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
     }
 }
 
+/** Arm skip-KIC pipeline before the HTTP response so status polls cannot see idle + mmxSentAt as complete. */
+async function armSkipKeyItemCountPipeline(storeNumber, vendorSlug, options = {}) {
+    const { dateKey, toSend } = await resolveToSend(storeNumber, vendorSlug, options);
+    const vendorSlugs = toSend.map((row) => row.slug);
+    const { clearMmxSentForVendorSlugs } = require('./stockCountState');
+    const cleared = await clearMmxSentForVendorSlugs(storeNumber, vendorSlugs, dateKey);
+    if (cleared) {
+        log.info(
+            `Store ${storeNumber}: cleared mmxSent for ${cleared} vendor(s) before skip KIC restart (${dateKey})`
+        );
+    }
+    await updateCheckpoint(storeNumber, {
+        stage: 'downloading-reports',
+        stepLabel: 'Skipping Key Item Count - downloading stock reports',
+        skipKeyItemCount: true,
+        dateKey,
+        vendorSlugs,
+        lastError: '',
+        failedAtStep: null,
+        sessionId: null,
+    });
+    log.info(`Store ${storeNumber}: skip Key Item Count pipeline armed (${vendorSlugs.join(', ')})`);
+}
+
 async function resolveToSend(storeNumber, vendorSlug, options = {}) {
     const dateKey = options.dateKey || melbourneDateKey();
 
@@ -1209,8 +1233,11 @@ async function getStockCountPipelineStatus(storeNumber) {
     const ordersMaybeDone =
         !payload.ordersComplete &&
         !payload.inProgress &&
+        !workLive &&
+        !isMmxResourceBusy() &&
         !PIPELINE_TERMINAL_FAIL_STAGES.has(stage) &&
         stage !== 'applied-orders-pending' &&
+        !checkpoint?.skipKeyItemCount &&
         !checkpoint?.lastError &&
         (await stockCountMmxOrdersComplete(storeNumber, dateKey));
     if (ordersMaybeDone) {
@@ -1711,6 +1738,7 @@ module.exports = {
     applyStockCountSession,
     cancelStockCountSession,
     discardStockCountMmxWork,
+    armSkipKeyItemCountPipeline,
     sendStockCountToMmx,
     getStockCountSendPlan,
     getStockCountPipelineStatus,

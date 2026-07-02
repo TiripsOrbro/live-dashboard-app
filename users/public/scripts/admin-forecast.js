@@ -914,6 +914,10 @@
             activeStore: storeNumbers[0] ? String(storeNumbers[0]) : null,
             activeDate: null,
             activeLifelenzDate: null,
+            viewMmxDate: null,
+            viewLifelenzDate: null,
+            mmxViewPinned: false,
+            lifelenzViewPinned: false,
             phase: 'both',
             lifelenzLiveLabel: null,
             complete: false,
@@ -967,6 +971,12 @@
     function applyProgressEvent(state, payload) {
         if (!state || !payload?.type) return;
 
+        if (payload.type === 'lifelenz-phase-start') {
+            state.phase = 'lifelenz';
+            state.lifelenzLiveLabel = 'Starting LifeLenz…';
+            return;
+        }
+
         if (payload.platform === 'lifelenz') {
             if (payload.type === 'session-start') {
                 state.lifelenzLiveLabel = 'Signing in to LifeLenz…';
@@ -993,9 +1003,13 @@
                 const day = findProgressLifelenzDay(store, payload.date);
                 if (day) day.status = 'done';
                 state.lifelenzLiveLabel = `Saved ${formatShortDate(payload.date)} in LifeLenz`;
+                if (state.activeLifelenzDate === payload.date) {
+                    state.activeLifelenzDate = null;
+                }
             } else if (payload.type === 'store-complete' && store) {
                 store.lifelenzStatus = payload.ok === false ? 'error' : 'done';
                 if (payload.error) store.lifelenzError = payload.error;
+                state.activeLifelenzDate = null;
             } else if (payload.type === 'store-error' && store) {
                 store.lifelenzStatus = 'error';
                 store.lifelenzError = payload.error || 'LifeLenz submit failed';
@@ -1076,11 +1090,16 @@
                 day.fill = payload.fill;
                 day.savedAs = payload.savedAs;
             }
+            if (state.activeDate === payload.date) {
+                state.activeDate = null;
+            }
         } else if (payload.type === 'store-done') {
             store.mmxStatus = 'done';
+            state.activeDate = null;
         } else if (payload.type === 'store-complete') {
             store.mmxStatus = payload.ok === false ? 'error' : 'done';
             if (payload.error) store.mmxError = payload.error;
+            state.activeDate = null;
         } else if (payload.type === 'store-error') {
             store.mmxStatus = 'error';
             store.mmxError = payload.error || 'Submit failed';
@@ -1147,6 +1166,37 @@
             if (!progressState?.complete && !progressState?.error) return;
             void closeProgress(true);
         });
+        progressBackdrop.addEventListener('click', (event) => {
+            const btn = event.target.closest('[data-progress-day-nav]');
+            if (!btn || !progressState) return;
+            const channel = btn.getAttribute('data-channel');
+            const dir = Number(btn.getAttribute('data-dir'));
+            if (!channel || !Number.isFinite(dir)) return;
+            const store = findProgressStore(progressState, progressState.activeStore) || progressState.stores[0];
+            if (!store) return;
+            const days = channel === 'lifelenz' ? store.lifelenzDays || [] : store.days || [];
+            const viewKey = channel === 'lifelenz' ? 'viewLifelenzDate' : 'viewMmxDate';
+            const pinKey = channel === 'lifelenz' ? 'lifelenzViewPinned' : 'mmxViewPinned';
+            const mmxDone = progressState.stores.filter((s) => s.mmxStatus === 'done').length;
+            const mmxAllDone = mmxDone === progressState.stores.length;
+            const lifelenzActive =
+                progressState.phase === 'lifelenz' ||
+                progressState.stores.some((s) => s.lifelenzStatus === 'active') ||
+                (mmxAllDone &&
+                    progressState.stores.filter((s) => s.lifelenzStatus === 'done').length <
+                        progressState.stores.length &&
+                    Boolean(progressState.lifelenzLiveLabel));
+            const autoDay =
+                channel === 'lifelenz'
+                    ? getAutoLifelenzFocusDay(store, progressState)
+                    : getAutoMmxFocusDay(store, progressState, mmxAllDone, lifelenzActive);
+            const currentDate = progressState[viewKey] || autoDay?.date;
+            const nextDay = adjacentProgressDay(days, currentDate, dir);
+            if (!nextDay) return;
+            progressState[viewKey] = nextDay.date;
+            progressState[pinKey] = true;
+            renderProgressWorking();
+        });
         return progressBackdrop;
     }
 
@@ -1193,6 +1243,74 @@
         btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
     }
 
+    function findProgressDayIndex(days, date) {
+        return (days || []).findIndex((day) => day.date === date);
+    }
+
+    function progressDayNavFlags(days, date) {
+        const idx = findProgressDayIndex(days, date);
+        if (idx < 0) return { showPrev: false, showNext: false };
+        return { showPrev: idx > 0, showNext: idx < days.length - 1 };
+    }
+
+    function adjacentProgressDay(days, date, delta) {
+        const idx = findProgressDayIndex(days, date);
+        if (idx < 0) return null;
+        return days[idx + delta] || null;
+    }
+
+    function resolveProgressViewDay(days, viewDate, autoDay) {
+        if (viewDate) {
+            const viewed = (days || []).find((day) => day.date === viewDate);
+            if (viewed) return viewed;
+        }
+        return autoDay || null;
+    }
+
+    function getAutoMmxFocusDay(store, state, mmxAllDone, lifelenzActive) {
+        if (lifelenzActive && mmxAllDone) {
+            return store?.days?.[store.days.length - 1] || null;
+        }
+        return (
+            findProgressDay(store, state.activeDate) ||
+            store?.days.find((d) => d.status === 'filling' || d.status === 'verifying' || d.status === 'saving') ||
+            store?.days.find((d) => d.status === 'pending') ||
+            store?.days[store?.days.length - 1] ||
+            null
+        );
+    }
+
+    function getAutoLifelenzFocusDay(store, state) {
+        return (
+            (state.activeLifelenzDate && findProgressLifelenzDay(store, state.activeLifelenzDate)) ||
+            store?.lifelenzDays?.find((d) => d.status === 'filling') ||
+            store?.lifelenzDays?.find((d) => d.status === 'pending') ||
+            store?.lifelenzDays?.[0] ||
+            null
+        );
+    }
+
+    function buildProgressDetailHeadHtml(day, days, channel) {
+        const { showPrev, showNext } = progressDayNavFlags(days, day?.date);
+        return `
+            <div class="admin-forecast-progress-detail-nav">
+                <button type="button" class="admin-forecast-progress-day-nav" data-progress-day-nav data-channel="${channel}" data-dir="-1" aria-label="Previous day"${showPrev ? '' : ' hidden'}>‹</button>
+                <div class="admin-forecast-progress-detail-date-wrap">
+                    <span class="admin-forecast-progress-detail-date">${escapeHtml(formatShortDate(day.date))}</span>
+                    <span class="admin-forecast-progress-detail-weekday">${escapeHtml(weekdayLabel(day.weekday))}</span>
+                </div>
+                <button type="button" class="admin-forecast-progress-day-nav" data-progress-day-nav data-channel="${channel}" data-dir="1" aria-label="Next day"${showNext ? '' : ' hidden'}>›</button>
+            </div>
+            <span class="admin-forecast-progress-detail-total">${formatMoney(day.forecastTotal)}</span>`;
+    }
+
+    function updateProgressDetailNav(detailEl, days, date) {
+        if (!detailEl || !date) return;
+        const { showPrev, showNext } = progressDayNavFlags(days, date);
+        detailEl.querySelector('[data-progress-day-nav][data-dir="-1"]')?.toggleAttribute('hidden', !showPrev);
+        detailEl.querySelector('[data-progress-day-nav][data-dir="1"]')?.toggleAttribute('hidden', !showNext);
+    }
+
     function activeHourLiveMessage(day) {
         if (!day?.hourly?.length) return progressDayStatusLabel(day?.status);
         const active =
@@ -1211,7 +1329,7 @@
         return progressDayStatusLabel(day.status);
     }
 
-    function buildProgressDayDetailHtml(day) {
+    function buildProgressDayDetailHtml(day, days) {
         if (!day) {
             return '<p class="admin-accounts-meta">Waiting for the next day…</p>';
         }
@@ -1229,9 +1347,7 @@
             .join('');
         return `
             <div class="admin-forecast-progress-detail-head">
-                <span class="admin-forecast-progress-detail-date">${escapeHtml(formatShortDate(day.date))}</span>
-                <span class="admin-forecast-progress-detail-weekday">${escapeHtml(weekdayLabel(day.weekday))}</span>
-                <span class="admin-forecast-progress-detail-total">${formatMoney(day.forecastTotal)}</span>
+                ${buildProgressDetailHeadHtml(day, days || [], 'mmx')}
             </div>
             <p class="admin-forecast-progress-detail-status admin-forecast-progress-live">${escapeHtml(activeHourLiveMessage(day))}</p>
             <div class="admin-forecast-progress-hour-wrap">
@@ -1242,7 +1358,7 @@
             </div>`;
     }
 
-    function patchProgressDayDetail(detailEl, day) {
+    function patchProgressDayDetail(detailEl, day, days) {
         if (!day) {
             detailEl.dataset.activeDate = '';
             detailEl.innerHTML = '<p class="admin-accounts-meta">Waiting for the next day…</p>';
@@ -1250,9 +1366,10 @@
         }
         if (detailEl.dataset.activeDate !== day.date) {
             detailEl.dataset.activeDate = day.date;
-            detailEl.innerHTML = buildProgressDayDetailHtml(day);
+            detailEl.innerHTML = buildProgressDayDetailHtml(day, days);
             return;
         }
+        updateProgressDetailNav(detailEl, days || [], day.date);
         const liveEl = detailEl.querySelector('.admin-forecast-progress-live');
         if (liveEl) liveEl.textContent = activeHourLiveMessage(day);
         for (const slot of day.hourly || []) {
@@ -1293,31 +1410,54 @@
             if (liveLabel.length > 32) return `${liveLabel.slice(0, 30)}…`;
             return liveLabel;
         }
+        if (day.status === 'pending' && liveLabel) {
+            if (/quirk/i.test(liveLabel)) return 'Overnight quirk…';
+            if (liveLabel.length > 32) return `${liveLabel.slice(0, 30)}…`;
+            return liveLabel;
+        }
         return progressDayStatusLabel(day.status);
+    }
+
+    function progressWeekColumnStatus(day, { active = false, channel = 'mmx', liveLabel = '' } = {}) {
+        if (!day) {
+            if (channel === 'll' && liveLabel) return 'active';
+            return 'pending';
+        }
+        if (day.status === 'error') return 'error';
+        if (day.status === 'done') return 'done';
+        const activeStatuses =
+            channel === 'mmx' ? ['filling', 'verifying', 'saving'] : ['filling'];
+        if (active || activeStatuses.includes(day.status)) return 'active';
+        if (channel === 'll' && day.status === 'pending' && liveLabel) return 'active';
+        return 'pending';
+    }
+
+    function applyProgressWeekColumnClass(el, baseClass, status) {
+        if (!el) return;
+        el.className = `${baseClass} admin-forecast-progress-week-col--${status}`;
     }
 
     function lifelenzDayDetailMessage(day, liveLabel) {
-        if (!day) return 'Waiting for LifeLenz…';
+        if (!day) return liveLabel || 'Waiting for LifeLenz…';
         if (day.status === 'done') return `Saved in LifeLenz · ${formatMoney(day.forecastTotal)}`;
         if (day.status === 'error') return day.error || 'LifeLenz entry failed';
         if (day.status === 'filling' && liveLabel) return liveLabel;
+        if (day.status === 'pending' && liveLabel) return liveLabel;
         return progressDayStatusLabel(day.status);
     }
 
-    function buildLifelenzDayDetailHtml(day, liveLabel) {
+    function buildLifelenzDayDetailHtml(day, liveLabel, days) {
         if (!day) {
             return '<p class="admin-accounts-meta">Waiting for LifeLenz…</p>';
         }
         return `
             <div class="admin-forecast-progress-detail-head">
-                <span class="admin-forecast-progress-detail-date">${escapeHtml(formatShortDate(day.date))}</span>
-                <span class="admin-forecast-progress-detail-weekday">${escapeHtml(weekdayLabel(day.weekday))}</span>
-                <span class="admin-forecast-progress-detail-total">${formatMoney(day.forecastTotal)}</span>
+                ${buildProgressDetailHeadHtml(day, days || [], 'lifelenz')}
             </div>
             <p class="admin-forecast-progress-detail-status admin-forecast-progress-live">${escapeHtml(lifelenzDayDetailMessage(day, liveLabel))}</p>`;
     }
 
-    function patchLifelenzDayDetail(detailEl, day, liveLabel) {
+    function patchLifelenzDayDetail(detailEl, day, liveLabel, days) {
         if (!detailEl) return;
         if (!day) {
             detailEl.dataset.activeDate = '';
@@ -1326,9 +1466,10 @@
         }
         if (detailEl.dataset.activeDate !== day.date) {
             detailEl.dataset.activeDate = day.date;
-            detailEl.innerHTML = buildLifelenzDayDetailHtml(day, liveLabel);
+            detailEl.innerHTML = buildLifelenzDayDetailHtml(day, liveLabel, days);
             return;
         }
+        updateProgressDetailNav(detailEl, days || [], day.date);
         const liveEl = detailEl.querySelector('.admin-forecast-progress-live');
         if (liveEl) liveEl.textContent = lifelenzDayDetailMessage(day, liveLabel);
     }
@@ -1342,8 +1483,15 @@
 
         mmxDays.forEach((mmxDay, index) => {
             const llDay = llByDate.get(mmxDay.date) || llDays[index];
-            const isActive =
-                mmxDay.date === state?.activeDate || mmxDay.date === state?.activeLifelenzDate;
+            const mmxActive =
+                mmxDay.date === state?.activeDate &&
+                mmxDay.status !== 'done' &&
+                mmxDay.status !== 'error';
+            const llActive =
+                llDay?.date === state?.activeLifelenzDate &&
+                llDay?.status !== 'done' &&
+                llDay?.status !== 'error';
+            const isActive = mmxActive || llActive;
             let row = weekEl.children[index];
             if (!row || row.dataset.date !== mmxDay.date) {
                 row = document.createElement('li');
@@ -1351,33 +1499,37 @@
                 row.className = 'admin-forecast-progress-week-row';
                 row.innerHTML =
                     '<span class="admin-forecast-progress-week-day"></span>' +
-                    '<span class="admin-forecast-progress-week-mmx"></span>' +
-                    '<span class="admin-forecast-progress-week-ll"></span>';
+                    '<span class="admin-forecast-progress-week-mmx admin-forecast-progress-week-col--pending"></span>' +
+                    '<span class="admin-forecast-progress-week-ll admin-forecast-progress-week-col--pending"></span>';
                 if (weekEl.children[index]) weekEl.replaceChild(row, weekEl.children[index]);
                 else weekEl.appendChild(row);
             }
 
-            const rowStatus =
-                mmxDay.status === 'error' || llDay?.status === 'error'
-                    ? 'error'
-                    : mmxDay.status === 'done' && (!llDay || llDay.status === 'done')
-                      ? 'done'
-                      : isActive ||
-                          mmxDay.status === 'filling' ||
-                          mmxDay.status === 'verifying' ||
-                          mmxDay.status === 'saving' ||
-                          llDay?.status === 'filling'
-                        ? 'active'
-                        : mmxDay.status || 'pending';
-
-            row.className = `admin-forecast-progress-week-row admin-forecast-progress-week-row--${rowStatus}${isActive ? ' is-active' : ''}`;
+            row.className = `admin-forecast-progress-week-row${isActive ? ' is-active' : ''}`;
             row.querySelector('.admin-forecast-progress-week-day').textContent =
                 weekdayLabel(mmxDay.weekday) || formatShortDate(mmxDay.date);
-            row.querySelector('.admin-forecast-progress-week-mmx').textContent = mmxDayColumnSummary(mmxDay);
-            row.querySelector('.admin-forecast-progress-week-ll').textContent = lifelenzDayColumnSummary(llDay, {
-                isActive: llDay?.date === state?.activeLifelenzDate,
-                liveLabel,
+
+            const mmxEl = row.querySelector('.admin-forecast-progress-week-mmx');
+            const llEl = row.querySelector('.admin-forecast-progress-week-ll');
+            mmxEl.textContent = mmxDayColumnSummary(mmxDay);
+            llEl.textContent = lifelenzDayColumnSummary(llDay, {
+                isActive: llActive,
+                liveLabel: llActive || llDay?.status === 'pending' ? liveLabel : '',
             });
+            applyProgressWeekColumnClass(
+                mmxEl,
+                'admin-forecast-progress-week-mmx',
+                progressWeekColumnStatus(mmxDay, { active: mmxActive, channel: 'mmx' })
+            );
+            applyProgressWeekColumnClass(
+                llEl,
+                'admin-forecast-progress-week-ll',
+                progressWeekColumnStatus(llDay, {
+                    active: llActive,
+                    channel: 'll',
+                    liveLabel: llActive || llDay?.status === 'pending' ? liveLabel : '',
+                })
+            );
         });
 
         while (weekEl.children.length > mmxDays.length) {
@@ -1408,35 +1560,49 @@
         const activeStore = findProgressStore(state, state.activeStore) || state.stores[0];
         const mmxDone = state.stores.filter((s) => s.mmxStatus === 'done').length;
         const llDone = state.stores.filter((s) => s.lifelenzStatus === 'done').length;
+        const mmxAllDone = mmxDone === state.stores.length;
+        const lifelenzActive =
+            state.phase === 'lifelenz' ||
+            state.stores.some((s) => s.lifelenzStatus === 'active') ||
+            (mmxAllDone && llDone < state.stores.length && Boolean(state.lifelenzLiveLabel));
 
-        root.querySelector('#admin-forecast-progress-title').textContent = 'Submitting forecast';
+        root.querySelector('#admin-forecast-progress-title').textContent =
+            lifelenzActive && mmxAllDone ? 'Submitting forecast to LifeLenz' : 'Submitting forecast';
         root.querySelector('#admin-forecast-progress-meta').textContent = activeStore
             ? `Store ${activeStore.storeNumber}${activeStore.storeName !== activeStore.storeNumber ? ' · ' + activeStore.storeName : ''} · MMX ${mmxDone}/${state.stores.length} · LifeLenz ${llDone}/${state.stores.length}`
             : 'Starting…';
 
-        const focusMmxDay =
-            findProgressDay(activeStore, state.activeDate) ||
-            activeStore?.days.find((d) => d.status === 'filling' || d.status === 'verifying' || d.status === 'saving') ||
-            activeStore?.days.find((d) => d.status === 'pending') ||
-            activeStore?.days[activeStore?.days.length - 1];
+        const autoMmxDay = getAutoMmxFocusDay(activeStore, state, mmxAllDone, lifelenzActive);
+        if (!state.mmxViewPinned && autoMmxDay?.date) {
+            state.viewMmxDate = autoMmxDay.date;
+        }
+        const displayMmxDay = resolveProgressViewDay(activeStore?.days, state.viewMmxDate, autoMmxDay);
 
-        const focusLlDay =
-            (state.activeLifelenzDate && findProgressLifelenzDay(activeStore, state.activeLifelenzDate)) ||
-            activeStore?.lifelenzDays?.find((d) => d.status === 'filling') ||
-            activeStore?.lifelenzDays?.find((d) => d.status === 'pending') ||
-            null;
+        const autoLlDay = getAutoLifelenzFocusDay(activeStore, state);
+        if (!state.lifelenzViewPinned && autoLlDay?.date) {
+            state.viewLifelenzDate = autoLlDay.date;
+        }
+        const displayLlDay = resolveProgressViewDay(activeStore?.lifelenzDays, state.viewLifelenzDate, autoLlDay);
 
         const globalLiveLabel = activeStore?.lifelenzLiveLabel || state.lifelenzLiveLabel || '';
         const llLiveLabel =
-            focusLlDay?.status === 'filling' && focusLlDay.date === state.activeLifelenzDate
+            globalLiveLabel &&
+            (!state.lifelenzViewPinned || displayLlDay?.date === state.activeLifelenzDate)
                 ? globalLiveLabel
-                : !state.activeLifelenzDate && focusLlDay?.status === 'pending' && globalLiveLabel
-                  ? globalLiveLabel
-                  : '';
+                : '';
 
         patchProgressWeekRows(root.querySelector('#admin-forecast-progress-week-rows'), activeStore, state);
-        patchProgressDayDetail(root.querySelector('#admin-forecast-progress-mmx-detail'), focusMmxDay);
-        patchLifelenzDayDetail(root.querySelector('#admin-forecast-progress-lifelenz-detail'), focusLlDay, llLiveLabel);
+        patchProgressDayDetail(
+            root.querySelector('#admin-forecast-progress-mmx-detail'),
+            displayMmxDay,
+            activeStore?.days
+        );
+        patchLifelenzDayDetail(
+            root.querySelector('#admin-forecast-progress-lifelenz-detail'),
+            displayLlDay,
+            llLiveLabel,
+            activeStore?.lifelenzDays
+        );
     }
 
     function sumLifeLenzDayParts(appliedDay) {
@@ -1663,6 +1829,7 @@
 
     function handleLifeLenzStarted(data) {
         if (!progressState) return;
+        progressState.phase = 'lifelenz';
         progressState.lifelenzLiveLabel = 'Signing in to LifeLenz…';
         renderProgressWorking();
     }

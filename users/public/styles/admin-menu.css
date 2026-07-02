@@ -2755,19 +2755,25 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    border-radius: 4px;
+    padding: 0.12rem 0.35rem;
 }
 
-.admin-forecast-progress-week-row--active,
 .admin-forecast-progress-week-row.is-active {
+    background: color-mix(in srgb, var(--primary, #702283) 4%, #fff);
+}
+
+.admin-forecast-progress-week-col--active {
     background: color-mix(in srgb, var(--primary, #702283) 10%, #fff);
 }
 
-.admin-forecast-progress-week-row--done {
-    background: color-mix(in srgb, #4caf50 10%, #fff);
+.admin-forecast-progress-week-col--done {
+    background: color-mix(in srgb, #4caf50 12%, #fff);
 }
 
-.admin-forecast-progress-week-row--error {
+.admin-forecast-progress-week-col--error {
     background: color-mix(in srgb, #b00020 8%, #fff);
+    color: #b00020;
 }
 
 .admin-forecast-progress-detail-split {
@@ -2944,10 +2950,50 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
 .admin-forecast-progress-detail-head {
     display: flex;
     flex-wrap: wrap;
-    align-items: baseline;
+    align-items: center;
     gap: 0.35rem 0.75rem;
     margin-bottom: 0.2rem;
     flex-shrink: 0;
+}
+
+.admin-forecast-progress-detail-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.admin-forecast-progress-detail-date-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem 0.5rem;
+    min-width: 0;
+}
+
+.admin-forecast-progress-day-nav {
+    flex-shrink: 0;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 6px;
+    background: #fff;
+    color: #444;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.admin-forecast-progress-day-nav:hover:not(:disabled) {
+    border-color: rgba(112, 34, 131, 0.35);
+    color: var(--primary, #702283);
+}
+
+.admin-forecast-progress-day-nav:disabled {
+    opacity: 0.35;
+    cursor: default;
 }
 
 .admin-forecast-progress-detail-date {
@@ -3143,15 +3189,38 @@ html.mic-dark-mode .admin-forecast-progress-week-row {
     border-color: #333;
 }
 
-html.mic-dark-mode .admin-forecast-progress-week-row--active,
 html.mic-dark-mode .admin-forecast-progress-week-row.is-active {
+    background: color-mix(in srgb, var(--primary, #702283) 8%, #1e1e24);
+}
+
+html.mic-dark-mode .admin-forecast-progress-week-col--active {
     background: color-mix(in srgb, var(--primary, #702283) 18%, #1e1e24);
+}
+
+html.mic-dark-mode .admin-forecast-progress-week-col--done {
+    background: color-mix(in srgb, #4caf50 16%, #1e1e24);
+}
+
+html.mic-dark-mode .admin-forecast-progress-week-col--error {
+    background: color-mix(in srgb, #b00020 14%, #1e1e24);
+    color: #ff8a80;
 }
 
 html.mic-dark-mode .admin-forecast-progress-days,
 html.mic-dark-mode .admin-forecast-progress-detail {
     background: #1e1e24;
     border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.mic-dark-mode .admin-forecast-progress-day-nav {
+    background: #2a2a32;
+    border-color: #444;
+    color: #ddd;
+}
+
+html.mic-dark-mode .admin-forecast-progress-day-nav:hover:not(:disabled) {
+    border-color: rgba(180, 120, 200, 0.45);
+    color: #e1bee7;
 }
 
 html.mic-dark-mode .admin-forecast-progress-day--filling,

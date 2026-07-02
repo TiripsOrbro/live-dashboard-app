@@ -343,6 +343,7 @@ const {
     runForecastForStores,
     runLifeLenzForecastForStores,
     runCombinedForecastForStores,
+    resolveLifelenzCredentialsForRun,
     previewForecastForStore,
     previewForecastForStores,
     forecastRunOptions,
@@ -4752,12 +4753,15 @@ app.post('/api/admin/forecast/run', async (req, res) => {
                         lifelenzByStore[sn] = { email: cands[0].email, password: cands[0].password };
                     }
                 }
-                const lifelenzCredentials =
-                    Object.keys(lifelenzByStore).length > 0
-                        ? { byStore: lifelenzByStore }
-                        : oneTimeEmail && oneTimePassword
-                          ? { email: oneTimeEmail, password: oneTimePassword }
-                          : null;
+                const userLifeLenz = readLifeLenzCredentialsForUser(user.username);
+                const lifelenzCredentials = resolveLifelenzCredentialsForRun(storeNumbers, {
+                    storeByStore: lifelenzByStore,
+                    session:
+                        oneTimeEmail && oneTimePassword
+                            ? { email: oneTimeEmail, password: oneTimePassword }
+                            : null,
+                    user: userLifeLenz,
+                });
 
                 writeSse('platform-started', { platform: 'mmx', storeNumbers });
                 if (lifelenzCredentials) {
@@ -4769,7 +4773,14 @@ app.post('/api/admin/forecast/run', async (req, res) => {
                     headless,
                     lifelenzCredentials,
                     keepBrowserOpen: headed && req.body?.keepBrowserOpen === true,
-                    onProgress: (payload) => writeSse('progress', payload),
+                    onProgress: (payload) => {
+                        writeSse('progress', payload);
+                        if (payload?.type === 'lifelenz-phase-start') {
+                            writeSse('lifelenz-started', {
+                                storeNumbers: payload.storeNumbers || storeNumbers,
+                            });
+                        }
+                    },
                     ...forecastTargetFromBody(req.body),
                 });
 

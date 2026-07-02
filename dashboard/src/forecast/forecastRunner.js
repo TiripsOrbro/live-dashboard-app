@@ -10,6 +10,7 @@ const { loadAdjustmentRules } = require('./forecastAdjustmentsLedger');
 const { LIFELENZ_DAY_PARTS } = require('../../../lifelenz/src/lifelenzDayParts');
 const { recordForecastDayUpdate } = require('./forecastUpdateLedger');
 const { getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../../../stores/src/storeList');
+const { closeAllTrackedBrowsers } = require('../../../mmx/src/browserLifecycle');
 
 function wrapForecastProgress(options = {}, context = {}) {
     const weekStart = context.weekStart || getTargetForecastWeekStarts()[0];
@@ -725,6 +726,36 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
     return results;
 }
 
+function resolveLifelenzCredentialsForRun(storeNumbers, { storeByStore = {}, session = null, user = null } = {}) {
+    const byStore = { ...(storeByStore || {}) };
+    const userEmail = String(user?.email || '').trim();
+    const userPassword = String(user?.password || '');
+    const sessionEmail = String(session?.email || '').trim();
+    const sessionPassword = String(session?.password || '');
+
+    for (const storeNumber of storeNumbers || []) {
+        const store = String(storeNumber || '').trim();
+        if (!store) continue;
+        if (byStore[store]?.email && byStore[store]?.password) continue;
+        if (sessionEmail && sessionPassword) {
+            byStore[store] = { email: sessionEmail, password: sessionPassword };
+        } else if (userEmail && userPassword) {
+            byStore[store] = { email: userEmail, password: userPassword };
+        }
+    }
+
+    if (Object.keys(byStore).length > 0) {
+        return { byStore };
+    }
+    if (sessionEmail && sessionPassword) {
+        return { email: sessionEmail, password: sessionPassword };
+    }
+    if (userEmail && userPassword) {
+        return { email: userEmail, password: userPassword };
+    }
+    return null;
+}
+
 async function runCombinedForecastForStores(storeNumbers, options = {}) {
     const runTarget = forecastRunOptions(options);
     const resolved = resolveForecastTarget(runTarget);
@@ -743,6 +774,10 @@ async function runCombinedForecastForStores(storeNumbers, options = {}) {
 
     let lifelenzResults = [];
     if (options.lifelenzCredentials) {
+        console.log('[Forecast] Macromatix complete — starting LifeLenz phase…');
+        onProgress?.({ type: 'lifelenz-phase-start', storeNumbers });
+        await closeAllTrackedBrowsers('forecast-mmx-complete-before-lifelenz');
+        await new Promise((resolve) => setTimeout(resolve, 500));
         lifelenzResults = await runLifeLenzForecastForStores(storeNumbers, options.lifelenzCredentials, {
             ...options,
             ...runTarget,
@@ -789,4 +824,5 @@ module.exports = {
     runForecastForStores,
     runLifeLenzForecastForStores,
     runCombinedForecastForStores,
+    resolveLifelenzCredentialsForRun,
 };

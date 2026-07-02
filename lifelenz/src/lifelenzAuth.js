@@ -8,6 +8,7 @@ const LIFELENZ_BUSINESS_EXPLORER_URL = /admin\.lifelenz\.com\/au\d+\/business-ex
 const LOGIN_WAIT_MS = 60000;
 const NAV_WAIT_MS = 60000;
 const BUSINESS_PICKER_WAIT_MS = 90000;
+const LAUNCH_TIMEOUT_MS = Number(process.env.LIFELENZ_LAUNCH_TIMEOUT_MS || 45000);
 
 function resolveLifeLenzHeadless(overrides = {}) {
     if (overrides.headless === false) return false;
@@ -88,6 +89,23 @@ async function safeEvaluate(page, fn, ...args) {
         }
         throw err;
     }
+}
+
+function withTimeout(promise, ms, label) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => {
+            setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+        }),
+    ]);
+}
+
+async function launchLifeLenzBrowser(options = {}) {
+    return withTimeout(
+        puppeteer.launch(getLifeLenzLaunchOptions(options)),
+        LAUNCH_TIMEOUT_MS,
+        'LifeLenz browser launch'
+    );
 }
 
 async function isLifeLenzShell(page) {
@@ -403,7 +421,7 @@ async function createAuthenticatedLifeLenzSession(email, password, options = {})
         throw new Error('LifeLenz email and password are required.');
     }
 
-    const browser = await puppeteer.launch(getLifeLenzLaunchOptions(options));
+    const browser = await launchLifeLenzBrowser(options);
     trackBrowser(browser, 'lifelenz-session');
     const page = await browser.newPage();
     await prepareLifeLenzPage(page);
@@ -438,9 +456,7 @@ async function verifyLifeLenzLogin(email, password, options = {}) {
 
     let browser;
     try {
-        browser = await puppeteer.launch(
-            getLifeLenzLaunchOptions({ headless: true, skipSlowMo: true, ...options })
-        );
+        browser = await launchLifeLenzBrowser({ headless: true, skipSlowMo: true, ...options });
         trackBrowser(browser, 'lifelenz-login-verify');
         const page = await browser.newPage();
         await prepareLifeLenzPage(page);

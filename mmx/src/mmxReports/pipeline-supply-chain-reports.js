@@ -565,7 +565,7 @@ async function listScmStoreTreeLabels(page) {
 
 async function waitForScmStoreTreeAfterDates(page) {
     await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
-    const treeMs = Number(process.env.MMX_SCM_TREE_AFTER_DATE_MS || 3500);
+    const treeMs = Number(process.env.MMX_SCM_TREE_AFTER_DATE_MS || 5000);
     await page
         .waitForFunction(
             () => Boolean(document.querySelector('.RadTreeView .rtMid, .RadTreeView .rtPlus, .RadTreeView')),
@@ -612,7 +612,6 @@ async function expandTreeNodeByNeedle(page, needle, opts = {}) {
                 plus.click();
                 return { label: text, expanded: false };
             }
-            break;
         }
         return null;
     }, want);
@@ -627,60 +626,87 @@ async function expandTreeNodeByNeedle(page, needle, opts = {}) {
     return true;
 }
 
+/** Find a RadTreeView area row and click rtPlus/rtMinus on its .rtMid/.rtTop host. */
+async function clickAreaTreeToggle(page, areaNum, action = 'expand') {
+    return page.evaluate(
+        ({ num, act }) => {
+            const matchesArea = (text) => {
+                const lower = String(text || '').toLowerCase();
+                if (lower.includes(`tba area ${num}`)) return true;
+                return new RegExp(`\\barea\\s+${num}(\\b|\\s*\\()`, 'i').test(text);
+            };
+            for (const li of document.querySelectorAll('.RadTreeView .rtLI, .rtLI')) {
+                const rtIn = li.querySelector('.rtIn');
+                if (!rtIn) continue;
+                const text = (rtIn.textContent || '').replace(/\s+/g, ' ').trim();
+                if (!matchesArea(text)) continue;
+                const host = li.querySelector('.rtMid, .rtTop') || li;
+                const plus = host.querySelector('.rtPlus');
+                const minus = host.querySelector('.rtMinus');
+                if (act === 'collapse' && minus) {
+                    minus.click();
+                    return { action: 'collapse', label: text };
+                }
+                if (act === 'expand' && plus) {
+                    plus.click();
+                    return { action: 'expand', label: text };
+                }
+                if (act === 'expand' && minus) {
+                    return { action: 'already-expanded', label: text };
+                }
+            }
+            return null;
+        },
+        { num: areaNum, act: action }
+    );
+}
+
 /** Expand a specific TBA Area N row (avoids matching "Area 2" when looking for "Area 22"). */
 async function expandTreeNodeByAreaLabel(page, areaLabel, opts = {}) {
     const areaNum = parseAreaNumber(areaLabel);
     if (!areaNum) return expandTreeNodeByNeedle(page, areaLabel, opts);
 
-    const result = await page.evaluate((num) => {
-        const expandHost = (row) => row.closest('.rtMid') || row.closest('.rtLI') || row;
-        const rows = [];
-        const seen = new Set();
-        const add = (el) => {
-            if (!el || seen.has(el)) return;
-            seen.add(el);
-            rows.push(el);
-        };
-        for (const mid of document.querySelectorAll('.rtMid')) add(mid);
-        for (const label of document.querySelectorAll('label')) {
-            if (label.querySelector('.rtIn')) add(label);
-        }
-        const rowText = (row) => {
-            const rtIn = row.querySelector('.rtIn') || expandHost(row).querySelector('.rtIn');
-            return (rtIn?.textContent || row.textContent || '').replace(/\s+/g, ' ').trim();
-        };
-        const matchesArea = (text) => {
-            const lower = text.toLowerCase();
-            if (lower.includes(`tba area ${num}`)) return true;
-            return new RegExp(`\\barea\\s+${num}(\\b|\\s*\\()`, 'i').test(text);
-        };
-        for (const row of rows) {
-            const text = rowText(row);
-            if (!matchesArea(text)) continue;
-            const lower = text.toLowerCase();
-            const host = expandHost(row);
-            if (host.querySelector('.rtMinus')) return { label: lower, expanded: true };
-            const plus = host.querySelector('.rtPlus');
-            if (plus) {
-                plus.click();
-                return { label: lower, expanded: false };
-            }
-            break;
-        }
-        return null;
-    }, areaNum);
+    const postbackMs = opts.postbackMs ?? Number(process.env.MMX_SCM_TREE_AREA_POSTBACK_MS || 18000);
+    const result = await clickAreaTreeToggle(page, areaNum, 'expand');
 
     if (!result) {
         log.warn(`SCM store tree: area row not found for "${areaLabel}"`);
         return false;
     }
-    if (!result.expanded) {
+    if (result.action === 'expand') {
         log.info(`SCM store tree: expanding area "${result.label}"`);
-        const postbackMs = opts.postbackMs ?? Number(process.env.MMX_SCM_TREE_AREA_POSTBACK_MS || 10000);
         await waitForAspPostback(page, { timeoutMs: postbackMs }).catch(() => {});
-        await page.waitForTimeout(Number(opts.settleMs || 300));
+        await page.waitForTimeout(Number(opts.settleMs || 400));
     }
     return true;
+}
+
+/** Area node shows expanded (rtMinus) but store rows missing — collapse and re-expand on slow Pi postbacks. */
+async function refreshAreaNodeIfStoreHidden(page, areaLabel, storeNumber) {
+    const areaNum = parseAreaNumber(areaLabel);
+    const num = String(storeNumber || '').replace(/\D/g, '').trim();
+    if (!areaNum || !num || (await storeVisibleInTree(page, num))) return true;
+
+    const postbackMs = Number(process.env.MMX_SCM_TREE_AREA_POSTBACK_MS || 18000);
+    const state = await clickAreaTreeToggle(page, areaNum, 'expand');
+    if (!state) return false;
+
+    if (state.action === 'already-expanded') {
+        log.info(`SCM store tree: area "${state.label}" looks expanded but store ${num} missing - refreshing`);
+        const collapsed = await clickAreaTreeToggle(page, areaNum, 'collapse');
+        if (collapsed?.action === 'collapse') {
+            await waitForAspPostback(page, { timeoutMs: postbackMs }).catch(() => {});
+            await page.waitForTimeout(350);
+        }
+        const reexpanded = await clickAreaTreeToggle(page, areaNum, 'expand');
+        if (reexpanded?.action === 'expand') {
+            log.info(`SCM store tree: re-expanding area "${reexpanded.label}"`);
+            await waitForAspPostback(page, { timeoutMs: postbackMs }).catch(() => {});
+            await page.waitForTimeout(450);
+        }
+    }
+
+    return waitForStoreRowInTree(page, num, postbackMs);
 }
 
 async function waitForStoreRowInTree(page, storeNumber, timeoutMs) {
@@ -723,17 +749,24 @@ async function expandScmPathToStore(page, storeNumber) {
     const num = String(storeNumber || '').replace(/\D/g, '').trim();
     const cfg = getStoreConfig(num) || {};
     const areaLabel = String(cfg.area || 'Area 22').trim();
-    const marketPostback = Number(process.env.MMX_SCM_TREE_NODE_POSTBACK_MS || 5000);
-    const areaPostback = Number(process.env.MMX_SCM_TREE_AREA_POSTBACK_MS || 12000);
+    const marketPostback = Number(process.env.MMX_SCM_TREE_NODE_POSTBACK_MS || 6000);
+    const areaPostback = Number(process.env.MMX_SCM_TREE_AREA_POSTBACK_MS || 18000);
 
     await expandTreeNodeByNeedle(page, 'collins food group', { postbackMs: marketPostback });
     await expandTreeNodeByNeedle(page, 'tba market 1', { postbackMs: marketPostback });
+    if (!(await scmAreaRowsVisible(page))) {
+        await expandTreeNodeByNeedle(page, 'tba market 1', { postbackMs: marketPostback, settleMs: 500 });
+    }
     await expandTreeNodeByAreaLabel(page, areaLabel, { postbackMs: areaPostback });
     if (await waitForStoreRowInTree(page, num, areaPostback)) {
         return storeVisibleInTree(page, num);
     }
+    await refreshAreaNodeIfStoreHidden(page, areaLabel, num);
+    if (await storeVisibleInTree(page, num)) {
+        return true;
+    }
     // Area expand postback can lag on the Pi — one more expand pass before giving up.
-    await expandTreeNodeByAreaLabel(page, areaLabel, { postbackMs: areaPostback, settleMs: 450 });
+    await expandTreeNodeByAreaLabel(page, areaLabel, { postbackMs: areaPostback, settleMs: 500 });
     await waitForStoreRowInTree(page, num, areaPostback);
     return storeVisibleInTree(page, num);
 }
@@ -778,6 +811,8 @@ async function expandScmTreeOneLevel(page, opts = {}) {
 
 async function waitUntilStoreVisibleInTree(page, storeNumber, timeoutMs) {
     const num = String(storeNumber || '').replace(/\D/g, '').trim();
+    const cfg = getStoreConfig(num) || {};
+    const areaLabel = String(cfg.area || 'Area 22').trim();
     if (await expandScmPathToStore(page, num)) {
         log.info(`SCM store tree: store ${num} visible in tree`);
         return true;
@@ -794,6 +829,7 @@ async function waitUntilStoreVisibleInTree(page, storeNumber, timeoutMs) {
             log.info(`SCM store tree: waiting for store ${num} - re-expanding market/area…`);
             lastLog = Date.now();
         }
+        await refreshAreaNodeIfStoreHidden(page, areaLabel, num);
         await expandScmPathToStore(page, num);
     }
     return storeVisibleInTree(page, num);
@@ -906,7 +942,7 @@ async function selectScmStoreCheckboxInTree(page, storeNumber, storeName, option
         await page.waitForTimeout(Number(process.env.MMX_SCM_TREE_AFTER_CLEAR_MS || 200));
     }
 
-    const waitMs = Number(process.env.MMX_SCM_TREE_WAIT_MS || 12000);
+    const waitMs = Number(process.env.MMX_SCM_TREE_WAIT_MS || 30000);
     const visible = await waitUntilStoreVisibleInTree(page, num, waitMs);
     if (!visible) {
         log.warn(`SCM store tree: store ${num} not visible after ${Math.round(waitMs / 1000)}s - trying checkbox anyway`);

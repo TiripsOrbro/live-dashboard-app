@@ -310,7 +310,8 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
         );
         await updateCheckpoint(storeNumber, {
             stage: 'downloading-reports',
-            stepLabel: 'Downloading stock reports (inventory, on-hand, on-order)',
+            stepLabel: 'Skipping Key Item Count - downloading stock reports',
+            skipKeyItemCount: true,
             dateKey,
             vendorSlugs: toSend.map((row) => row.slug),
             lastError: '',

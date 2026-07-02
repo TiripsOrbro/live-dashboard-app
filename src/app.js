@@ -106,6 +106,7 @@ const {
     prepareStockCountForMmx,
     applyStockCountSession,
     cancelStockCountSession,
+    discardStockCountMmxWork,
     runScheduledOrdersOnly,
     checkStockLevelsForStore,
     getStockCountSendPlan,
@@ -5642,27 +5643,10 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
         if (!store || !assertStoreAccess(req, res, store)) return;
         if (!assertStockCountUserMmxLogin(req, res)) return;
 
-        const pipeline = await getStockCountPipelineStatus(store);
-        if (isStockCountExclusiveActive(pipeline, store)) {
-            console.log(
-                `[StockCount] Send to MMX already in progress - store ${store} stage ${pipeline.stage}`
-            );
-            return res.json({
-                success: true,
-                accepted: true,
-                inProgress: true,
-                stage: pipeline.stage,
-                sessionId: pipeline.sessionId || null,
-            });
-        }
-
-        if (await clearStockCountPipelineFailure(store)) {
-            console.log(`[StockCount] Cleared prior pipeline failure before new send - store ${store}`);
-        }
-
         const skipKeyItemCount = /^(1|true|yes|on)$/i.test(
             String(req.body?.skipKeyItemCount ?? req.query.skipKeyItemCount ?? '')
         );
+
         if (skipKeyItemCount) {
             const user = req.dashboardUser || getRequestUser(req);
             if (!canUserEditGlobalBuildTo(user)) {
@@ -5674,6 +5658,28 @@ app.post('/api/stock-count/send-to-mmx', async (req, res) => {
             console.log(
                 `[StockCount] Skip Key Item Count requested by ${user?.username || 'unknown'} - store ${store}`
             );
+            await discardStockCountMmxWork(store, 'skip-key-item-count restart');
+            if (await clearStockCountPipelineFailure(store)) {
+                console.log(`[StockCount] Cleared prior pipeline failure before skip order - store ${store}`);
+            }
+        } else {
+            const pipeline = await getStockCountPipelineStatus(store);
+            if (isStockCountExclusiveActive(pipeline, store)) {
+                console.log(
+                    `[StockCount] Send to MMX already in progress - store ${store} stage ${pipeline.stage}`
+                );
+                return res.json({
+                    success: true,
+                    accepted: true,
+                    inProgress: true,
+                    stage: pipeline.stage,
+                    sessionId: pipeline.sessionId || null,
+                });
+            }
+
+            if (await clearStockCountPipelineFailure(store)) {
+                console.log(`[StockCount] Cleared prior pipeline failure before new send - store ${store}`);
+            }
         }
 
         console.log(`[StockCount] Send to MMX (prepare) - store ${store} vendor ${vendorSlug}`);

@@ -1325,6 +1325,8 @@ async function tryResumeMmxPipeline() {
 }
 
 async function attemptMmxPipelineAutoResume() {
+    // Skip-count & order must not auto-resume a failed Key Item Count prepare on top of the new run.
+    if (mmxPipelineManualOnly) return false;
     if (mmxAutoResumeAttempts >= MMX_AUTO_RESUME_MAX) return false;
     mmxAutoResumeAttempts++;
     return tryResumeMmxPipeline();
@@ -1535,6 +1537,9 @@ function resolveMmxStepIdFromStatus(status) {
     // Pipeline stage wins over step labels so order text cannot jump ahead of report downloads.
     if (stage === 'filling-orders') return 'orders';
     if (stage === 'downloading-reports' || stage === 'applied-orders-pending') return 'reports';
+    if (status?.skipKeyItemCount || mmxPipelineManualOnly) {
+        if (stage === 'preparing' || stage === 'prepared' || stage === 'applying') return 'reports';
+    }
 
     const reportWork =
         /download|downloaded|inventory special|stock on hand|stock on order|scm - items|build-to reports|calculating order/i.test(
@@ -2143,9 +2148,14 @@ function shouldRecoverApplyError(message) {
 }
 
 async function sendToMmx(options = {}) {
-    if (saving || processing) return;
-    if (mmxProcessingError) dismissMmxProcessingError();
     const skipKeyItemCount = Boolean(options.skipKeyItemCount) && canSkipKeyItemCount;
+    if (saving) return;
+    if (processing && !skipKeyItemCount) return;
+    if (skipKeyItemCount && processing) {
+        mmxPollGeneration++;
+        mmxAutoResumeAttempts = MMX_AUTO_RESUME_MAX;
+    }
+    if (mmxProcessingError) dismissMmxProcessingError();
     let preparedAutoApplied = false;
 
     if (autoSaveTimer) {

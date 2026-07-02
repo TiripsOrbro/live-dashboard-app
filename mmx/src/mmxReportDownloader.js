@@ -405,18 +405,12 @@ async function downloadChainedScmBuildToReportsForStore(store, reportIds, option
     const pipeline = loadPipelineConfig();
     const order = ['report1', 'report2'];
     const ids = [...reportIds].sort((a, b) => order.indexOf(a) - order.indexOf(b));
-    const reports = reportsForStore(pipeline, store).filter((r) => ids.includes(r.id));
-    if (!reports.length) return {};
+    const allReports = reportsForStore(pipeline, store).filter((r) => ids.includes(r.id));
+    if (!allReports.length) return {};
 
     const mainDir = path.join(REPORTS_DIR, store.storeNumber);
     const scmWorkDir = path.join(mainDir, '_parallel', '_scm');
     ensureDir(scmWorkDir);
-    const cleared = clearMacromatixDefaultExports(scmWorkDir);
-    if (cleared.length) {
-        log.info(
-            `[parallel] Store ${store.storeNumber} SCM: cleared ${cleared.length} stale export file(s)`
-        );
-    }
 
     log.info(
         `[parallel] Store ${store.storeNumber}: one browser for chained SCM (${ids.join(', ')})`
@@ -424,40 +418,57 @@ async function downloadChainedScmBuildToReportsForStore(store, reportIds, option
 
     let browser;
     let page;
-    let settings;
     const files = {};
+    const chainSession = {
+        hubOpen: false,
+        lastGroup: null,
+        lastFormat: null,
+        lastStartDate: null,
+        lastEndDate: null,
+    };
+
     try {
         ({ browser, page } = await openMacromatixBrowser({ ...options, storeNumber: store.storeNumber }));
-        const storePipeline = {
-            reportNavigation: pipeline.reportNavigation,
-            reports,
-        };
-        settings = buildSettings(storePipeline, scmWorkDir);
-        settings.downloadWaitMs = Math.max(
-            ...reports.map((r) => Number(r.downloadWaitMs || settings.downloadWaitMs))
-        );
-        settings.chainReports = true;
-        settings.deferDownloadRename = true;
-        if (typeof options.onReportStep === 'function') {
-            settings.onReportStep = (step) => {
-                for (const r of reports) {
-                    options.onReportStep(r.id, step);
-                }
-            };
-        }
         await configureDownloadPath(page, scmWorkDir);
-        const paths = await downloadReports(page, settings);
 
-        if (settings?.pendingDownloadRenames?.length) {
-            const adopted = await flushDeferredDownloadRenames(settings);
-            for (const [reportId, dest] of Object.entries(adopted)) {
-                paths[reportId] = dest;
+        for (let i = 0; i < ids.length; i++) {
+            const reportId = ids[i];
+            const report = allReports.find((r) => r.id === reportId);
+            if (!report) continue;
+
+            const label = report.label || reportId;
+            const reportDir = path.join(mainDir, '_parallel', reportId);
+            ensureDir(reportDir);
+
+            if (i === 0) {
+                const cleared = clearMacromatixDefaultExports(scmWorkDir);
+                if (cleared.length) {
+                    log.info(
+                        `[parallel] Store ${store.storeNumber} SCM: cleared ${cleared.length} stale export file(s)`
+                    );
+                }
+            } else {
+                // Drop any leftover MMS default export name before the next generate.
+                clearMacromatixDefaultExports(scmWorkDir);
             }
-        }
 
-        for (const reportId of ids) {
-            const report = reports.find((r) => r.id === reportId);
-            const label = report?.label || reportId;
+            const storePipeline = {
+                reportNavigation: pipeline.reportNavigation,
+                reports: [report],
+            };
+            const settings = buildSettings(storePipeline, scmWorkDir);
+            settings.downloadWaitMs = Number(report.downloadWaitMs || settings.downloadWaitMs);
+            settings.chainReports = i > 0;
+            settings.chainSession = chainSession;
+            settings.deferDownloadRename = false;
+            if (typeof options.onReportStep === 'function') {
+                settings.onReportStep = (step) => options.onReportStep(reportId, step);
+            }
+
+            log.info(
+                `[parallel] Store ${store.storeNumber}: SCM step ${i + 1}/${ids.length} — ${label}`
+            );
+            const paths = await downloadReports(page, settings);
             let filePath = paths[reportId];
 
             if (!filePath || !fs.existsSync(filePath)) {
@@ -472,9 +483,7 @@ async function downloadChainedScmBuildToReportsForStore(store, reportIds, option
                 throw new Error(`${label} did not produce a file in ${scmWorkDir}`);
             }
 
-            const reportWorkDir = path.join(mainDir, '_parallel', reportId);
-            ensureDir(reportWorkDir);
-            const dest = path.join(reportWorkDir, path.basename(filePath));
+            const dest = path.join(reportDir, path.basename(filePath));
             if (path.resolve(filePath) !== path.resolve(dest)) {
                 if (fs.existsSync(dest)) fs.unlinkSync(dest);
                 moveFileResilientSync(filePath, dest);
@@ -607,9 +616,7 @@ async function downloadBuildToReportsParallel(storeNumber, options = {}) {
                       }
                   })
                   .catch((err) => {
-                      for (const reportId of scm) {
-                          errors.push(`${reportId}: ${err.message || err}`);
-                      }
+                      errors.push(`SCM (${scm.join(', ')}): ${err.message || err}`);
                   })
             : Promise.resolve();
 

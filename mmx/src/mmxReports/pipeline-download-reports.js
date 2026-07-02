@@ -473,6 +473,12 @@ async function downloadReports(page, settings) {
             }
             if (isSupplyChainReport(report)) {
                 paths[report.id] = await downloadSupplyChainReport(page, report, settings);
+                if (settings.deferDownloadRename && settings.pendingDownloadRenames?.length) {
+                    const adopted = await flushDeferredDownloadRenames(settings);
+                    if (adopted[report.id]) {
+                        paths[report.id] = adopted[report.id];
+                    }
+                }
                 refreshScrapePauseTimeout();
                 continue;
             }

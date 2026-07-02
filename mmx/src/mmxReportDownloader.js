@@ -2,10 +2,20 @@
 const fs = require('fs');
 const { getStoreList, getStoreConfig } = require('../../stores/src/storeList');
 const { openMacromatixBrowser, closeBrowserQuietly } = require('./macromatixScraper');
-const { downloadReports, configureDownloadPath, flushDeferredDownloadRenames } = require('./mmxReports/pipeline-download-reports');
+const {
+    downloadReports,
+    configureDownloadPath,
+    flushDeferredDownloadRenames,
+    normalizeMacromatixExportsForStore,
+} = require('./mmxReports/pipeline-download-reports');
 const { isSupplyChainReport } = require('./mmxReports/pipeline-supply-chain-reports');
 const { splitSpreadsheetByStoreColumn, resolveStoreReports } = require('../../vendors/src/reportReader');
-const { ensureDir, timestampSlug, moveFileResilientSync } = require('./mmxReports/util-files');
+const {
+    ensureDir,
+    timestampSlug,
+    moveFileResilientSync,
+    clearMacromatixDefaultExports,
+} = require('./mmxReports/util-files');
 const log = require('./mmxReports/util-logging');
 
 const paths = require('../../src/paths');
@@ -390,6 +400,12 @@ async function downloadOneBuildToReportForStore(store, reportId, options = {}) {
     const storeDir =
         options.reportDownloadDir || path.join(REPORTS_DIR, store.storeNumber, '_parallel', reportId);
     ensureDir(storeDir);
+    const cleared = clearMacromatixDefaultExports(storeDir);
+    if (cleared.length) {
+        log.info(
+            `[parallel] Store ${store.storeNumber} ${reportId}: cleared ${cleared.length} stale export file(s) in ${storeDir}`
+        );
+    }
 
     const label = report.label || reportId;
     let browser;
@@ -411,23 +427,34 @@ async function downloadOneBuildToReportForStore(store, reportId, options = {}) {
         }
         await configureDownloadPath(page, storeDir);
         const paths = await downloadReports(page, settings);
-        const filePath = paths[reportId];
-        if (!filePath) {
+        let filePath = paths[reportId];
+
+        // Rename while the browser still holds the download session — closing Chromium first
+        // often leaves MMS_Report_*.xls locked or missing on Windows (EBUSY / "did not produce a file").
+        if (settings?.pendingDownloadRenames?.length) {
+            const adopted = await flushDeferredDownloadRenames(settings);
+            filePath = adopted[reportId] || filePath;
+        }
+
+        if (!filePath || !fs.existsSync(filePath)) {
+            const adopted = normalizeMacromatixExportsForStore(storeDir, [reportId], {
+                storeNumber: store.storeNumber,
+                maxAgeMs: Number(process.env.MMX_PARALLEL_RECOVERY_AGE_MS || 15 * 60 * 1000),
+            });
+            filePath = adopted[reportId] || filePath;
+        }
+
+        if (!filePath || !fs.existsSync(filePath)) {
             throw new Error(`${label} did not produce a file in ${storeDir}`);
         }
-        return { reportId, filePath, storeDir, settings, storeNumber: store.storeNumber, label };
+        return { reportId, filePath, storeDir, storeNumber: store.storeNumber, label };
     } finally {
         await closeBrowserQuietly(browser, `parallel ${reportId}`);
     }
 }
 
 async function finalizeParallelDownloadResult(result) {
-    const { reportId, storeDir, settings, storeNumber, label } = result;
-    let filePath = result.filePath;
-    if (settings?.pendingDownloadRenames?.length) {
-        const adopted = await flushDeferredDownloadRenames(settings);
-        filePath = adopted[reportId] || filePath;
-    }
+    const { reportId, storeDir, storeNumber, label, filePath } = result;
     if (!filePath || !fs.existsSync(filePath)) {
         throw new Error(`${label || reportId} did not produce a file in ${storeDir}`);
     }

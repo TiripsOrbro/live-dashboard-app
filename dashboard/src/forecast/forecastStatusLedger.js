@@ -121,6 +121,44 @@ function resolveForecastTarget(options = {}) {
     return { scope: 'week-after', targetWeeks: [weekStart], dates: datesForWeekStart(weekStart), weekStart };
 }
 
+function formatShortDateAu(iso) {
+    const dt = new Date(`${iso}T12:00:00`);
+    if (Number.isNaN(dt.getTime())) return String(iso || '');
+    return new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short' }).format(dt);
+}
+
+/**
+ * Three sequential submit targets for the "Update next 3 weeks" action.
+ * Mon–Sat: remainder of this week (from tomorrow) + next two full weeks.
+ * Sunday: the next three full weeks (no days left to update this week).
+ */
+function resolveNextThreeWeekTargets(fromDate = new Date()) {
+    const weeks = getSelectableForecastWeekStarts(fromDate);
+    const isSunday = melbourneWeekdayIndex(fromDate) === 0;
+
+    const specs = isSunday
+        ? [
+              { targetScope: 'next-week' },
+              { targetScope: 'week-after' },
+              { targetScope: 'week', weekStart: addDaysToIso(weeks[2], 7) },
+          ]
+        : [{ targetScope: 'this-week' }, { targetScope: 'next-week' }, { targetScope: 'week-after' }];
+
+    return specs.map((spec) => {
+        const resolved = resolveForecastTarget({ ...spec, fromDate });
+        const first = resolved.dates[0];
+        const last = resolved.dates[resolved.dates.length - 1];
+        return {
+            targetScope: spec.targetScope,
+            ...(spec.targetScope === 'week' ? { weekStart: spec.weekStart } : {}),
+            targetWeeks: resolved.targetWeeks,
+            dates: resolved.dates,
+            partialCurrentWeek: resolved.partialCurrentWeek === true,
+            label: `${formatShortDateAu(first)} – ${formatShortDateAu(last)}`,
+        };
+    });
+}
+
 function ledgerFilePath(weekStart) {
     const key = String(weekStart || '').replace(/[^0-9-]/g, '');
     return path.join(STATUS_DIR, `${key}.json`);
@@ -224,6 +262,7 @@ module.exports = {
     getSelectableForecastWeekStarts,
     getTargetForecastWeekStarts,
     resolveForecastTarget,
+    resolveNextThreeWeekTargets,
     datesForWeekStart,
     submitDatesForWeek,
     addDaysToIso,

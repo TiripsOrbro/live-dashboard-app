@@ -563,6 +563,10 @@ async function runForecastForStores(storeNumbers, options = {}) {
     const runTarget = forecastRunOptions(options);
     const results = [];
     for (const storeNumber of storeNumbers || []) {
+        if (options.shouldAbort?.()) {
+            results.push({ storeNumber, ok: false, error: 'Cancelled before this store was submitted.' });
+            continue;
+        }
         try {
             const result = await runForecastForStore(storeNumber, { ...options, ...runTarget });
             results.push({ storeNumber, ok: true, ...result });
@@ -648,6 +652,10 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
 
         for (const storeNumber of storeNumbers || []) {
             const store = String(storeNumber || '').trim();
+            if (options.shouldAbort?.()) {
+                results.push({ storeNumber: store, ok: false, error: 'Cancelled before this store was submitted.' });
+                continue;
+            }
             try {
                 const preview = previewForecastForStore(store, { ...options, ...runTarget });
                 if (typeof options.onProgress === 'function') {
@@ -773,7 +781,7 @@ async function runCombinedForecastForStores(storeNumbers, options = {}) {
     const mmxResults = await runForecastForStores(storeNumbers, mmxOptions);
 
     let lifelenzResults = [];
-    if (options.lifelenzCredentials) {
+    if (options.lifelenzCredentials && !options.shouldAbort?.()) {
         console.log('[Forecast] Macromatix complete — starting LifeLenz phase…');
         onProgress?.({ type: 'lifelenz-phase-start', storeNumbers });
         await closeAllTrackedBrowsers('forecast-mmx-complete-before-lifelenz');
@@ -786,7 +794,7 @@ async function runCombinedForecastForStores(storeNumbers, options = {}) {
     }
 
     const manualSaved =
-        options.saveManualOnFailure !== false
+        options.saveManualOnFailure !== false && !options.shouldAbort?.()
             ? saveManualEntryPacksForRun(
                   storeNumbers,
                   mmxResults,

@@ -338,7 +338,12 @@ const {
 } = require('./services/dfsc/dfscStore');
 const { buildDfscReportPdf, buildReportFilename } = require('./services/dfsc/dfscReport');
 const { buildCoreReportPdf } = require('./services/dfsc/dfscCoreReport');
-const { buildStatusForStores, getTargetForecastWeekStarts, resolveForecastTarget } = require('../dashboard/src/forecast/forecastStatusLedger');
+const {
+    buildStatusForStores,
+    getTargetForecastWeekStarts,
+    resolveForecastTarget,
+    resolveNextThreeWeekTargets,
+} = require('../dashboard/src/forecast/forecastStatusLedger');
 const {
     runForecastForStores,
     runLifeLenzForecastForStores,
@@ -3833,6 +3838,19 @@ app.get('/api/admin/forecast/status', (req, res) => {
     });
 });
 
+app.get('/api/admin/forecast/next-three-weeks', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    try {
+        res.json({ success: true, targets: resolveNextThreeWeekTargets() });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message || 'Could not resolve week targets.' });
+    }
+});
+
 app.get('/api/admin/forecast/auto-submit', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     if (!canUserAccessAdminMenu(user)) {
@@ -4716,9 +4734,13 @@ app.post('/api/admin/forecast/run', async (req, res) => {
     const streamProgress = req.body?.streamProgress === true;
     const writeSse = (event, data) => {
         if (!streamProgress) return;
+        if (res.writableEnded || res.destroyed) return;
         res.write(`event: ${event}\n`);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
     };
+
+    let runCancelled = false;
+    let heartbeatTimer = null;
 
     if (streamProgress) {
         res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -4729,13 +4751,26 @@ app.post('/api/admin/forecast/run', async (req, res) => {
             storeNumbers,
             ...resolveForecastTarget(forecastRunOptions(forecastTargetFromBody(req.body))),
         });
+        // Heartbeat so the client can tell a slow run from a dead server.
+        heartbeatTimer = setInterval(() => writeSse('ping', { at: Date.now() }), 10000);
+        heartbeatTimer.unref?.();
+        // Client closed the stream (Cancel button or tab closed) - stop the run.
+        res.on('close', () => {
+            if (res.writableEnded) return;
+            runCancelled = true;
+            console.warn('[Forecast] Client disconnected — cancelling forecast run for', storeNumbers.join(', '));
+            closeAllTrackedBrowsers('forecast-run-cancelled-by-client').catch(() => {});
+        });
     }
 
     try {
+        writeSse('progress', { type: 'status', label: 'Waiting for the MMX browser slot…' });
         await runWithPriority(PRIORITY.ADMIN, {
             type: 'admin-forecast',
             label: 'forecast tool',
             run: async () => {
+                if (runCancelled) return;
+                writeSse('progress', { type: 'status', label: 'Starting Macromatix…' });
                 const headed =
                     req.body?.headed === true ||
                     /^(0|false|no|off)$/i.test(String(process.env.FORECAST_SCRAPER_HEADLESS ?? '').trim());
@@ -4773,6 +4808,7 @@ app.post('/api/admin/forecast/run', async (req, res) => {
                     headless,
                     lifelenzCredentials,
                     keepBrowserOpen: headed && req.body?.keepBrowserOpen === true,
+                    shouldAbort: () => runCancelled,
                     onProgress: (payload) => {
                         writeSse('progress', payload);
                         if (payload?.type === 'lifelenz-phase-start') {
@@ -4810,6 +4846,7 @@ app.post('/api/admin/forecast/run', async (req, res) => {
                 const payload = {
                     success: !allFailed,
                     partialFailure: !allFailed && anyFailed,
+                    cancelled: runCancelled,
                     mmx: mmxResults,
                     lifelenz: lifelenzResults,
                     lifelenzSkipped: combined.lifelenzSkipped === true,
@@ -4840,6 +4877,15 @@ app.post('/api/admin/forecast/run', async (req, res) => {
             return;
         }
         res.status(500).json(payload);
+    } finally {
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        if (streamProgress && !res.writableEnded) {
+            try {
+                res.end();
+            } catch {
+                /* connection already gone */
+            }
+        }
     }
 });
 

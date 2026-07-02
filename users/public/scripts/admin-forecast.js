@@ -15,6 +15,10 @@
     let previewActiveStore = null;
     let previewAdjustmentsSaveTimer = null;
     let pendingSubmitTarget = null;
+    let threeWeekBatchRunning = false;
+    let progressAbortController = null;
+    let progressLastEventAt = 0;
+    let progressWatchdogTimer = null;
     let statusPayload = null;
     let storeAreaByNumber = {};
     let activeArea = '';
@@ -364,22 +368,25 @@
                     </div>
                 </div>
                 <div class="admin-modal-toolbar admin-forecast-toolbar">
-                    <div class="admin-forecast-target-wrap" id="admin-forecast-target-wrap">
-                        <label class="admin-forecast-target-scope-label">Forecast target
-                            <select id="admin-forecast-target-scope">
-                                <option value="this-week">This week</option>
-                                <option value="next-week">Next week</option>
-                                <option value="week-after" selected>Week after</option>
-                                <option value="week">Week starting…</option>
-                                <option value="day">Single day</option>
-                            </select>
-                        </label>
-                        <label class="admin-forecast-target-week-start-label" id="admin-forecast-target-week-wrap" hidden>Week starting
-                            <input type="date" id="admin-forecast-target-week-start" />
-                        </label>
-                        <label class="admin-forecast-target-day-label" id="admin-forecast-target-day-wrap" hidden>Day
-                            <input type="date" id="admin-forecast-target-day" />
-                        </label>
+                    <div class="admin-forecast-target-row">
+                        <div class="admin-forecast-target-wrap" id="admin-forecast-target-wrap">
+                            <label class="admin-forecast-target-scope-label">Forecast target
+                                <select id="admin-forecast-target-scope">
+                                    <option value="this-week">This week</option>
+                                    <option value="next-week">Next week</option>
+                                    <option value="week-after" selected>Week after</option>
+                                    <option value="week">Week starting…</option>
+                                    <option value="day">Single day</option>
+                                </select>
+                            </label>
+                            <label class="admin-forecast-target-week-start-label" id="admin-forecast-target-week-wrap" hidden>Week starting
+                                <input type="date" id="admin-forecast-target-week-start" />
+                            </label>
+                            <label class="admin-forecast-target-day-label" id="admin-forecast-target-day-wrap" hidden>Day
+                                <input type="date" id="admin-forecast-target-day" />
+                            </label>
+                        </div>
+                        <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-update-three-weeks">Update next 3 weeks</button>
                     </div>
                     <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-submit-all">Submit all in scope</button>
                     <button type="button" class="mic-settings-btn" id="admin-forecast-setup-lifelenz">Setup LifeLenz</button>
@@ -399,6 +406,9 @@
         root.querySelector('#admin-forecast-close')?.addEventListener('click', close);
         root.querySelector('#admin-forecast-submit-all')?.addEventListener('click', () => {
             void runAll();
+        });
+        root.querySelector('#admin-forecast-update-three-weeks')?.addEventListener('click', () => {
+            void runNextThreeWeeksForArea();
         });
         root.querySelector('#admin-forecast-setup-lifelenz')?.addEventListener('click', () => {
             void openLifeLenzSetup();
@@ -832,6 +842,44 @@
         }
     }
 
+    const PROGRESS_STALL_WARN_MS = 45000;
+
+    function startProgressWatchdog() {
+        stopProgressWatchdog();
+        progressLastEventAt = Date.now();
+        progressWatchdogTimer = setInterval(() => {
+            if (!progressState || progressState.complete || !progressBackdrop || progressBackdrop.hidden) return;
+            const el = progressBackdrop.querySelector('#admin-forecast-progress-error');
+            if (!el) return;
+            const quietMs = Date.now() - progressLastEventAt;
+            if (quietMs >= PROGRESS_STALL_WARN_MS) {
+                el.textContent = `No updates from the server for ${Math.round(quietMs / 1000)} seconds — it may have restarted or stalled. You can cancel and try again.`;
+                el.dataset.stallWarning = '1';
+            } else if (el.dataset.stallWarning) {
+                el.textContent = '';
+                delete el.dataset.stallWarning;
+            }
+        }, 5000);
+    }
+
+    function stopProgressWatchdog() {
+        if (progressWatchdogTimer) {
+            clearInterval(progressWatchdogTimer);
+            progressWatchdogTimer = null;
+        }
+    }
+
+    function cancelProgressRun() {
+        if (!progressAbortController) return;
+        if (progressState) progressState.cancelRequested = true;
+        const btn = progressBackdrop?.querySelector('#admin-forecast-progress-cancel');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Cancelling…';
+        }
+        progressAbortController.abort();
+    }
+
     async function runStoresWithProgress(storeNumbers, onEvent) {
         const body = { storeNumbers, streamProgress: true, ...getActiveForecastTargetPayload() };
         if (sessionLifeLenzCredentials) {
@@ -840,33 +888,56 @@
                 password: sessionLifeLenzCredentials.password,
             };
         }
-        const res = await fetch('/api/admin/forecast/run', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: 'text/event-stream',
-            },
-            credentials: 'same-origin',
-            body: JSON.stringify(body),
-        });
-        const contentType = res.headers.get('content-type') || '';
-        if (contentType.includes('text/event-stream') && res.body) {
-            let finalPayload = null;
-            await consumeSseStream(res, (eventName, data) => {
-                if (eventName === 'progress') onEvent?.('progress', data);
-                else if (eventName === 'platform-started') onEvent?.('platform-started', data);
-                else if (eventName === 'lifelenz-started') onEvent?.('lifelenz-started', data);
-                else if (eventName === 'complete' || eventName === 'error') finalPayload = data;
-                else if (eventName === 'started') onEvent?.('started', data);
+        progressAbortController = new AbortController();
+        startProgressWatchdog();
+        try {
+            const res = await fetch('/api/admin/forecast/run', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'text/event-stream',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify(body),
+                signal: progressAbortController.signal,
             });
-            if (finalPayload && !finalPayload.success) {
+            const contentType = res.headers.get('content-type') || '';
+            if (contentType.includes('text/event-stream') && res.body) {
+                let finalPayload = null;
+                try {
+                    await consumeSseStream(res, (eventName, data) => {
+                        progressLastEventAt = Date.now();
+                        if (eventName === 'progress') onEvent?.('progress', data);
+                        else if (eventName === 'platform-started') onEvent?.('platform-started', data);
+                        else if (eventName === 'lifelenz-started') onEvent?.('lifelenz-started', data);
+                        else if (eventName === 'complete' || eventName === 'error') finalPayload = data;
+                        else if (eventName === 'started') onEvent?.('started', data);
+                    });
+                } catch (streamErr) {
+                    if (streamErr?.name === 'AbortError') throw streamErr;
+                    throw new Error(
+                        'Lost connection to the server mid-run (it may have restarted). Check the status table before retrying.'
+                    );
+                }
+                if (!finalPayload) {
+                    throw new Error(
+                        'The server closed the connection before finishing. Check the status table before retrying.'
+                    );
+                }
                 return finalPayload;
             }
-            return finalPayload;
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) throw new Error(data.error || 'Forecast run failed.');
+            return data;
+        } catch (err) {
+            if (err?.name === 'AbortError') {
+                return { success: false, cancelled: true, error: 'Cancelled — remaining days were not submitted.' };
+            }
+            throw err;
+        } finally {
+            stopProgressWatchdog();
+            progressAbortController = null;
         }
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.success) throw new Error(data.error || 'Forecast run failed.');
-        return data;
     }
 
     function initProgressState(storeNumbers, previewSnapshot) {
@@ -920,6 +991,9 @@
             lifelenzViewPinned: false,
             phase: 'both',
             lifelenzLiveLabel: null,
+            batch: null,
+            statusLabel: null,
+            cancelRequested: false,
             complete: false,
             results: null,
             error: null,
@@ -970,6 +1044,13 @@
 
     function applyProgressEvent(state, payload) {
         if (!state || !payload?.type) return;
+
+        if (payload.type === 'status') {
+            state.statusLabel = payload.label || null;
+            return;
+        }
+        // Any real progress supersedes the early "waiting/starting" status line.
+        state.statusLabel = null;
 
         if (payload.type === 'lifelenz-phase-start') {
             state.phase = 'lifelenz';
@@ -1158,6 +1239,7 @@
                 </div>
                 <p id="admin-forecast-progress-error" class="admin-modal-error" role="alert"></p>
                 <div class="admin-modal-actions admin-modal-actions--progress">
+                    <button type="button" class="mic-settings-btn" id="admin-forecast-progress-cancel" hidden>Cancel</button>
                     <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-progress-close" disabled aria-disabled="true">Submitting…</button>
                 </div>
             </div>`;
@@ -1165,6 +1247,9 @@
         progressBackdrop.querySelector('#admin-forecast-progress-close')?.addEventListener('click', () => {
             if (!progressState?.complete && !progressState?.error) return;
             void closeProgress(true);
+        });
+        progressBackdrop.querySelector('#admin-forecast-progress-cancel')?.addEventListener('click', () => {
+            cancelProgressRun();
         });
         progressBackdrop.addEventListener('click', (event) => {
             const btn = event.target.closest('[data-progress-day-nav]');
@@ -1202,6 +1287,12 @@
 
     function closeProgress(refreshMain = false) {
         if (progressBackdrop) progressBackdrop.hidden = true;
+        stopProgressWatchdog();
+        try {
+            progressAbortController?.abort();
+        } catch (_) {
+            /* already finished */
+        }
         progressState = null;
         pendingSubmitTarget = null;
         if (refreshMain) {
@@ -1241,6 +1332,20 @@
         btn.disabled = !enabled;
         btn.textContent = label;
         btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+        // While the run is in flight the Cancel button is shown; once it can be closed the run is over.
+        const cancelBtn = root.querySelector('#admin-forecast-progress-cancel');
+        if (cancelBtn) {
+            cancelBtn.hidden = enabled;
+            if (!enabled) {
+                if (progressState?.cancelRequested) {
+                    cancelBtn.disabled = true;
+                    cancelBtn.textContent = 'Cancelling…';
+                } else {
+                    cancelBtn.disabled = false;
+                    cancelBtn.textContent = 'Cancel';
+                }
+            }
+        }
     }
 
     function findProgressDayIndex(days, date) {
@@ -1566,11 +1671,17 @@
             state.stores.some((s) => s.lifelenzStatus === 'active') ||
             (mmxAllDone && llDone < state.stores.length && Boolean(state.lifelenzLiveLabel));
 
-        root.querySelector('#admin-forecast-progress-title').textContent =
-            lifelenzActive && mmxAllDone ? 'Submitting forecast to LifeLenz' : 'Submitting forecast';
-        root.querySelector('#admin-forecast-progress-meta').textContent = activeStore
+        const baseTitle = lifelenzActive && mmxAllDone ? 'Submitting forecast to LifeLenz' : 'Submitting forecast';
+        const batch = state.batch;
+        root.querySelector('#admin-forecast-progress-title').textContent = batch
+            ? `${baseTitle} · week ${batch.index} of ${batch.total}`
+            : baseTitle;
+        let baseMeta = activeStore
             ? `Store ${activeStore.storeNumber}${activeStore.storeName !== activeStore.storeNumber ? ' · ' + activeStore.storeName : ''} · MMX ${mmxDone}/${state.stores.length} · LifeLenz ${llDone}/${state.stores.length}`
             : 'Starting…';
+        if (state.statusLabel) baseMeta = `${state.statusLabel} · ${baseMeta}`;
+        root.querySelector('#admin-forecast-progress-meta').textContent =
+            batch?.label ? `${batch.label} · ${baseMeta}` : baseMeta;
 
         const autoMmxDay = getAutoMmxFocusDay(activeStore, state, mmxAllDone, lifelenzActive);
         if (!state.mmxViewPinned && autoMmxDay?.date) {
@@ -1757,8 +1868,11 @@
         const llFailed = !lifelenzSkipped && lifelenzResults.some((row) => !row.ok);
         const doneTitle = root.querySelector('#admin-forecast-progress-done-title');
         if (doneTitle) {
-            doneTitle.textContent =
-                mmxFailed || llFailed ? 'Forecast finished with errors' : 'Forecast entered';
+            doneTitle.textContent = payload?.cancelled
+                ? 'Forecast cancelled'
+                : mmxFailed || llFailed
+                  ? 'Forecast finished with errors'
+                  : 'Forecast entered';
         }
 
         root.querySelector('#admin-forecast-progress-done-meta').textContent = [
@@ -1814,8 +1928,9 @@
         })();
     }
 
-    function openProgress(storeNumbers, previewSnapshot) {
+    function openProgress(storeNumbers, previewSnapshot, batch = null) {
         progressState = initProgressState(storeNumbers, previewSnapshot);
+        if (batch) progressState.batch = batch;
         const root = ensureProgressBackdrop();
         root.hidden = false;
         renderProgressWorking();
@@ -2161,12 +2276,12 @@
         return data;
     }
 
-    async function fetchPreview(storeNumbers) {
+    async function fetchPreview(storeNumbers, targetOverride = null) {
         const res = await fetch('/api/admin/forecast/preview', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'same-origin',
-            body: JSON.stringify({ storeNumbers, ...getActiveForecastTargetPayload() }),
+            body: JSON.stringify({ storeNumbers, ...(targetOverride || getActiveForecastTargetPayload()) }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) {
@@ -3897,6 +4012,7 @@
                     <td class="admin-forecast-actions">
                         <button type="button" class="mic-settings-btn" data-history-store="${escapeHtml(storeNumber)}">History</button>
                         <button type="button" class="mic-settings-btn admin-btn-primary" data-submit-store="${escapeHtml(storeNumber)}"${runDisabled}>Submit</button>
+                        <button type="button" class="mic-settings-btn" data-update-three-weeks-store="${escapeHtml(storeNumber)}"${runDisabled}>3 weeks</button>
                     </td>
                 </tr>`;
             })
@@ -3917,6 +4033,11 @@
         body.querySelectorAll('[data-history-store]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 void openHistory(btn.getAttribute('data-history-store'));
+            });
+        });
+        body.querySelectorAll('[data-update-three-weeks-store]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                void runNextThreeWeeks({ storeNumbers: [btn.getAttribute('data-update-three-weeks-store')] });
             });
         });
     }
@@ -4087,6 +4208,124 @@
             return;
         }
         await openPreview(storeNumbers, { focusSubmit: true });
+    }
+
+    async function fetchNextThreeWeekTargets() {
+        const res = await fetch('/api/admin/forecast/next-three-weeks', { credentials: 'same-origin' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Could not work out the next 3 week ranges.');
+        }
+        return data.targets || [];
+    }
+
+    function setThreeWeekButtonsDisabled(disabled) {
+        const root = getRoot();
+        if (!root) return;
+        const areaBtn = root.querySelector('#admin-forecast-update-three-weeks');
+        if (areaBtn) areaBtn.disabled = disabled;
+        root.querySelectorAll('[data-update-three-weeks-store]').forEach((btn) => {
+            btn.disabled = disabled;
+        });
+    }
+
+    async function runNextThreeWeeksForArea() {
+        const root = ensureBackdrop();
+        root.querySelector('#admin-forecast-error').textContent = '';
+        const data = statusPayload || (await fetchStatus());
+        const storeNumbers = storesInActiveArea(
+            Object.entries(data.history?.stores || {})
+                .filter(([, row]) => row.ready)
+                .map(([storeNumber]) => storeNumber)
+        );
+        if (!storeNumbers.length) {
+            root.querySelector('#admin-forecast-error').textContent =
+                `No ready stores in ${activeArea || 'this area'}. Open History and use Backfill data first.`;
+            renderTable(root, data);
+            return;
+        }
+        await runNextThreeWeeks({ storeNumbers });
+    }
+
+    async function runNextThreeWeeks({ storeNumbers }) {
+        if (threeWeekBatchRunning) return;
+        const root = ensureBackdrop();
+        const errorEl = root.querySelector('#admin-forecast-error');
+        errorEl.textContent = '';
+        const stores = (storeNumbers || []).map((s) => String(s).trim()).filter(Boolean);
+        if (!stores.length) return;
+
+        let targets;
+        try {
+            targets = await fetchNextThreeWeekTargets();
+        } catch (error) {
+            errorEl.textContent = error.message;
+            return;
+        }
+        if (!Array.isArray(targets) || targets.length !== 3) {
+            errorEl.textContent = 'Could not work out the next 3 week ranges.';
+            return;
+        }
+
+        const storeLabel = stores.length === 1 ? `store ${stores[0]}` : `${stores.length} stores`;
+        const rangesText = targets.map((t, idx) => `Week ${idx + 1}: ${t.label}`).join('\n');
+        const confirmed = window.confirm(
+            `Update the next 3 weeks for ${storeLabel}?\n\n${rangesText}\n\nEach week runs a full Macromatix + LifeLenz submit.`
+        );
+        if (!confirmed) return;
+
+        threeWeekBatchRunning = true;
+        setThreeWeekButtonsDisabled(true);
+        try {
+            for (let idx = 0; idx < targets.length; idx += 1) {
+                const target = targets[idx];
+                const targetPayload = { targetScope: target.targetScope };
+                if (target.weekStart) targetPayload.weekStart = target.weekStart;
+                pendingSubmitTarget = targetPayload;
+
+                let previewSnapshot;
+                try {
+                    previewSnapshot = await fetchPreview(stores, targetPayload);
+                } catch (error) {
+                    throw new Error(`Week ${idx + 1} of 3 (${target.label}): ${error.message}`);
+                }
+
+                openProgress(stores, previewSnapshot, {
+                    index: idx + 1,
+                    total: targets.length,
+                    label: target.label,
+                });
+
+                const payload = await runStoresWithProgress(stores, (eventName, data) => {
+                    if (eventName === 'progress') handleProgressPayload(data);
+                    else if (eventName === 'platform-started') handlePlatformStarted(data);
+                    else if (eventName === 'lifelenz-started') handleLifeLenzStarted(data);
+                });
+
+                if (!payload?.success) {
+                    renderProgressComplete(payload);
+                    const progressRoot = ensureProgressBackdrop();
+                    progressRoot.querySelector('#admin-forecast-progress-error').textContent = payload?.cancelled
+                        ? `Cancelled during week ${idx + 1} of 3 (${target.label}). Remaining weeks were not submitted.`
+                        : `Week ${idx + 1} of 3 (${target.label}) failed: ${payload?.error || 'Forecast run failed.'} Remaining weeks were not submitted.`;
+                    return;
+                }
+                if (idx === targets.length - 1) {
+                    renderProgressComplete(payload);
+                }
+                pendingSubmitTarget = null;
+            }
+        } catch (error) {
+            const progressRoot = ensureProgressBackdrop();
+            progressRoot.hidden = false;
+            progressRoot.querySelector('#admin-forecast-progress-error').textContent = error.message;
+            setProgressCloseEnabled(progressRoot, true, { label: 'Done' });
+            if (progressState) progressState.error = error.message;
+        } finally {
+            threeWeekBatchRunning = false;
+            pendingSubmitTarget = null;
+            setThreeWeekButtonsDisabled(false);
+        }
     }
 
     async function open() {

@@ -3549,6 +3549,48 @@ html.mic-dark-mode .admin-forecast-preview-target {
     border-color: rgba(255, 255, 255, 0.12);
 }
 
+.admin-forecast-override-target {
+    padding: 0 0 0.75rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.admin-modal--history .admin-forecast-override-target .admin-forecast-target-wrap {
+    margin-bottom: 0.35rem;
+}
+
+html.mic-dark-mode .admin-forecast-override-target {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.admin-forecast-target-wrap--inline {
+    width: auto;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.admin-forecast-target-wrap--inline .admin-forecast-target-scope-label,
+.admin-forecast-target-wrap--inline .admin-forecast-target-week-start-label,
+.admin-forecast-target-wrap--inline .admin-forecast-target-day-label {
+    flex-direction: row;
+    align-items: center;
+    flex: 0 0 auto;
+    min-width: 0;
+    gap: 0.35rem;
+    white-space: nowrap;
+}
+
+.admin-forecast-target-wrap--inline select,
+.admin-forecast-target-wrap--inline input[type='date'] {
+    width: auto;
+    min-width: 9rem;
+}
+
+.admin-forecast-override-target-hint {
+    margin: -0.35rem 0 0.75rem;
+}
+
 .admin-forecast-target-wrap {
     display: flex;
     flex-wrap: wrap;

@@ -115,14 +115,30 @@
         day: '#admin-forecast-preview-target-day',
     };
 
+    const OVERRIDE_TARGET_IDS = {
+        scope: '#admin-forecast-override-target-scope',
+        weekWrap: '#admin-forecast-override-target-week-wrap',
+        weekStart: '#admin-forecast-override-target-week-start',
+        dayWrap: '#admin-forecast-override-target-day-wrap',
+        day: '#admin-forecast-override-target-day',
+    };
+
     function getPreviewTargetPayload() {
         const root = previewBackdrop;
         return getForecastTargetPayloadFromRoot(root, PREVIEW_TARGET_IDS);
     }
 
+    function getOverrideTargetPayload() {
+        const root = overrideForecastBackdrop;
+        return getForecastTargetPayloadFromRoot(root, OVERRIDE_TARGET_IDS);
+    }
+
     function getActiveForecastTargetPayload() {
         if (previewBackdrop && !previewBackdrop.hidden) {
             return getPreviewTargetPayload();
+        }
+        if (overrideForecastBackdrop && !overrideForecastBackdrop.hidden) {
+            return getOverrideTargetPayload();
         }
         return pendingSubmitTarget || getForecastTargetPayload();
     }
@@ -143,6 +159,10 @@
 
     function validatePreviewTarget() {
         return validateForecastTargetPayload(getPreviewTargetPayload());
+    }
+
+    function validateOverrideTarget() {
+        return validateForecastTargetPayload(getOverrideTargetPayload());
     }
 
     function renderForecastTargetControls(root, payload) {
@@ -189,6 +209,40 @@
         const hint = root?.querySelector('#admin-forecast-preview-target-hint');
         if (!hint) return;
         const payload = getPreviewTargetPayload();
+        const desc = describeForecastTarget(payload);
+        const weeks = statusPayload?.targetWeeks || [];
+        const partial =
+            payload.targetScope === 'this-week' ||
+            (payload.targetScope === 'week' && payload.weekStart && payload.weekStart === weeks[0]);
+        hint.textContent = partial
+            ? `${desc}. Current week updates start from tomorrow only.`
+            : desc;
+    }
+
+    function renderOverrideTargetControls(root, payload) {
+        const scopeEl = root.querySelector(OVERRIDE_TARGET_IDS.scope);
+        const weekStartEl = root.querySelector(OVERRIDE_TARGET_IDS.weekStart);
+        const dayEl = root.querySelector(OVERRIDE_TARGET_IDS.day);
+        if (!scopeEl) return;
+
+        const main = getForecastTargetPayload();
+        const weeks = payload?.targetWeeks || statusPayload?.targetWeeks || [];
+        scopeEl.value = main.targetScope || 'week-after';
+        syncForecastTargetFields(root, scopeEl.value, OVERRIDE_TARGET_IDS);
+
+        if (weekStartEl) {
+            weekStartEl.value = main.weekStart || weeks[0] || weekStartEl.value || '';
+        }
+        if (dayEl) {
+            dayEl.value = main.date || dayEl.value || '';
+        }
+        updateOverrideTargetHint(root);
+    }
+
+    function updateOverrideTargetHint(root) {
+        const hint = root?.querySelector('#admin-forecast-override-target-hint');
+        if (!hint) return;
+        const payload = getOverrideTargetPayload();
         const desc = describeForecastTarget(payload);
         const weeks = statusPayload?.targetWeeks || [];
         const partial =
@@ -2672,6 +2726,7 @@
 
     let overrideForecastBackdrop = null;
     let overrideState = null;
+    let overrideActiveStore = null;
 
     function round2(value) {
         return Math.round((Number(value) || 0) * 100) / 100;
@@ -2869,9 +2924,27 @@
                         <button type="button" class="admin-forecast-mode-toggle-btn is-active" data-override-display-mode="dollar" aria-pressed="true">$</button>
                         <button type="button" class="admin-forecast-mode-toggle-btn" data-override-display-mode="percent" aria-pressed="false">% change</button>
                     </div>
+                    <div class="admin-forecast-target-wrap admin-forecast-target-wrap--inline" id="admin-forecast-override-target-wrap">
+                        <label class="admin-forecast-target-scope-label">Week
+                            <select id="admin-forecast-override-target-scope">
+                                <option value="this-week">This week (from tomorrow)</option>
+                                <option value="next-week">Next week</option>
+                                <option value="week-after" selected>Week after</option>
+                                <option value="week">Week starting…</option>
+                                <option value="day">Single day</option>
+                            </select>
+                        </label>
+                        <label class="admin-forecast-target-week-start-label" id="admin-forecast-override-target-week-wrap" hidden>Starting
+                            <input type="date" id="admin-forecast-override-target-week-start" />
+                        </label>
+                        <label class="admin-forecast-target-day-label" id="admin-forecast-override-target-day-wrap" hidden>Day
+                            <input type="date" id="admin-forecast-override-target-day" />
+                        </label>
+                    </div>
                     <button type="button" class="mic-settings-btn" id="admin-forecast-override-reset">Reset week</button>
                     <span class="admin-forecast-override-week-total" id="admin-forecast-override-week-total"></span>
                 </div>
+                <p class="admin-accounts-meta admin-forecast-override-target-hint" id="admin-forecast-override-target-hint"></p>
                 <div id="admin-forecast-override-body"></div>
                 <p class="admin-accounts-meta" id="admin-forecast-override-lifelenz-note" hidden></p>
                 <p id="admin-forecast-override-error" class="admin-modal-error" role="alert"></p>
@@ -2893,6 +2966,19 @@
         });
         overrideForecastBackdrop.querySelector('#admin-forecast-override-submit')?.addEventListener('click', () => {
             void submitOverrideForecast();
+        });
+        overrideForecastBackdrop.querySelector('#admin-forecast-override-target-scope')?.addEventListener('change', (event) => {
+            syncForecastTargetFields(overrideForecastBackdrop, event.target.value, OVERRIDE_TARGET_IDS);
+            updateOverrideTargetHint(overrideForecastBackdrop);
+            void reloadOverrideForTarget();
+        });
+        overrideForecastBackdrop.querySelector('#admin-forecast-override-target-week-start')?.addEventListener('change', () => {
+            updateOverrideTargetHint(overrideForecastBackdrop);
+            void reloadOverrideForTarget();
+        });
+        overrideForecastBackdrop.querySelector('#admin-forecast-override-target-day')?.addEventListener('change', () => {
+            updateOverrideTargetHint(overrideForecastBackdrop);
+            void reloadOverrideForTarget();
         });
         overrideForecastBackdrop
             .querySelector('#admin-forecast-override-reset')
@@ -2922,6 +3008,7 @@
     function closeOverrideForecast() {
         if (overrideForecastBackdrop) overrideForecastBackdrop.hidden = true;
         overrideState = null;
+        overrideActiveStore = null;
     }
 
     function renderOverrideForecastGrid(focus) {
@@ -3262,6 +3349,11 @@
         if (!st) return;
         const errEl = root.querySelector('#admin-forecast-override-error');
         errEl.textContent = '';
+        const targetErr = validateOverrideTarget();
+        if (targetErr) {
+            errEl.textContent = targetErr;
+            return;
+        }
         const submitBtn = root.querySelector('#admin-forecast-override-submit');
         setOverrideButtonsBusy(root, true);
         submitBtn.textContent = 'Submitting…';
@@ -3281,7 +3373,7 @@
             return;
         }
 
-        pendingSubmitTarget = getForecastTargetPayload();
+        pendingSubmitTarget = getOverrideTargetPayload();
         closeOverrideForecast();
         setOverrideButtonsBusy(root, false);
         submitBtn.textContent = 'Submit forecast';
@@ -3307,10 +3399,8 @@
         }
     }
 
-    async function openOverrideForecast(storeNumber) {
+    async function loadOverrideForecastData(storeNumber) {
         const root = ensureOverrideForecastBackdrop();
-        overrideState = null;
-        root.hidden = false;
         root.querySelector('#admin-forecast-override-title').textContent = `Override Forecast - ${storeNumber}`;
         root.querySelector('#admin-forecast-override-error').textContent = '';
         root.querySelector('#admin-forecast-override-body').innerHTML = '<p>Loading forecast…</p>';
@@ -3322,7 +3412,7 @@
         syncOverrideDisplayModeToggle(root);
         const noteEl = root.querySelector('#admin-forecast-override-lifelenz-note');
         if (noteEl) noteEl.hidden = true;
-        const targetErr = validateForecastTarget();
+        const targetErr = validateOverrideTarget();
         if (targetErr) {
             root.querySelector('#admin-forecast-override-error').textContent = targetErr;
             root.querySelector('#admin-forecast-override-body').innerHTML = '';
@@ -3350,6 +3440,21 @@
             root.querySelector('#admin-forecast-override-error').textContent = error.message;
             root.querySelector('#admin-forecast-override-body').innerHTML = '';
         }
+    }
+
+    async function reloadOverrideForTarget() {
+        if (!overrideActiveStore) return;
+        overrideState = null;
+        await loadOverrideForecastData(overrideActiveStore);
+    }
+
+    async function openOverrideForecast(storeNumber) {
+        overrideActiveStore = storeNumber;
+        const root = ensureOverrideForecastBackdrop();
+        overrideState = null;
+        root.hidden = false;
+        renderOverrideTargetControls(root, statusPayload);
+        await loadOverrideForecastData(storeNumber);
     }
 
     function syncBackfillButtons() {

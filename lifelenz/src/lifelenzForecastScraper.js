@@ -23,6 +23,52 @@ function isDestroyedContextError(err) {
     return /context was destroyed|Execution context|Cannot find context/i.test(err?.message || '');
 }
 
+function isNonClickableNodeError(err) {
+    return /not clickable|not an HTMLElement|detached|Node is detached/i.test(err?.message || '');
+}
+
+/**
+ * Click through Puppeteer handles that may point at icons/spans inside controls.
+ * Falls back to DOM .click() and mouse coordinates when ElementHandle.click() fails.
+ */
+async function safeClickHandle(page, handle) {
+    if (!handle) return false;
+    try {
+        await handle.evaluate((el) => {
+            const target =
+                el.closest?.('a, button, input, [role="button"], [role="menuitem"], [role="option"], label') ||
+                el;
+            target.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+        });
+        await handle.click({ delay: 20 });
+        return true;
+    } catch (err) {
+        if (isDestroyedContextError(err)) return false;
+        if (!isNonClickableNodeError(err)) throw err;
+        try {
+            const clicked = await page.evaluate((el) => {
+                if (!el) return false;
+                const target =
+                    el.closest?.('a, button, input, [role="button"], [role="menuitem"], [role="option"], label') ||
+                    el;
+                if (!target || typeof target.click !== 'function') return false;
+                target.click();
+                return true;
+            }, handle);
+            if (clicked) return true;
+        } catch (evaluateErr) {
+            if (isDestroyedContextError(evaluateErr)) return false;
+            if (!isNonClickableNodeError(evaluateErr)) throw evaluateErr;
+        }
+        const box = await handle.boundingBox().catch(() => null);
+        if (box && box.width > 0 && box.height > 0) {
+            await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+            return true;
+        }
+        return false;
+    }
+}
+
 function resolveQuirkReloadMaxMs(options = {}) {
     if (Number.isFinite(options.quirkReloadMaxMs)) return options.quirkReloadMaxMs;
     const raw = process.env.LIFELENZ_QUIRK_RELOAD_MAX_MS;
@@ -52,8 +98,7 @@ async function clickByText(page, selectors, textPattern, options = {}) {
         for (const handle of handles) {
             const text = await page.evaluate((el) => (el.textContent || '').replace(/\s+/g, ' ').trim(), handle);
             if (pattern.test(text)) {
-                await handle.click();
-                return true;
+                if (await safeClickHandle(page, handle)) return true;
             }
         }
     }
@@ -114,7 +159,7 @@ async function selectStoreInLifeLenz(page, storeNumber) {
     for (const selector of triggers) {
         const el = await page.$(selector);
         if (!el) continue;
-        await el.click().catch(() => null);
+        await safeClickHandle(page, el);
         await page.waitForTimeout(500);
         const picked = await clickByText(
             page,
@@ -145,7 +190,7 @@ async function navigateToForecast(page) {
 
         const analyticsBtn = await page.$('[data-testid="lz-dropdown-trigger-analytics"]');
         if (analyticsBtn) {
-            await analyticsBtn.click();
+            await safeClickHandle(page, analyticsBtn);
         } else {
             await clickByText(page, ['button'], /analytics/i);
         }
@@ -194,15 +239,15 @@ async function isForecastDayViewActive(page) {
 async function switchToDayView(page) {
     const alreadyDay = await isForecastDayViewActive(page).catch(() => false);
     if (!alreadyDay) {
+        let switched = false;
         const dayLink = await page.$('a.calendar-unit-link.day, a[aria-label="Day View"]');
-        if (dayLink) {
-            await dayLink.click();
-        } else {
-            const clicked =
+        if (dayLink) switched = await safeClickHandle(page, dayLink);
+        if (!switched) {
+            switched =
                 (await clickByText(page, ['a', 'button'], /^day$/i)) ||
                 (await clickByText(page, ['a', 'button'], /^d$/i));
-            if (!clicked) throw new Error('Could not switch LifeLenz forecast to Day view.');
         }
+        if (!switched) throw new Error('Could not switch LifeLenz forecast to Day view.');
     }
     // Day view is ready when the date toolbar renders; fall back to a short
     // settle if the selector never appears (older UI variants).
@@ -416,11 +461,7 @@ async function clickForecastDateArrow(page, forward) {
                 return goForward ? targetMid > displayMid : targetMid < displayMid;
             }, forward);
             if (!shouldClick) continue;
-            const clickHandle = await handle.evaluateHandle((el) => el.closest('a, button') || el);
-            const clickEl = clickHandle.asElement();
-            if (!clickEl) continue;
-            await clickEl.click().catch(() => null);
-            return true;
+            if (await safeClickHandle(page, handle)) return true;
         }
     }
 
@@ -484,7 +525,7 @@ async function openForecastCalendarPicker(page) {
 
     const dateTrigger = await page.$('.display-date, a.display-date, [aria-label="Open calendar picker"]');
     if (dateTrigger) {
-        await dateTrigger.click();
+        if (!(await safeClickHandle(page, dateTrigger))) return false;
     } else {
         const clicked = await clickByText(
             page,
@@ -747,7 +788,10 @@ async function clearAndTypeForecastAdjustment(page, visibleIndex, value, options
     if (!input) {
         throw new Error(`Forecast adjustment input ${visibleIndex} not found (${inputs.length} day-part fields).`);
     }
-    await input.click({ clickCount: 3 });
+    await page.evaluate((el) => {
+        el.focus();
+        el.select();
+    }, input);
     await page.keyboard.down('Control');
     await page.keyboard.press('KeyA');
     await page.keyboard.up('Control');
@@ -1010,6 +1054,7 @@ async function writeForecastPlanToLifeLenz(storeNumber, plan, credentials, optio
 }
 
 module.exports = {
+    safeClickHandle,
     selectStoreInLifeLenz,
     navigateToForecast,
     switchToDayView,

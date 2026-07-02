@@ -368,16 +368,16 @@ function buildScopeAttachmentFilename(reportType, scopeType, scopeId, ext = 'csv
 }
 
 async function buildZipBuffer(files) {
-    let archiver;
+    let ZipArchive;
     try {
-        archiver = require('archiver');
+        ({ ZipArchive } = require('archiver'));
     } catch (err) {
         console.warn('[ReportRunner] ZIP build failed:', err.message);
         return null;
     }
     return new Promise((resolve, reject) => {
         const chunks = [];
-        const archive = archiver('zip', { zlib: { level: 9 } });
+        const archive = new ZipArchive({ zlib: { level: 9 } });
         archive.on('data', (chunk) => chunks.push(chunk));
         archive.on('error', reject);
         archive.on('end', () => resolve(Buffer.concat(chunks)));

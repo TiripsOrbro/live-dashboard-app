@@ -27,7 +27,6 @@
 
     function fixedDisplayValue(item) {
         if (item.buildToFixed != null) return item.buildToFixed;
-        if (dropdownRuleType(item) === 'on-hand' && item.buildToDays != null) return item.buildToDays;
         return '';
     }
 
@@ -516,10 +515,10 @@
                     }
                 }
             } else if (ruleType === 'on-hand') {
-                if (fixed !== '') rule.buildToFixed = Number(fixed);
+                if (days !== '') rule.buildToDays = Number(days);
+                if (add !== '') rule.buildToAdd = Number(add);
+                rule.buildToFixed = null;
                 if (initialRuleType !== 'on-hand') {
-                    rule.buildToDays = null;
-                    rule.buildToAdd = null;
                     rule.buildToManual = null;
                     rule.skipKeyItemCount = true;
                 }

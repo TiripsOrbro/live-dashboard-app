@@ -70,11 +70,11 @@ function catalogRuleForItem(itemCode, catalogRules, storeOverrideMap) {
 
 function buildToDaysForItem(itemCode, description, catalogRules, storeOverrideMap) {
     const rule = catalogRuleForItem(itemCode, catalogRules, storeOverrideMap);
-    if (rule?.buildToManual) return null;
-    if (rule?.buildToFixed != null && Number.isFinite(rule.buildToFixed)) return null;
+    if (rule?.buildToManual || rule?.buildToOrderManual) return null;
     if (rule?.buildToDays != null && Number.isFinite(rule.buildToDays)) {
         return rule.buildToDays;
     }
+    if (rule?.buildToFixed != null && Number.isFinite(rule.buildToFixed)) return null;
     if (isSaladItem(description)) return SALAD_BUILD_TO_DAYS;
     return BUILD_TO_13_DAY_ITEM_CODES.has(normalizeItemCode(itemCode))
         ? EXTENDED_BUILD_TO_DAYS
@@ -83,6 +83,17 @@ function buildToDaysForItem(itemCode, description, catalogRules, storeOverrideMa
 
 function buildToTarget(avgDaily, itemCode, description, catalogRules, storeOverrideMap) {
     const rule = catalogRuleForItem(itemCode, catalogRules, storeOverrideMap);
+    // oh:N / day-prefixed lines: ISE avg × days (+ buffer). Days win over stray buildToFixed
+    // from a bad admin save that mirrored oh:13 into buildToFixed: 13.
+    if (
+        rule?.buildToDays != null &&
+        Number.isFinite(rule.buildToDays) &&
+        !rule?.buildToManual &&
+        !rule?.buildToOrderManual
+    ) {
+        const add = rule?.buildToAdd != null && Number.isFinite(rule.buildToAdd) ? rule.buildToAdd : 0;
+        return num(avgDaily) * rule.buildToDays + add;
+    }
     if (rule?.buildToFixed != null && Number.isFinite(rule.buildToFixed)) {
         return rule.buildToFixed;
     }
@@ -500,7 +511,8 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         const orderQty = finalizeOrderQty(rawOrder, options);
         const hasStoreOverride = storeOverrideMap.has(normalizeItemCode(itemCode));
         const buildToSource =
-            catalogRule?.buildToFixed != null
+            catalogRule?.buildToOrderManual ||
+            (catalogRule?.buildToFixed != null && catalogRule?.buildToDays == null)
                 ? 'catalog-fixed'
                 : hasStoreOverride
                   ? 'store-override'

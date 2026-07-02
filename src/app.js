@@ -4264,8 +4264,11 @@ app.post('/api/admin/report-subscriptions/run-stream', async (req, res) => {
             options: {
                 force,
                 backfill:
-                    action === 'backfill' ||
-                    ((action === 'download' || action === 'send') && canUserEditGlobalBuildTo(user)),
+                    action === 'backfill'
+                        ? true
+                        : body.backfill === false
+                          ? false
+                          : (action === 'download' || action === 'send') && canUserEditGlobalBuildTo(user),
                 subscription,
                 includedStoreNumbers: parseIncludedStoreNumbers(body),
                 recipients: action === 'send' ? parseRecipients(body) : null,

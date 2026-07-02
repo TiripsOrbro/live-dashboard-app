@@ -719,7 +719,7 @@
         URL.revokeObjectURL(url);
     }
 
-    async function downloadReportSilent(payload) {
+    function buildDownloadPayload(payload) {
         const body = {
             reportType: payload.reportType,
             scopeType: payload.scopeType,
@@ -734,6 +734,22 @@
         ) {
             body.includedStoreNumbers = payload.includedStoreNumbers;
         }
+        return body;
+    }
+
+    async function downloadReportViaStream(payload, { title } = {}) {
+        const result = await runStreamAction('download', buildDownloadPayload(payload), {
+            title: title || 'Generating report',
+        });
+        if (!result?.contentBase64) {
+            throw new Error('Report generation produced no file.');
+        }
+        triggerReportFileDownload(result);
+        return result;
+    }
+
+    async function downloadReportSilent(payload) {
+        const body = buildDownloadPayload(payload);
         const res = await fetch('/api/admin/report-subscriptions/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -949,7 +965,7 @@
             downloadBtn.textContent = 'Downloading…';
         }
         try {
-            await downloadReportSilent(payload);
+            await downloadReportViaStream(payload);
             await refreshSetupDataStatus();
         } catch (err) {
             const statusEl = progressBackdrop?.querySelector('#admin-report-sub-progress-status');
@@ -1627,7 +1643,8 @@
                     !(result?.ready && result?.forecastReady)
                 );
             } else {
-                await downloadReportSilent(payload);
+                await downloadReportViaStream(payload);
+                setSetupFeedback('Report downloaded.', false);
                 await refreshSetupDataStatus();
             }
         } catch (err) {

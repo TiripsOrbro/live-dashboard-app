@@ -696,30 +696,60 @@ async function waitAfterAreaTreeAction(page, action, postbackMs) {
     }
 }
 
-/** Click the next collapsed tree node — prefer area needle, else first visible .rtPlus. */
-async function expandNextCollapsedTreeNode(page, preferNeedle = '') {
-    return page.evaluate((needle) => {
-        const want = String(needle || '').toLowerCase();
-        const plusNodes = [...document.querySelectorAll('.rtPlus')];
-        if (want) {
-            for (const plus of plusNodes) {
-                const host = plus.closest('.rtMid, .rtTop, .rtLI') || plus.parentElement;
-                const rtIn = host?.querySelector('.rtIn');
-                const text = (rtIn?.textContent || host?.textContent || '').toLowerCase();
-                if (text.includes(want)) {
-                    plus.click();
-                    return (rtIn?.textContent || text).replace(/\s+/g, ' ').trim().slice(0, 72);
-                }
-            }
-        }
-        if (plusNodes[0]) {
-            plusNodes[0].click();
-            const host = plusNodes[0].closest('.rtMid, .rtTop, .rtLI');
-            const rtIn = host?.querySelector('.rtIn');
-            return (rtIn?.textContent || 'rtPlus').replace(/\s+/g, ' ').trim().slice(0, 72);
+/** Click rtPlus on the store's TBA Area N row only (never another area's plus). */
+async function expandTargetAreaCollapsedNode(page, areaLabel) {
+    const areaNum = parseAreaNumber(areaLabel);
+    if (!areaNum) return null;
+    return page.evaluate((num) => {
+        const matches = (text) => {
+            const lower = String(text || '').toLowerCase();
+            if (lower.includes(`tba area ${num}`)) return true;
+            return new RegExp(`\\barea\\s+${num}(\\b|\\s*\\()`, 'i').test(lower);
+        };
+        for (const plus of document.querySelectorAll('.rtPlus')) {
+            const mid = plus.closest('.rtMid, .rtTop');
+            const rtIn = mid?.querySelector('.rtIn');
+            if (!rtIn) continue;
+            const text = (rtIn.textContent || '').replace(/\s+/g, ' ').trim();
+            if (!matches(text)) continue;
+            plus.click();
+            return text;
         }
         return null;
-    }, preferNeedle);
+    }, areaNum);
+}
+
+async function forceExpandTargetArea(page, areaLabel, storeNumber) {
+    const areaNum = parseAreaNumber(areaLabel);
+    const num = String(storeNumber || '').replace(/\D/g, '').trim();
+    if (!areaNum) return false;
+    const postbackMs = Number(process.env.MMX_SCM_TREE_AREA_POSTBACK_MS || 20000);
+
+    const direct = await expandTargetAreaCollapsedNode(page, areaLabel);
+    if (direct) {
+        log.info(`SCM store tree: expanding target area "${direct}"`);
+        await waitForAspPostback(page, { timeoutMs: postbackMs }).catch(() => {});
+        await page.waitForTimeout(500);
+        if (!num || (await storeVisibleInTree(page, num))) return true;
+    }
+
+    const toggled = await clickAreaTreeToggle(page, areaNum, 'expand');
+    if (toggled?.action === 'expand' || toggled?.action === 'label-click') {
+        log.info(`SCM store tree: expanding target area "${toggled.label}"`);
+        await waitAfterAreaTreeAction(page, toggled.action, postbackMs);
+        return !num || (await storeVisibleInTree(page, num));
+    }
+    if (toggled?.action === 'already-expanded' && num) {
+        return refreshAreaNodeIfStoreHidden(page, areaLabel, num);
+    }
+    return Boolean(direct);
+}
+
+/** @deprecated Use expandTargetAreaCollapsedNode — kept for callers that pass a needle string. */
+async function expandNextCollapsedTreeNode(page, preferNeedle = '') {
+    const areaNum = parseAreaNumber(preferNeedle) || String(preferNeedle || '').match(/area\s*(\d+)/i)?.[1];
+    if (!areaNum) return null;
+    return expandTargetAreaCollapsedNode(page, `Area ${areaNum}`);
 }
 
 /** Expand a specific TBA Area N row (avoids matching "Area 2" when looking for "Area 22"). */
@@ -826,6 +856,10 @@ async function expandScmPathToStore(page, storeNumber) {
     if (await waitForStoreRowInTree(page, num, areaPostback)) {
         return storeVisibleInTree(page, num);
     }
+    await forceExpandTargetArea(page, areaLabel, num);
+    if (await storeVisibleInTree(page, num)) {
+        return true;
+    }
     await refreshAreaNodeIfStoreHidden(page, areaLabel, num);
     if (await storeVisibleInTree(page, num)) {
         return true;
@@ -878,9 +912,7 @@ async function waitUntilStoreVisibleInTree(page, storeNumber, timeoutMs) {
     const num = String(storeNumber || '').replace(/\D/g, '').trim();
     const cfg = getStoreConfig(num) || {};
     const areaLabel = String(cfg.area || 'Area 22').trim();
-    const areaNum = parseAreaNumber(areaLabel);
-    const areaNeedle = areaNum ? `tba area ${areaNum}` : areaLabel.toLowerCase();
-    const postbackMs = Number(process.env.MMX_SCM_TREE_AREA_POSTBACK_MS || 18000);
+    const postbackMs = Number(process.env.MMX_SCM_TREE_AREA_POSTBACK_MS || 20000);
 
     if (await expandScmPathToStore(page, num)) {
         log.info(`SCM store tree: store ${num} visible in tree`);
@@ -898,17 +930,20 @@ async function waitUntilStoreVisibleInTree(page, storeNumber, timeoutMs) {
             log.info(`SCM store tree: waiting for store ${num} - re-expanding market/area…`);
             lastLog = Date.now();
         }
+        await forceExpandTargetArea(page, areaLabel, num);
+        if (await storeVisibleInTree(page, num)) continue;
+
         await refreshAreaNodeIfStoreHidden(page, areaLabel, num);
         if (await storeVisibleInTree(page, num)) continue;
 
         await expandScmPathToStore(page, num);
         if (await storeVisibleInTree(page, num)) continue;
 
-        const expanded = await expandNextCollapsedTreeNode(page, areaNeedle);
+        const expanded = await expandTargetAreaCollapsedNode(page, areaLabel);
         if (expanded) {
-            log.info(`SCM store tree: expanding collapsed node "${expanded}"`);
+            log.info(`SCM store tree: expanding target area "${expanded}"`);
             await waitForAspPostback(page, { timeoutMs: postbackMs }).catch(() => {});
-            await page.waitForTimeout(450);
+            await page.waitForTimeout(500);
         }
     }
     return storeVisibleInTree(page, num);
@@ -1021,7 +1056,7 @@ async function selectScmStoreCheckboxInTree(page, storeNumber, storeName, option
         await page.waitForTimeout(Number(process.env.MMX_SCM_TREE_AFTER_CLEAR_MS || 200));
     }
 
-    const waitMs = Number(process.env.MMX_SCM_TREE_WAIT_MS || 30000);
+    const waitMs = Number(process.env.MMX_SCM_TREE_WAIT_MS || 60000);
     const visible = await waitUntilStoreVisibleInTree(page, num, waitMs);
     if (!visible) {
         log.warn(`SCM store tree: store ${num} not visible after ${Math.round(waitMs / 1000)}s - trying checkbox anyway`);

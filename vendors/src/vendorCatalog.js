@@ -662,6 +662,136 @@ function buildCatalogBuildToIndex() {
     return byCode;
 }
 
+function findCatalogItemByCode(itemCode) {
+    const code = normalizeItemCode(itemCode);
+    if (!code) return null;
+    for (const def of VENDOR_DEFINITIONS) {
+        const catalog = readCatalogForDefinition(def);
+        if (!catalog) continue;
+        for (const item of catalog.items) {
+            if (normalizeItemCode(item.itemCode) === code) {
+                return { vendorSlug: def.slug, vendorLabel: def.label, item };
+            }
+        }
+    }
+    return null;
+}
+
+function buildToPrefixForNewItem(spec) {
+    const type = String(spec.ruleType || 'days').toLowerCase();
+    const days = Number(spec.buildToDays);
+    const add = Number(spec.buildToAdd) || 0;
+    const fixed = spec.buildToFixed != null && spec.buildToFixed !== '' ? Number(spec.buildToFixed) : null;
+
+    if (type === 'manual') {
+        if (fixed != null) {
+            if (!Number.isFinite(fixed) || fixed < 0 || fixed > 999) {
+                throw new Error('Fixed build-to must be between 0 and 999.');
+            }
+            return `manual=${fixed}`;
+        }
+        return 'manual';
+    }
+
+    if (!Number.isFinite(days) || days < 1 || days > 31) {
+        throw new Error('Build-to days must be between 1 and 31.');
+    }
+    if (!Number.isFinite(add) || add < 0) {
+        throw new Error('Buffer must be 0 or more.');
+    }
+    const daysToken = add > 0 ? `${days}+${add}` : `${days}`;
+    if (type === 'on-hand') return `oh:${daysToken}`;
+    return daysToken;
+}
+
+function sanitizeCatalogField(value) {
+    return String(value || '')
+        .replace(/\|/g, '/')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+/**
+ * Append a new item line to a vendor catalog dotfile.
+ * @param {string} slug vendor slug (e.g. 'americold')
+ * @param {object} spec { itemCode, name, ruleType, buildToDays, buildToAdd, buildToFixed,
+ *                        units: [outer, inner, unit], locations: [], innerPerCarton,
+ *                        includeKeyItem, includeDaily }
+ * @returns {{ line: string, itemCode: string }}
+ */
+function appendVendorCatalogItem(slug, spec = {}) {
+    const def = getVendorDefinition(slug);
+    if (!def) throw new Error('Unknown vendor.');
+    const livePath = path.join(VENDORS_DIR, def.dotfile);
+    if (!fs.existsSync(livePath)) {
+        throw new Error(`Vendor catalog file ${def.dotfile} not found on this server.`);
+    }
+
+    const itemCode = sanitizeCatalogField(spec.itemCode);
+    const name = sanitizeCatalogField(spec.name);
+    if (!name) throw new Error('Item name is required.');
+    if (!itemCode) throw new Error('Item code is required.');
+    if (!looksLikeItemCode(itemCode)) throw new Error(`"${itemCode}" does not look like a valid item code.`);
+
+    const existing = findCatalogItemByCode(itemCode);
+    if (existing) {
+        throw new Error(`Item code ${itemCode} already exists in ${existing.vendorLabel} (${existing.item.name}).`);
+    }
+
+    const rawUnits = Array.isArray(spec.units) ? spec.units : [];
+    const units = [];
+    for (let i = 0; i < UNIT_SLOTS; i += 1) {
+        const label = sanitizeCatalogField(rawUnits[i]) || 'N/a';
+        if (!looksLikeUnitLabel(label)) {
+            throw new Error(`"${label}" is not a recognised unit (Boxes, Bags, KGs, Packs, Each, …).`);
+        }
+        units.push(isNaUnit(label) ? 'N/a' : label);
+    }
+    if (units.every((u) => isNaUnit(u))) {
+        throw new Error('At least one unit column is required.');
+    }
+
+    const prefix = buildToPrefixForNewItem(spec);
+
+    const catalog = readCatalogForDefinition(def);
+    const knownLocations = new Set(catalog?.locations || []);
+    const locations = (Array.isArray(spec.locations) ? spec.locations : [])
+        .map((loc) => sanitizeCatalogField(loc))
+        .filter(Boolean)
+        .filter((loc, i, list) => list.indexOf(loc) === i);
+    for (const loc of locations) {
+        // New location names are allowed, but guard against tokens the parser treats specially.
+        if (looksLikeUnitLabel(loc) || parseLocationPartHints(loc).isHint || /^\d+(\.\d+)?$/.test(loc)) {
+            throw new Error(`"${loc}" cannot be used as a location name.`);
+        }
+        if (!knownLocations.has(loc) && parseStoreBuildToHint(loc)) {
+            throw new Error(`"${loc}" cannot be used as a location name.`);
+        }
+    }
+
+    const parts = [prefix, itemCode, name, ...units, ...locations];
+    const innerPerCarton = Number(spec.innerPerCarton);
+    if (Number.isFinite(innerPerCarton) && innerPerCarton > 0) parts.push(String(innerPerCarton));
+    if (spec.includeKeyItem) parts.push('Key');
+    if (spec.includeDaily) parts.push('Daily');
+
+    const line = parts.join(' | ');
+
+    // Confirm the line round-trips through the parser before touching the file.
+    const parsed = parseCatalogText(line, def);
+    const parsedItem = parsed.items[0];
+    if (!parsedItem || normalizeItemCode(parsedItem.itemCode) !== normalizeItemCode(itemCode)) {
+        throw new Error('Could not build a valid catalog line from these details.');
+    }
+
+    const current = fs.readFileSync(livePath, 'utf8');
+    const next = `${current.replace(/\n*$/, '\n')}${line}\n`;
+    fs.writeFileSync(livePath, next, 'utf8');
+    catalogCache.clear();
+
+    return { line, itemCode: parsedItem.itemCode };
+}
+
 function aggregateCounts(catalog, locationCounts) {
     const totals = {};
     for (const item of catalog.items) {
@@ -703,6 +833,8 @@ module.exports = {
     getVendorCatalog,
     getVendorDefinition,
     aggregateCounts,
+    appendVendorCatalogItem,
+    findCatalogItemByCode,
     normalizeUnitSlots,
     buildCatalogBuildToIndex,
     catalogItemBuildToRule,

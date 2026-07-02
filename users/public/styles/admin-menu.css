@@ -1032,6 +1032,132 @@ html.mic-rounded-corners .admin-modal--build-to {
     border-radius: var(--admin-buildto-control-radius);
 }
 
+.admin-modal--build-to .admin-buildto-add {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: var(--admin-buildto-toolbar-control-height, 2.75rem);
+    padding: 0.55rem 1.25rem;
+    border-radius: var(--admin-buildto-control-radius);
+    font: inherit;
+    font-weight: 600;
+    line-height: 1.25;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.admin-buildto-new-wrap {
+    padding-left: var(--admin-buildto-pad-left);
+    padding-right: var(--admin-buildto-pad-right);
+    margin-bottom: 0.75rem;
+}
+
+.admin-buildto-new {
+    border: 1px solid rgba(122, 62, 177, 0.35);
+    border-radius: var(--admin-buildto-control-radius);
+    background: rgba(122, 62, 177, 0.04);
+    padding: 1rem 1.1rem;
+    color-scheme: light;
+}
+
+.admin-buildto-new h3 {
+    margin: 0 0 0.75rem;
+    font-size: 1rem;
+}
+
+.admin-buildto-new-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0.6rem 0.85rem;
+}
+
+.admin-buildto-new-grid label,
+.admin-buildto-new-locrow .admin-buildto-new-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: rgba(0, 0, 0, 0.62);
+}
+
+.admin-buildto-new-grid label.admin-buildto-group--off {
+    display: none;
+}
+
+.admin-buildto-new-grid input,
+.admin-buildto-new-grid select {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.admin-buildto-new-optional {
+    font-weight: 400;
+    color: rgba(0, 0, 0, 0.4);
+}
+
+.admin-buildto-new-locrow {
+    margin-top: 0.85rem;
+}
+
+.admin-buildto-new-locs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.9rem;
+    margin-top: 0.35rem;
+}
+
+.admin-buildto-new-loc {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: rgba(0, 0, 0, 0.75);
+}
+
+.admin-buildto-new-locs [data-new-item='newLocation'] {
+    max-width: 11rem;
+}
+
+.admin-buildto-new-flags {
+    display: flex;
+    gap: 1.25rem;
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: rgba(0, 0, 0, 0.75);
+}
+
+.admin-buildto-new-flags label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.admin-buildto-new-error {
+    margin: 0.6rem 0 0;
+}
+
+.admin-buildto-new-error:empty {
+    display: none;
+}
+
+.admin-buildto-new-actions {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 0.85rem;
+}
+
+.admin-buildto-new-actions .mic-settings-btn,
+.admin-buildto-new-actions .admin-buildto-close-btn {
+    min-height: 2.5rem;
+    padding: 0.45rem 1.4rem;
+    border-radius: var(--admin-buildto-control-radius);
+}
+
 .admin-buildto-table-wrap {
     flex: 1 1 auto;
     min-height: 0;
@@ -2514,10 +2640,19 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
 }
 
 .admin-modal--forecast-progress {
-    max-height: min(92vh, 820px);
+    max-height: min(94vh, 860px);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+}
+
+.admin-modal--forecast-progress h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1.15rem;
+}
+
+.admin-modal--forecast-progress > .admin-forecast-progress-body > .admin-forecast-progress-stage > .admin-accounts-meta {
+    margin: 0 0 0.45rem;
 }
 
 .admin-forecast-progress-body {
@@ -2551,7 +2686,7 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
 .admin-modal-actions--progress {
     flex-shrink: 0;
     margin-top: auto;
-    padding-top: 0.75rem;
+    padding-top: 0.5rem;
 }
 
 .admin-modal-actions--progress #admin-forecast-progress-close:disabled {
@@ -2562,12 +2697,13 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
 .admin-forecast-progress-unified {
     display: flex;
     flex-direction: column;
-    gap: 0.85rem;
+    gap: 0.55rem;
     min-height: 0;
     flex: 1;
 }
 
 .admin-forecast-progress-week {
+    flex-shrink: 0;
     border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: 8px;
     overflow: hidden;
@@ -2578,9 +2714,9 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
 .admin-forecast-progress-week-row {
     display: grid;
     grid-template-columns: 4.5rem 1fr 1fr;
-    gap: 0.65rem;
+    gap: 0.5rem;
     align-items: center;
-    padding: 0.5rem 0.75rem;
+    padding: 0.35rem 0.65rem;
 }
 
 .admin-forecast-progress-week-head {
@@ -2637,9 +2773,9 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
 .admin-forecast-progress-detail-split {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 0.85rem;
-    min-height: 220px;
-    max-height: 38vh;
+    gap: 0.55rem;
+    flex: 1;
+    min-height: 0;
 }
 
 .admin-forecast-progress-detail-pane {
@@ -2648,14 +2784,14 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
     min-height: 0;
     border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: 8px;
-    padding: 0.65rem;
+    padding: 0.45rem 0.55rem;
     background: #fff;
 }
 
 .admin-forecast-progress-detail-pane .admin-forecast-progress-detail {
     flex: 1;
     min-height: 0;
-    overflow: auto;
+    overflow: hidden;
     border: none;
     padding: 0;
     background: transparent;
@@ -2668,8 +2804,9 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
 }
 
 .admin-forecast-progress-pane-title {
-    margin: 0 0 0.5rem;
-    font-size: 0.95rem;
+    margin: 0 0 0.25rem;
+    font-size: 0.85rem;
+    font-weight: 600;
 }
 
 .admin-forecast-progress-manual-actions {
@@ -2696,7 +2833,6 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
 @media (max-width: 720px) {
     .admin-forecast-progress-detail-split {
         grid-template-columns: 1fr;
-        max-height: none;
     }
 
     .admin-forecast-progress-week-head,
@@ -2741,8 +2877,9 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
 .admin-forecast-progress-live {
     font-weight: 600;
     color: var(--tb-purple, #6b3fa0);
-    margin: 0 0 0.5rem;
-    min-height: 1.25rem;
+    margin: 0 0 0.25rem;
+    min-height: 1rem;
+    font-size: 0.82rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2808,13 +2945,14 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 0.5rem 1rem;
-    margin-bottom: 0.35rem;
+    gap: 0.35rem 0.75rem;
+    margin-bottom: 0.2rem;
+    flex-shrink: 0;
 }
 
 .admin-forecast-progress-detail-date {
     font-weight: 700;
-    font-size: 1.05rem;
+    font-size: 0.92rem;
 }
 
 .admin-forecast-progress-detail-total {
@@ -2824,51 +2962,52 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
 }
 
 .admin-forecast-progress-hour-wrap {
-    overflow: auto;
+    overflow: hidden;
     flex: 1;
-    margin-top: 0.5rem;
+    margin-top: 0.2rem;
     min-height: 0;
 }
 
 .admin-forecast-progress-hour-table {
-    font-size: 0.85rem;
+    font-size: 0.78rem;
     table-layout: fixed;
     width: 100%;
 }
 
 .admin-forecast-progress-hour-table.admin-table tbody tr {
-    height: 1.65rem;
-    max-height: 1.65rem;
+    height: 1.3rem;
+    max-height: 1.3rem;
 }
 
 .admin-forecast-progress-hour-table.admin-table th,
 .admin-forecast-progress-hour-table.admin-table td {
-    padding: 0.25rem 0.45rem;
+    padding: 0.12rem 0.35rem;
     vertical-align: middle;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: 1;
-    height: 1.65rem;
-    max-height: 1.65rem;
+    height: 1.3rem;
+    max-height: 1.3rem;
     box-sizing: border-box;
 }
 
 .admin-forecast-progress-hour-table tbody th,
 .admin-forecast-progress-hour-table tbody td {
-    padding: 0.25rem 0.45rem;
+    padding: 0.12rem 0.35rem;
     vertical-align: middle;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: 1;
-    height: 1.65rem;
-    max-height: 1.65rem;
+    height: 1.3rem;
+    max-height: 1.3rem;
     box-sizing: border-box;
 }
 
 .admin-forecast-progress-hour-table thead th {
-    padding-bottom: 0.4rem;
+    padding-bottom: 0.2rem;
+    font-size: 0.72rem;
 }
 
 .admin-forecast-progress-done {

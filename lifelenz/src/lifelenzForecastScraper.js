@@ -8,6 +8,9 @@ const { aggregateDayPartsFromHourlyPlan, LIFELENZ_DAY_PARTS } = require('./lifel
 
 const SETTLE_MS = 800;
 const DATE_SETTLE_MS = 2000;
+const DAY_PART_INPUT_SELECTOR = 'input.forecast-adjustment.form-control, input.input-number.forecast-adjustment';
+const DEFAULT_DAY_PART_INPUT_TIMEOUT_MS = 20000;
+const DAY_PART_INPUT_COUNT = 9;
 // Upper bound on the post-save reload wait. This is a cap, not a sleep: the
 // settle logic polls for the inputs to return and finishes as soon as they do,
 // so a generous cap only costs time on genuinely slow reloads.
@@ -169,13 +172,37 @@ async function navigateToForecast(page) {
     throw new Error('Could not open Forecast from the LifeLenz analytics menu.');
 }
 
+async function isForecastDayViewActive(page) {
+    return page.evaluate(() => {
+        const day = document.querySelector('a.calendar-unit-link.day, a[aria-label="Day View"]');
+        if (!day) return false;
+        if (day.classList.contains('active') || day.classList.contains('is-active')) return true;
+        if (day.getAttribute('aria-selected') === 'true') return true;
+        if (day.getAttribute('aria-current') === 'page') return true;
+        const week = document.querySelector('a.calendar-unit-link.week, a[aria-label="Week View"]');
+        if (week && (week.classList.contains('active') || week.classList.contains('is-active'))) return false;
+        // Day-part adjusted inputs only render in day view.
+        return [...document.querySelectorAll('input.forecast-adjustment.form-control, input.input-number.forecast-adjustment')].some(
+            (input) => {
+                const r = input.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
+            }
+        );
+    });
+}
+
 async function switchToDayView(page) {
-    const dayLink = await page.$('a.calendar-unit-link.day, a[aria-label="Day View"]');
-    if (dayLink) {
-        await dayLink.click();
-    } else {
-        const clicked = await clickByText(page, ['a', 'button'], /^d$/i);
-        if (!clicked) throw new Error('Could not switch LifeLenz forecast to Day view.');
+    const alreadyDay = await isForecastDayViewActive(page).catch(() => false);
+    if (!alreadyDay) {
+        const dayLink = await page.$('a.calendar-unit-link.day, a[aria-label="Day View"]');
+        if (dayLink) {
+            await dayLink.click();
+        } else {
+            const clicked =
+                (await clickByText(page, ['a', 'button'], /^day$/i)) ||
+                (await clickByText(page, ['a', 'button'], /^d$/i));
+            if (!clicked) throw new Error('Could not switch LifeLenz forecast to Day view.');
+        }
     }
     // Day view is ready when the date toolbar renders; fall back to a short
     // settle if the selector never appears (older UI variants).
@@ -582,14 +609,57 @@ async function waitForForecastDate(page, isoDate, timeoutMs = 15000) {
     return false;
 }
 
-async function setForecastDate(page, isoDate) {
+function resolveDayPartInputTimeoutMs(options = {}) {
+    if (Number.isFinite(options.dayPartInputTimeoutMs)) return options.dayPartInputTimeoutMs;
+    return DEFAULT_DAY_PART_INPUT_TIMEOUT_MS;
+}
+
+/**
+ * Day-part adjusted inputs only appear in day view. After date navigation the
+ * Aurelia forecast page can briefly show the date toolbar while still in week
+ * view or while inputs are hydrating - poll until 9 fields are visible.
+ */
+async function ensureForecastDayViewReady(page, options = {}) {
+    const timeoutMs = resolveDayPartInputTimeoutMs(options);
+    const deadline = Date.now() + timeoutMs;
+    let lastCount = 0;
+
+    while (Date.now() < deadline) {
+        await switchToDayView(page).catch(() => null);
+        try {
+            lastCount = await countVisibleDayPartInputs(page);
+        } catch (err) {
+            if (!isDestroyedContextError(err)) throw err;
+            lastCount = 0;
+        }
+        if (lastCount >= DAY_PART_INPUT_COUNT) {
+            await page.waitForTimeout(300);
+            const settled = await countVisibleDayPartInputs(page).catch(() => 0);
+            if (settled >= DAY_PART_INPUT_COUNT) return;
+            lastCount = settled;
+        }
+        await page.waitForTimeout(200);
+    }
+
+    const activeDate = await readActiveForecastIsoDate(page).catch(() => 'unknown');
+    const inDayView = await isForecastDayViewActive(page).catch(() => false);
+    throw new Error(
+        `LifeLenz day-part inputs not ready (${lastCount} visible, need ${DAY_PART_INPUT_COUNT}, ` +
+            `date showing ${activeDate}, day view ${inDayView ? 'active' : 'not active'}).`
+    );
+}
+
+async function finishForecastDateNavigation(page, target, options = {}) {
+    if (!(await isForecastDateActive(page, target))) return false;
+    await ensureForecastDayViewReady(page, options);
+    return true;
+}
+
+async function setForecastDate(page, isoDate, options = {}) {
     const target = String(isoDate || '').trim();
     if (!target) throw new Error('Forecast date is required.');
 
-    if (await isForecastDateActive(page, target)) {
-        await page.waitForTimeout(500);
-        return;
-    }
+    if (await finishForecastDateNavigation(page, target, options)) return;
 
     const currentIso = await readActiveForecastIsoDate(page);
     const tomorrowIso = getMelbourneTomorrowIso();
@@ -601,10 +671,12 @@ async function setForecastDate(page, isoDate) {
     if (target === tomorrowIso) {
         if (await clickByText(page, ['a', 'button', 'span'], /^tomorrow$/i)) {
             await page.waitForTimeout(DATE_SETTLE_MS);
-            if (await isForecastDateActive(page, target)) return;
+            if (await finishForecastDateNavigation(page, target, options)) return;
         }
         if (!currentIso || currentIso === getMelbourneTodayIso()) {
-            if (await advanceForecastDateByDays(page, 1) && (await isForecastDateActive(page, target))) return;
+            if ((await advanceForecastDateByDays(page, 1)) && (await finishForecastDateNavigation(page, target, options))) {
+                return;
+            }
         }
     }
 
@@ -613,23 +685,38 @@ async function setForecastDate(page, isoDate) {
             (Date.parse(`${target}T12:00:00Z`) - Date.parse(`${currentIso}T12:00:00Z`)) / 86400000
         );
         if (dayOffset > 0 && dayOffset <= 14) {
-            if (await advanceForecastDateByDays(page, dayOffset) && (await isForecastDateActive(page, target))) {
+            if (
+                (await advanceForecastDateByDays(page, dayOffset)) &&
+                (await finishForecastDateNavigation(page, target, options))
+            ) {
                 return;
             }
         }
     }
 
-    if (await setForecastDateViaUrl(page, target)) return;
-    if (await advanceForecastDateWithArrows(page, target)) return;
+    if ((await setForecastDateViaUrl(page, target)) && (await finishForecastDateNavigation(page, target, options))) {
+        return;
+    }
+    if ((await advanceForecastDateWithArrows(page, target)) && (await finishForecastDateNavigation(page, target, options))) {
+        return;
+    }
 
     const display = isoToLifeLenzDisplay(target);
     if (!display) throw new Error(`Invalid forecast date: ${target}`);
 
-    if (await pickForecastDateFromCalendar(page, target, display)) return;
+    if ((await pickForecastDateFromCalendar(page, target, display)) && (await finishForecastDateNavigation(page, target, options))) {
+        return;
+    }
 
-    if (await setForecastDateViaUrl(page, target)) return;
-    if (await advanceForecastDateWithArrows(page, target)) return;
-    if (await waitForForecastDate(page, target, 3000)) return;
+    if ((await setForecastDateViaUrl(page, target)) && (await finishForecastDateNavigation(page, target, options))) {
+        return;
+    }
+    if ((await advanceForecastDateWithArrows(page, target)) && (await finishForecastDateNavigation(page, target, options))) {
+        return;
+    }
+    if ((await waitForForecastDate(page, target, 3000)) && (await finishForecastDateNavigation(page, target, options))) {
+        return;
+    }
 
     const showing = await readActiveForecastIsoDate(page);
     throw new Error(
@@ -637,11 +724,9 @@ async function setForecastDate(page, isoDate) {
     );
 }
 
-const DAY_PART_INPUT_COUNT = 9;
-
 /** Day-part Adjusted inputs only - first 9 visible fields; the 10th is the day total (auto-calculated). */
 async function getDayPartAdjustmentInputs(page) {
-    const handles = await page.$$('input.forecast-adjustment.form-control, input.input-number.forecast-adjustment');
+    const handles = await page.$$(DAY_PART_INPUT_SELECTOR);
     const visible = [];
     for (const handle of handles) {
         const box = await handle.boundingBox();
@@ -679,13 +764,13 @@ async function clearAndTypeInput(page, _selectorOrIndex, value, inputIndex) {
 }
 
 async function countVisibleDayPartInputs(page) {
-    return page.evaluate(
-        () =>
-            [...document.querySelectorAll('input.forecast-adjustment.form-control')].filter((input) => {
-                const r = input.getBoundingClientRect();
-                return r.width > 0 && r.height > 0;
-            }).length
-    );
+    return page.evaluate((selector) => {
+        const inputs = document.querySelectorAll(selector);
+        return [...inputs].filter((input) => {
+            const r = input.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+        }).length;
+    }, DAY_PART_INPUT_SELECTOR);
 }
 
 /**
@@ -744,16 +829,15 @@ function parseDayPartInputNumber(raw) {
 
 /** Read the current values of the 9 visible day-part adjustment inputs. */
 async function readDayPartInputValues(page) {
-    const raw = await page.evaluate(
-        () =>
-            [...document.querySelectorAll('input.forecast-adjustment.form-control')]
-                .filter((input) => {
-                    const r = input.getBoundingClientRect();
-                    return r.width > 0 && r.height > 0;
-                })
-                .slice(0, 9)
-                .map((input) => input.value)
-    );
+    const raw = await page.evaluate((selector) => {
+        return [...document.querySelectorAll(selector)]
+            .filter((input) => {
+                const r = input.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
+            })
+            .slice(0, 9)
+            .map((input) => input.value);
+    }, DAY_PART_INPUT_SELECTOR);
     return raw.map(parseDayPartInputNumber);
 }
 
@@ -792,16 +876,7 @@ async function verifyDayPartValues(page, dayParts, options = {}) {
 }
 
 async function fillDayPartsWithOvernightQuirk(page, dayParts, options = {}) {
-    await page.waitForSelector('input.forecast-adjustment.form-control', { visible: true, timeout: 15000 });
-    await page.waitForFunction(
-        () =>
-            [...document.querySelectorAll('input.forecast-adjustment.form-control')].filter((input) => {
-                const r = input.getBoundingClientRect();
-                return r.width > 0 && r.height > 0;
-            }).length >= 9,
-        { timeout: 15000, polling: 500 }
-    );
-    let inputs = await locateDayPartInputs(page);
+    const inputs = await locateDayPartInputs(page);
 
     if (inputs.length < dayParts.length) {
         throw new Error(
@@ -841,9 +916,7 @@ async function writeForecastDay(page, isoDate, planDay, options = {}) {
 
     let verification = null;
     for (let attempt = 1; attempt <= WRITE_DAY_MAX_ATTEMPTS; attempt += 1) {
-        if (!(await isForecastDateActive(page, isoDate))) {
-            await setForecastDate(page, isoDate);
-        }
+        await setForecastDate(page, isoDate, options);
         await fillDayPartsWithOvernightQuirk(page, dayParts, options);
 
         verification = await verifyDayPartValues(page, dayParts, options);
@@ -882,6 +955,7 @@ async function writeForecastPlanOnPage(page, storeNumber, plan, accessibleStores
     await navigateToForecast(page);
     await switchToDayView(page);
     await waitForForecastDateToolbar(page);
+    await ensureForecastDayViewReady(page, options);
 
     const applied = [];
     for (const day of plan || []) {
@@ -940,6 +1014,9 @@ module.exports = {
     navigateToForecast,
     switchToDayView,
     setForecastDate,
+    getDayPartAdjustmentInputs,
+    ensureForecastDayViewReady,
+    finishForecastDateNavigation,
     fillDayPartsWithOvernightQuirk,
     waitForDayPartSaveSettle,
     readDayPartInputValues,

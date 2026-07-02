@@ -55,7 +55,7 @@ const {
     stickyKeyForTestMirror,
     testStoreListEntry,
 } = require('./services/testStore');
-const { listConfiguredVendors, getVendorCatalog } = require('./services/vendorCatalog');
+const { listConfiguredVendors, getVendorCatalog, appendVendorCatalogItem } = require('./services/vendorCatalog');
 const {
     buildCombinedStockCountCatalog,
     isCombinedStockCountSlug,
@@ -4993,6 +4993,57 @@ app.put('/api/admin/build-to/overrides', (req, res) => {
         getEffectiveStoresForUser(user),
         canUserEditGlobalBuildTo(user)
     ) });
+});
+
+app.post('/api/admin/build-to/items', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    if (!canUserEditGlobalBuildTo(user)) {
+        res.status(403).json({ success: false, error: 'Area Manager or above can add new items.' });
+        return;
+    }
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    try {
+        const result = appendVendorCatalogItem(String(body.vendor || '').trim(), {
+            itemCode: body.itemCode,
+            name: body.name,
+            ruleType: body.ruleType,
+            buildToDays: body.buildToDays,
+            buildToAdd: body.buildToAdd,
+            buildToFixed: body.buildToFixed,
+            units: Array.isArray(body.units) ? body.units : [],
+            locations: Array.isArray(body.locations) ? body.locations : [],
+            innerPerCarton: body.innerPerCarton,
+            includeKeyItem: Boolean(body.includeKeyItem),
+            includeDaily: Boolean(body.includeDaily),
+        });
+
+        // Optional extra codes go into the global overrides layer like the table edits do.
+        const rule = {};
+        const vendorCode = String(body.vendorCode || '').trim();
+        const fallbackCodes = String(body.fallbackCodes || '').trim();
+        if (vendorCode && vendorCode !== result.itemCode) rule.vendorCode = vendorCode;
+        if (fallbackCodes) {
+            const list = fallbackCodes.split(/[,;\s]+/).map((c) => c.trim()).filter(Boolean);
+            if (list.length) rule.fallbackCodes = list;
+        }
+        if (Object.keys(rule).length) {
+            patchOverrides({ global: { [result.itemCode]: rule } });
+        }
+
+        appendAccountAudit({
+            action: 'add-build-to-item',
+            updatedBy: user.username,
+            vendor: String(body.vendor || '').trim(),
+            line: result.line,
+        });
+        res.json({ success: true, itemCode: result.itemCode, line: result.line });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not add item.' });
+    }
 });
 
 function assertStoreLoginAccess(req, res, storeNumber) {

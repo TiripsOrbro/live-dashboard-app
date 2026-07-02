@@ -143,8 +143,10 @@
                     <div class="admin-buildto-search-wrap">
                         <input type="search" id="admin-buildto-search" placeholder="Search items…" aria-label="Search items" />
                     </div>
+                    <button type="button" class="mic-settings-btn admin-buildto-add" id="admin-buildto-add" hidden>+ New item</button>
                     <button type="button" class="mic-settings-btn admin-btn-primary admin-buildto-save" id="admin-buildto-save">Save changes</button>
                 </div>
+                <div class="admin-buildto-new-wrap" id="admin-buildto-new-wrap" hidden></div>
                 <div class="admin-buildto-table-wrap" id="admin-buildto-body"></div>
                 <p id="admin-buildto-error" class="admin-modal-error" role="alert"></p>
                 <div class="admin-modal-actions admin-buildto-actions">
@@ -158,6 +160,9 @@
         root.querySelector('#admin-buildto-close')?.addEventListener('click', close);
         root.querySelector('#admin-buildto-save')?.addEventListener('click', () => {
             void saveChanges();
+        });
+        root.querySelector('#admin-buildto-add')?.addEventListener('click', () => {
+            toggleNewItemForm();
         });
         root.querySelector('#admin-buildto-search')?.addEventListener('input', () => renderRows());
         root.querySelectorAll('[data-tab]').forEach((btn) => {
@@ -427,6 +432,201 @@
         bindRowControls(itemsByCode);
     }
 
+    function newItemVendors() {
+        return (catalogCache?.vendors || []).map((vendor) => ({
+            slug: vendor.slug,
+            label: vendor.label || vendor.slug,
+            locations: Array.isArray(vendor.locations) ? vendor.locations : [],
+        }));
+    }
+
+    function renderNewItemLocations(form, vendorSlug) {
+        const host = form.querySelector('[data-new-item="locations"]');
+        if (!host) return;
+        const vendor = newItemVendors().find((v) => v.slug === vendorSlug);
+        const locations = vendor?.locations || [];
+        host.innerHTML = `
+            ${locations
+                .map(
+                    (loc) => `
+                <label class="admin-buildto-new-loc">
+                    <input type="checkbox" data-new-item-location value="${escapeHtml(loc)}" />
+                    <span>${escapeHtml(loc)}</span>
+                </label>`
+                )
+                .join('')}
+            <input type="text" data-new-item="newLocation" class="admin-buildto-code-input" placeholder="New location…" title="Optional: a new stock-count tab/location name" />`;
+    }
+
+    function applyNewItemRuleType(form) {
+        const type = form.querySelector('[data-new-item="ruleType"]')?.value || 'days';
+        const showDays = type === 'days' || type === 'on-hand';
+        form.querySelectorAll('[data-new-item-group="days"]').forEach((el) => {
+            el.classList.toggle('admin-buildto-group--off', !showDays);
+        });
+        form.querySelectorAll('[data-new-item-group="fixed"]').forEach((el) => {
+            el.classList.toggle('admin-buildto-group--off', showDays);
+        });
+    }
+
+    function renderNewItemForm() {
+        const root = ensureBackdrop();
+        const wrap = root.querySelector('#admin-buildto-new-wrap');
+        if (!wrap) return;
+        const vendors = newItemVendors();
+        if (!vendors.length) {
+            wrap.innerHTML = '<p>Load a catalog first.</p>';
+            return;
+        }
+        wrap.innerHTML = `
+            <div class="admin-buildto-new" id="admin-buildto-new">
+                <h3>New item</h3>
+                <div class="admin-buildto-new-grid">
+                    <label>Vendor
+                        <select data-new-item="vendor" class="admin-buildto-type-select">
+                            ${vendors.map((v) => `<option value="${escapeHtml(v.slug)}">${escapeHtml(v.label)}</option>`).join('')}
+                        </select>
+                    </label>
+                    <label>Item name
+                        <input type="text" data-new-item="name" class="admin-buildto-code-input" placeholder="e.g. TB SAUCE VERDE 10X1KG" />
+                    </label>
+                    <label>MMX / item code
+                        <input type="text" data-new-item="itemCode" class="admin-buildto-code-input" placeholder="e.g. 38123" title="Macromatix Key Item Count / ISE code" />
+                    </label>
+                    <label>Vendor code <span class="admin-buildto-new-optional">optional</span>
+                        <input type="text" data-new-item="vendorCode" class="admin-buildto-code-input" placeholder="Same as item code" title="Vendor order code, if different" />
+                    </label>
+                    <label>Fallback codes <span class="admin-buildto-new-optional">optional</span>
+                        <input type="text" data-new-item="fallbackCodes" class="admin-buildto-code-input" placeholder="Comma-separated" title="Extra ISE/SOH codes, tried in order" />
+                    </label>
+                    <label>Type
+                        <select data-new-item="ruleType" class="admin-buildto-type-select">
+                            <option value="days" selected>Days</option>
+                            <option value="on-hand">On hand</option>
+                            <option value="manual">Manual</option>
+                        </select>
+                    </label>
+                    <label data-new-item-group="days">Days
+                        <input type="number" min="1" max="31" data-new-item="buildToDays" class="admin-buildto-num-input" value="10" />
+                    </label>
+                    <label data-new-item-group="days">+Buffer
+                        <input type="number" min="0" max="99" data-new-item="buildToAdd" class="admin-buildto-num-input" value="0" />
+                    </label>
+                    <label data-new-item-group="fixed" class="admin-buildto-group--off">Fixed build-to
+                        <input type="number" min="0" max="999" step="any" data-new-item="buildToFixed" class="admin-buildto-num-input" placeholder="Blank = stock count only" />
+                    </label>
+                    <label>Outer unit
+                        <input type="text" data-new-item="unit0" class="admin-buildto-code-input" value="Boxes" title="First count column (Boxes, Cartons, Bags…)" />
+                    </label>
+                    <label>Inner unit
+                        <input type="text" data-new-item="unit1" class="admin-buildto-code-input" value="N/a" title="Second count column, or N/a" />
+                    </label>
+                    <label>Unit
+                        <input type="text" data-new-item="unit2" class="admin-buildto-code-input" value="N/a" title="Third count column (KGs, Each…), or N/a" />
+                    </label>
+                    <label>Inner per carton <span class="admin-buildto-new-optional">optional</span>
+                        <input type="number" min="0" step="any" data-new-item="innerPerCarton" class="admin-buildto-num-input" placeholder="-" title="Inner units per carton (e.g. 10 packs per box)" />
+                    </label>
+                </div>
+                <div class="admin-buildto-new-locrow">
+                    <span class="admin-buildto-new-label">Count locations</span>
+                    <div class="admin-buildto-new-locs" data-new-item="locations"></div>
+                </div>
+                <div class="admin-buildto-new-flags">
+                    <label><input type="checkbox" data-new-item="includeKeyItem" /> Key Item Count</label>
+                    <label><input type="checkbox" data-new-item="includeDaily" /> Daily count</label>
+                </div>
+                <p class="admin-modal-error admin-buildto-new-error" data-new-item="error" role="alert"></p>
+                <div class="admin-buildto-new-actions">
+                    <button type="button" class="mic-settings-btn admin-btn-primary" data-new-item="submit">Add item</button>
+                    <button type="button" class="admin-buildto-close-btn" data-new-item="cancel">Cancel</button>
+                </div>
+            </div>`;
+
+        const form = wrap.querySelector('#admin-buildto-new');
+        const vendorSelect = form.querySelector('[data-new-item="vendor"]');
+        renderNewItemLocations(form, vendorSelect.value);
+        vendorSelect.addEventListener('change', () => renderNewItemLocations(form, vendorSelect.value));
+        form.querySelector('[data-new-item="ruleType"]').addEventListener('change', () => applyNewItemRuleType(form));
+        form.querySelector('[data-new-item="cancel"]').addEventListener('click', () => {
+            wrap.hidden = true;
+        });
+        form.querySelector('[data-new-item="submit"]').addEventListener('click', () => {
+            void submitNewItem(form);
+        });
+    }
+
+    function toggleNewItemForm() {
+        const root = ensureBackdrop();
+        const wrap = root.querySelector('#admin-buildto-new-wrap');
+        if (!wrap) return;
+        if (wrap.hidden) {
+            renderNewItemForm();
+            wrap.hidden = false;
+            wrap.querySelector('[data-new-item="name"]')?.focus();
+        } else {
+            wrap.hidden = true;
+        }
+    }
+
+    async function submitNewItem(form) {
+        const field = (key) => form.querySelector(`[data-new-item="${key}"]`);
+        const errorEl = field('error');
+        errorEl.textContent = '';
+
+        const locations = [...form.querySelectorAll('[data-new-item-location]:checked')].map((el) => el.value);
+        const newLocation = String(field('newLocation')?.value || '').trim();
+        if (newLocation) locations.push(newLocation);
+
+        const body = {
+            vendor: field('vendor')?.value || '',
+            name: String(field('name')?.value || '').trim(),
+            itemCode: String(field('itemCode')?.value || '').trim(),
+            vendorCode: String(field('vendorCode')?.value || '').trim(),
+            fallbackCodes: String(field('fallbackCodes')?.value || '').trim(),
+            ruleType: field('ruleType')?.value || 'days',
+            buildToDays: field('buildToDays')?.value,
+            buildToAdd: field('buildToAdd')?.value,
+            buildToFixed: field('buildToFixed')?.value,
+            units: [field('unit0')?.value, field('unit1')?.value, field('unit2')?.value],
+            locations,
+            innerPerCarton: field('innerPerCarton')?.value,
+            includeKeyItem: Boolean(field('includeKeyItem')?.checked),
+            includeDaily: Boolean(field('includeDaily')?.checked),
+        };
+        if (!body.name) {
+            errorEl.textContent = 'Item name is required.';
+            return;
+        }
+        if (!body.itemCode) {
+            errorEl.textContent = 'Item code is required.';
+            return;
+        }
+
+        const submitBtn = field('submit');
+        submitBtn.disabled = true;
+        try {
+            const res = await fetch('/api/admin/build-to/items', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) throw new Error(data.error || 'Could not add item.');
+            const root = ensureBackdrop();
+            const wrap = root.querySelector('#admin-buildto-new-wrap');
+            if (wrap) wrap.hidden = true;
+            const search = root.querySelector('#admin-buildto-search');
+            if (search) search.value = data.itemCode || body.itemCode;
+            await loadCatalog();
+        } catch (error) {
+            errorEl.textContent = error.message || 'Could not add item.';
+        } finally {
+            submitBtn.disabled = false;
+        }
+    }
+
     function parseFallbackInput(value) {
         return String(value || '')
             .split(/[,;\s]+/)
@@ -597,6 +797,8 @@
         root.querySelector('#admin-buildto-error').textContent = '';
         const me = await fetchProfile();
         canEditItemCodes = Boolean(me.canEditGlobalBuildTo);
+        const addBtn = root.querySelector('#admin-buildto-add');
+        if (addBtn) addBtn.hidden = !canEditItemCodes;
         const globalTab = root.querySelector('#admin-buildto-global-tab');
         if (me.canEditGlobalBuildTo) {
             globalTab.hidden = false;

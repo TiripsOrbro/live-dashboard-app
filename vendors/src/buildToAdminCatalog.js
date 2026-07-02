@@ -195,6 +195,7 @@ function buildAdminBuildToCatalog(options = {}) {
             vendors.push({
                 slug: vendor.slug,
                 label: vendor.label || vendor.slug,
+                locations: Array.isArray(catalog.locations) ? catalog.locations : [],
                 items: Array.isArray(items) ? items : [],
             });
         }

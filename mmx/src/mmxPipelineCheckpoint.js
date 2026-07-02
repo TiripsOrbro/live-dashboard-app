@@ -28,7 +28,24 @@ async function readFileState() {
 
 async function writeFileState(state) {
     await fs.mkdir(path.dirname(CHECKPOINT_FILE), { recursive: true });
-    await fs.writeFile(CHECKPOINT_FILE, JSON.stringify(state, null, 2), 'utf8');
+    // Atomic write (tmp + rename) so a crash mid-write can't truncate resume state.
+    const tmp = `${CHECKPOINT_FILE}.${process.pid}.${Date.now()}.tmp`;
+    try {
+        await fs.writeFile(tmp, JSON.stringify(state, null, 2), 'utf8');
+        await fs.rename(tmp, CHECKPOINT_FILE);
+    } catch (error) {
+        try {
+            await fs.unlink(tmp);
+        } catch {
+            /* already renamed or never created */
+        }
+        // Windows EBUSY/EPERM on rename: fall back to direct write rather than losing the update.
+        if (error.code === 'EBUSY' || error.code === 'EPERM' || error.code === 'EACCES') {
+            await fs.writeFile(CHECKPOINT_FILE, JSON.stringify(state, null, 2), 'utf8');
+            return;
+        }
+        throw error;
+    }
 }
 
 async function getState() {

@@ -185,8 +185,8 @@ function printResults(results) {
 async function main() {
     console.log('[simulate-report-download] offline detection/adopt scenarios\n');
     const results = await runScenarios();
-    const expectedFail = new Set(['SOH already on disk before wait (no acceptSinceMs)']);
-    const unexpected = results.filter((r) => (r.ok ? expectedFail.has(r.label) : !expectedFail.has(r.label)));
+    // expectDetect() already encodes shouldPass, so any r.ok === false is a real failure.
+    const unexpected = results.filter((r) => !r.ok);
     printResults(results);
 
     console.log('Live MMX timing (optional, needs store login):');

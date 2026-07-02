@@ -508,6 +508,7 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         reportIdsNeedingDownload,
         reportsReadyForReportIds,
         resolveStoreReports,
+        clearStoreReportFilesByReportIds,
     } = require('./reportReader');
     const reportsDir = options.reportsDir || REPORTS_DIR;
     const allReportIds = ['report1', 'report2', 'report3'];
@@ -522,6 +523,15 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
     if (!idsToDownload.length) {
         log.info(`Reports already valid for store ${storeNumber} - skipping download (${targetReportIds.join(', ')})`);
         return;
+    }
+
+    if (options.forceDownload) {
+        const { removed } = clearStoreReportFilesByReportIds(storeNumber, reportsDir, idsToDownload);
+        if (removed.length) {
+            log.info(
+                `Store ${storeNumber}: cleared ${removed.length} report file(s) before re-download (${idsToDownload.join(', ')})`
+            );
+        }
     }
 
     const labelForIds = {
@@ -546,6 +556,7 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
         onlyReportIds: idsToDownload,
         afterCountApply: Boolean(options.afterCountApply),
         parallelReportDownload: options.parallelReportDownload,
+        strictReports: true,
     };
     const mmxOpts = withStoreMmxOptions(storeNumber, options);
     let useParallel =

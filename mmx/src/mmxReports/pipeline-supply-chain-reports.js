@@ -280,15 +280,22 @@ async function setReportFormat(page, formatText) {
         )
         .catch(() => null);
 
+    // Same total budget as the old 8x2s attempt loop, but poll fast and exit early.
     const maxAttempts = Math.max(4, Number(process.env.MMX_REPORT_FORMAT_ATTEMPTS || 8));
     const attemptDelayMs = Number(process.env.MMX_REPORT_FORMAT_RETRY_MS || 2000);
+    const budgetMs = maxAttempts * attemptDelayMs;
+    const pollMs = Number(process.env.MMX_REPORT_FORMAT_POLL_MS || 250);
 
-    let picked = null;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const startedAt = Date.now();
+    let picked = await pickFormatInPage(page, needles);
+    let warned = false;
+    while (!picked && Date.now() - startedAt < budgetMs) {
+        if (!warned) {
+            log.warn(`Format "${formatText}" not ready, polling up to ${Math.round(budgetMs / 1000)}s…`);
+            warned = true;
+        }
+        await page.waitForTimeout(pollMs);
         picked = await pickFormatInPage(page, needles);
-        if (picked) break;
-        log.warn(`Format "${formatText}" not ready (attempt ${attempt}/${maxAttempts}), waiting…`);
-        await page.waitForTimeout(attemptDelayMs);
     }
 
     if (!picked) {
@@ -379,6 +386,29 @@ function storeTreeHints(storeName, storeNumber) {
     return [...hints];
 }
 
+/**
+ * Wait until the RadTreeView finished its async expand callbacks (no visible loading
+ * spinner) instead of a full fixed sleep. Worst case equals the old fixed wait.
+ */
+async function waitForRadTreeIdle(page, timeoutMs = 800, floorMs = 120) {
+    await page
+        .waitForFunction(
+            () => {
+                if (document.readyState !== 'complete') return false;
+                const visible = (el) =>
+                    el && (el.offsetWidth > 0 || el.offsetHeight > 0) &&
+                    window.getComputedStyle(el).visibility !== 'hidden';
+                for (const el of document.querySelectorAll('.rtLoading, .raDiv, [id*="LoadingPanel"]')) {
+                    if (visible(el)) return false;
+                }
+                return true;
+            },
+            { timeout: timeoutMs, polling: 100 }
+        )
+        .catch(() => {});
+    if (floorMs > 0) await page.waitForTimeout(floorMs);
+}
+
 async function expandStoreTree(page, hints = []) {
     const needles = new Set(hints.map((h) => String(h).toLowerCase()).filter(Boolean));
     await page.evaluate((list) => {
@@ -404,7 +434,7 @@ async function expandStoreTree(page, hints = []) {
             }
         }
     }, [...needles]);
-    await page.waitForTimeout(800);
+    await waitForRadTreeIdle(page, Number(process.env.MMX_TREE_EXPAND_WAIT_MS || 800), 150);
 }
 
 /** Expand every collapsed node in the RadTreeView (needed before store rows are visible). */
@@ -424,7 +454,7 @@ async function expandFullReportStoreTree(page) {
             return count;
         });
         if (!expanded) break;
-        await page.waitForTimeout(350);
+        await waitForRadTreeIdle(page, 700, 100);
     }
 }
 
@@ -1123,7 +1153,12 @@ async function prepareStoreTreeForSelection(page, storeName, storeNumber, timeou
         }
         await expandFullReportStoreTree(page);
         await expandStoreTree(page, hints);
-        await page.waitForTimeout(600);
+        // Poll for the store row instead of a fixed sleep between expansion rounds.
+        const pollUntil = Date.now() + 600;
+        while (Date.now() < pollUntil) {
+            if (await storeVisibleInTree(page, num)) break;
+            await page.waitForTimeout(150);
+        }
     }
 
     log.warn(

@@ -66,11 +66,66 @@ function readJson(file, fallback) {
     }
 }
 
+const RENAME_RETRY_CODES = new Set(['EBUSY', 'EPERM', 'EACCES']);
+
 function writeJsonAtomic(file, value) {
     ensureDataDir();
     const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
-    fs.renameSync(tmp, file);
+    try {
+        fs.writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+        // Windows: another process may briefly hold the target open - retry the rename.
+        const maxAttempts = 5;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                fs.renameSync(tmp, file);
+                return;
+            } catch (err) {
+                if (!RENAME_RETRY_CODES.has(err?.code) || attempt === maxAttempts) throw err;
+                // Synchronous backoff (queue writes are tiny and rare).
+                Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25 * attempt);
+            }
+        }
+    } finally {
+        try {
+            if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+        } catch {
+            /* swept by sweepOrphanedTmpFiles on next startup */
+        }
+    }
+}
+
+/** Remove orphaned queue tmp files left by crashed processes or failed renames. */
+function sweepOrphanedTmpFiles() {
+    let removed = 0;
+    try {
+        if (!fs.existsSync(DATA_DIR)) return 0;
+        const queueBase = path.basename(QUEUE_FILE);
+        const activeBase = path.basename(ACTIVE_FILE);
+        const preemptBase = path.basename(PREEMPT_FILE);
+        const tmpRe = new RegExp(
+            `^(?:${[queueBase, activeBase, preemptBase]
+                .map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+                .join('|')})\\.(\\d+)\\.\\d+\\.tmp$`
+        );
+        for (const name of fs.readdirSync(DATA_DIR)) {
+            const m = name.match(tmpRe);
+            if (!m) continue;
+            // Keep tmp files owned by live processes (write may be in flight).
+            if (isPidAlive(Number(m[1]))) continue;
+            try {
+                fs.unlinkSync(path.join(DATA_DIR, name));
+                removed++;
+            } catch {
+                /* ignore */
+            }
+        }
+        if (removed > 0) {
+            console.warn(`[MMX Queue] Removed ${removed} orphaned queue tmp file(s)`);
+        }
+    } catch {
+        /* ignore */
+    }
+    return removed;
 }
 
 function readQueueDoc() {
@@ -431,6 +486,7 @@ function startPreemptPoller() {
 }
 
 startPreemptPoller();
+sweepOrphanedTmpFiles();
 
 module.exports = {
     PRIORITY,
@@ -449,4 +505,5 @@ module.exports = {
     getLocalSlotPriority,
     shouldAbortForPreempt,
     markPreemptHandled,
+    sweepOrphanedTmpFiles,
 };

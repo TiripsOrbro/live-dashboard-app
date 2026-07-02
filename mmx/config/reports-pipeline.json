@@ -43,6 +43,7 @@
       "startDate": "yesterday",
       "dateOnly": true,
       "downloadExt": ".csv",
+      "downloadWaitMs": 300000,
       "generateButtonText": "Generate"
     }
   ]

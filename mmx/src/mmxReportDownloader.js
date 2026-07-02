@@ -80,6 +80,7 @@ function buildSettings(pipeline, storeDir, options = {}) {
         pipeline,
         chainReports: options.chainReports,
         resetReportHub: Boolean(options.resetReportHub),
+        strictReports: Boolean(options.strictReports),
     };
 }
 
@@ -149,8 +150,65 @@ async function retryScmReportPerStore(page, pipeline, store, report, runSlug, st
     return dest;
 }
 
+/**
+ * Download a store's reports, then retry the missing ones once in the same session
+ * instead of just logging and moving on. Set MMX_STORE_DOWNLOAD_RETRY=0 to disable.
+ */
+async function downloadStoreReportsWithRetry(page, store, reports, settings, results, ctx) {
+    const entry = results.stores[store.storeNumber];
+    const wantIds = reports.map((r) => r.id);
+
+    let firstError = null;
+    try {
+        const paths = await downloadReports(page, settings);
+        entry.files = { ...entry.files, ...paths };
+    } catch (err) {
+        firstError = err;
+    }
+
+    const missing = wantIds.filter((id) => !entry.files[id] || !fs.existsSync(entry.files[id]));
+    if (!missing.length) return;
+
+    if (process.env.MMX_STORE_DOWNLOAD_RETRY === '0') {
+        if (firstError) throw firstError;
+        throw new Error(`Store ${store.storeNumber}: reports ${missing.join(', ')} not downloaded`);
+    }
+
+    log.warn(
+        `Store ${store.storeNumber}: report(s) ${missing.join(', ')} missing after first pass` +
+            (firstError ? ` (${firstError.message})` : '') +
+            ' - retrying once'
+    );
+
+    const retryReports = reports.filter((r) => missing.includes(r.id));
+    const retryPipeline = {
+        reportNavigation: ctx.pipeline.reportNavigation,
+        reports: retryReports,
+    };
+    const retrySettings = buildSettings(retryPipeline, ctx.storeDir, {
+        ...ctx.buildSettingsOptions,
+        resetReportHub: true,
+    });
+    if (typeof ctx.buildSettingsOptions?.onReportStep === 'function') {
+        retrySettings.onReportStep = ctx.buildSettingsOptions.onReportStep;
+    }
+
+    const retryPaths = await downloadReports(page, retrySettings);
+    entry.files = { ...entry.files, ...retryPaths };
+
+    const stillMissing = missing.filter((id) => !entry.files[id] || !fs.existsSync(entry.files[id]));
+    if (stillMissing.length) {
+        throw (
+            firstError ||
+            new Error(`Store ${store.storeNumber}: reports ${stillMissing.join(', ')} not downloaded after retry`)
+        );
+    }
+    log.info(`Store ${store.storeNumber}: retry recovered ${missing.filter((id) => entry.files[id]).join(', ')}`);
+}
+
 function finalizeStoreResults(results, stores, options = {}) {
     if (options.skipIseHistoryCapture) return;
+    const invalidStores = [];
     for (const store of stores) {
         const entry = results.stores[store.storeNumber];
         const files = resolveStoreReports(store.storeNumber, REPORTS_DIR);
@@ -159,6 +217,7 @@ function finalizeStoreResults(results, stores, options = {}) {
             entry.success = false;
             entry.missingReports = validation.issues;
             log.error(`Store ${store.storeNumber}: ${validation.issues.join('; ')}`);
+            invalidStores.push({ storeNumber: store.storeNumber, issues: validation.issues });
         }
         try {
             const isePath = files.inventorySpecialEvent;
@@ -171,6 +230,12 @@ function finalizeStoreResults(results, stores, options = {}) {
         } catch (err) {
             log.warn(`Store ${store.storeNumber}: ISE history capture failed: ${err.message}`);
         }
+    }
+    if (options.strictReports && invalidStores.length) {
+        const summary = invalidStores
+            .map((row) => `Store ${row.storeNumber}: ${row.issues.join('; ')}`)
+            .join(' | ');
+        throw new Error(summary);
     }
 }
 
@@ -359,6 +424,7 @@ async function downloadReportsForStores(options = {}) {
             const settings = buildSettings(storePipeline, storeDir, {
                 chainReports: options.chainReports,
                 resetReportHub: options.resetReportHub,
+                strictReports: options.strictReports,
             });
             if (typeof options.onReportStep === 'function') {
                 settings.onReportStep = options.onReportStep;
@@ -368,15 +434,21 @@ async function downloadReportsForStores(options = {}) {
 
             try {
                 await configureDownloadPath(page, storeDir);
-                const paths = await downloadReports(page, settings);
-                results.stores[store.storeNumber].files = {
-                    ...results.stores[store.storeNumber].files,
-                    ...paths,
-                };
+                await downloadStoreReportsWithRetry(page, store, reports, settings, results, {
+                    pipeline,
+                    storeDir,
+                    buildSettingsOptions: {
+                        chainReports: options.chainReports,
+                        resetReportHub: options.resetReportHub,
+                        strictReports: options.strictReports,
+                        onReportStep: settings.onReportStep,
+                    },
+                });
             } catch (err) {
                 log.error(`Store ${store.storeNumber} failed:`, err.message);
                 results.stores[store.storeNumber].success = false;
                 results.stores[store.storeNumber].error = err.message;
+                if (options.strictReports) throw err;
             }
         }
     } finally {

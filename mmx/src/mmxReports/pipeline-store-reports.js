@@ -14,6 +14,16 @@ function dateOpts(report) {
     return { timeZone: report.timeZone, dateOnly: Boolean(report.dateOnly) };
 }
 
+/**
+ * Wait for the document to be ready plus a short settle floor. The triggering step
+ * already waited for its own postback, so no response wait is needed here.
+ */
+async function settleAfterPostback(page, envVar, defaultFloorMs) {
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
+    const floorMs = Number(process.env[envVar] || defaultFloorMs);
+    if (floorMs > 0) await page.waitForTimeout(floorMs);
+}
+
 async function triggerStoreSelectionReload(page) {
     // MMX sometimes requires focus to leave the store combo to trigger postback/reload.
     await page.evaluate(() => {
@@ -35,7 +45,7 @@ async function triggerStoreSelectionReload(page) {
     // Force a full refresh so the selected store context is fully committed.
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 });
     await page.waitForFunction(() => document.readyState === 'complete', { timeout: 25000 }).catch(() => {});
-    await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_STORE_SETTLE_MS || 1200));
+    await settleAfterPostback(page, 'MMX_STORE_REPORT_POST_STORE_SETTLE_MS', 500);
 }
 
 async function configureAndGenerateStoreReport(page, report, reportNav, hooks = {}) {
@@ -62,8 +72,7 @@ async function configureAndGenerateStoreReport(page, report, reportNav, hooks = 
         if (chain) chain.lastGroup = group;
     }
     await selectReportInList(page, report.reportName, { loose: true });
-    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
-    await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_SELECT_SETTLE_MS || 700));
+    await settleAfterPostback(page, 'MMX_STORE_REPORT_POST_SELECT_SETTLE_MS', 300);
 
     if (report.storeName) {
         await selectStoreForStoreReport(page, report.storeName, {
@@ -75,26 +84,23 @@ async function configureAndGenerateStoreReport(page, report, reportNav, hooks = 
         // Full reload resets report parameters — re-open report and store before setting dates.
         await setGroupDropdown(page, group);
         await selectReportInList(page, report.reportName, { loose: true });
-        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
-        await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_SELECT_SETTLE_MS || 700));
+        await settleAfterPostback(page, 'MMX_STORE_REPORT_POST_SELECT_SETTLE_MS', 300);
         await selectStoreForStoreReport(page, report.storeName, {
             storeNumber: report.storeNumber,
             waitMs: 1500,
             optional: false,
         });
-        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
-        await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_STORE_SETTLE_MS || 1200));
+        await settleAfterPostback(page, 'MMX_STORE_REPORT_POST_STORE_SETTLE_MS', 500);
     }
 
     // Apply date after report + store are selected.
     const startDate = resolveReportDate(report.startDate || 'yesterday', dateOpts(report));
     await setStartDate(page, startDate);
-    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
-    await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_DATE_SETTLE_MS || 600));
+    await settleAfterPostback(page, 'MMX_STORE_REPORT_POST_DATE_SETTLE_MS', 250);
 
     // Finally set report format/type so all report controls are in final state before generate.
     await setReportFormat(page, report.format || 'CSV');
-    await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_FORMAT_MS || 350));
+    await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_FORMAT_MS || 200));
 
     await clickGenerate(page, report.generateButtonText || 'Generate');
 }

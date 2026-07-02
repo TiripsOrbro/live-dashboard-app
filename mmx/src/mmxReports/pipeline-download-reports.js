@@ -8,9 +8,56 @@ const { navigateToSupplyChainReports } = require('./mmx-navigation');
 const { refreshScrapePauseTimeout } = require('../mmxResourceGate');
 const { runSupplyChainReport, isSupplyChainReport } = require('./pipeline-supply-chain-reports');
 const { runStoreReport, isStoreReport } = require('./pipeline-store-reports');
-const { filterSpreadsheetByStoreColumn, logIseSpotCheck } = require('../../../vendors/src/reportReader');
+const {
+    filterSpreadsheetByStoreColumn,
+    logIseSpotCheck,
+    parseStockOnHand,
+    parseStockOnOrder,
+    parseInventorySpecialEventFile,
+} = require('../../../vendors/src/reportReader');
 
 const DOWNLOAD_EXTS = ['.xls', '.xlsx', '.csv'];
+
+const DOWNLOAD_ATTEMPT_SUBDIR = '_dl';
+
+function downloadAttemptCount() {
+    return Math.max(1, Number(process.env.MMX_REPORT_DOWNLOAD_ATTEMPTS || 2));
+}
+
+/**
+ * Fresh empty folder per generate attempt: any file Chromium saves there IS the
+ * requested report, so no newest-file/regex guessing is needed on the primary path.
+ */
+function createDownloadAttemptDir(baseDir, reportId, attempt) {
+    const dir = path.join(baseDir, DOWNLOAD_ATTEMPT_SUBDIR, `${reportId || 'report'}-a${attempt}-${Date.now()}`);
+    fs.rmSync(dir, { recursive: true, force: true });
+    ensureDir(dir);
+    return dir;
+}
+
+function removeDownloadAttemptDir(dir) {
+    try {
+        fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+        /* best effort - stale attempt dirs are swept on the next run */
+    }
+}
+
+/** Remove leftover attempt folders from earlier runs so they can't feed stale files to fallbacks. */
+function sweepStaleDownloadAttemptDirs(baseDir) {
+    const root = path.join(baseDir, DOWNLOAD_ATTEMPT_SUBDIR);
+    try {
+        fs.rmSync(root, { recursive: true, force: true });
+    } catch {
+        /* ignore */
+    }
+}
+
+/** Browser/page death is not recoverable by re-running the report config on the same page. */
+function isRetryableDownloadError(err) {
+    const msg = String(err?.message || err || '');
+    return !/Target closed|Session closed|Protocol error|browser has disconnected|detached Frame/i.test(msg);
+}
 
 const MMX_DEFAULT_EXPORT_HINTS = {
     report1: { needle: /2_All|On.?Hand/i, ext: '.xls', nameRe: /^MMS_Report_/i },
@@ -289,24 +336,66 @@ async function waitForReportDownload(downloadDir, timeoutMs, preferredExt, pollH
     throw lastError || new Error('No download received');
 }
 
-async function downloadSupplyChainReport(page, report, settings) {
-    const scope = report.scmTreeStoreNumber
-        ? ` (tree checkbox: ${report.scmTreeStoreNumber})`
-        : report.skipStoreSelection
-          ? ' (no store tree; split/filter after download)'
-          : '';
-    const downloadDir = getReportDownloadDir(settings);
-    const cleared = clearMacromatixDefaultExports(downloadDir);
-    if (cleared.length) {
-        log.info(
-            `${report.label || report.id}: cleared ${cleared.length} stale Macromatix export file(s) before download`
+/**
+ * Sanity-check a downloaded report before adopting it, so a wrong or truncated
+ * file fails fast (and triggers a retry) instead of poisoning the build-to calc.
+ * Returns null when OK, otherwise a reason string.
+ */
+function validateDownloadedReportFile(downloaded, report) {
+    let stat;
+    try {
+        stat = fs.statSync(downloaded);
+    } catch (err) {
+        return `not readable (${err.message})`;
+    }
+    if (!stat.size) return 'file is empty';
+
+    const storeNumber = report.storeNumber ? String(report.storeNumber).trim() : '';
+    try {
+        if (report.id === 'report1') {
+            const rows = parseStockOnHand(downloaded, storeNumber);
+            const minRows = Number(process.env.MMX_REPORT_MIN_SOH_ROWS || 10);
+            if (storeNumber && rows.size < minRows) {
+                return `stock-on-hand has only ${rows.size} row(s) for store ${storeNumber}`;
+            }
+        } else if (report.id === 'report2') {
+            // Zero on-order rows is legitimate - only require a parseable spreadsheet.
+            parseStockOnOrder(downloaded, storeNumber);
+        } else if (report.id === 'report3') {
+            const { items } = parseInventorySpecialEventFile(downloaded);
+            if (!items || items.size === 0) return 'inventory-special-event parsed 0 items';
+        }
+    } catch (err) {
+        return `unreadable (${err.message})`;
+    }
+    return null;
+}
+
+async function reportTimeoutDiagnostics(page, report, downloadDir, err) {
+    const diag = await scrapeReportPageDiagnostics(page);
+    if (diag) {
+        log.warn(`${report.label || report.id}: page diagnostics after timeout: ${diag}`);
+    }
+    log.warn(`${report.label || report.id}: page URL at timeout: ${page.url()}`);
+    const stray = listStrayMmxExports(downloadDir, report);
+    if (stray.length) {
+        log.warn(
+            `${report.label || report.id}: files in download dir: ${stray.map((f) => path.basename(f)).join(', ')}`
         );
     }
-    await configureDownloadPath(page, downloadDir);
+    const hint = diag ? ` Macromatix page: ${diag}` : '';
+    return new Error(`${err.message}.${hint}`);
+}
+
+/**
+ * One generate+download attempt into a fresh empty attempt dir. The attempt dir is
+ * exclusive to this report, so whatever Chromium saves there IS the requested report.
+ */
+async function downloadReportAttempt(page, report, settings, attemptDir, runReport) {
+    await configureDownloadPath(page, attemptDir);
 
     const downloadStartedAt = Date.now();
-    log.info(`Downloading: ${report.label || report.id} (${report.reportName})${scope}`);
-    await runSupplyChainReport(page, report, settings);
+    await runReport();
 
     if (typeof settings.onReportStep === 'function') {
         const reportLabel = report.label || report.reportName || report.id || 'report';
@@ -316,49 +405,101 @@ async function downloadSupplyChainReport(page, report, settings) {
     const downloadWaitMs = Number(report.downloadWaitMs || settings.downloadWaitMs);
     let downloaded;
     try {
-        downloaded = await waitForReportDownload(downloadDir, downloadWaitMs, report.downloadExt, {
+        downloaded = await waitForReportDownload(attemptDir, downloadWaitMs, report.downloadExt, {
             acceptSinceMs: downloadStartedAt,
         });
     } catch (err) {
-        const wrongFormat = findWrongFormatMacromatixExport(downloadDir, report, downloadStartedAt);
+        const wrongFormat = findWrongFormatMacromatixExport(attemptDir, report, downloadStartedAt);
         if (wrongFormat) {
             throw new Error(
-                `Macromatix saved ${path.basename(wrongFormat)} but ${report.downloadExt || '.xls'} was required - confirm "Excel Data Only" is selected before Generate`
+                `Macromatix saved ${path.basename(wrongFormat)} but ${report.downloadExt || '.xls'} was required - confirm "${report.format || 'Excel Data Only'}" is selected before Generate`
             );
         }
-        const fallback = findFreshMacromatixExport(downloadDir, report, downloadStartedAt);
+        // Last-resort recovery: the export may have landed in the main store dir if the
+        // browser ignored the per-attempt download path.
+        const mainDir = getReportDownloadDir(settings);
+        const fallback = findFreshMacromatixExport(mainDir, report, downloadStartedAt);
         if (fallback) {
             log.info(
-                `${report.label || report.id}: adopting Macromatix default export ${path.basename(fallback)}`
+                `${report.label || report.id}: adopting Macromatix default export ${path.basename(fallback)} from ${mainDir}`
             );
             downloaded = fallback;
         } else {
-            const diag = await scrapeReportPageDiagnostics(page);
-            const url = page.url();
-            if (diag) {
-                log.warn(`${report.label || report.id}: page diagnostics after timeout: ${diag}`);
-            }
-            log.warn(`${report.label || report.id}: page URL at timeout: ${url}`);
-            const stray = listStrayMmxExports(downloadDir, report);
-            if (stray.length) {
-                log.warn(
-                    `${report.label || report.id}: files in download dir: ${stray.map((f) => path.basename(f)).join(', ')}`
-                );
-            }
-            const hint = diag ? ` Macromatix page: ${diag}` : '';
-            throw new Error(`${err.message}.${hint}`);
+            throw await reportTimeoutDiagnostics(page, report, attemptDir, err);
         }
     }
+
     const wantExt = String(report.downloadExt || path.extname(downloaded) || '.xls').toLowerCase();
     const gotExt = path.extname(downloaded).toLowerCase();
     if (wantExt && gotExt && gotExt !== wantExt) {
-        const stray = listStrayMmxExports(downloadDir, report);
         throw new Error(
-            `Macromatix saved ${path.basename(downloaded)} (${gotExt}) but ${wantExt} was required` +
-                (stray.length ? `; also saw ${stray.map((f) => path.basename(f)).join(', ')}` : '')
+            `Macromatix saved ${path.basename(downloaded)} (${gotExt}) but ${wantExt} was required`
         );
     }
-    const dest = await adoptDownloadedReport(report, settings, downloaded);
+
+    const invalid = validateDownloadedReportFile(downloaded, report);
+    if (invalid) {
+        throw new Error(
+            `${report.label || report.id}: downloaded ${path.basename(downloaded)} failed validation - ${invalid}`
+        );
+    }
+
+    return adoptDownloadedReport(report, settings, downloaded);
+}
+
+/** Generate+download with retries; each attempt gets a fresh empty download dir. */
+async function downloadReportWithRetries(page, report, settings, runReport) {
+    const baseDir = getReportDownloadDir(settings);
+    const cleared = clearMacromatixDefaultExports(baseDir);
+    if (cleared.length) {
+        log.info(
+            `${report.label || report.id}: cleared ${cleared.length} stale Macromatix export file(s) before download`
+        );
+    }
+
+    const maxAttempts = downloadAttemptCount();
+    let lastError = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        const attemptDir = createDownloadAttemptDir(baseDir, report.id, attempt);
+        try {
+            const dest = await downloadReportAttempt(page, report, settings, attemptDir, runReport);
+            if (attempt > 1) {
+                log.info(`${report.label || report.id}: succeeded on attempt ${attempt}/${maxAttempts}`);
+            }
+            report.downloadAttempts = attempt;
+            return dest;
+        } catch (err) {
+            lastError = err;
+            removeDownloadAttemptDir(attemptDir);
+            if (attempt >= maxAttempts || !isRetryableDownloadError(err)) break;
+            log.warn(
+                `${report.label || report.id}: attempt ${attempt}/${maxAttempts} failed (${err.message}) - regenerating with a fresh download dir`
+            );
+            if (typeof settings.onReportStep === 'function') {
+                const reportLabel = report.label || report.reportName || report.id || 'report';
+                await settings.onReportStep(`${reportLabel}: retrying download (attempt ${attempt + 1}/${maxAttempts})…`);
+            }
+            // Force a full re-open of Report Selection so the retry starts from known state.
+            if (settings.chainSession) {
+                settings.chainSession.hubOpen = false;
+                settings.chainSession.lastGroup = null;
+            }
+        }
+    }
+    throw lastError || new Error(`${report.label || report.id}: download failed`);
+}
+
+async function downloadSupplyChainReport(page, report, settings) {
+    const scope = report.scmTreeStoreNumber
+        ? ` (tree checkbox: ${report.scmTreeStoreNumber})`
+        : report.skipStoreSelection
+          ? ' (no store tree; split/filter after download)'
+          : '';
+
+    const dest = await downloadReportWithRetries(page, report, settings, async () => {
+        log.info(`Downloading: ${report.label || report.id} (${report.reportName})${scope}`);
+        await runSupplyChainReport(page, report, settings);
+    });
 
     log.info(`Saved ${report.id} → ${path.basename(dest)}`);
     if (typeof settings.onReportStep === 'function') {
@@ -373,42 +514,16 @@ async function downloadSupplyChainReport(page, report, settings) {
 }
 
 async function downloadStoreReport(page, report, settings) {
-    const downloadDir = getReportDownloadDir(settings);
-    const cleared = clearMacromatixDefaultExports(downloadDir);
-    if (cleared.length) {
-        log.info(
-            `${report.label || report.id}: cleared ${cleared.length} stale Macromatix export file(s) before download`
-        );
-    }
-    await configureDownloadPath(page, downloadDir);
-
-    const downloadStartedAt = Date.now();
-    log.info(`Downloading: ${report.label || report.id} (${report.reportName})`);
-    await runStoreReport(page, report, settings);
-
-    if (typeof settings.onReportStep === 'function') {
-        const reportLabel = report.label || report.reportName || report.id || 'report';
-        await settings.onReportStep(`${reportLabel}: waiting for file download…`);
-    }
-
-    const downloadWaitMs = Number(report.downloadWaitMs || settings.downloadWaitMs);
-    let downloaded;
-    try {
-        downloaded = await waitForReportDownload(downloadDir, downloadWaitMs, report.downloadExt || '.csv', {
-            acceptSinceMs: downloadStartedAt,
-        });
-    } catch (err) {
-        const fallback = findFreshMacromatixExport(downloadDir, report, downloadStartedAt);
-        if (fallback) {
-            log.info(
-                `${report.label || report.id}: adopting Macromatix default export ${path.basename(fallback)}`
-            );
-            downloaded = fallback;
-        } else {
-            throw err;
+    const dest = await downloadReportWithRetries(
+        page,
+        { ...report, downloadExt: report.downloadExt || '.csv' },
+        settings,
+        async () => {
+            log.info(`Downloading: ${report.label || report.id} (${report.reportName})`);
+            await runStoreReport(page, report, settings);
         }
-    }
-    const dest = await adoptDownloadedReport(report, settings, downloaded);
+    );
+
     log.info(`Saved ${report.id} → ${path.basename(dest)}`);
     if (report.id === 'report3' && report.storeNumber) {
         logIseSpotCheck(dest, ['37876', '37909', '37609'], (msg) => log.info(msg));
@@ -448,6 +563,7 @@ async function downloadReports(page, settings) {
         return paths;
     }
 
+    sweepStaleDownloadAttemptDirs(getReportDownloadDir(settings));
     await configureDownloadPath(page, getReportDownloadDir(settings));
 
     if (chainReportsEnabled(settings) && !settings.chainSession) {
@@ -499,11 +615,14 @@ async function downloadReports(page, settings) {
                 await page.waitForTimeout(report.waitAfterNavigateMs);
             }
 
+            const exportStartedAt = Date.now();
             await withPageContextRetry(page, `export ${report.id}`, async () => {
                 await clickExportExcelDataOnly(page, report);
             });
 
-            const downloaded = await waitForReportDownload(getReportDownloadDir(settings), settings.downloadWaitMs);
+            const downloaded = await waitForReportDownload(getReportDownloadDir(settings), settings.downloadWaitMs, null, {
+                acceptSinceMs: exportStartedAt,
+            });
             const dest = await adoptDownloadedReport(
                 { ...report, outputBasename: report.outputBasename || report.id },
                 settings,
@@ -514,11 +633,17 @@ async function downloadReports(page, settings) {
         } catch (err) {
             failures.push({ id: report.id, label: report.label || report.id, error: err.message });
             log.error(`Report ${report.id} (${report.label || report.id}) failed: ${err.message}`);
+            if (settings.strictReports || report.id === 'report1') {
+                break;
+            }
         }
     }
 
     if (failures.length) {
         const summary = failures.map((f) => `${f.id}: ${f.error}`).join('; ');
+        if (settings.strictReports) {
+            throw new Error(`Reports incomplete (${Object.keys(paths).length} saved): ${summary}`);
+        }
         log.warn(`Reports incomplete (${Object.keys(paths).length} saved): ${summary}`);
         const adopted = normalizeMacromatixExportsForStore(
             getReportDownloadDir(settings),
@@ -546,4 +671,6 @@ module.exports = {
     findFreshMacromatixExport,
     normalizeMacromatixExportsForStore,
     flushDeferredDownloadRenames,
+    downloadReportWithRetries,
+    validateDownloadedReportFile,
 };

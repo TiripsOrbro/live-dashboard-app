@@ -8,7 +8,17 @@ const { aggregateDayPartsFromHourlyPlan, LIFELENZ_DAY_PARTS } = require('./lifel
 
 const SETTLE_MS = 800;
 const DATE_SETTLE_MS = 2000;
-const DEFAULT_QUIRK_RELOAD_MAX_MS = 6000;
+// Upper bound on the post-save reload wait. This is a cap, not a sleep: the
+// settle logic polls for the inputs to return and finishes as soon as they do,
+// so a generous cap only costs time on genuinely slow reloads.
+const DEFAULT_QUIRK_RELOAD_MAX_MS = 15000;
+const VERIFY_TIMEOUT_MS = 10000;
+const WRITE_DAY_MAX_ATTEMPTS = 2;
+
+/** True for puppeteer evaluate errors caused by an in-flight SPA navigation. */
+function isDestroyedContextError(err) {
+    return /context was destroyed|Execution context|Cannot find context/i.test(err?.message || '');
+}
 
 function resolveQuirkReloadMaxMs(options = {}) {
     if (Number.isFinite(options.quirkReloadMaxMs)) return options.quirkReloadMaxMs;
@@ -58,14 +68,8 @@ async function clickByText(page, selectors, textPattern, options = {}) {
     }, pattern.source, pattern.flags.replace('g', ''));
 }
 
-async function selectStoreInLifeLenz(page, storeNumber) {
-    const store = String(storeNumber || '').trim();
-    const labelNeedle = `${store} -`;
-
-    await page.keyboard.press('Escape').catch(() => null);
-    await page.waitForTimeout(300);
-
-    const current = await page.evaluate(() => {
+async function readCurrentStoreTriggerLabel(page) {
+    return page.evaluate(() => {
         for (const el of document.querySelectorAll(
             'button[aria-haspopup="listbox"], button[aria-haspopup="menu"], [data-slot="trigger"], div.max-w-60'
         )) {
@@ -74,6 +78,27 @@ async function selectStoreInLifeLenz(page, storeNumber) {
         }
         return '';
     });
+}
+
+/** Poll until the store picker trigger shows the requested store. */
+async function waitForStoreSelected(page, labelNeedle, timeoutMs = 10000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const current = await readCurrentStoreTriggerLabel(page).catch(() => '');
+        if (current.startsWith(labelNeedle)) return true;
+        await page.waitForTimeout(200);
+    }
+    return false;
+}
+
+async function selectStoreInLifeLenz(page, storeNumber) {
+    const store = String(storeNumber || '').trim();
+    const labelNeedle = `${store} -`;
+
+    await page.keyboard.press('Escape').catch(() => null);
+    await page.waitForTimeout(300);
+
+    const current = await readCurrentStoreTriggerLabel(page);
     if (current.startsWith(labelNeedle)) return true;
 
     const storePattern = new RegExp(`\\b${store}\\s*-`, 'i');
@@ -94,8 +119,10 @@ async function selectStoreInLifeLenz(page, storeNumber) {
             storePattern
         );
         if (picked) {
-            await page.waitForTimeout(SETTLE_MS);
-            return true;
+            // Confirm the picker actually switched before touching the forecast:
+            // typing against the previous store silently corrupts its data.
+            if (await waitForStoreSelected(page, labelNeedle)) return true;
+            throw new Error(`Clicked store ${store} in the LifeLenz picker but it did not become active.`);
         }
         await page.keyboard.press('Escape').catch(() => null);
     }
@@ -127,8 +154,15 @@ async function navigateToForecast(page) {
             /^forecast$/i
         );
         if (opened) {
-            await page.waitForTimeout(SETTLE_MS);
-            return;
+            // Wait for the forecast page chrome instead of a fixed sleep.
+            const ready = await page
+                .waitForSelector(
+                    'a.calendar-unit-link.day, .display-date, a.display-date, [aria-label="Open calendar picker"]',
+                    { visible: true, timeout: 15000 }
+                )
+                .then(() => true)
+                .catch(() => false);
+            if (ready) return;
         }
     }
 
@@ -143,7 +177,16 @@ async function switchToDayView(page) {
         const clicked = await clickByText(page, ['a', 'button'], /^d$/i);
         if (!clicked) throw new Error('Could not switch LifeLenz forecast to Day view.');
     }
-    await page.waitForTimeout(SETTLE_MS);
+    // Day view is ready when the date toolbar renders; fall back to a short
+    // settle if the selector never appears (older UI variants).
+    const ready = await page
+        .waitForSelector('.display-date, a.display-date, [aria-label="Open calendar picker"]', {
+            visible: true,
+            timeout: 10000,
+        })
+        .then(() => true)
+        .catch(() => false);
+    if (!ready) await page.waitForTimeout(SETTLE_MS);
 }
 
 const LIFELENZ_TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
@@ -295,10 +338,22 @@ async function setForecastDateViaUrl(page, isoDate) {
     for (const nextUrl of candidates) {
         if (nextUrl === current) continue;
         await page.goto(nextUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => null);
-        await page.waitForTimeout(DATE_SETTLE_MS);
-        if (await isForecastDateActive(page, isoDate)) return true;
+        // Poll for the SPA to hydrate and show the target date rather than
+        // sleeping a fixed interval and hoping it was long enough.
+        if (await waitForForecastDate(page, isoDate, DATE_SETTLE_MS * 3)) return true;
     }
     return false;
+}
+
+/** Poll until the displayed date differs from previousIso (arrow click landed). */
+async function waitForActiveDateChange(page, previousIso, timeoutMs = DATE_SETTLE_MS * 2) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const current = await readActiveForecastIsoDate(page).catch(() => '');
+        if (current && current !== previousIso) return current;
+        await page.waitForTimeout(200);
+    }
+    return readActiveForecastIsoDate(page).catch(() => '');
 }
 
 async function clickForecastDateArrow(page, forward) {
@@ -374,9 +429,10 @@ async function advanceForecastDateByDays(page, dayCount) {
     if (!steps) return true;
 
     for (let step = 0; step < steps; step += 1) {
+        const before = await readActiveForecastIsoDate(page).catch(() => '');
         const clicked = await clickForecastDateArrow(page, true);
         if (!clicked) return false;
-        await page.waitForTimeout(DATE_SETTLE_MS);
+        await waitForActiveDateChange(page, before);
     }
     return true;
 }
@@ -390,7 +446,7 @@ async function advanceForecastDateWithArrows(page, isoDate) {
         const goForward = !currentIso || targetMs >= Date.parse(`${currentIso}T12:00:00Z`);
         const advanced = await clickForecastDateArrow(page, goForward);
         if (!advanced) return false;
-        await page.waitForTimeout(DATE_SETTLE_MS);
+        await waitForActiveDateChange(page, currentIso);
     }
     return await isForecastDateActive(page, isoDate);
 }
@@ -632,35 +688,107 @@ async function countVisibleDayPartInputs(page) {
     );
 }
 
-/** Wait for LifeLenz to settle after overnight quirk save (inputs visible again, capped by maxMs). */
+/**
+ * Wait for LifeLenz to settle after the overnight quirk save. The save can
+ * trigger a full SPA reload, so instead of racing fixed sleeps against
+ * networkidle2 (which an Aurelia SPA may never reach), poll until the
+ * day-part inputs are visible again and hold steady, capped by maxMs.
+ */
 async function waitForDayPartSaveSettle(page, options = {}) {
     const maxMs = resolveQuirkReloadMaxMs(options);
-    const started = Date.now();
+    const deadline = Date.now() + maxMs;
 
-    await Promise.race([
-        page.waitForNavigation({ waitUntil: 'networkidle2', timeout: maxMs }).catch(() => null),
-        page
-            .waitForFunction(
-                () =>
-                    [...document.querySelectorAll('input.forecast-adjustment.form-control')].filter((input) => {
-                        const r = input.getBoundingClientRect();
-                        return r.width > 0 && r.height > 0;
-                    }).length >= 9,
-                { timeout: maxMs, polling: 150 }
-            )
-            .catch(() => null),
-        page.waitForTimeout(maxMs),
-    ]);
+    let count = 0;
+    while (Date.now() < deadline) {
+        try {
+            count = await countVisibleDayPartInputs(page);
+        } catch (err) {
+            if (!isDestroyedContextError(err)) throw err;
+            count = 0;
+        }
+        if (count >= DAY_PART_INPUT_COUNT) break;
+        await page.waitForTimeout(150);
+    }
 
-    const remaining = Math.max(0, Math.min(SETTLE_MS, maxMs - (Date.now() - started)));
-    if (remaining > 0) await page.waitForTimeout(remaining);
-
-    const count = await countVisibleDayPartInputs(page);
     if (count < DAY_PART_INPUT_COUNT) {
         throw new Error(
-            `LifeLenz day-part inputs not ready after save (${count} visible, need ${DAY_PART_INPUT_COUNT}).`
+            `LifeLenz day-part inputs not ready after save (${count} visible, need ${DAY_PART_INPUT_COUNT}, waited ${maxMs}ms).`
         );
     }
+
+    // Require the input count to hold steady so we don't read/type against a
+    // page that is still re-rendering mid-reload.
+    await page.waitForTimeout(300);
+    const settled = await countVisibleDayPartInputs(page).catch(() => 0);
+    if (settled < DAY_PART_INPUT_COUNT) {
+        const graceDeadline = Date.now() + Math.min(maxMs, 5000);
+        let recovered = settled;
+        while (recovered < DAY_PART_INPUT_COUNT && Date.now() < graceDeadline) {
+            await page.waitForTimeout(200);
+            recovered = await countVisibleDayPartInputs(page).catch(() => 0);
+        }
+        if (recovered < DAY_PART_INPUT_COUNT) {
+            throw new Error(
+                `LifeLenz day-part inputs disappeared while settling after save (${recovered} visible, need ${DAY_PART_INPUT_COUNT}).`
+            );
+        }
+    }
+}
+
+function parseDayPartInputNumber(raw) {
+    const cleaned = String(raw ?? '').replace(/[^0-9.-]/g, '');
+    if (!cleaned) return null;
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : null;
+}
+
+/** Read the current values of the 9 visible day-part adjustment inputs. */
+async function readDayPartInputValues(page) {
+    const raw = await page.evaluate(
+        () =>
+            [...document.querySelectorAll('input.forecast-adjustment.form-control')]
+                .filter((input) => {
+                    const r = input.getBoundingClientRect();
+                    return r.width > 0 && r.height > 0;
+                })
+                .slice(0, 9)
+                .map((input) => input.value)
+    );
+    return raw.map(parseDayPartInputNumber);
+}
+
+/**
+ * Read the entered day-part values back and confirm they match the plan.
+ * Polls because the quirk save/reload can briefly repopulate inputs with
+ * stale values before the saved ones render.
+ */
+async function verifyDayPartValues(page, dayParts, options = {}) {
+    const timeoutMs = Number.isFinite(options.verifyTimeoutMs) ? options.verifyTimeoutMs : VERIFY_TIMEOUT_MS;
+    const expected = dayParts.map((part) => Math.round(Number(part.adjusted) || 0));
+    const deadline = Date.now() + timeoutMs;
+    let mismatches = [];
+
+    while (Date.now() < deadline) {
+        let values = null;
+        try {
+            values = await readDayPartInputValues(page);
+        } catch (err) {
+            if (!isDestroyedContextError(err)) throw err;
+        }
+        if (values && values.length >= expected.length) {
+            mismatches = [];
+            for (let i = 0; i < expected.length; i += 1) {
+                const actual = values[i];
+                if (actual == null || Math.round(actual) !== expected[i]) {
+                    mismatches.push({ index: i, label: dayParts[i].label, expected: expected[i], actual });
+                }
+            }
+            if (!mismatches.length) return { ok: true };
+        }
+        await page.waitForTimeout(400);
+    }
+
+    return { ok: false, mismatches };
 }
 
 async function fillDayPartsWithOvernightQuirk(page, dayParts, options = {}) {
@@ -709,17 +837,38 @@ async function fillDayPartsWithOvernightQuirk(page, dayParts, options = {}) {
 
 async function writeForecastDay(page, isoDate, planDay, options = {}) {
     emitProgress(options, { type: 'day-start', date: isoDate, forecastTotal: planDay.forecastTotal });
-    if (!(await isForecastDateActive(page, isoDate))) {
-        await setForecastDate(page, isoDate);
-    }
     const dayParts = aggregateDayPartsFromHourlyPlan(planDay);
-    await fillDayPartsWithOvernightQuirk(page, dayParts, options);
+
+    let verification = null;
+    for (let attempt = 1; attempt <= WRITE_DAY_MAX_ATTEMPTS; attempt += 1) {
+        if (!(await isForecastDateActive(page, isoDate))) {
+            await setForecastDate(page, isoDate);
+        }
+        await fillDayPartsWithOvernightQuirk(page, dayParts, options);
+
+        verification = await verifyDayPartValues(page, dayParts, options);
+        if (verification.ok) break;
+
+        const detail = (verification.mismatches || [])
+            .map((m) => `${m.label}: expected ${m.expected}, saw ${m.actual ?? 'blank'}`)
+            .join('; ');
+        if (attempt < WRITE_DAY_MAX_ATTEMPTS) {
+            console.warn(
+                `[LifeLenz forecast] ${isoDate} verification mismatch (attempt ${attempt}), re-entering: ${detail}`
+            );
+            emitProgress(options, { type: 'day-retry', date: isoDate, attempt, detail });
+        } else {
+            throw new Error(`LifeLenz values did not persist for ${isoDate} after ${attempt} attempts: ${detail}`);
+        }
+    }
+
     emitProgress(options, {
         type: 'day-complete',
         date: isoDate,
+        verified: true,
         adjustedTotal: dayParts.reduce((sum, row) => sum + row.adjusted, 0),
     });
-    return { date: isoDate, dayParts };
+    return { date: isoDate, dayParts, verified: true };
 }
 
 async function writeForecastPlanOnPage(page, storeNumber, plan, accessibleStores, options = {}) {
@@ -793,6 +942,8 @@ module.exports = {
     setForecastDate,
     fillDayPartsWithOvernightQuirk,
     waitForDayPartSaveSettle,
+    readDayPartInputValues,
+    verifyDayPartValues,
     countVisibleDayPartInputs,
     resolveQuirkReloadMaxMs,
     writeForecastPlanToLifeLenz,

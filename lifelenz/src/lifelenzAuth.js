@@ -215,7 +215,18 @@ async function selectBusinessOnExplorerPage(page) {
 }
 
 async function fillLifeLenzLogin(page, email, password) {
-    await page.goto(LIFELENZ_ADMIN_URL, { waitUntil: 'networkidle2', timeout: LOGIN_WAIT_MS });
+    // networkidle2 is unreliable on the Aurelia SPA (background polling can
+    // keep the network busy forever); wait for a concrete landing state instead.
+    await page.goto(LIFELENZ_ADMIN_URL, { waitUntil: 'domcontentloaded', timeout: LOGIN_WAIT_MS });
+    await page
+        .waitForFunction(
+            () =>
+                Boolean(document.querySelector('#email')) ||
+                Boolean(document.querySelector('[data-testid="lz-dropdown-trigger-analytics"]')) ||
+                /business-explorer/i.test(location.href || ''),
+            { timeout: LOGIN_WAIT_MS, polling: 500 }
+        )
+        .catch(() => null);
     const hasEmail = await waitForSelectorSafe(page, '#email', 8000);
     if (!hasEmail) {
         if (await isLifeLenzShell(page)) return;
@@ -397,7 +408,24 @@ async function createAuthenticatedLifeLenzSession(email, password, options = {})
     const page = await browser.newPage();
     await prepareLifeLenzPage(page);
 
-    const stores = await performLifeLenzLogin(page, lifelenzEmail, lifelenzPassword);
+    // One retry: transient slow renders of the login form or Business Explorer
+    // tile are the most common cold-start failure, and login restarts cleanly.
+    let stores;
+    try {
+        stores = await performLifeLenzLogin(page, lifelenzEmail, lifelenzPassword);
+    } catch (firstErr) {
+        if (/login failed|check email and password/i.test(firstErr.message || '')) {
+            await closeBrowserQuietly(browser, 'lifelenz-session');
+            throw firstErr;
+        }
+        console.warn(`[LifeLenz] Login attempt failed (${firstErr.message}); retrying once…`);
+        try {
+            stores = await performLifeLenzLogin(page, lifelenzEmail, lifelenzPassword);
+        } catch (secondErr) {
+            await closeBrowserQuietly(browser, 'lifelenz-session');
+            throw secondErr;
+        }
+    }
     return { browser, page, stores };
 }
 

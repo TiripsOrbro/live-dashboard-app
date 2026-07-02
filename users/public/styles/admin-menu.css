@@ -2,6 +2,12 @@
 @import url('/styles/app-tabs.css');
 
 /* Full-page settings — /Admin/Settings */
+html:has(body.admin-settings-page) {
+    height: 100%;
+    min-height: 100dvh;
+    overflow: hidden;
+}
+
 html.page-scroll:has(body.admin-settings-page) {
     overflow: hidden;
     height: 100%;
@@ -203,6 +209,7 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
     width: 100%;
     position: relative;
     align-items: stretch;
+    overflow: hidden;
 }
 
 .admin-settings-sidebar-wrap {
@@ -212,13 +219,14 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
     align-self: stretch;
     width: 240px;
     min-height: 100%;
+    height: 100%;
     box-sizing: border-box;
     border-right: var(--cell-border) color-mix(in srgb, var(--charcoal) 12%, transparent);
     background: var(--white);
 }
 
 .admin-settings-sidebar {
-    flex: 1;
+    flex: 1 1 auto;
     width: 100%;
     min-height: 0;
     box-sizing: border-box;
@@ -231,6 +239,7 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
 
 .admin-settings-sidebar-footer {
     flex-shrink: 0;
+    margin-top: auto;
     padding: calc(12px * var(--dashboard-scale)) calc(16px * var(--dashboard-scale))
         calc(16px * var(--dashboard-scale));
     border-top: var(--cell-border) color-mix(in srgb, var(--charcoal) 12%, transparent);
@@ -726,6 +735,7 @@ html.mic-dark-mode .admin-accounts-org-nav {
         width: min(280px, 85vw);
         height: 100%;
         height: 100dvh;
+        min-height: 100dvh;
         padding-top: 0;
         border-right: var(--cell-border) color-mix(in srgb, var(--charcoal) 15%, transparent);
         box-shadow: 4px 0 24px color-mix(in srgb, var(--charcoal) 18%, transparent);
@@ -1248,6 +1258,11 @@ html.mic-rounded-corners .admin-modal--build-to {
 
 .admin-modal-error {
     color: #b00020;
+    margin: 0.5rem 0 0;
+}
+
+.admin-modal-success {
+    color: #0d7a3b;
     margin: 0.5rem 0 0;
 }
 
@@ -3679,4 +3694,464 @@ html.mic-dark-mode .admin-history-week-grid .admin-history-day-label {
 html.mic-dark-mode .admin-forecast-override-popover {
     background: #2a2a2a;
     border-color: #555;
+}
+
+/* Override Forecast editor */
+.admin-forecast-override-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.admin-forecast-mode-toggle {
+    display: inline-flex;
+    padding: 0.15rem;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.05);
+    gap: 0.1rem;
+}
+
+.admin-forecast-mode-toggle-btn {
+    border: none;
+    background: transparent;
+    padding: 0.2rem 0.65rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.3;
+    border-radius: 999px;
+    cursor: pointer;
+    color: rgba(0, 0, 0, 0.6);
+    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.admin-forecast-mode-toggle-btn.is-active {
+    background: #fff;
+    color: #1d4ed8;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.admin-forecast-mode-toggle-btn:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 1px;
+}
+
+html.mic-dark-mode .admin-forecast-mode-toggle {
+    border-color: #555;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+html.mic-dark-mode .admin-forecast-mode-toggle-btn {
+    color: rgba(255, 255, 255, 0.65);
+}
+
+html.mic-dark-mode .admin-forecast-mode-toggle-btn.is-active {
+    background: #2a2a2a;
+    color: #93c5fd;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.admin-forecast-override-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.admin-forecast-override-actions .mic-settings-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+    text-align: center;
+}
+
+.admin-forecast-override-week-total {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4rem;
+}
+
+.admin-forecast-override-cell {
+    padding: 0.15rem 0.3rem;
+}
+
+.admin-forecast-override-grid .admin-history-num {
+    text-align: center;
+}
+
+.admin-forecast-override-input-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+}
+
+.admin-forecast-override-input {
+    width: 4.5rem;
+    padding: 0.15rem 0.25rem;
+    font-size: 0.8rem;
+    text-align: center;
+    border: 1px solid rgba(0, 0, 0, 0.18);
+    border-radius: 4px;
+    background: transparent;
+}
+
+.admin-forecast-override-input--changed {
+    border-color: #2563eb;
+    background: rgba(59, 130, 246, 0.08);
+    font-weight: 600;
+}
+
+.admin-forecast-override-unit {
+    font-size: 0.7rem;
+    color: rgba(0, 0, 0, 0.55);
+}
+
+.admin-forecast-override-dollar-hint {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: 0.68rem;
+    color: rgba(0, 0, 0, 0.55);
+    text-align: center;
+}
+
+.admin-forecast-override-grid .admin-forecast-override-reset-day {
+    display: block;
+    width: 100%;
+    margin-top: 0;
+    text-align: center;
+}
+
+.admin-forecast-override-reset-day:disabled {
+    color: rgba(0, 0, 0, 0.3);
+    cursor: default;
+}
+
+html.mic-dark-mode .admin-forecast-override-reset-day:disabled {
+    color: rgba(255, 255, 255, 0.3);
+}
+
+html.mic-dark-mode .admin-forecast-override-dollar-hint {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+.admin-forecast-override-grid tfoot .admin-forecast-override-input {
+    font-weight: 600;
+}
+
+html.mic-dark-mode .admin-forecast-override-input {
+    border-color: #555;
+    color: inherit;
+}
+
+html.mic-dark-mode .admin-forecast-override-input--changed {
+    border-color: #60a5fa;
+    background: rgba(96, 165, 250, 0.15);
+}
+
+html.mic-dark-mode .admin-forecast-override-unit {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+/* Daily reports — fixed columns across area tabs */
+.admin-five-am-table {
+    table-layout: fixed;
+    width: 100%;
+}
+
+.admin-five-am-table .admin-five-am-col-store {
+    width: 40%;
+}
+
+.admin-five-am-table .admin-five-am-col-job {
+    width: 12%;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.admin-five-am-table .admin-five-am-col-last-run {
+    width: 36%;
+}
+
+.admin-five-am-table td.admin-five-am-col-store {
+    font-weight: 600;
+}
+
+/* Report subscriptions — area tabs + store × report matrix */
+.admin-report-sub-area-nav {
+    margin-bottom: 1rem;
+    width: 100%;
+}
+
+.admin-report-sub-area-nav .admin-accounts-scope-row-wrap,
+.admin-report-sub-area-nav .admin-report-sub-area-tabs {
+    width: 100%;
+    max-width: none;
+}
+
+.admin-report-sub-matrix-wrap {
+    overflow-x: auto;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.65);
+}
+
+.admin-report-sub-matrix {
+    width: 100%;
+    min-width: 36rem;
+    margin: 0;
+    border-collapse: collapse;
+}
+
+.admin-report-sub-matrix th,
+.admin-report-sub-matrix td {
+    vertical-align: top;
+    padding: 0.75rem 0.65rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.admin-report-sub-matrix thead th {
+    background: rgba(122, 62, 177, 0.06);
+    font-size: 0.84rem;
+    font-weight: 700;
+    text-align: left;
+}
+
+.admin-report-sub-matrix-store {
+    min-width: 9rem;
+    max-width: 12rem;
+    font-weight: 600;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.admin-report-sub-matrix-type {
+    min-width: 10rem;
+}
+
+.admin-report-sub-matrix-row--area th {
+    background: rgba(122, 62, 177, 0.04);
+    font-style: italic;
+}
+
+.admin-report-sub-matrix-cell {
+    min-width: 11rem;
+}
+
+.admin-report-sub-cell-summary {
+    display: grid;
+    gap: 0.2rem;
+    margin-bottom: 0.55rem;
+}
+
+.admin-report-sub-cell-summary--off {
+    opacity: 0.55;
+}
+
+.admin-report-sub-cell-meta {
+    display: block;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    color: rgba(0, 0, 0, 0.58);
+}
+
+.admin-report-sub-cell-toggle {
+    margin-bottom: 0.15rem;
+}
+
+.admin-report-sub-cell-status {
+    display: inline-block;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: rgba(0, 0, 0, 0.72);
+}
+
+.admin-report-sub-cell-status--off {
+    opacity: 0.55;
+}
+
+.admin-report-sub-setup-btn {
+    width: 100%;
+    max-width: 8rem;
+}
+
+.admin-report-sub-setup-modal .admin-report-sub-setup-scope {
+    margin: 0 0 0.25rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.admin-report-sub-setup-modal .admin-report-sub-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: 0.75rem 1rem;
+    margin: 1rem 0;
+}
+
+.admin-report-sub-setup-modal .admin-report-sub-form-grid label[hidden] {
+    display: none !important;
+}
+
+.admin-report-sub-setup-modal .admin-report-sub-form-grid label {
+    display: grid;
+    gap: 0.3rem;
+    font-size: 0.84rem;
+    font-weight: 600;
+}
+
+.admin-report-sub-setup-modal .admin-report-sub-form-grid label input {
+    width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    font-weight: 400;
+}
+
+.admin-report-sub-setup-modal .admin-report-sub-form-grid label select {
+    width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    font-weight: 400;
+}
+
+.admin-report-sub-setup-actions {
+    flex-wrap: wrap;
+}
+
+.admin-report-sub-setup-delete {
+    margin-right: auto;
+}
+
+.admin-report-sub-setup-status {
+    margin: 0.5rem 0 0.75rem;
+}
+
+.admin-report-sub-status-list {
+    margin: 0.35rem 0 0;
+    padding-left: 1.1rem;
+    font-size: 0.84rem;
+}
+
+.admin-report-sub-status-item {
+    margin-bottom: 0.2rem;
+}
+
+.admin-report-sub-status-item.admin-report-sub-status--warn {
+    color: #b42318;
+}
+
+html.mic-dark-mode .admin-report-sub-matrix-wrap {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+html.mic-dark-mode .admin-report-sub-matrix th,
+html.mic-dark-mode .admin-report-sub-matrix td {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+html.mic-dark-mode .admin-report-sub-matrix thead th {
+    background: rgba(122, 62, 177, 0.14);
+}
+
+html.mic-dark-mode .admin-report-sub-cell-meta {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+html.mic-dark-mode .admin-report-sub-cell-status {
+    color: rgba(255, 255, 255, 0.78);
+}
+
+.admin-report-sub-progress-modal .admin-report-sub-progress-status {
+    margin: 0 0 0.75rem;
+    font-size: 0.95rem;
+}
+
+.admin-report-sub-progress-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.admin-report-sub-progress-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 0.5rem;
+}
+
+.admin-report-sub-progress-actions-row--primary {
+    width: 100%;
+}
+
+.admin-report-sub-progress-actions-row--primary .mic-settings-btn {
+    flex: 1 1 0;
+    min-width: 9rem;
+}
+
+.admin-report-sub-progress-actions > #admin-report-sub-progress-close {
+    align-self: flex-start;
+}
+
+.admin-report-sub-progress-status--ok {
+    color: #0d7a3b;
+}
+
+.admin-report-sub-progress-log-wrap {
+    max-height: min(50vh, 420px);
+    overflow: auto;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.03);
+    margin-bottom: 1rem;
+}
+
+.admin-report-sub-progress-log {
+    list-style: none;
+    margin: 0;
+    padding: 0.75rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.admin-report-sub-progress-line {
+    padding: 0.15rem 0;
+    color: inherit;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.admin-report-sub-progress-line--ok {
+    color: #0d7a3b;
+}
+
+.admin-report-sub-progress-line--warn {
+    color: #9a6700;
+}
+
+.admin-report-sub-progress-line--error {
+    color: #b42318;
+}
+
+html.mic-dark-mode .admin-report-sub-progress-log-wrap {
+    border-color: rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+html.mic-dark-mode .admin-report-sub-progress-line--ok {
+    color: #6ee7a0;
+}
+
+html.mic-dark-mode .admin-report-sub-progress-line--warn {
+    color: #fbbf24;
+}
+
+html.mic-dark-mode .admin-report-sub-progress-line--error {
+    color: #fca5a5;
+}
+
+html.mic-dark-mode .admin-modal-success,
+html.mic-dark-mode .admin-report-sub-progress-status--ok {
+    color: #6ee7a0;
 }

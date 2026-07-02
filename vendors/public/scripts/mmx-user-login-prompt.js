@@ -3,8 +3,12 @@
 
     const PURPOSE_COPY = {
         send: 'Counts are sent under <strong>your</strong> Macromatix user so Key Item Count shows who entered them.',
+        'send-store':
+            'This store does not have a Macromatix login saved yet. Enter the store MMX username and password to send counts and place orders.',
         'check-levels':
             'Stock level checks download Macromatix reports under <strong>your</strong> user login.',
+        'check-levels-store':
+            'This store does not have a Macromatix login saved yet. Enter the store MMX username and password to download stock reports.',
     };
 
     function escapeHtml(value) {
@@ -33,7 +37,7 @@
     }
 
     function isLoginRequiredError(message) {
-        return /Macromatix login is not set up|needsMmxUserLogin|Enter your MMX username|personal Macromatix login|Macromatix login is required/i.test(
+        return /Macromatix login is not set up|needsMmxUserLogin|Enter your MMX username|personal Macromatix login|Macromatix login is required|No Macromatix login for store|Configure Macromatix login in Admin|Macromatix login required/i.test(
             String(message || '')
         );
     }
@@ -47,27 +51,36 @@
         };
     }
 
-    function showModal(maskedUsername = '', purpose = 'send') {
+    function showModal(maskedUsername = '', purpose = 'send', options = {}) {
+        const storeMode = options.mode === 'store';
         return new Promise((resolve) => {
             const backdrop = document.createElement('div');
             backdrop.className = 'mmx-login-backdrop';
             backdrop.setAttribute('role', 'dialog');
             backdrop.setAttribute('aria-modal', 'true');
             const bodyCopy = PURPOSE_COPY[purpose] || PURPOSE_COPY.send;
+            const adminHint =
+                storeMode && options.canManageStoreLogins
+                    ? '<p class="mmx-login-body mmx-login-body--hint">Managers can save this permanently in Admin → Setup Store Logins.</p>'
+                    : '';
+            const rememberBlock = storeMode
+                ? ''
+                : `<label class="mmx-login-remember">
+                        <input type="checkbox" id="mmx-login-remember" checked />
+                        Remember my Macromatix login on this account
+                    </label>`;
             backdrop.innerHTML = `
                 <div class="mmx-login-card">
-                    <h2>Your Macromatix login</h2>
+                    <h2>${storeMode ? 'Macromatix login required' : 'Your Macromatix login'}</h2>
                     <p class="mmx-login-body">${bodyCopy}${maskedUsername ? ` Last saved: <strong>${escapeHtml(maskedUsername)}</strong>.` : ''}</p>
+                    ${adminHint}
                     <label class="mmx-login-field">MMX username
                         <input type="text" id="mmx-login-user" autocomplete="username" />
                     </label>
                     <label class="mmx-login-field">MMX password
                         <input type="password" id="mmx-login-pass" autocomplete="current-password" />
                     </label>
-                    <label class="mmx-login-remember">
-                        <input type="checkbox" id="mmx-login-remember" checked />
-                        Remember my Macromatix login on this account
-                    </label>
+                    ${rememberBlock}
                     <p id="mmx-login-error" class="mmx-login-error" hidden></p>
                     <div class="mmx-login-actions">
                         <button type="button" class="mmx-login-btn" id="mmx-login-cancel">Cancel</button>
@@ -87,7 +100,8 @@
             backdrop.querySelector('#mmx-login-submit')?.addEventListener('click', async () => {
                 const mmxUsername = String(userInput?.value || '').trim();
                 const mmxPassword = String(passInput?.value || '');
-                const remember = Boolean(backdrop.querySelector('#mmx-login-remember')?.checked);
+                const remember =
+                    !storeMode && Boolean(backdrop.querySelector('#mmx-login-remember')?.checked);
                 if (!mmxUsername || !mmxPassword) {
                     if (errEl) {
                         errEl.textContent = 'Enter your Macromatix username and password.';
@@ -132,7 +146,16 @@
             sessionCreds = null;
             return;
         }
-        const creds = await showModal(data.maskedUsername || '', purpose);
+        const purposeKey =
+            data.mode === 'store'
+                ? purpose === 'check-levels'
+                    ? 'check-levels-store'
+                    : 'send-store'
+                : purpose;
+        const creds = await showModal(data.maskedUsername || '', purposeKey, {
+            mode: data.mode || 'personal',
+            canManageStoreLogins: Boolean(data.canManageStoreLogins),
+        });
         if (!creds) {
             throw new Error('Macromatix login is required to continue.');
         }

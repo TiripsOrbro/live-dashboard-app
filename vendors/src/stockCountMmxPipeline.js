@@ -925,7 +925,9 @@ async function prepareStockCountForMmx(storeNumber, vendorSlug, options = {}) {
             stage: 'preparing',
             dateKey,
             vendorSlugs: toSend.map((row) => row.slug),
+            triggerVendorSlug: String(vendorSlug || '').trim() || toSend[0]?.slug || '',
             lastError: '',
+            failedAtStep: null,
             sessionId: null,
         });
 
@@ -1254,6 +1256,159 @@ async function recordStockCountPrepareFailure(storeNumber, error) {
     });
 }
 
+async function recordStockCountApplyFailure(storeNumber, error) {
+    const cp = await getCheckpoint(storeNumber);
+    if (!cp || cp.stage === 'completed') return;
+    const vendorSlugs = cp.vendorSlugs || [];
+    const dateKey = cp.dateKey || melbourneDateKey();
+    const sentSlugs = await getMmxSentVendorSlugs(storeNumber, dateKey);
+    const countApplied = allVendorsMarkedMmxSent(vendorSlugs, sentSlugs);
+    await updateCheckpoint(storeNumber, {
+        stage: countApplied ? 'applied-orders-pending' : 'apply-failed',
+        lastError: error?.message || String(error || 'Apply failed'),
+        failedAtStep: cp?.stepLabel || defaultStepLabel(cp?.stage || 'applying'),
+        sessionId: countApplied ? null : cp.sessionId || null,
+    });
+}
+
+async function completeResumedOrdersCheckpoint(storeNumber, dateKey, vendorSlugs, orders, orderFailures) {
+    await updateCheckpoint(storeNumber, {
+        stage: 'completed',
+        resumedFromCheckpoint: true,
+        dateKey,
+        vendorSlugs,
+        ordersCompletedAt: new Date().toISOString(),
+        lastError: orderFailures,
+        timings: getStageTimings(storeNumber),
+    });
+    await clearCheckpoint(storeNumber);
+}
+
+function startResumedOrdersWork(storeNumber, dateKey, options = {}) {
+    const vendorSlugs = options.vendorSlugs || [];
+    void (async () => {
+        try {
+            await updateCheckpoint(storeNumber, {
+                stage: 'applied-orders-pending',
+                dateKey,
+                vendorSlugs,
+                lastError: '',
+                failedAtStep: null,
+                stepLabel: 'Resuming scheduled orders in Macromatix',
+            });
+            const { orders, orderFailures } = await resumeScheduledOrdersInNewBrowser(
+                storeNumber,
+                dateKey,
+                options
+            );
+            if (ordersAllSuccessful(orders)) {
+                await runStoreOrdersCompleteCleanup(storeNumber, dateKey);
+            }
+            await completeResumedOrdersCheckpoint(
+                storeNumber,
+                dateKey,
+                vendorSlugs,
+                orders,
+                orderFailures || null
+            );
+        } catch (error) {
+            console.error(`[StockCount] Resume orders failed - store ${storeNumber}:`, error);
+            await recordStockCountApplyFailure(storeNumber, error);
+        }
+    })();
+}
+
+/**
+ * Resume MMX ordering from the last checkpoint after a timeout or transient failure.
+ * Each major phase (prepare, apply, orders) runs in the background; this only starts the next step.
+ */
+async function resumeStockCountPipeline(storeNumber, options = {}) {
+    const checkpoint = await reconcileStaleCheckpoint(storeNumber);
+    if (!checkpoint?.stage || checkpoint.stage === 'idle' || checkpoint.stage === 'completed') {
+        throw new Error('Nothing to resume - send to Macromatix again.');
+    }
+
+    const stage = checkpoint.stage;
+    const dateKey = checkpoint.dateKey || melbourneDateKey();
+    const vendorSlugs = checkpoint.vendorSlugs || [];
+    const vendorSlug =
+        String(options.vendorSlug || checkpoint.triggerVendorSlug || vendorSlugs[0] || '').trim();
+    const mmxOpts = withStoreMmxOptions(storeNumber, options);
+
+    if (PIPELINE_IN_PROGRESS_STAGES.has(stage)) {
+        const status = await getStockCountPipelineStatus(storeNumber);
+        if (status.workLive) {
+            return {
+                success: true,
+                accepted: false,
+                inProgress: true,
+                stage: status.stage,
+                sessionId: status.sessionId || null,
+                stepLabel: status.stepLabel || null,
+            };
+        }
+    }
+
+    if (stage === 'prepared' && checkpoint.sessionId) {
+        const session = getSession(storeNumber, checkpoint.sessionId);
+        if (!session) {
+            const sentSlugs = await getMmxSentVendorSlugs(storeNumber, dateKey);
+            if (allVendorsMarkedMmxSent(vendorSlugs, sentSlugs)) {
+                startResumedOrdersWork(storeNumber, dateKey, { ...mmxOpts, vendorSlugs });
+                return { success: true, accepted: true, resumedFrom: 'orders', stage: 'applied-orders-pending' };
+            }
+            throw new Error('Macromatix count session expired. Send to MMX again.');
+        }
+        void applyStockCountSession(storeNumber, checkpoint.sessionId, mmxOpts).catch(async (error) => {
+            console.error(`[StockCount] Resume apply failed - store ${storeNumber}:`, error);
+            await recordStockCountApplyFailure(storeNumber, error);
+        });
+        return { success: true, accepted: true, resumedFrom: 'apply', stage: 'applying' };
+    }
+
+    if (
+        stage === 'applied-orders-pending' ||
+        stage === 'filling-orders' ||
+        stage === 'downloading-reports'
+    ) {
+        startResumedOrdersWork(storeNumber, dateKey, {
+            ...mmxOpts,
+            vendorSlugs,
+        });
+        return { success: true, accepted: true, resumedFrom: 'orders', stage: 'applied-orders-pending' };
+    }
+
+    if (stage === 'apply-failed') {
+        const sentSlugs = await getMmxSentVendorSlugs(storeNumber, dateKey);
+        if (allVendorsMarkedMmxSent(vendorSlugs, sentSlugs)) {
+            startResumedOrdersWork(storeNumber, dateKey, { ...mmxOpts, vendorSlugs });
+            return { success: true, accepted: true, resumedFrom: 'orders', stage: 'applied-orders-pending' };
+        }
+        if (checkpoint.sessionId && getSession(storeNumber, checkpoint.sessionId)) {
+            void applyStockCountSession(storeNumber, checkpoint.sessionId, mmxOpts).catch(async (error) => {
+                console.error(`[StockCount] Resume apply failed - store ${storeNumber}:`, error);
+                await recordStockCountApplyFailure(storeNumber, error);
+            });
+            return { success: true, accepted: true, resumedFrom: 'apply', stage: 'applying' };
+        }
+        throw new Error('Cannot resume - Macromatix session expired. Send to MMX again.');
+    }
+
+    if (stage === 'prepare-failed') {
+        if (!vendorSlug) {
+            throw new Error('Cannot resume prepare - open stock count and send again.');
+        }
+        await clearStockCountPipelineFailure(storeNumber);
+        void prepareStockCountForMmx(storeNumber, vendorSlug, mmxOpts).catch(async (error) => {
+            console.error(`[StockCount] Resume prepare failed - store ${storeNumber}:`, error);
+            await recordStockCountPrepareFailure(storeNumber, error);
+        });
+        return { success: true, accepted: true, resumedFrom: 'prepare', stage: 'preparing' };
+    }
+
+    throw new Error(`Cannot resume from stage "${stage}". Send to Macromatix again.`);
+}
+
 /**
  * Apply confirmed count in Macromatix, then download reports and enter orders.
  */
@@ -1539,7 +1694,9 @@ module.exports = {
     isStockCountLightweightBusy,
     isStockCountLightweightActive,
     recordStockCountPrepareFailure,
+    recordStockCountApplyFailure,
     clearStockCountPipelineFailure,
+    resumeStockCountPipeline,
     recordStockCountCheckFailure,
     resetStalePipelineCheckpointsOnStartup,
     runScheduledOrdersOnly,

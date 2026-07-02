@@ -226,6 +226,7 @@
         '/scripts/admin-forecast.js',
         '/scripts/admin-build-to.js',
         '/scripts/admin-five-am-reports.js',
+        '/scripts/admin-report-subscriptions.js',
         '/scripts/admin-store-logins.js',
         '/scripts/admin-smg-nsf.js',
         '/scripts/requests.js',

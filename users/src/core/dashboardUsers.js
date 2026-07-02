@@ -2472,7 +2472,7 @@ function normalizeScopeTreeForClient(tree) {
 
 function getStoreScopeTreeForUser(user) {
     if (!user) return null;
-    if (!hasMultiStoreScope(user) && !canUserManageStoreLogins(user)) return null;
+    if (!hasMultiStoreScope(user) && !canUserManageStoreLogins(user) && !canUserAccessAdminMenu(user)) return null;
     try {
         return normalizeScopeTreeForClient(buildCreateAccountScopeTree(user));
     } catch (err) {

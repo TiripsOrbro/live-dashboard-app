@@ -404,15 +404,21 @@ function buildForecastPreviewGrid(plan) {
     };
 }
 
+function historyNotReadyMessage(store, readiness) {
+    const weeks = readiness.minWeekdaySamples || 3;
+    return (
+        `Insufficient sales history for store ${store} (${readiness.daysRecorded} days, need ${weeks}+ weeks). ` +
+        'Use Backfill data, or wait for more live capture.'
+    );
+}
+
 function previewForecastForStore(storeNumber, options = {}) {
     const store = String(storeNumber || '').trim();
     if (!store) throw new Error('Store number is required.');
 
     const readiness = assessHistoryReadiness(store);
     if (!readiness.ready && !options.force) {
-        throw new Error(
-            `Insufficient sales history for store ${store} (${readiness.daysRecorded} days, need ${readiness.minWeekdaySamples}+ samples per weekday; gaps: ${readiness.weekdayGaps.join(', ') || 'none'}). Import backfill or wait for more live capture.`
-        );
+        throw new Error(historyNotReadyMessage(store, readiness));
     }
 
     const cfg = getStoreConfig(store) || {};
@@ -467,9 +473,7 @@ async function runForecastForStore(storeNumber, options = {}) {
 
     const readiness = assessHistoryReadiness(store);
     if (!readiness.ready && !options.force) {
-        throw new Error(
-            `Insufficient sales history for store ${store} (${readiness.daysRecorded} days, need ${readiness.minWeekdaySamples}+ samples per weekday; gaps: ${readiness.weekdayGaps.join(', ') || 'none'}). Import backfill or wait for more live capture.`
-        );
+        throw new Error(historyNotReadyMessage(store, readiness));
     }
 
     const cfg = getStoreConfig(store) || {};
@@ -661,6 +665,10 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
                         error,
                     });
                 }
+                // The shared session may be left with an open picker/modal or a
+                // half-committed date; dismiss overlays so the next store starts clean.
+                await page.keyboard.press('Escape').catch(() => null);
+                await page.keyboard.press('Escape').catch(() => null);
             }
         }
     } finally {
@@ -683,18 +691,19 @@ async function runCombinedForecastForStores(storeNumbers, options = {}) {
         onProgress: (payload) => onProgress?.({ platform: 'mmx', ...payload }),
     };
 
-    const mmxPromise = runForecastForStores(storeNumbers, mmxOptions);
+    // Run the platforms sequentially. Two simultaneous Chromium instances
+    // starve each other of CPU, and the LifeLenz scraper's save/reload timing
+    // is the first thing to break under contention.
+    const mmxResults = await runForecastForStores(storeNumbers, mmxOptions);
 
-    let lifelenzPromise = Promise.resolve([]);
+    let lifelenzResults = [];
     if (options.lifelenzCredentials) {
-        lifelenzPromise = runLifeLenzForecastForStores(storeNumbers, options.lifelenzCredentials, {
+        lifelenzResults = await runLifeLenzForecastForStores(storeNumbers, options.lifelenzCredentials, {
             ...options,
             ...runTarget,
             onProgress: (payload) => onProgress?.({ platform: 'lifelenz', ...payload }),
         });
     }
-
-    const [mmxResults, lifelenzResults] = await Promise.all([mmxPromise, lifelenzPromise]);
 
     const manualSaved =
         options.saveManualOnFailure !== false

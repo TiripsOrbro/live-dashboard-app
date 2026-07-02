@@ -1112,19 +1112,505 @@ async function resolveStoreOnCurrentPage(page, storeNumber, options = {}) {
     return picked;
 }
 
+/** Labour scheduler week/day Telerik RadComboBox input ids (suffix after toolbar item index). */
+const LABOUR_DDL_SCHEDULES_SUFFIX = 'ddlSchedules';
+const LABOUR_DDL_DAY_LIST_SUFFIX = 'ddlDayList';
+
+function isoToDdMmYyyy(iso) {
+    const [y, m, d] = String(iso || '').split('-').map(Number);
+    if (!y || !m || !d) return '';
+    return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`;
+}
+
+function weekdayLabelForIso(iso, timeZone = 'Australia/Melbourne') {
+    return new Intl.DateTimeFormat('en-AU', { timeZone, weekday: 'long' }).format(new Date(`${iso}T12:00:00`));
+}
+
+function addDaysToIsoLocal(iso, days) {
+    const [y, m, d] = String(iso || '').split('-').map(Number);
+    if (!y || !m || !d) return '';
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + (Number(days) || 0));
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+/** Monday (ISO week start) for a calendar date. */
+function mondayOfIsoWeek(iso) {
+    const [y, m, d] = String(iso || '').split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    const wd = dt.getUTCDay();
+    const offset = wd === 0 ? -6 : 1 - wd;
+    dt.setUTCDate(dt.getUTCDate() + offset);
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+function parseDdMmYyyyFragmentToIso(fragment) {
+    const m = String(fragment || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (!m) return '';
+    const [, d, mo, y] = m;
+    return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/** True when a labour scheduler day label (e.g. "7/06/2026 Sunday") matches an ISO date. */
+function dayComboLabelMatchesIso(label, dayIso, timeZone = 'Australia/Melbourne') {
+    const iso = String(dayIso || '').trim();
+    if (!iso) return false;
+    const text = String(label || '').trim();
+    if (!text || /view week/i.test(text)) return false;
+    if (parseDdMmYyyyFragmentToIso(text) === iso) return true;
+    const weekday = weekdayLabelForIso(iso, timeZone).toLowerCase();
+    if (!text.toLowerCase().includes(weekday)) return false;
+    const [y, m, d] = iso.split('-').map(Number);
+    const variants = [
+        `${d}/${m}/${y}`,
+        `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}/${y}`,
+        `${d}/${String(m).padStart(2, '0')}/${y}`,
+        `${String(d).padStart(2, '0')}/${m}/${y}`,
+    ];
+    const lower = text.toLowerCase();
+    return variants.some((v) => lower.includes(v.toLowerCase()));
+}
+
+function isViewWeekDayLabel(label) {
+    return /view week/i.test(String(label || '').trim());
+}
+
+async function navigateLabourSchedulerToDate(page, dayIso, timeZone = 'Australia/Melbourne') {
+    let context = await readLabourSchedulerDayContext(page);
+    if (dayComboLabelMatchesIso(context.dayText, dayIso, timeZone)) {
+        return context;
+    }
+    await selectLabourSchedulerWeek(page, dayIso);
+    context = await readLabourSchedulerDayContext(page);
+    if (dayComboLabelMatchesIso(context.dayText, dayIso, timeZone)) {
+        return context;
+    }
+    await selectLabourSchedulerDay(page, dayIso, timeZone);
+    return readLabourSchedulerDayContext(page);
+}
+
+/** True when iso (YYYY-MM-DD) falls within a week label like "29/06/2026 to 5/07/2026". */
+function weekLabelContainsIso(weekLabel, iso) {
+    const matches = String(weekLabel || '').match(/(\d{1,2}\/\d{1,2}\/\d{4})/g);
+    if (!matches || matches.length < 2) {
+        const needle = isoToDdMmYyyy(iso);
+        return String(weekLabel).includes(needle) || String(weekLabel).includes(needle.replace(/\/0/g, '/'));
+    }
+    const start = parseDdMmYyyyFragmentToIso(matches[0]);
+    const end = parseDdMmYyyyFragmentToIso(matches[1]);
+    const day = String(iso || '').trim();
+    return start && end && day >= start && day <= end;
+}
+
+async function readRadComboAllItems(page, comboId) {
+    const clientItems = await page.evaluate((id) => {
+        const c = typeof window.$find === 'function' ? window.$find(id) : null;
+        if (!c || typeof c.get_items !== 'function') return [];
+        const list = c.get_items();
+        const out = [];
+        for (let i = 0; i < list.get_count(); i++) {
+            const t = (list.getItem(i).get_text() || '').replace(/\s+/g, ' ').trim();
+            if (t) out.push(t);
+        }
+        return out;
+    }, comboId);
+    if (clientItems.length) return clientItems;
+    await openRadComboDropdown(page, comboId);
+    let items = await readRadComboDropdownLis(page, comboId);
+    if (!items.length) {
+        await page.waitForTimeout(800);
+        items = await readRadComboDropdownLis(page, comboId);
+    }
+    return items;
+}
+
+async function findLabourSchedulerComboId(page, suffix) {
+    return page.evaluate((suf) => {
+        const byInput = document.querySelector(`input[id$="_${suf}_Input"], input[id$="${suf}_Input"]`);
+        if (byInput) {
+            const combo = byInput.closest('.RadComboBox[id]');
+            if (combo) return combo.id;
+            return byInput.id.replace(/_Input$/, '');
+        }
+        const combo = document.querySelector(`.RadComboBox[id$="${suf}"]`);
+        return combo ? combo.id : '';
+    }, suffix);
+}
+
+async function getRadComboText(page, comboId) {
+    return page.evaluate((id) => {
+        const c = typeof window.$find === 'function' ? window.$find(id) : null;
+        if (c && typeof c.get_text === 'function') return (c.get_text() || '').trim();
+        const input = document.getElementById(`${id}_Input`);
+        return input ? (input.value || '').trim() : '';
+    }, comboId);
+}
+
+async function openRadComboDropdown(page, comboId) {
+    const arrow = await page.$(`#${comboId} .rcbArrowCell, #${comboId} .rcbArrowCellRight`);
+    if (arrow) {
+        await arrow.click().catch(() => {});
+    } else {
+        await page.evaluate((id) => {
+            const c = typeof window.$find === 'function' ? window.$find(id) : null;
+            if (c && typeof c.showDropDown === 'function') c.showDropDown();
+        }, comboId);
+    }
+    await page.waitForTimeout(500);
+}
+
+async function readRadComboDropdownLis(page, comboId) {
+    return page.evaluate((id) => {
+        const dd = document.getElementById(`${id}_DropDown`) || document;
+        const out = [];
+        dd.querySelectorAll('li.rcbItem').forEach((li) => {
+            const t = (li.textContent || '').replace(/\s+/g, ' ').trim();
+            if (t) out.push(t);
+        });
+        return out;
+    }, comboId);
+}
+
+async function selectRadComboItemByMatch(page, comboId, matchText) {
+    await openRadComboDropdown(page, comboId);
+    const clicked = await page.evaluate(
+        ({ id, needle }) => {
+            const re = typeof needle === 'string' ? new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
+            const dd = document.getElementById(`${id}_DropDown`) || document;
+            for (const li of dd.querySelectorAll('li.rcbItem')) {
+                const t = (li.textContent || '').replace(/\s+/g, ' ').trim();
+                const ok =
+                    typeof needle === 'string'
+                        ? t.toLowerCase().includes(String(needle).toLowerCase())
+                        : re && re.test(t);
+                if (ok) {
+                    li.scrollIntoView({ block: 'center' });
+                    li.click();
+                    return t;
+                }
+            }
+            return null;
+        },
+        { id: comboId, needle: matchText }
+    );
+    if (clicked) {
+        await waitForLabourSchedulerPostback(page);
+        return clicked;
+    }
+    const items = await readRadComboDropdownLis(page, comboId);
+    for (const item of items) {
+        const ok =
+            typeof matchText === 'string'
+                ? item.toLowerCase().includes(String(matchText).toLowerCase())
+                : false;
+        if (!ok) continue;
+        const picked = await page.evaluate(
+            ({ id, text }) => {
+                const dd = document.getElementById(`${id}_DropDown`) || document;
+                for (const li of dd.querySelectorAll('li.rcbItem')) {
+                    const t = (li.textContent || '').replace(/\s+/g, ' ').trim();
+                    if (t === text) {
+                        li.click();
+                        return t;
+                    }
+                }
+                return null;
+            },
+            { id: comboId, text: item }
+        );
+        if (picked) {
+            await waitForLabourSchedulerPostback(page);
+            return picked;
+        }
+    }
+    return null;
+}
+
+async function waitForLabourSchedulerPostback(page) {
+    await Promise.race([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 12000 }).catch(() => {}),
+        page.waitForTimeout(3500),
+    ]);
+    await page.waitForTimeout(800);
+}
+
+async function readLabourSchedulerDayContext(page) {
+    const dayComboId = await findLabourSchedulerComboId(page, LABOUR_DDL_DAY_LIST_SUFFIX);
+    const scheduleComboId = await findLabourSchedulerComboId(page, LABOUR_DDL_SCHEDULES_SUFFIX);
+    return {
+        dayComboId,
+        scheduleComboId,
+        dayText: dayComboId ? await getRadComboText(page, dayComboId) : '',
+        scheduleText: scheduleComboId ? await getRadComboText(page, scheduleComboId) : '',
+    };
+}
+
+/**
+ * Select labour scheduler week containing weekStartIso (Monday start).
+ * Week dropdown labels look like "29/06/2026 to 5/07/2026".
+ */
+async function selectLabourSchedulerWeek(page, weekStartIso) {
+    const comboId = await findLabourSchedulerComboId(page, LABOUR_DDL_SCHEDULES_SUFFIX);
+    if (!comboId) throw new Error('Labour scheduler week dropdown (ddlSchedules) not found');
+
+    const monday = mondayOfIsoWeek(weekStartIso);
+    const startLabel = isoToDdMmYyyy(monday);
+    void startLabel;
+
+    const current = await getRadComboText(page, comboId);
+    if (weekLabelContainsIso(current, weekStartIso) || weekLabelContainsIso(current, monday)) {
+        return current;
+    }
+
+    const items = await readRadComboAllItems(page, comboId);
+
+    let target =
+        items.find((t) => weekLabelContainsIso(t, weekStartIso)) ||
+        items.find((t) => weekLabelContainsIso(t, monday)) ||
+        items.find((t) => t.includes(startLabel)) ||
+        null;
+
+    if (!target && items.length) {
+        const wantTs = Date.parse(`${monday}T12:00:00`);
+        for (const item of items) {
+            const m = item.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+            if (!m) continue;
+            const [, d, mo, y] = m;
+            const itemIso = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const itemMon = mondayOfIsoWeek(itemIso);
+            if (itemMon === monday) {
+                target = item;
+                break;
+            }
+            const itemMonTs = Date.parse(`${itemMon}T12:00:00`);
+            const itemSunTs = Date.parse(`${addDaysToIsoLocal(itemMon, 6)}T12:00:00`);
+            if (wantTs >= itemMonTs && wantTs <= itemSunTs) {
+                target = item;
+                break;
+            }
+        }
+    }
+
+    if (!target) {
+        throw new Error(
+            `Labour scheduler week not found for ${monday} (available: ${items.slice(0, 4).join('; ')}${items.length > 4 ? `; …+${items.length - 4} more` : ''})`
+        );
+    }
+
+    const picked = await selectRadComboItemByMatch(page, comboId, target);
+    if (!picked) throw new Error(`Could not select labour scheduler week "${target}"`);
+    return picked;
+}
+
+/**
+ * Select a specific day in labour scheduler day view.
+ * Day dropdown labels look like "29/06/2026 Monday".
+ */
+async function selectLabourSchedulerDay(page, dayIso, timeZone = 'Australia/Melbourne') {
+    const comboId = await findLabourSchedulerComboId(page, LABOUR_DDL_DAY_LIST_SUFFIX);
+    if (!comboId) throw new Error('Labour scheduler day dropdown (ddlDayList) not found');
+
+    const dateLabel = isoToDdMmYyyy(dayIso);
+    const weekday = weekdayLabelForIso(dayIso, timeZone);
+    const wantFragment = `${dateLabel} ${weekday}`;
+
+    const current = await getRadComboText(page, comboId);
+    if (dayComboLabelMatchesIso(current, dayIso, timeZone)) {
+        return current;
+    }
+
+    const items = await readRadComboAllItems(page, comboId);
+    let target = items.find((item) => dayComboLabelMatchesIso(item, dayIso, timeZone));
+    if (!target) {
+        target = items.find((item) => parseDdMmYyyyFragmentToIso(item) === dayIso);
+    }
+
+    if (target) {
+        const picked = await selectRadComboItemByMatch(page, comboId, target);
+        if (picked) return picked;
+    }
+
+    const picked =
+        (await selectRadComboItemByMatch(page, comboId, wantFragment)) ||
+        (await selectRadComboItemByMatch(page, comboId, dateLabel));
+    if (!picked) {
+        throw new Error(`Labour scheduler day not found for ${dayIso} (${wantFragment})`);
+    }
+    return picked;
+}
+
+/** Step labour scheduler day forward (+1) or backward (-1) using toolbar arrows. */
+async function stepLabourSchedulerDay(page, delta) {
+    const dir = Number(delta) >= 0 ? 'next' : 'prev';
+    const clicked = await page.evaluate((direction) => {
+        const toolbar = document.querySelector('#ctl00_ph_scheduleLabour_rdScheduler_C_rtbLabour');
+        if (!toolbar) return false;
+        const wantChar = direction === 'next' ? '>' : '<';
+        for (const a of toolbar.querySelectorAll('a.rtbWrap')) {
+            const text = (a.textContent || '').replace(/\s+/g, '').trim();
+            if (text === wantChar) {
+                a.click();
+                return true;
+            }
+        }
+        for (const li of toolbar.querySelectorAll('li.rtbBtn a.rtbWrap')) {
+            const text = (li.textContent || '').replace(/\s+/g, '').trim();
+            if (text === wantChar) {
+                li.click();
+                return true;
+            }
+        }
+        return false;
+    }, dir);
+    if (!clicked) throw new Error(`Labour scheduler ${dir} day arrow not found`);
+    await waitForLabourSchedulerPostback(page);
+    return readLabourSchedulerDayContext(page);
+}
+
+/**
+ * Walk backward through day view using toolbar arrows (today → yesterday → …).
+ * Returns one row per day stepped (offset 1 = yesterday).
+ */
+async function scrapeRecentHistoricalDaysByStepping(page, daysBack, options = {}) {
+    const count = Math.max(0, Math.floor(Number(daysBack) || 0));
+    const results = [];
+    await openDayViewAndReadSales(page, false);
+    for (let offset = 1; offset <= count; offset += 1) {
+        await stepLabourSchedulerDay(page, -1);
+        const context = await readLabourSchedulerDayContext(page);
+        const dateIso = parseDdMmYyyyFragmentToIso(context.dayText);
+        const sales = await readDayViewSalesOnly(page, false, { timeout: 20000, softFail: true });
+        results.push({ dateIso, context, ...sales });
+    }
+    return results;
+}
+
+/**
+ * Navigate to specific missing dates by stepping back from the current day view,
+ * using week/day dropdowns when stepping crosses a week boundary (View Week aggregate).
+ */
+async function scrapeMissingHistoricalDays(page, dateIsos, options = {}) {
+    const timeZone = options.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
+    const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+    const targets = [...new Set(dateIsos.map((d) => String(d || '').trim()).filter(Boolean))].sort().reverse();
+    if (!targets.length) return [];
+
+    onProgress?.({
+        type: 'day-batch-start',
+        count: targets.length,
+        message: `Scraping ${targets.length} day(s) from labour scheduler…`,
+    });
+
+    await openDayViewAndReadSales(page, false);
+    let context = await readLabourSchedulerDayContext(page);
+    let currentIso = parseDdMmYyyyFragmentToIso(context.dayText);
+    const results = [];
+
+    for (const targetIso of targets) {
+        onProgress?.({
+            type: 'day-start',
+            date: targetIso,
+            message: `Navigating to ${targetIso}…`,
+        });
+        let guard = 0;
+        while (currentIso && currentIso > targetIso && guard < 400) {
+            await stepLabourSchedulerDay(page, -1);
+            context = await readLabourSchedulerDayContext(page);
+            currentIso = parseDdMmYyyyFragmentToIso(context.dayText);
+            if (isViewWeekDayLabel(context.dayText)) {
+                break;
+            }
+            guard += 1;
+        }
+        if (!dayComboLabelMatchesIso(context?.dayText, targetIso, timeZone)) {
+            context = await navigateLabourSchedulerToDate(page, targetIso, timeZone);
+            currentIso = parseDdMmYyyyFragmentToIso(context.dayText);
+        }
+        const sales = await readDayViewSalesOnly(page, false, { timeout: 20000, softFail: true });
+        const total = (sales.actual || []).reduce((sum, v) => sum + (Number(v) || 0), 0);
+        onProgress?.({
+            type: 'day-read',
+            date: targetIso,
+            total: Math.round(total * 100) / 100,
+            dayText: context.dayText || '',
+            message:
+                total > 0
+                    ? `${targetIso}: read $${Math.round(total * 100) / 100} sales.`
+                    : `${targetIso}: no sales row (store closed or empty).`,
+        });
+        results.push({ dateIso: targetIso, context, ...sales });
+    }
+    return results;
+}
+
+/**
+ * Navigate labour scheduler day view to dateIso and read ActualSalesKpi hourly row.
+ * Opens Day view tab if needed.
+ */
+async function scrapeHistoricalDaySales(page, dateIso, options = {}) {
+    const timeZone = options.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
+    await openDayViewAndReadSales(page, false);
+    const context = await navigateLabourSchedulerToDate(page, dateIso, timeZone);
+    const sales = await readDayViewSalesOnly(page, false, { softFail: true });
+    return { dateIso, context, ...sales };
+}
+
+/** Read ActualSalesKpi / ForecastSalesKpi without re-clicking the Day view tab. */
+async function readDayViewSalesOnly(page, shouldReadForecast = false, options = {}) {
+    const timeout = Number(options.timeout) > 0 ? Number(options.timeout) : 15000;
+    const softFail = options.softFail !== false;
+    try {
+        await page.waitForFunction(
+            () => {
+                const row = document.querySelector('tr[data-kpi="ActualSalesKpi"]');
+                return row && row.querySelectorAll('td').length > 10;
+            },
+            { timeout }
+        );
+    } catch (err) {
+        if (!softFail) throw err;
+        return { actual: [], forecast: null };
+    }
+    return page.evaluate((readForecast) => {
+        const parseHourlyRow = (row) => {
+            const cells = row.querySelectorAll('td');
+            const values = [];
+            for (let i = 2; i < cells.length; i++) {
+                const raw = cells[i].textContent.replace(/[^0-9.-]/g, '').trim();
+                const value = parseFloat(raw);
+                if (!Number.isNaN(value)) values.push(value);
+            }
+            return values;
+        };
+        const actualRow = document.querySelector('tr[data-kpi="ActualSalesKpi"]');
+        const forecastRow = document.querySelector('tr[data-kpi="ForecastSalesKpi"]');
+        if (!actualRow || (readForecast && !forecastRow)) throw new Error('Sales data rows not found');
+        return {
+            actual: parseHourlyRow(actualRow),
+            forecast: readForecast && forecastRow ? parseHourlyRow(forecastRow) : null,
+        };
+    }, shouldReadForecast);
+}
+
 /** Day view tab on the labour scheduler (re-clicked after each store change because the grid reloads). */
 const DAY_VIEW_TAB_SELECTOR =
     '#ctl00_ph_scheduleLabour_rdScheduler_C_rtbLabour > div > div > div > ul > li:nth-child(12) > a';
 
 async function openDayViewAndReadSales(page, shouldReadForecast) {
-    await page.waitForSelector(DAY_VIEW_TAB_SELECTOR, { timeout: 15000 });
-    await page.click(DAY_VIEW_TAB_SELECTOR);
+    const alreadyReady = await page.evaluate(() => {
+        const row = document.querySelector('tr[data-kpi="ActualSalesKpi"]');
+        return Boolean(row && row.querySelectorAll('td').length > 10);
+    });
+    if (!alreadyReady) {
+        await page.waitForSelector(DAY_VIEW_TAB_SELECTOR, { timeout: 15000 });
+        await page.click(DAY_VIEW_TAB_SELECTOR);
 
-    await Promise.race([
-        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {}),
-        page.waitForTimeout(4000),
-    ]);
-    await page.waitForTimeout(1200);
+        await Promise.race([
+            page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {}),
+            page.waitForTimeout(4000),
+        ]);
+        await page.waitForTimeout(1200);
+    }
 
     await page.waitForFunction(
         () => {
@@ -2886,6 +3372,18 @@ module.exports.probePendingOrdersForStores = probePendingOrdersForStores;
 module.exports.selectStoreOnPage = selectStoreOnPage;
 module.exports.setScheduledOrdersToYmd = setScheduledOrdersToYmd;
 module.exports.openDayViewAndReadSales = openDayViewAndReadSales;
+module.exports.readDayViewSalesOnly = readDayViewSalesOnly;
+module.exports.findLabourSchedulerComboId = findLabourSchedulerComboId;
+module.exports.selectLabourSchedulerWeek = selectLabourSchedulerWeek;
+module.exports.selectLabourSchedulerDay = selectLabourSchedulerDay;
+module.exports.stepLabourSchedulerDay = stepLabourSchedulerDay;
+module.exports.readLabourSchedulerDayContext = readLabourSchedulerDayContext;
+module.exports.scrapeHistoricalDaySales = scrapeHistoricalDaySales;
+module.exports.scrapeMissingHistoricalDays = scrapeMissingHistoricalDays;
+module.exports.scrapeRecentHistoricalDaysByStepping = scrapeRecentHistoricalDaysByStepping;
+module.exports.parseDdMmYyyyFragmentToIso = parseDdMmYyyyFragmentToIso;
+module.exports.isoToDdMmYyyy = isoToDdMmYyyy;
+module.exports.mondayOfIsoWeek = mondayOfIsoWeek;
 module.exports.confirmStoreContextOnPage = confirmStoreContextOnPage;
 module.exports.resolveStoreOnCurrentPage = resolveStoreOnCurrentPage;
 module.exports.getLastKnownPendingVendors = getLastKnownPendingVendors;

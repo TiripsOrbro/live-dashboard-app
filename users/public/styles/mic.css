@@ -342,7 +342,7 @@ html:not(.mic-flat-tiles) .admin-promo-banner:focus-visible {
     position: fixed;
     right: max(calc(16px * var(--dashboard-scale)), env(safe-area-inset-right));
     bottom: max(calc(16px * var(--dashboard-scale)), env(safe-area-inset-bottom));
-    z-index: 50;
+    z-index: 10050;
     pointer-events: auto;
     width: calc(44px * var(--dashboard-scale));
     height: calc(44px * var(--dashboard-scale));
@@ -594,6 +594,13 @@ html.admin-overview-page .app-shell-view #app > .mic-page--admin {
 
 .mic-grid--admin.mic-grid--loading > .mic-tile--loading {
     pointer-events: none;
+}
+
+.mic-grid--admin.mic-grid--loading .mic-tile--link,
+.mic-grid--admin.mic-grid--loading a.mic-tile,
+.mic-grid--admin.mic-grid--loading button.mic-tile--link {
+    pointer-events: auto;
+    cursor: pointer;
 }
 
 .mic-grid--admin.mic-grid--loading > .mic-tile.mic-tile--loading-skeleton {

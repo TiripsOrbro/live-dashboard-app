@@ -42,11 +42,14 @@
         },
     ];
 
+    const AREA_STORAGE_KEY = 'admin-five-am-area';
+
     let pageHost = null;
     let stockPayload = null;
     let forecastPayload = null;
     let storesPayload = [];
     let canManage = false;
+    let activeArea = '';
     const pullingStores = new Set();
 
     function escapeHtml(value) {
@@ -63,6 +66,51 @@
 
     function pageState() {
         return { stockPayload, forecastPayload };
+    }
+
+    function areaChipLabel(areaId) {
+        const fromDisplay = global.AreaDisplay?.label?.(areaId);
+        if (fromDisplay) return fromDisplay;
+        const raw = String(areaId ?? '');
+        return raw.replace(/-1$/i, '') || raw;
+    }
+
+    function visibleStores() {
+        const enabledMap = stockPayload?.stores || {};
+        return storesPayload
+            .filter((s) => Object.prototype.hasOwnProperty.call(enabledMap, String(s.storeNumber)))
+            .sort((a, b) =>
+                String(a.storeNumber).localeCompare(String(b.storeNumber), undefined, { numeric: true })
+            );
+    }
+
+    function orderedAreas() {
+        const canonical = ['VIC-1', 'WA-1', 'QLD-1'];
+        const areas = [...new Set(visibleStores().map((s) => String(s.area || '').trim()).filter(Boolean))];
+        const picked = canonical.filter((id) => areas.includes(id));
+        const rest = areas.filter((id) => !canonical.includes(id)).sort();
+        return picked.length ? [...picked, ...rest] : rest;
+    }
+
+    function storesInActiveArea() {
+        if (!activeArea) return visibleStores();
+        return visibleStores().filter((s) => String(s.area || '').trim() === activeArea);
+    }
+
+    function pickDefaultArea() {
+        const areas = orderedAreas();
+        const saved = sessionStorage.getItem(AREA_STORAGE_KEY);
+        if (saved && areas.includes(saved)) return saved;
+        return areas[0] || '';
+    }
+
+    function renderAreaTabs() {
+        return orderedAreas()
+            .map((area) => {
+                const isActive = area === activeArea;
+                return `<button type="button" class="admin-accounts-scope-chip${isActive ? ' is-active' : ''}" role="tab" aria-selected="${isActive ? 'true' : 'false'}" data-daily-report-area="${escapeHtml(area)}">${escapeHtml(areaChipLabel(area))}</button>`;
+            })
+            .join('');
     }
 
     async function fetchProfile() {
@@ -119,44 +167,76 @@
     }
 
     function renderRows() {
-        const enabledMap = stockPayload?.stores || {};
         const lastRun = stockPayload?.lastRun || {};
-        const forecastMap = forecastPayload?.stores || {};
-        const rows = storesPayload
-            .filter((s) => Object.prototype.hasOwnProperty.call(enabledMap, String(s.storeNumber)))
-            .sort((a, b) => {
-                const area = String(a.area || '').localeCompare(String(b.area || ''));
-                if (area !== 0) return area;
-                return String(a.storeNumber).localeCompare(String(b.storeNumber), undefined, { numeric: true });
-            });
+        const rows = storesInActiveArea();
         if (!rows.length) {
-            return '<p class="admin-accounts-meta">No stores available.</p>';
+            return `<p class="admin-accounts-meta">No stores in ${escapeHtml(areaChipLabel(activeArea) || 'this area')}.</p>`;
         }
-        const jobHeaders = DAILY_REPORT_JOBS.map((job) => `<th>${escapeHtml(job.label)}</th>`).join('');
+        const jobHeaders = DAILY_REPORT_JOBS.map(
+            (job) => `<th scope="col" class="admin-five-am-col-job">${escapeHtml(job.label)}</th>`
+        ).join('');
         const state = pageState();
         const body = rows
             .map((s) => {
                 const store = String(s.storeNumber);
                 const jobCells = DAILY_REPORT_JOBS.map((job) => {
                     const enabled = job.readEnabled(store, state);
-                    return `<td>${renderJobToggle(job, store, enabled)}</td>`;
+                    return `<td class="admin-five-am-col-job">${renderJobToggle(job, store, enabled)}</td>`;
                 }).join('');
                 const lastRunLabel = pullingStores.has(store) ? 'Pulling now…' : formatDay(lastRun[store]);
                 return `<tr>
-                    <td>${escapeHtml(store)}<span class="admin-accounts-meta">${escapeHtml(s.storeName || '')}</span></td>
-                    <td>${escapeHtml(s.area || '')}</td>
+                    <td class="admin-five-am-col-store">${escapeHtml(store)}<span class="admin-accounts-meta">${escapeHtml(s.storeName || '')}</span></td>
                     ${jobCells}
-                    <td><span class="admin-accounts-meta">${lastRunLabel}</span></td>
+                    <td class="admin-five-am-col-last-run"><span class="admin-accounts-meta">${lastRunLabel}</span></td>
                 </tr>`;
             })
             .join('');
         return `
-            <table class="admin-table">
+            <table class="admin-table admin-five-am-table">
+                <colgroup>
+                    <col class="admin-five-am-col-store" />
+                    ${DAILY_REPORT_JOBS.map(() => '<col class="admin-five-am-col-job" />').join('')}
+                    <col class="admin-five-am-col-last-run" />
+                </colgroup>
                 <thead>
-                    <tr><th>Store</th><th>Area</th>${jobHeaders}<th>Last stock run</th></tr>
+                    <tr>
+                        <th scope="col" class="admin-five-am-col-store">Store</th>
+                        ${jobHeaders}
+                        <th scope="col" class="admin-five-am-col-last-run">Last stock run</th>
+                    </tr>
                 </thead>
                 <tbody>${body}</tbody>
             </table>`;
+    }
+
+    function refreshTable() {
+        const root = getRoot();
+        const body = root?.querySelector('#admin-five-am-body');
+        if (!body) return;
+        body.innerHTML = renderRows();
+        bindRows();
+    }
+
+    function selectArea(area) {
+        if (!area || area === activeArea) return;
+        activeArea = area;
+        sessionStorage.setItem(AREA_STORAGE_KEY, activeArea);
+        const nav = getRoot()?.querySelector('#admin-five-am-area-tabs');
+        if (nav) {
+            nav.innerHTML = renderAreaTabs();
+        }
+        refreshTable();
+    }
+
+    function bindNavigation() {
+        const root = getRoot();
+        if (!root || root.dataset.dailyReportsNavBound) return;
+        root.dataset.dailyReportsNavBound = '1';
+        root.addEventListener('click', (event) => {
+            const tab = event.target.closest('[data-daily-report-area]');
+            if (!tab) return;
+            selectArea(tab.getAttribute('data-daily-report-area') || '');
+        });
     }
 
     function render() {
@@ -167,6 +247,7 @@
         const forecastLastRun = forecastPayload?.lastScheduledRun
             ? formatDay(forecastPayload.lastScheduledRun)
             : '—';
+        const areaCount = Math.max(orderedAreas().length, 1);
         root.innerHTML = `
             <div class="admin-modal admin-modal--inline admin-five-am-reports">
                 <h2>Daily reports</h2>
@@ -176,8 +257,15 @@
                 </p>
                 <p class="admin-accounts-meta">Forecast scheduler last ran: ${forecastLastRun}</p>
                 <p class="admin-modal-error" id="admin-five-am-error" role="alert"></p>
+                <div class="admin-settings-segmented-tabs admin-accounts-browse-scope admin-accounts-org-nav admin-report-sub-area-nav">
+                    <div class="admin-accounts-scope-row-wrap">
+                        <span class="admin-accounts-scope-row-label">Area</span>
+                        <nav class="admin-accounts-scope-row admin-accounts-scope-row--equal admin-report-sub-area-tabs" id="admin-five-am-area-tabs" role="tablist" aria-label="Select area" style="--scope-cols: ${areaCount}">${renderAreaTabs()}</nav>
+                    </div>
+                </div>
                 <div id="admin-five-am-body">${renderRows()}</div>
             </div>`;
+        bindNavigation();
         bindRows();
     }
 
@@ -206,7 +294,7 @@
                 if (stockPayload?.stores) stockPayload.stores[storeNumber] = Boolean(enabled);
                 if (data.pulling) {
                     pullingStores.add(String(storeNumber));
-                    render();
+                    refreshTable();
                 } else if (!enabled) {
                     pullingStores.delete(String(storeNumber));
                 }
@@ -235,6 +323,8 @@
             storesPayload = stores;
             stockPayload = stockStatus;
             forecastPayload = forecastStatus;
+            activeArea = pickDefaultArea();
+            if (activeArea) sessionStorage.setItem(AREA_STORAGE_KEY, activeArea);
             render();
         } catch (err) {
             if (root) {
@@ -257,6 +347,7 @@
         stockPayload = null;
         forecastPayload = null;
         storesPayload = [];
+        activeArea = '';
     }
 
     global.AdminFiveAmReports = { mount, setInlineHost, unmount, open };

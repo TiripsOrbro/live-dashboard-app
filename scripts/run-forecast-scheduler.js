@@ -93,6 +93,23 @@ async function runScheduledForecastJob() {
     const windowEndMs = Date.now() + scheduleWindowMinutes() * 60 * 1000;
     let deferred = false;
 
+    const storeRunFailed = (row) => {
+        const mmxOk = (row.mmxResults || []).length > 0 && (row.mmxResults || []).every((r) => r.ok);
+        const llResults = row.lifelenzResults || [];
+        const llOk = row.lifelenzSkipped === true || (llResults.length > 0 && llResults.every((r) => r.ok));
+        return !mmxOk || !llOk;
+    };
+
+    const runStore = async (storeNumber) =>
+        runCombinedForecastForStores([storeNumber], {
+            completedBy: 'auto',
+            headless: true,
+            lifelenzCredentials,
+            onProgress: (payload) => {
+                console.log(`[ForecastScheduler] [${storeNumber}]`, JSON.stringify(payload));
+            },
+        });
+
     const results = await runWithPriority(PRIORITY.ADMIN, {
         type: 'forecast-scheduler',
         label: 'forecast scheduler',
@@ -103,15 +120,20 @@ async function runScheduledForecastJob() {
                     deferred = true;
                     break;
                 }
-                const row = await runCombinedForecastForStores([storeNumber], {
-                    completedBy: 'auto',
-                    headless: true,
-                    lifelenzCredentials,
-                    onProgress: (payload) => {
-                        console.log(`[ForecastScheduler] [${storeNumber}]`, JSON.stringify(payload));
-                    },
-                });
+                const row = await runStore(storeNumber);
                 out.push({ storeNumber, ...row });
+            }
+
+            // Scraper failures are usually transient (slow reloads, timing);
+            // give failed stores one more pass while we still hold the queue slot.
+            const retryTargets = out.filter(storeRunFailed).map((row) => row.storeNumber);
+            for (const storeNumber of retryTargets) {
+                if (!isWithinScheduleWindow() && Date.now() > windowEndMs) break;
+                console.warn(`[ForecastScheduler] Retrying failed store ${storeNumber}…`);
+                appendScheduleLog(runDateKey, { action: 'retry', storeNumber, weekStart });
+                const row = await runStore(storeNumber);
+                const idx = out.findIndex((r) => r.storeNumber === storeNumber);
+                out[idx] = { storeNumber, ...row, retried: true };
             }
             return out;
         },
@@ -129,10 +151,18 @@ async function runScheduledForecastJob() {
         return { deferred: true, weekStart };
     }
 
-    markScheduledRun(runDateKey, weekStart, { storeCount: storeNumbers.length });
-    appendScheduleLog(runDateKey, { action: 'run', weekStart, storeNumbers, results });
-    console.log('[ForecastScheduler] Done:', JSON.stringify({ weekStart, storeNumbers }, null, 2));
-    return { weekStart, storeNumbers, results };
+    const failedStores = results.filter(storeRunFailed).map((row) => row.storeNumber);
+    markScheduledRun(runDateKey, weekStart, {
+        storeCount: storeNumbers.length,
+        failedStores,
+        allSucceeded: failedStores.length === 0,
+    });
+    appendScheduleLog(runDateKey, { action: 'run', weekStart, storeNumbers, failedStores, results });
+    if (failedStores.length) {
+        console.warn(`[ForecastScheduler] Completed with failures for store(s): ${failedStores.join(', ')}`);
+    }
+    console.log('[ForecastScheduler] Done:', JSON.stringify({ weekStart, storeNumbers, failedStores }, null, 2));
+    return { weekStart, storeNumbers, failedStores, results };
 }
 
 async function main() {

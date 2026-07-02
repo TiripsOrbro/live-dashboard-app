@@ -114,6 +114,8 @@ const {
     isStockCountLightweightActive,
     recordStockCountPrepareFailure,
     clearStockCountPipelineFailure,
+    recordStockCountApplyFailure,
+    resumeStockCountPipeline,
     recordStockCountCheckFailure,
     resetStalePipelineCheckpointsOnStartup,
 } = require('./services/stockCountMmxPipeline');
@@ -391,6 +393,28 @@ const {
     purgeOldResults: purgeFiveAmReportsResults,
     purgeOldReportFiles: purgeFiveAmReportsReportFiles,
 } = require('../dashboard/src/fiveAmReports/fiveAmReportsResults');
+const {
+    listSubscriptions: listReportSubscriptions,
+    getSubscription: getReportSubscription,
+    createSubscription: createReportSubscription,
+    updateSubscription: updateReportSubscription,
+    deleteSubscription: deleteReportSubscription,
+    setSubscriptionEnabled: setReportSubscriptionEnabled,
+    readSettingsDoc: readReportSubscriptionsDoc,
+    isReportSubscriptionsEnabled,
+    listEnabledSubscriptionsDue,
+    DEFAULT_SCHEDULE_HOUR: REPORT_SUBSCRIPTIONS_DEFAULT_HOUR,
+} = require('../dashboard/src/reportSubscriptions/reportSubscriptionsStore');
+const {
+    generateReportBundle,
+    sendSubscriptionReport,
+    assessDataStatusForScope,
+    backfillScopeData,
+    backfillForecastHistoryForStores,
+    runReportActionStream,
+    reportTypeLabel,
+} = require('../dashboard/src/reportSubscriptions/reportRunner');
+const { emailFromAddress } = require('../dashboard/src/reportSubscriptions/reportEmailService');
 const {
     buildForecastUpdatesForStores,
     summarizeForecastUpdates,
@@ -3802,6 +3826,7 @@ app.get('/api/admin/forecast/status', (req, res) => {
         autoSubmit,
         storeAutoSubmit,
         canManageAutoSubmit: canUserEditGlobalBuildTo(user),
+        canManageBackfill: canUserEditGlobalBuildTo(user),
     });
 });
 
@@ -3863,6 +3888,392 @@ app.put('/api/admin/forecast/store-auto-submit', (req, res) => {
     }
 });
 
+function userCanAccessReportSubscriptionScope(user, sub) {
+    if (!sub) return false;
+    const scopeType = String(sub.scopeType || 'store').trim();
+    const scopeId = String(sub.scopeId || '').trim();
+    if (!scopeId) return false;
+    if (scopeType === 'area') {
+        if (!(isSuperAdminUser(user) || userCanAccessArea(user, scopeId))) return false;
+        return isSuperAdminUser(user) || hasMultiStoreScope(user);
+    }
+    return userCanAccessStore(user, scopeId);
+}
+
+function userOwnsReportSubscription(user, sub) {
+    if (!user || !sub) return false;
+    if (isSuperAdminUser(user)) return true;
+    const owner = String(sub.ownerUsername || '').trim();
+    if (!owner) return canUserEditGlobalBuildTo(user);
+    return usernameMatches(owner, user.username);
+}
+
+function userCanAccessReportSubscription(user, sub) {
+    return userCanAccessReportSubscriptionScope(user, sub) && userOwnsReportSubscription(user, sub);
+}
+
+function filterReportSubscriptionsForUser(user) {
+    return listReportSubscriptions().filter((sub) => userCanAccessReportSubscription(user, sub));
+}
+
+function canUserManageAreaReportSubscriptions(user) {
+    return isSuperAdminUser(user) || hasMultiStoreScope(user);
+}
+
+function reportActionDateRange(reportType, body = {}) {
+    if (String(reportType || '').trim() === 'ise-trimmed-average') {
+        const dr = body.dateRange && typeof body.dateRange === 'object' ? body.dateRange : body;
+        const weeks = Number(dr.weeks ?? body.weeks);
+        return {
+            mode: 'ise-weeks',
+            weeks: Number.isFinite(weeks) ? weeks : 5,
+            endOffsetDays: 1,
+        };
+    }
+    return {
+        startDate: String(body.startDate || body.dateRange?.startDate || '').trim(),
+        endDate: String(body.endDate || body.dateRange?.endDate || '').trim(),
+    };
+}
+
+app.get('/api/admin/report-subscriptions', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const doc = readReportSubscriptionsDoc();
+    res.json({
+        success: true,
+        enabled: isReportSubscriptionsEnabled(),
+        timeZone: doc.timeZone,
+        defaultScheduleHour: REPORT_SUBSCRIPTIONS_DEFAULT_HOUR,
+        emailFrom: emailFromAddress(),
+        canManage: canUserAccessAdminMenu(user),
+        canManageAreaScope: canUserManageAreaReportSubscriptions(user),
+        subscriptions: filterReportSubscriptionsForUser(user),
+    });
+});
+
+app.post('/api/admin/report-subscriptions', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const body = req.body || {};
+    const scopeType = String(body.scopeType || 'store').trim();
+    const scopeId = String(body.scopeId || '').trim();
+    if (!scopeId) {
+        res.status(400).json({ success: false, error: 'scopeId is required.' });
+        return;
+    }
+    if (!userCanAccessReportSubscriptionScope(user, { scopeType, scopeId })) {
+        res.status(403).json({ success: false, error: 'You do not have access to this scope.' });
+        return;
+    }
+    try {
+        const sub = createReportSubscription({
+            ...body,
+            scopeType,
+            scopeId,
+            ownerUsername: user.username,
+            updatedBy: user.username,
+        });
+        res.json({ success: true, subscription: sub });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not create subscription.' });
+    }
+});
+
+app.put('/api/admin/report-subscriptions/:id', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const id = String(req.params.id || '').trim();
+    const existing = getReportSubscription(id);
+    if (!existing) {
+        res.status(404).json({ success: false, error: 'Subscription not found.' });
+        return;
+    }
+    if (!userOwnsReportSubscription(user, existing)) {
+        res.status(403).json({ success: false, error: 'You do not have access to this subscription.' });
+        return;
+    }
+    const body = req.body || {};
+    const nextScopeType = String(body.scopeType || existing.scopeType || 'store').trim();
+    const nextScopeId = String(body.scopeId || existing.scopeId || '').trim();
+    if (body.scopeType || body.scopeId) {
+        if (!userCanAccessReportSubscriptionScope(user, { scopeType: nextScopeType, scopeId: nextScopeId })) {
+            res.status(403).json({ success: false, error: 'You do not have access to this scope.' });
+            return;
+        }
+    }
+    try {
+        const onlyEnabled =
+            body.enabled !== undefined &&
+            Object.keys(body).every((key) => key === 'enabled' || key === 'updatedBy');
+        const sub = onlyEnabled
+            ? setReportSubscriptionEnabled(id, body.enabled, user.username)
+            : updateReportSubscription(id, {
+                  ...body,
+                  ownerUsername: existing.ownerUsername || user.username,
+                  updatedBy: user.username,
+              });
+        res.json({ success: true, subscription: sub });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not update subscription.' });
+    }
+});
+
+app.delete('/api/admin/report-subscriptions/:id', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const id = String(req.params.id || '').trim();
+    const existing = getReportSubscription(id);
+    if (!existing) {
+        res.status(404).json({ success: false, error: 'Subscription not found.' });
+        return;
+    }
+    if (!userOwnsReportSubscription(user, existing)) {
+        res.status(403).json({ success: false, error: 'You do not have access to this subscription.' });
+        return;
+    }
+    try {
+        deleteReportSubscription(id);
+        res.json({ success: true, id });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not delete subscription.' });
+    }
+});
+
+app.get('/api/admin/report-subscriptions/data-status', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const reportType = String(req.query.reportType || 'historical-hourly-sales').trim();
+    const scopeType = String(req.query.scopeType || 'store').trim();
+    const scopeId = String(req.query.scopeId || '').trim();
+    const startDate = String(req.query.startDate || '').trim();
+    const endDate = String(req.query.endDate || '').trim();
+    const weeks = String(req.query.weeks || '').trim();
+    if (!scopeId) {
+        res.status(400).json({ success: false, error: 'scopeId is required.' });
+        return;
+    }
+    if (!userCanAccessReportSubscriptionScope(user, { scopeType, scopeId })) {
+        res.status(403).json({ success: false, error: 'You do not have access to this scope.' });
+        return;
+    }
+    try {
+        const dateRange =
+            reportType === 'ise-trimmed-average'
+                ? { weeks: weeks ? Number(weeks) : 5, endOffsetDays: 1 }
+                : { startDate, endDate };
+        const status = assessDataStatusForScope({
+            reportType,
+            scopeType,
+            scopeId,
+            dateRange,
+        });
+        res.json({ success: true, ...status });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not assess data status.' });
+    }
+});
+
+app.post('/api/admin/report-subscriptions/generate', async (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const body = req.body || {};
+    const reportType = String(body.reportType || 'historical-hourly-sales').trim();
+    const scopeType = String(body.scopeType || 'store').trim();
+    const scopeId = String(body.scopeId || '').trim();
+    const startDate = String(body.startDate || body.dateRange?.startDate || '').trim();
+    const endDate = String(body.endDate || body.dateRange?.endDate || '').trim();
+    const backfillOnly = Boolean(body.backfillOnly);
+    const force = Boolean(body.force);
+    if (!scopeId) {
+        res.status(400).json({ success: false, error: 'scopeId is required.' });
+        return;
+    }
+    if (!userCanAccessReportSubscriptionScope(user, { scopeType, scopeId })) {
+        res.status(403).json({ success: false, error: 'You do not have access to this scope.' });
+        return;
+    }
+    const dateRange = reportActionDateRange(reportType, body);
+    try {
+        if (backfillOnly) {
+            if (!canUserEditGlobalBuildTo(user)) {
+                res.status(403).json({ success: false, error: 'Area Manager access or above required.' });
+                return;
+            }
+            const result = await backfillScopeData({
+                reportType,
+                scopeType,
+                scopeId,
+                dateRange,
+                options: { force, backfill: true },
+            });
+            res.json({ success: true, backfillOnly: true, ...result });
+            return;
+        }
+
+        const bundle = await generateReportBundle({
+            reportType,
+            scopeType,
+            scopeId,
+            dateRange,
+            options: { backfill: canUserEditGlobalBuildTo(user), force },
+        });
+        const attachment = bundle.attachments?.[0];
+        if (!attachment) {
+            res.status(500).json({ success: false, error: 'Report generation produced no file.' });
+            return;
+        }
+        res.setHeader('Content-Type', attachment.contentType || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `attachment; filename="${attachment.filename}"`);
+        res.send(attachment.content);
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message || 'Could not generate report.' });
+    }
+});
+
+app.post('/api/admin/report-subscriptions/run-stream', async (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const body = req.body || {};
+    const action = String(body.action || 'download').trim();
+    const reportType = String(body.reportType || 'historical-hourly-sales').trim();
+    const scopeType = String(body.scopeType || 'store').trim();
+    const scopeId = String(body.scopeId || '').trim();
+    const startDate = String(body.startDate || body.dateRange?.startDate || '').trim();
+    const endDate = String(body.endDate || body.dateRange?.endDate || '').trim();
+    const force = Boolean(body.force);
+    const subscriptionId = String(body.subscriptionId || '').trim();
+
+    if (!scopeId && action !== 'send') {
+        res.status(400).json({ success: false, error: 'scopeId is required.' });
+        return;
+    }
+    if (scopeId && !userCanAccessReportSubscriptionScope(user, { scopeType, scopeId })) {
+        res.status(403).json({ success: false, error: 'You do not have access to this scope.' });
+        return;
+    }
+    if (action === 'backfill' && !canUserEditGlobalBuildTo(user)) {
+        res.status(403).json({ success: false, error: 'Area Manager access or above required.' });
+        return;
+    }
+
+    let subscription = null;
+    if (action === 'send') {
+        if (!subscriptionId) {
+            res.status(400).json({ success: false, error: 'subscriptionId is required for send.' });
+            return;
+        }
+        subscription = getReportSubscription(subscriptionId);
+        if (!subscription) {
+            res.status(404).json({ success: false, error: 'Subscription not found.' });
+            return;
+        }
+        if (!userOwnsReportSubscription(user, subscription)) {
+            res.status(403).json({ success: false, error: 'You do not have access to this subscription.' });
+            return;
+        }
+    }
+
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+    const writeEvent = (event) => {
+        try {
+            res.write(`${JSON.stringify(event)}\n`);
+        } catch {
+            /* client disconnected */
+        }
+    };
+
+    const keepaliveMs = Number(process.env.REPORT_STREAM_KEEPALIVE_MS || 25000);
+    const keepalive = keepaliveMs > 0
+        ? setInterval(() => {
+              writeEvent({ type: 'keepalive', ts: new Date().toISOString() });
+          }, keepaliveMs)
+        : null;
+    if (keepalive?.unref) keepalive.unref();
+
+    try {
+        const result = await runReportActionStream({
+            action,
+            reportType: subscription?.reportType || reportType,
+            scopeType: subscription?.scopeType || scopeType,
+            scopeId: subscription?.scopeId || scopeId,
+            dateRange: subscription ? undefined : reportActionDateRange(reportType, body),
+            options: {
+                force,
+                backfill:
+                    action === 'backfill' ||
+                    ((action === 'download' || action === 'send') && canUserEditGlobalBuildTo(user)),
+                subscription,
+                onProgress: writeEvent,
+            },
+        });
+        writeEvent({ type: 'complete', success: true, result });
+    } catch (err) {
+        writeEvent({ type: 'complete', success: false, error: err.message || 'Report action failed.' });
+    } finally {
+        if (keepalive) clearInterval(keepalive);
+        res.end();
+    }
+});
+
+app.post('/api/admin/report-subscriptions/:id/send-now', async (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const id = String(req.params.id || '').trim();
+    const existing = getReportSubscription(id);
+    if (!existing) {
+        res.status(404).json({ success: false, error: 'Subscription not found.' });
+        return;
+    }
+    if (!userOwnsReportSubscription(user, existing)) {
+        res.status(403).json({ success: false, error: 'You do not have access to this subscription.' });
+        return;
+    }
+    try {
+        const result = await sendSubscriptionReport(existing, {
+            backfill: true,
+            force: Boolean(req.body?.force),
+        });
+        res.json({
+            success: true,
+            sent: Boolean(result.email?.sent),
+            email: result.email,
+            statuses: result.statuses,
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message || 'Could not send report.' });
+    }
+});
+
 app.get('/api/admin/five-am-reports/stores', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     if (!canUserAccessAdminMenu(user)) {
@@ -3905,6 +4316,64 @@ app.put('/api/admin/five-am-reports/stores', (req, res) => {
         }
     } catch (err) {
         res.status(400).json({ success: false, error: err.message || 'Could not save 5AM reports setting.' });
+    }
+});
+
+app.post('/api/admin/forecast/backfill-stream', async (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    if (!canUserEditGlobalBuildTo(user)) {
+        res.status(403).json({ success: false, error: 'Area Manager access or above required.' });
+        return;
+    }
+
+    const allowed = new Set((getEffectiveStoresForUser(user) || []).map(String));
+    const body = req.body || {};
+    let storeNumbers = [];
+    const singleStore = String(body.storeNumber || '').trim();
+    if (singleStore) {
+        if (!allowed.has(singleStore) || isTestStore(singleStore)) {
+            res.status(403).json({ success: false, error: 'You do not have access to this store.' });
+            return;
+        }
+        storeNumbers = [singleStore];
+    } else if (Array.isArray(body.storeNumbers)) {
+        storeNumbers = body.storeNumbers
+            .map((s) => String(s || '').trim())
+            .filter((s) => s && allowed.has(s) && !isTestStore(s));
+    }
+    if (!storeNumbers.length) {
+        res.status(400).json({ success: false, error: 'No valid stores selected.' });
+        return;
+    }
+
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+    const writeEvent = (event) => {
+        try {
+            res.write(`${JSON.stringify(event)}\n`);
+        } catch {
+            /* client disconnected */
+        }
+    };
+
+    try {
+        const result = await backfillForecastHistoryForStores(storeNumbers, {
+            force: Boolean(body.force),
+            onProgress: writeEvent,
+        });
+        writeEvent({ type: 'complete', success: true, result });
+    } catch (err) {
+        writeEvent({ type: 'complete', success: false, error: err.message || 'Forecast backfill failed.' });
+    } finally {
+        res.end();
     }
 });
 
@@ -4268,8 +4737,25 @@ app.post('/api/admin/forecast/run', async (req, res) => {
                     allMmxFailed &&
                     (!lifelenzCredentials || (lifelenzResults.length && lifelenzResults.every((row) => !row.ok)));
 
+                const mmxFailures = mmxResults.filter((row) => !row.ok);
+                const lifelenzFailures = lifelenzCredentials ? lifelenzResults.filter((row) => !row.ok) : [];
+                const anyFailed = mmxFailures.length > 0 || lifelenzFailures.length > 0;
+                const failureSummary = anyFailed
+                    ? [
+                          mmxFailures.length
+                              ? `MMX failed for ${mmxFailures.map((row) => row.storeNumber).join(', ')}`
+                              : '',
+                          lifelenzFailures.length
+                              ? `LifeLenz failed for ${lifelenzFailures.map((row) => row.storeNumber).join(', ')}`
+                              : '',
+                      ]
+                          .filter(Boolean)
+                          .join('; ')
+                    : undefined;
+
                 const payload = {
                     success: !allFailed,
+                    partialFailure: !allFailed && anyFailed,
                     mmx: mmxResults,
                     lifelenz: lifelenzResults,
                     lifelenzSkipped: combined.lifelenzSkipped === true,
@@ -4278,7 +4764,7 @@ app.post('/api/admin/forecast/run', async (req, res) => {
                     targetWeeks: combined.targetWeeks || getTargetForecastWeekStarts(),
                     error: allFailed
                         ? mmxResults.find((row) => !row.ok)?.error || 'Forecast run failed for all stores.'
-                        : undefined,
+                        : failureSummary,
                 };
                 if (streamProgress) {
                     writeSse('complete', payload);
@@ -5056,7 +5542,14 @@ app.get('/api/stock-count/mmx-user-login', (req, res) => {
     const store = stockCountStoreFromQuery(req);
     if (!store || !assertStoreAccess(req, res, store)) return;
     if (!stockCountUsesPersonalMmx(user)) {
-        res.json({ success: true, required: false, configured: true });
+        const configured = storeHasMmxCredentials(store);
+        res.json({
+            success: true,
+            required: !configured,
+            configured,
+            mode: 'store',
+            canManageStoreLogins: canUserManageStoreLogins(user),
+        });
         return;
     }
     const dashUser = String(user.username || '').trim();
@@ -5065,6 +5558,7 @@ app.get('/api/stock-count/mmx-user-login', (req, res) => {
         success: true,
         required: true,
         configured: hasMmxCredentialsForUser(dashUser),
+        mode: 'personal',
         maskedUsername: creds ? maskMmxLoginForStatus(creds.username) : '',
     });
 });
@@ -5191,11 +5685,14 @@ app.post('/api/stock-count/send-to-mmx/apply', async (req, res) => {
             const skipReportDownload = /^(1|true|yes|on)$/i.test(
                 String(req.body?.skipReportDownload ?? req.query.skipReportDownload ?? 'false')
             );
-            const result = await runScheduledOrdersOnly(
+            res.json({ success: true, accepted: true });
+            void runScheduledOrdersOnly(
                 store,
                 mmxAutomationOptions(req, store, { skipReportDownload })
-            );
-            res.json({ success: true, ...result });
+            ).catch(async (error) => {
+                console.error('API: Error filling scheduled orders (background):', error);
+                await recordStockCountApplyFailure(store, error);
+            });
             return;
         }
 
@@ -5210,12 +5707,48 @@ app.post('/api/stock-count/send-to-mmx/apply', async (req, res) => {
             return;
         }
 
-        console.log(`[StockCount] Apply MMX count - store ${store} session ${sessionId}`);
-        const result = await applyStockCountSession(store, sessionId, mmxAutomationOptions(req, store));
-        res.json({ success: true, ...result });
+        console.log(`[StockCount] Apply MMX count (background) - store ${store} session ${sessionId}`);
+        res.json({ success: true, accepted: true, sessionId });
+        void applyStockCountSession(store, sessionId, mmxAutomationOptions(req, store)).catch(async (error) => {
+            console.error('API: Error applying stock count in MMX (background):', error);
+            await recordStockCountApplyFailure(store, error);
+        });
     } catch (error) {
-        console.error('API: Error applying stock count in MMX:', error);
+        console.error('API: Error starting stock count apply in MMX:', error);
         const status = /session expired|not found|Apply button|Missing reports|already applied/i.test(error.message)
+            ? 400
+            : 500;
+        res.status(status).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/stock-count/pipeline-resume', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        const vendorSlug = stockCountVendorFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        if (!assertStockCountUserMmxLogin(req, res)) return;
+
+        const pipeline = await getStockCountPipelineStatus(store);
+        if (isStockCountExclusiveActive(pipeline, store) && pipeline.workLive) {
+            return res.json({
+                success: true,
+                accepted: false,
+                inProgress: true,
+                stage: pipeline.stage,
+                sessionId: pipeline.sessionId || null,
+                stepLabel: pipeline.stepLabel || null,
+            });
+        }
+
+        const result = await resumeStockCountPipeline(
+            store,
+            mmxAutomationOptions(req, store, { vendorSlug })
+        );
+        res.json(result);
+    } catch (error) {
+        console.error('API: Error resuming stock count pipeline:', error);
+        const status = /Nothing to resume|Cannot resume|session expired|Send to MMX again/i.test(error.message)
             ? 400
             : 500;
         res.status(status).json({ success: false, error: error.message });
@@ -8092,6 +8625,44 @@ function startFiveAmReportsScheduler() {
     setInterval(() => void maybeRunFiveAmReports(), FIVE_AM_REPORTS_CHECK_MS);
 }
 
+const REPORT_SUBSCRIPTIONS_CHECK_MS = 15 * 60 * 1000;
+let reportSubscriptionsRunning = false;
+
+async function maybeRunReportSubscriptions() {
+    if (!isReportSubscriptionsEnabled() || reportSubscriptionsRunning) return;
+    reportSubscriptionsRunning = true;
+    try {
+        const due = listEnabledSubscriptionsDue(new Date());
+        if (!due.length) return;
+        for (const sub of due) {
+            try {
+                const result = await sendSubscriptionReport(sub, { backfill: true });
+                if (result.email?.sent) {
+                    console.log(
+                        `[ReportSubscriptions] Sent ${reportTypeLabel(sub.reportType)} to ${sub.recipients.join(', ')}`
+                    );
+                } else if (result.email?.reason) {
+                    console.warn(
+                        `[ReportSubscriptions] Skipped ${sub.id}: ${result.email.reason}`
+                    );
+                }
+            } catch (err) {
+                console.warn(`[ReportSubscriptions] Subscription ${sub.id} failed:`, err.message);
+            }
+        }
+    } catch (err) {
+        console.warn('[ReportSubscriptions] Scheduler run failed:', err.message);
+    } finally {
+        reportSubscriptionsRunning = false;
+    }
+}
+
+function startReportSubscriptionsScheduler() {
+    if (!isReportSubscriptionsEnabled()) return;
+    setTimeout(() => void maybeRunReportSubscriptions(), 120_000);
+    setInterval(() => void maybeRunReportSubscriptions(), REPORT_SUBSCRIPTIONS_CHECK_MS);
+}
+
 function startMemoryDiagnostics() {
     if (!/^(1|true|yes|on)$/i.test(String(process.env.DASHBOARD_MEMORY_LOG ?? '').trim())) {
         return;
@@ -8130,6 +8701,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
     }
     startActionsDigestScheduler();
     startFiveAmReportsScheduler();
+    startReportSubscriptionsScheduler();
     startMemoryDiagnostics();
 });
 

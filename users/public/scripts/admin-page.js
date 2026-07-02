@@ -73,6 +73,16 @@
             mount: (host, opts) => global.AdminFiveAmReports?.mount?.(host, opts),
             activate: () => global.AdminFiveAmReports?.setInlineHost?.(sectionPanels.get('five-am-reports')?.host),
         },
+        {
+            id: 'report-subscriptions',
+            label: 'Report subscriptions',
+            group: 'admin',
+            navGroup: 'admin',
+            visible: (p) => p.canAccessAdminMenu,
+            mount: (host, opts) => global.AdminReportSubscriptions?.mount?.(host, opts),
+            activate: () =>
+                global.AdminReportSubscriptions?.setInlineHost?.(sectionPanels.get('report-subscriptions')?.host),
+        },
     ];
 
     const USER_SECTIONS = [

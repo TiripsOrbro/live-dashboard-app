@@ -76,6 +76,13 @@ function daysFromNow(n, timeZone = DEFAULT_TZ) {
  * @param {string} spec
  * @param {{ timeZone?: string, dateOnly?: boolean }} [opts]
  */
+function isoToMacromatixDate(iso, opts = {}) {
+    const [y, m, d] = String(iso || '').split('-').map(Number);
+    if (!y || !m || !d) return '';
+    const parts = { year: y, month: m, day: d };
+    return opts.dateOnly === false ? formatMacromatixDateTime(parts) : formatMacromatixDate(parts);
+}
+
 function resolveReportDate(spec, opts = {}) {
     const tz = opts.timeZone || DEFAULT_TZ;
     const fmt = opts.dateOnly ? formatMacromatixDate : formatMacromatixDateTime;
@@ -109,5 +116,6 @@ module.exports = {
     daysFromNow,
     formatMacromatixDate,
     formatMacromatixDateTime,
+    isoToMacromatixDate,
     resolveReportDate,
 };

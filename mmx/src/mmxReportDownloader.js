@@ -34,12 +34,14 @@ function storeSelectorLabel(store) {
     return name || num;
 }
 
-function reportsForStore(pipeline, store) {
+function reportsForStore(pipeline, store, reportOverrides = {}) {
     const label = storeSelectorLabel(store);
     return (pipeline.reports || []).map((report) => {
         const scm = isSupplyChainReport(report);
+        const override = reportOverrides[report.id] || {};
         return {
             ...report,
+            ...override,
             storeNumber: store.storeNumber,
             storeName: label,
             // SCM: check the store row in RadTreeView (input.rtChk / span.rtIn) before Generate.
@@ -51,12 +53,14 @@ function reportsForStore(pipeline, store) {
     });
 }
 
-function buildSettings(pipeline, storeDir) {
+function buildSettings(pipeline, storeDir, options = {}) {
     return {
         navTimeoutMs: Number(process.env.MMX_NAV_TIMEOUT_MS || 45000),
         downloadWaitMs: Number(process.env.MMX_DOWNLOAD_WAIT_MS || 120000),
         reportDownloadDir: storeDir,
         pipeline,
+        chainReports: options.chainReports,
+        resetReportHub: Boolean(options.resetReportHub),
     };
 }
 
@@ -126,7 +130,8 @@ async function retryScmReportPerStore(page, pipeline, store, report, runSlug, st
     return dest;
 }
 
-function finalizeStoreResults(results, stores) {
+function finalizeStoreResults(results, stores, options = {}) {
+    if (options.skipIseHistoryCapture) return;
     for (const store of stores) {
         const entry = results.stores[store.storeNumber];
         const files = resolveStoreReports(store.storeNumber, REPORTS_DIR);
@@ -135,6 +140,17 @@ function finalizeStoreResults(results, stores) {
             entry.success = false;
             entry.missingReports = validation.issues;
             log.error(`Store ${store.storeNumber}: ${validation.issues.join('; ')}`);
+        }
+        try {
+            const isePath = files.inventorySpecialEvent;
+            if (isePath && require('fs').existsSync(isePath)) {
+                const { recordIseSnapshotFromFile, addDaysToIso, melbourneTodayIso } = require('../../dashboard/src/reportSubscriptions/iseHistoryLedger');
+                recordIseSnapshotFromFile(store.storeNumber, isePath, {
+                    date: addDaysToIso(melbourneTodayIso(), -1),
+                });
+            }
+        } catch (err) {
+            log.warn(`Store ${store.storeNumber}: ISE history capture failed: ${err.message}`);
         }
     }
 }
@@ -188,6 +204,9 @@ async function downloadReportsForStores(options = {}) {
     }
 
     const runSlug = timestampSlug();
+    const reportOverrides = options.reportOverrides && typeof options.reportOverrides === 'object'
+        ? options.reportOverrides
+        : {};
     const results = { runSlug, reportsDir: REPORTS_DIR, bulkSupplyChain: false, stores: {} };
     const storeNumbers = stores.map((s) => s.storeNumber);
     const useBulk = useBulkSupplyChainDownload(stores, onlyReportIds, pipeline);
@@ -301,10 +320,11 @@ async function downloadReportsForStores(options = {}) {
         }
 
         for (const store of stores) {
-            const storeDir = path.join(REPORTS_DIR, store.storeNumber);
+            const storeDir =
+                options.reportDownloadDir || path.join(REPORTS_DIR, store.storeNumber);
             ensureDir(storeDir);
 
-            let reports = reportsForStore(pipeline, store);
+            let reports = reportsForStore(pipeline, store, reportOverrides);
             if (onlyReportIds.length) {
                 reports = reports.filter((r) => onlyReportIds.includes(r.id));
             }
@@ -317,7 +337,10 @@ async function downloadReportsForStores(options = {}) {
                 reportNavigation: pipeline.reportNavigation,
                 reports,
             };
-            const settings = buildSettings(storePipeline, storeDir);
+            const settings = buildSettings(storePipeline, storeDir, {
+                chainReports: options.chainReports,
+                resetReportHub: options.resetReportHub,
+            });
             if (typeof options.onReportStep === 'function') {
                 settings.onReportStep = options.onReportStep;
             }
@@ -343,7 +366,7 @@ async function downloadReportsForStores(options = {}) {
         }
     }
 
-    finalizeStoreResults(results, stores);
+    finalizeStoreResults(results, stores, options);
     return results;
 }
 

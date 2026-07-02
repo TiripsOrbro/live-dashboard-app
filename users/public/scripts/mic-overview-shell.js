@@ -238,7 +238,10 @@
     function mountShell(appEl, { subtitle = 'Overview', promoBannerHtml = '' } = {}) {
         if (!appEl) return;
         mountPageClasses();
+        appEl.classList.remove('app-boot-loading');
+        appEl.removeAttribute('aria-busy');
         appEl.innerHTML = renderShellHtml({ subtitle, promoBannerHtml });
+        global.MicSettings?.bind?.({});
     }
 
     function getActiveTab() {

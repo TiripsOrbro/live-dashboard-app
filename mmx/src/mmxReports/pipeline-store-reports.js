@@ -45,6 +45,13 @@ async function configureAndGenerateStoreReport(page, report, reportNav, hooks = 
         process.env.MMX_CHAIN_REPORT_DOWNLOAD !== '0' &&
         Boolean(chain);
 
+    if (hooks.resetReportHub && chain) {
+        chain.hubOpen = false;
+        chain.lastGroup = null;
+        chain.lastStartDate = null;
+        chain.lastEndDate = null;
+    }
+
     if (!useChain || !chain.hubOpen) {
         await openReportSelectionPage(page, reportNav, report.navTimeoutMs || 45000);
         if (chain) chain.hubOpen = true;
@@ -65,9 +72,21 @@ async function configureAndGenerateStoreReport(page, report, reportNav, hooks = 
             optional: false,
         });
         await triggerStoreSelectionReload(page);
+        // Full reload resets report parameters — re-open report and store before setting dates.
+        await setGroupDropdown(page, group);
+        await selectReportInList(page, report.reportName, { loose: true });
+        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
+        await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_SELECT_SETTLE_MS || 700));
+        await selectStoreForStoreReport(page, report.storeName, {
+            storeNumber: report.storeNumber,
+            waitMs: 1500,
+            optional: false,
+        });
+        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
+        await page.waitForTimeout(Number(process.env.MMX_STORE_REPORT_POST_STORE_SETTLE_MS || 1200));
     }
 
-    // After store-triggered reload settles, apply date first.
+    // Apply date after report + store are selected.
     const startDate = resolveReportDate(report.startDate || 'yesterday', dateOpts(report));
     await setStartDate(page, startDate);
     await page.waitForFunction(() => document.readyState === 'complete', { timeout: 8000 }).catch(() => {});
@@ -95,6 +114,7 @@ async function runStoreReport(page, report, settings) {
         await configureAndGenerateStoreReport(page, cfg, reportNav, {
             chainSession: settings.chainSession,
             chainReports: settings.chainReports,
+            resetReportHub: settings.resetReportHub,
         });
     });
 }

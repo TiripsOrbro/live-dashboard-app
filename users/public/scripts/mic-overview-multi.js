@@ -128,11 +128,19 @@
         </article>`;
     }
 
-    function renderLoadingDesktopTiles() {
-        const topRow = renderEqualWidthRow(
-            [renderLoadingPlaceholderTile(), renderLoadingPlaceholderTile(), renderLoadingPlaceholderTile()],
+    function renderLoadingInteractiveTopRow() {
+        return renderEqualWidthRow(
+            [
+                renderVocTile(VOC_PLACEHOLDER, { inRow: true }),
+                renderLoadingPlaceholderTile(),
+                renderCoreCountdownTile({ inRow: true }),
+            ],
             { rowNum: 'top' }
         );
+    }
+
+    function renderLoadingDesktopTiles() {
+        const topRow = renderLoadingInteractiveTopRow();
         const middleRow = renderEqualWidthRow(
             [renderLoadingPlaceholderTile(), renderLoadingPlaceholderTile()],
             { rowNum: 1, extraClass: 'mic-tile--pos-middle-row' }
@@ -155,7 +163,10 @@
     function renderLoadingMobileTiles() {
         return `
         ${renderMicTabPanel('sales', renderLoadingAreaStoresTile({ tabbed: true }))}
-        ${renderMicTabPanel('results', renderLoadingPlaceholderTiles(2))}
+        ${renderMicTabPanel(
+            'results',
+            `${renderVocTile(VOC_PLACEHOLDER, { tabbed: true })}${renderCoreCountdownTile({ tabbed: true })}`
+        )}
         ${renderMicTabPanel('orders', renderLoadingPlaceholderTiles(2))}
         ${renderMicTabPanel('audits', renderLoadingPlaceholderTiles(3))}`;
     }
@@ -998,6 +1009,9 @@
             }
             grid.innerHTML = mobile ? renderLoadingMobileTiles() : renderLoadingDesktopTiles();
             grid.setAttribute('aria-busy', 'true');
+            global.CoreCountdown?.refreshTiles?.();
+            global.CoreCountdown?.startTick?.();
+            bindTacauditTileLinks();
             return;
         }
 

@@ -41,6 +41,14 @@ body {
     background: color-mix(in srgb, var(--grey) 88%, white);
 }
 
+#app.app-boot-loading:has(.mic-page),
+#app.app-boot-loading:has(.dashboard) {
+    display: block;
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow: hidden;
+}
+
 .app-boot-loading__message {
     margin: 0;
     font-size: var(--font-size-3);

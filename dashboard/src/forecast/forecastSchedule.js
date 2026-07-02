@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const paths = require('../../../src/paths');
+const { writeJsonAtomic } = require('./atomicJson');
 const STATE_FILE = path.join(paths.dashboard.data, 'forecast-schedule-state.json');
 const LOG_DIR = path.join(paths.dashboard.data, 'forecast-schedule-log');
 
@@ -79,8 +80,7 @@ function readState() {
 }
 
 function writeState(state) {
-    fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true });
-    fs.writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+    writeJsonAtomic(STATE_FILE, state);
 }
 
 function hasScheduledRunForDate(runDateKey) {

@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const paths = require('../../../src/paths');
+const { writeJsonAtomic } = require('./atomicJson');
 const UPDATES_DIR = path.join(paths.dashboard.data, 'forecast-updates');
 
 function updatesFilePath(weekStart, storeNumber) {
@@ -52,8 +53,7 @@ function writeForecastUpdates(doc) {
     const store = String(doc?.storeNumber || '').trim();
     const week = String(doc?.weekStart || '').trim();
     if (!store || !week) throw new Error('storeNumber and weekStart are required.');
-    fs.mkdirSync(path.dirname(updatesFilePath(week, store)), { recursive: true });
-    fs.writeFileSync(updatesFilePath(week, store), `${JSON.stringify(doc, null, 2)}\n`, 'utf8');
+    writeJsonAtomic(updatesFilePath(week, store), doc);
     return doc;
 }
 

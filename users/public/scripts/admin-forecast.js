@@ -6,7 +6,6 @@
     let progressBackdrop = null;
     let progressState = null;
     let historyStoreNumber = null;
-    let historyForecastWeek = null;
     let historyGridData = null;
     let historyWeekStart = null;
     let historyDateBounds = null;
@@ -22,6 +21,9 @@
     let lifelenzBackdrop = null;
     let lifelenzStatus = { configured: false, updatedAt: null };
     let sessionLifeLenzCredentials = null;
+    let backfillProgressBackdrop = null;
+    let backfillProgressRunning = false;
+    let canManageBackfill = false;
 
     const ADMIN_AREAS = ['VIC-1', 'WA-1', 'QLD-1'];
 
@@ -393,7 +395,7 @@
                     <div class="admin-forecast-history-nav">
                         <button type="button" class="mic-settings-btn" id="admin-forecast-history-prev-week" title="Previous week">← Prev</button>
                         <button type="button" class="mic-settings-btn" id="admin-forecast-history-next-week" title="Next week">Next →</button>
-                        <button type="button" class="mic-settings-btn" id="admin-forecast-history-add">Add day</button>
+                        <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-history-backfill" hidden>Backfill data</button>
                     </div>
                 </div>
                 <div id="admin-forecast-history-edit" class="admin-forecast-history-edit" hidden></div>
@@ -424,8 +426,8 @@
             historyWeekStart = clampWeekStart(addDaysToIso(historyWeekStart, 7));
             void loadHistoryGrid(historyStoreNumber, historyWeekStart);
         });
-        historyBackdrop.querySelector('#admin-forecast-history-add')?.addEventListener('click', () => {
-            openHistoryEditForm(null);
+        historyBackdrop.querySelector('#admin-forecast-history-backfill')?.addEventListener('click', () => {
+            if (historyStoreNumber) void runForecastBackfill([historyStoreNumber], { refreshHistory: true });
         });
         historyBackdrop.querySelector('#admin-forecast-history-edit')?.addEventListener('click', (event) => {
             const btn = event.target.closest('[data-history-edit-action]');
@@ -1613,7 +1615,6 @@
     function closeHistory() {
         if (historyBackdrop) historyBackdrop.hidden = true;
         historyStoreNumber = null;
-        historyForecastWeek = null;
         historyGridData = null;
         historyWeekStart = null;
         historyEditState = null;
@@ -1627,6 +1628,8 @@
             'import-cli': 'Import',
             'manual-ui': 'Manual',
             live: 'Live',
+            'mmx-report-backfill': 'Backfilled',
+            'mmx-backfill': 'Backfilled',
         };
         return map[String(source || '').trim()] || (source ? String(source) : '');
     }
@@ -1652,7 +1655,6 @@
         if (!res.ok || !data.success) throw new Error(data.error || 'Could not save history day.');
         if (data.dateBounds) historyDateBounds = data.dateBounds;
         closeHistoryEditForm();
-        historyForecastWeek = null;
         await loadHistoryGrid(historyStoreNumber, historyGridData?.weekStart || historyWeekStart);
         if (statusPayload && getRoot()) {
             const statusRes = await fetchStatus();
@@ -1805,7 +1807,6 @@
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.success) throw new Error(data.error || 'Could not delete history day.');
             closeHistoryEditForm();
-            historyForecastWeek = null;
             await loadHistoryGrid(historyStoreNumber, historyGridData?.weekStart || historyWeekStart);
             if (statusPayload && getRoot()) {
                 const statusRes = await fetchStatus();
@@ -1916,10 +1917,9 @@
         return data;
     }
 
-    async function fetchHistoryGrid(storeNumber, weekStart, { includeForecast = true } = {}) {
-        const params = new URLSearchParams({ store: storeNumber });
+    async function fetchHistoryGrid(storeNumber, weekStart) {
+        const params = new URLSearchParams({ store: storeNumber, includeForecast: '0' });
         if (weekStart) params.set('weekStart', weekStart);
-        if (!includeForecast) params.set('includeForecast', '0');
         const res = await fetch(`/api/admin/forecast/history-grid?${params}`, { credentials: 'same-origin' });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) throw new Error(data.error || 'Could not load history grid.');
@@ -2595,16 +2595,13 @@
         }
     }
 
-    function renderHistoryGrid(root, grid, forecastWeek) {
+    function renderHistoryGrid(root, grid) {
         const body = root.querySelector('#admin-forecast-history-body');
         const meta = root.querySelector('#admin-forecast-history-meta');
         const weekPicker = root.querySelector('#admin-forecast-history-week-start');
-        const weekLabel = forecastWeek?.targetWeeks?.length
-            ? forecastWeek.targetWeeks.map((w) => formatShortDate(w)).join(', ')
-            : '';
 
         root.querySelector('#admin-forecast-history-title').textContent =
-            `Sales history & forecast - ${grid.storeNumber}${grid.storeName ? ' ' + grid.storeName : ''}`;
+            `Sales history - ${grid.storeNumber}${grid.storeName ? ' ' + grid.storeName : ''}`;
 
         historyWeekStart = grid.weekStart || historyWeekStart;
         if (weekPicker && historyWeekStart) {
@@ -2613,84 +2610,761 @@
             weekPicker.value = historyWeekStart;
         }
 
-        meta.textContent = weekLabel
-            ? `Actual sales ${formatShortDate(grid.weekStart)} – ${formatShortDate(grid.weekEnd)}. Target forecast week starting ${weekLabel}.`
-            : `Actual sales ${formatShortDate(grid.weekStart)} – ${formatShortDate(grid.weekEnd)}.`;
+        meta.textContent = `Actual sales ${formatShortDate(grid.weekStart)} – ${formatShortDate(grid.weekEnd)}.`;
 
         body.innerHTML =
-            '<section class="admin-forecast-history-section" id="admin-forecast-history-actual" aria-label="Historical actual sales"></section>' +
-            '<section class="admin-forecast-history-section" id="admin-forecast-history-forecast" aria-label="Target forecast week"></section>';
+            '<section class="admin-forecast-history-section" id="admin-forecast-history-actual" aria-label="Historical actual sales"></section>';
 
         const actualSection = body.querySelector('#admin-forecast-history-actual');
         actualSection.innerHTML = '<h3 class="admin-forecast-history-heading">Actual sales</h3>';
         const actualGrid = document.createElement('div');
         actualSection.appendChild(actualGrid);
         renderHistoryWeekGrid(actualGrid, grid);
-
-        const forecastSection = body.querySelector('#admin-forecast-history-forecast');
-        if (forecastWeek?.grid) {
-            forecastSection.innerHTML = `<h3 class="admin-forecast-history-heading">Forecast week${weekLabel ? ` - starting ${escapeHtml(weekLabel)}` : ''}</h3>`;
-            const forecastGrid = document.createElement('div');
-            forecastSection.appendChild(forecastGrid);
-            renderForecastGrid(forecastGrid, forecastWeek.grid, { mode: 'preview' });
-        } else if (forecastWeek?.error) {
-            forecastSection.innerHTML = `<h3 class="admin-forecast-history-heading">Forecast week</h3><p class="admin-accounts-meta">${escapeHtml(forecastWeek.error)}</p>`;
-        } else {
-            forecastSection.innerHTML = '';
-        }
     }
 
     async function loadHistoryGrid(storeNumber, weekStart) {
         const root = ensureHistoryBackdrop();
-        const isWeekSwitch = historyStoreNumber === storeNumber && historyForecastWeek != null;
+        const isWeekSwitch = historyStoreNumber === storeNumber && historyGridData != null;
         root.querySelector('#admin-forecast-history-error').textContent = '';
         if (!isWeekSwitch) {
             root.querySelector('#admin-forecast-history-body').innerHTML = '<p>Loading…</p>';
             closeHistoryEditForm();
         }
         try {
-            const data = await fetchHistoryGrid(storeNumber, weekStart, { includeForecast: !isWeekSwitch });
-            if (data.forecastWeek) historyForecastWeek = data.forecastWeek;
+            const data = await fetchHistoryGrid(storeNumber, weekStart);
             historyGridData = data.grid;
             if (data.dateBounds) historyDateBounds = data.dateBounds;
             historyWeekStart = data.grid?.weekStart || weekStart || historyWeekStart;
-            renderHistoryGrid(root, data.grid, historyForecastWeek);
+            renderHistoryGrid(root, data.grid);
         } catch (error) {
             root.querySelector('#admin-forecast-history-error').textContent = error.message;
             root.querySelector('#admin-forecast-history-body').innerHTML = '';
         }
     }
 
-    async function openHistory(storeNumber, { weekStart, focusManual } = {}) {
+    async function openHistory(storeNumber, { weekStart } = {}) {
         historyStoreNumber = storeNumber;
-        historyForecastWeek = null;
         historyWeekStart = weekStart || null;
         const root = ensureHistoryBackdrop();
         root.hidden = false;
+        syncBackfillButtons();
         root.querySelector('#admin-forecast-history-error').textContent = '';
         await loadHistoryGrid(storeNumber, historyWeekStart);
-        if (focusManual && historyGridData?.rows) {
-            const firstPastGap = historyGridData.rows.find(
-                (row) => isPastMissingHistoryDay(row, historyGridData)
-            );
-            if (firstPastGap) {
-                const rowIdx = historyGridData.rows.indexOf(firstPastGap);
-                requestAnimationFrame(() => {
-                    const input = root.querySelector(`input[data-history-inline-row="${rowIdx}"]`);
-                    input?.focus();
-                });
-            } else {
-                const firstGap = historyGridData.rows.find((row) => !row.hasData);
-                if (firstGap) openHistoryEditForm(firstGap);
+    }
+
+    let overrideForecastBackdrop = null;
+    let overrideState = null;
+
+    function round2(value) {
+        return Math.round((Number(value) || 0) * 100) / 100;
+    }
+
+    function overrideActiveHours(day) {
+        return [...day.baseHourly.entries()].filter(([, value]) => value != null);
+    }
+
+    // Day total when no explicit day override: base total shifted by locked hour edits.
+    function overrideNaturalTotal(day) {
+        let total = day.baseTotal;
+        for (const [hour, value] of day.locked) {
+            const base = Number(day.baseHourly.get(hour)) || 0;
+            total += (Number(value) || 0) - base;
+        }
+        return round2(total);
+    }
+
+    function currentOverrideDayTotal(day) {
+        return day.hasDayRule ? round2(day.total) : overrideNaturalTotal(day);
+    }
+
+    function overrideDayChanged(day) {
+        return day.locked.size > 0 || day.hasDayRule;
+    }
+
+    // Mirrors the server's reshape logic: locked hours keep their value, the rest
+    // of the day total is spread across unlocked hours proportionally to base shape.
+    function computeOverrideDayValues(day) {
+        const active = overrideActiveHours(day);
+        const values = new Map();
+        if (!day.hasDayRule) {
+            for (const [hour, baseVal] of active) {
+                values.set(hour, day.locked.has(hour) ? round2(day.locked.get(hour)) : round2(baseVal));
             }
+            return values;
+        }
+        const unlocked = active.filter(([hour]) => !day.locked.has(hour));
+        const lockedSum = active.reduce(
+            (sum, [hour]) => sum + (day.locked.has(hour) ? Number(day.locked.get(hour)) || 0 : 0),
+            0
+        );
+        const remainder = round2(day.total - lockedSum);
+        const baseUnlockedTotal = unlocked.reduce((sum, [, baseVal]) => sum + (Number(baseVal) || 0), 0);
+        for (const [hour, baseVal] of active) {
+            if (day.locked.has(hour)) {
+                values.set(hour, round2(day.locked.get(hour)));
+            } else if (baseUnlockedTotal <= 0) {
+                values.set(hour, round2(remainder / unlocked.length));
+            } else {
+                values.set(hour, round2(remainder * ((Number(baseVal) || 0) / baseUnlockedTotal)));
+            }
+        }
+        if (unlocked.length) {
+            const shaped = round2([...values.values()].reduce((sum, v) => sum + v, 0));
+            const fix = round2(day.total - shaped);
+            if (Math.abs(fix) >= 0.01) {
+                const lastHour = unlocked[unlocked.length - 1][0];
+                values.set(lastHour, round2(values.get(lastHour) + fix));
+            }
+        }
+        return values;
+    }
+
+    function buildOverrideState(preview) {
+        const baseGrid = preview.baseGrid || preview.grid;
+        const grid = preview.grid || baseGrid;
+        const rules = preview.adjustments || [];
+        const hasWeekRule = rules.some((r) => r.scope === 'week');
+        const hours = (baseGrid.rows || []).map((row) => ({ hour: row.hour, label: row.label }));
+        const days = (baseGrid.columns || []).map((col, idx) => {
+            const baseHourly = new Map();
+            for (const row of baseGrid.rows || []) baseHourly.set(row.hour, row.values[idx]);
+            const baseTotal = round2(baseGrid.dayTotals?.[idx] ?? 0);
+            const locked = new Map();
+            for (const rule of rules) {
+                if (rule.scope !== 'hour' || rule.date !== col.date) continue;
+                const baseVal = Number(baseHourly.get(rule.hour)) || 0;
+                locked.set(
+                    rule.hour,
+                    rule.mode === 'percent'
+                        ? round2(baseVal * (1 + Number(rule.value) / 100))
+                        : round2(baseVal + Number(rule.value))
+                );
+            }
+            const hasDayRule = hasWeekRule || rules.some((r) => r.scope === 'day' && r.date === col.date);
+            const day = { date: col.date, weekdayLabel: col.weekdayLabel, baseHourly, baseTotal, locked, hasDayRule, total: baseTotal };
+            day.total = hasDayRule ? round2(grid.dayTotals?.[idx] ?? baseTotal) : overrideNaturalTotal(day);
+            return day;
+        });
+        return {
+            storeNumber: preview.storeNumber,
+            storeName: preview.storeName || '',
+            weekStart: preview.weekStart || preview.targetWeeks?.[0] || '',
+            hours,
+            days,
+            displayMode: 'dollar',
+            dirty: false,
+            previewPayload: null,
+        };
+    }
+
+    function ensureOverrideForecastBackdrop() {
+        if (overrideForecastBackdrop) return overrideForecastBackdrop;
+        overrideForecastBackdrop = document.createElement('div');
+        overrideForecastBackdrop.className = 'admin-modal-backdrop admin-modal-backdrop--stacked';
+        overrideForecastBackdrop.hidden = true;
+        overrideForecastBackdrop.innerHTML = `
+            <div class="admin-modal admin-modal--wide admin-modal--history" role="dialog" aria-modal="true">
+                <h2 id="admin-forecast-override-title">Override Forecast</h2>
+                <div class="admin-forecast-override-toolbar">
+                    <span class="admin-accounts-meta">Edit as</span>
+                    <div class="admin-forecast-mode-toggle" role="group" aria-label="Edit as">
+                        <button type="button" class="admin-forecast-mode-toggle-btn is-active" data-override-display-mode="dollar" aria-pressed="true">$</button>
+                        <button type="button" class="admin-forecast-mode-toggle-btn" data-override-display-mode="percent" aria-pressed="false">% change</button>
+                    </div>
+                    <button type="button" class="mic-settings-btn" id="admin-forecast-override-reset">Reset week</button>
+                    <span class="admin-forecast-override-week-total" id="admin-forecast-override-week-total"></span>
+                </div>
+                <div id="admin-forecast-override-body"></div>
+                <p class="admin-accounts-meta" id="admin-forecast-override-lifelenz-note" hidden></p>
+                <p id="admin-forecast-override-error" class="admin-modal-error" role="alert"></p>
+                <div class="admin-modal-actions admin-forecast-override-actions">
+                    <button type="button" class="mic-settings-btn" id="admin-forecast-override-cancel">Cancel</button>
+                    <button type="button" class="mic-settings-btn" id="admin-forecast-override-save" disabled>Save overrides only</button>
+                    <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-override-submit" disabled>Submit forecast</button>
+                </div>
+            </div>`;
+        document.body.appendChild(overrideForecastBackdrop);
+        overrideForecastBackdrop.addEventListener('click', (event) => {
+            if (event.target === overrideForecastBackdrop) closeOverrideForecast();
+        });
+        overrideForecastBackdrop
+            .querySelector('#admin-forecast-override-cancel')
+            ?.addEventListener('click', closeOverrideForecast);
+        overrideForecastBackdrop.querySelector('#admin-forecast-override-save')?.addEventListener('click', () => {
+            void saveOverrideForecast();
+        });
+        overrideForecastBackdrop.querySelector('#admin-forecast-override-submit')?.addEventListener('click', () => {
+            void submitOverrideForecast();
+        });
+        overrideForecastBackdrop
+            .querySelector('#admin-forecast-override-reset')
+            ?.addEventListener('click', resetAllOverrides);
+        overrideForecastBackdrop.querySelectorAll('[data-override-display-mode]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                if (!overrideState) return;
+                const mode = btn.getAttribute('data-override-display-mode');
+                if (!mode || mode === overrideState.displayMode) return;
+                overrideState.displayMode = mode;
+                syncOverrideDisplayModeToggle(overrideForecastBackdrop);
+                renderOverrideForecastGrid();
+            });
+        });
+        return overrideForecastBackdrop;
+    }
+
+    function syncOverrideDisplayModeToggle(root) {
+        const mode = overrideState?.displayMode || 'dollar';
+        root.querySelectorAll('[data-override-display-mode]').forEach((btn) => {
+            const active = btn.getAttribute('data-override-display-mode') === mode;
+            btn.classList.toggle('is-active', active);
+            btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+    }
+
+    function closeOverrideForecast() {
+        if (overrideForecastBackdrop) overrideForecastBackdrop.hidden = true;
+        overrideState = null;
+    }
+
+    function renderOverrideForecastGrid(focus) {
+        const root = ensureOverrideForecastBackdrop();
+        const body = root.querySelector('#admin-forecast-override-body');
+        const st = overrideState;
+        if (!st?.days?.length) {
+            body.innerHTML = '<p>No forecast data for this timeframe.</p>';
+            return;
+        }
+        const isPct = st.displayMode === 'percent';
+        const perDayValues = st.days.map((day) => computeOverrideDayValues(day));
+        const perDayTotals = st.days.map((day) => currentOverrideDayTotal(day));
+        const weekTotal = round2(perDayTotals.reduce((sum, v) => sum + v, 0));
+
+        const head = st.days
+            .map(
+                (day) => `<th><span class="admin-history-col-label">${escapeHtml(day.weekdayLabel || '')}</span><span class="admin-accounts-meta">${escapeHtml(formatShortDate(day.date))}</span></th>`
+            )
+            .join('');
+        const rows = st.hours
+            .map((hourCol) => {
+                const cells = st.days
+                    .map((day, dayIdx) => {
+                        const baseVal = day.baseHourly.get(hourCol.hour);
+                        if (baseVal == null) return '<td class="admin-history-num">—</td>';
+                        const value = perDayValues[dayIdx].get(hourCol.hour) || 0;
+                        const base = Number(baseVal) || 0;
+                        // % mode shows the change vs the base forecast for that hour.
+                        const display = isPct ? (base > 0 ? round2((value / base - 1) * 100) : 0) : round2(value);
+                        const changedCls = day.locked.has(hourCol.hour)
+                            ? ' admin-forecast-override-input--changed'
+                            : '';
+                        const hint = isPct
+                            ? `<span class="admin-forecast-override-dollar-hint">${formatMoney(value)}</span>`
+                            : '';
+                        return `<td class="admin-history-num admin-forecast-override-cell">
+                            <span class="admin-forecast-override-input-wrap">
+                                <input type="number" min="${isPct ? '-100' : '0'}" step="0.01" class="admin-forecast-override-input${changedCls}"
+                                    data-ov-day="${dayIdx}" data-ov-hour="${hourCol.hour}" value="${display}"
+                                    aria-label="${escapeHtml(`${day.weekdayLabel || day.date} ${hourCol.label}`)}" />
+                                <span class="admin-forecast-override-unit">${isPct ? '%' : '$'}</span>
+                            </span>${hint}
+                        </td>`;
+                    })
+                    .join('');
+                return `<tr><th scope="row" class="admin-history-hour">${escapeHtml(hourCol.label)}</th>${cells}</tr>`;
+            })
+            .join('');
+        const totalCells = st.days
+            .map((day, dayIdx) => {
+                const changedCls = day.hasDayRule ? ' admin-forecast-override-input--changed' : '';
+                const total = perDayTotals[dayIdx];
+                const display = isPct
+                    ? day.baseTotal > 0
+                        ? round2((total / day.baseTotal - 1) * 100)
+                        : 0
+                    : round2(total);
+                const hint = isPct
+                    ? `<span class="admin-forecast-override-dollar-hint">${formatMoney(total)}</span>`
+                    : '';
+                return `<td class="admin-history-num admin-history-total admin-forecast-override-cell">
+                    <span class="admin-forecast-override-input-wrap">
+                        <input type="number" min="${isPct ? '-100' : '0'}" step="0.01" class="admin-forecast-override-input${changedCls}"
+                            data-ov-total="${dayIdx}" value="${display}"
+                            aria-label="${escapeHtml(`${day.weekdayLabel || day.date} day total`)}" />
+                        <span class="admin-forecast-override-unit">${isPct ? '%' : '$'}</span>
+                    </span>${hint}
+                </td>`;
+            })
+            .join('');
+        const resetCells = st.days
+            .map((day, dayIdx) => {
+                const disabled = overrideDayChanged(day) ? '' : ' disabled';
+                return `<td class="admin-history-num"><button type="button" class="admin-forecast-history-col-edit admin-forecast-override-reset-day" data-ov-reset-day="${dayIdx}"${disabled}>Reset day</button></td>`;
+            })
+            .join('');
+        body.innerHTML = `
+            <div class="admin-history-grid-wrap admin-forecast-preview-grid-wrap">
+                <table class="admin-table admin-history-grid admin-forecast-override-grid">
+                    <thead><tr><th scope="col">Hour</th>${head}</tr></thead>
+                    <tbody>${rows}</tbody>
+                    <tfoot>
+                        <tr><th scope="row">Day total</th>${totalCells}</tr>
+                        <tr><th scope="row">Reset</th>${resetCells}</tr>
+                    </tfoot>
+                </table>
+            </div>`;
+        const weekTotalEl = root.querySelector('#admin-forecast-override-week-total');
+        if (weekTotalEl) {
+            weekTotalEl.innerHTML = `<span class="admin-forecast-week-total-label">Total</span> <span class="admin-forecast-week-total-value">${formatMoney(weekTotal)}</span>`;
+        }
+        body.querySelectorAll('input[data-ov-hour]').forEach((input) => {
+            input.addEventListener('change', () => {
+                onOverrideHourChange(
+                    Number(input.getAttribute('data-ov-day')),
+                    Number(input.getAttribute('data-ov-hour')),
+                    input.value
+                );
+            });
+        });
+        body.querySelectorAll('input[data-ov-total]').forEach((input) => {
+            input.addEventListener('change', () => {
+                onOverrideDayTotalChange(Number(input.getAttribute('data-ov-total')), input.value);
+            });
+        });
+        body.querySelectorAll('[data-ov-reset-day]').forEach((btn) => {
+            btn.addEventListener('click', () => resetOverrideDay(Number(btn.getAttribute('data-ov-reset-day'))));
+        });
+        if (focus) {
+            const selector =
+                focus.type === 'total'
+                    ? `input[data-ov-total="${focus.dayIdx}"]`
+                    : `input[data-ov-day="${focus.dayIdx}"][data-ov-hour="${focus.hour}"]`;
+            body.querySelector(selector)?.focus();
         }
     }
 
-    async function openManualUpdate(storeNumber) {
-        await openHistory(storeNumber, { focusManual: true });
-        const root = ensureHistoryBackdrop();
-        const title = root.querySelector('#admin-forecast-history-title');
-        if (title) title.textContent = `Manual Update - ${storeNumber}`;
+    function onOverrideHourChange(dayIdx, hour, rawValue) {
+        const day = overrideState?.days?.[dayIdx];
+        if (!day || day.baseHourly.get(hour) == null) return;
+        const prevValue = computeOverrideDayValues(day).get(hour) || 0;
+        let newValue;
+        if (overrideState.displayMode === 'percent') {
+            // % scales the hour's base $ value; the day total moves by the same delta.
+            const pct = Math.max(-100, Number(rawValue) || 0);
+            const base = Number(day.baseHourly.get(hour)) || 0;
+            newValue = round2(base * (1 + pct / 100));
+        } else {
+            newValue = round2(Math.max(0, Number(rawValue) || 0));
+        }
+        day.locked.set(hour, newValue);
+        if (day.hasDayRule) {
+            // Bump the day total by the hour's change so other hours stay put.
+            day.total = Math.max(0, round2(day.total + newValue - prevValue));
+        } else {
+            day.total = overrideNaturalTotal(day);
+        }
+        overrideState.dirty = true;
+        renderOverrideForecastGrid({ type: 'hour', dayIdx, hour });
+    }
+
+    function onOverrideDayTotalChange(dayIdx, rawValue) {
+        const day = overrideState?.days?.[dayIdx];
+        if (!day) return;
+        if (overrideState.displayMode === 'percent') {
+            const pct = Math.max(-100, Number(rawValue) || 0);
+            day.total = Math.max(0, round2(day.baseTotal * (1 + pct / 100)));
+        } else {
+            day.total = Math.max(0, round2(Number(rawValue) || 0));
+        }
+        day.hasDayRule = true;
+        overrideState.dirty = true;
+        renderOverrideForecastGrid({ type: 'total', dayIdx });
+    }
+
+    function resetOverrideDay(dayIdx) {
+        const day = overrideState?.days?.[dayIdx];
+        if (!day) return;
+        day.locked.clear();
+        day.hasDayRule = false;
+        day.total = day.baseTotal;
+        overrideState.dirty = true;
+        renderOverrideForecastGrid();
+    }
+
+    function resetAllOverrides() {
+        if (!overrideState) return;
+        for (const day of overrideState.days) {
+            day.locked.clear();
+            day.hasDayRule = false;
+            day.total = day.baseTotal;
+        }
+        overrideState.dirty = true;
+        renderOverrideForecastGrid();
+    }
+
+    function buildOverrideRules() {
+        const rules = [];
+        for (const day of overrideState?.days || []) {
+            const naturalTotal = overrideNaturalTotal(day);
+            const wantsDayRule = day.hasDayRule && Math.abs(day.total - naturalTotal) >= 0.01;
+            for (const [hour, value] of day.locked) {
+                const base = Number(day.baseHourly.get(hour)) || 0;
+                const delta = round2(value - base);
+                // Zero-delta locks only matter when a day rule reshapes around them.
+                if (!wantsDayRule && Math.abs(delta) < 0.01) continue;
+                rules.push({ scope: 'hour', date: day.date, hour, mode: 'dollar', value: delta });
+            }
+            if (wantsDayRule) {
+                rules.push({ scope: 'day', date: day.date, mode: 'dollar', value: round2(day.total - day.baseTotal) });
+            }
+        }
+        return rules;
+    }
+
+    async function putOverrideRules(st) {
+        const res = await fetch('/api/admin/forecast/adjustments', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ store: st.storeNumber, weekStart: st.weekStart, rules: buildOverrideRules() }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) throw new Error(data.error || 'Could not save forecast overrides.');
+        st.dirty = false;
+        return data;
+    }
+
+    function setOverrideButtonsBusy(root, busy) {
+        ['#admin-forecast-override-save', '#admin-forecast-override-submit', '#admin-forecast-override-cancel', '#admin-forecast-override-reset'].forEach(
+            (id) => {
+                const btn = root.querySelector(id);
+                if (btn) btn.disabled = busy;
+            }
+        );
+    }
+
+    async function saveOverrideForecast() {
+        const root = ensureOverrideForecastBackdrop();
+        const st = overrideState;
+        if (!st) return;
+        const errEl = root.querySelector('#admin-forecast-override-error');
+        errEl.textContent = '';
+        const saveBtn = root.querySelector('#admin-forecast-override-save');
+        setOverrideButtonsBusy(root, true);
+        saveBtn.textContent = 'Saving…';
+        try {
+            await putOverrideRules(st);
+            closeOverrideForecast();
+            if (getRoot()) {
+                statusPayload = await fetchStatus();
+                renderTable(getRoot(), statusPayload);
+            }
+        } catch (error) {
+            errEl.textContent = error.message;
+        } finally {
+            setOverrideButtonsBusy(root, false);
+            saveBtn.textContent = 'Save overrides only';
+        }
+    }
+
+    async function submitOverrideForecast() {
+        const root = ensureOverrideForecastBackdrop();
+        const st = overrideState;
+        if (!st) return;
+        const errEl = root.querySelector('#admin-forecast-override-error');
+        errEl.textContent = '';
+        const submitBtn = root.querySelector('#admin-forecast-override-submit');
+        setOverrideButtonsBusy(root, true);
+        submitBtn.textContent = 'Submitting…';
+
+        const stores = [st.storeNumber];
+        let previewSnapshot = st.previewPayload;
+        try {
+            if (st.dirty) {
+                await putOverrideRules(st);
+                // Refresh the plan so the progress view reflects the edited numbers.
+                previewSnapshot = await fetchPreview(stores);
+            }
+        } catch (error) {
+            errEl.textContent = error.message;
+            setOverrideButtonsBusy(root, false);
+            submitBtn.textContent = 'Submit forecast';
+            return;
+        }
+
+        pendingSubmitTarget = getForecastTargetPayload();
+        closeOverrideForecast();
+        setOverrideButtonsBusy(root, false);
+        submitBtn.textContent = 'Submit forecast';
+        openProgress(stores, previewSnapshot);
+
+        try {
+            const payload = await runStoresWithProgress(stores, (eventName, data) => {
+                if (eventName === 'progress') handleProgressPayload(data);
+                else if (eventName === 'platform-started') handlePlatformStarted(data);
+                else if (eventName === 'lifelenz-started') handleLifeLenzStarted(data);
+            });
+            renderProgressComplete(payload);
+            if (!payload?.success) {
+                const progressRoot = ensureProgressBackdrop();
+                progressRoot.querySelector('#admin-forecast-progress-error').textContent =
+                    payload?.error || 'Forecast run failed.';
+            }
+        } catch (error) {
+            const progressRoot = ensureProgressBackdrop();
+            progressRoot.querySelector('#admin-forecast-progress-error').textContent = error.message;
+            setProgressCloseEnabled(progressRoot, true, { label: 'Done' });
+            if (progressState) progressState.error = error.message;
+        }
+    }
+
+    async function openOverrideForecast(storeNumber) {
+        const root = ensureOverrideForecastBackdrop();
+        overrideState = null;
+        root.hidden = false;
+        root.querySelector('#admin-forecast-override-title').textContent = `Override Forecast - ${storeNumber}`;
+        root.querySelector('#admin-forecast-override-error').textContent = '';
+        root.querySelector('#admin-forecast-override-body').innerHTML = '<p>Loading forecast…</p>';
+        root.querySelector('#admin-forecast-override-week-total').innerHTML = '';
+        const saveBtn = root.querySelector('#admin-forecast-override-save');
+        const submitBtn = root.querySelector('#admin-forecast-override-submit');
+        saveBtn.disabled = true;
+        submitBtn.disabled = true;
+        syncOverrideDisplayModeToggle(root);
+        const noteEl = root.querySelector('#admin-forecast-override-lifelenz-note');
+        if (noteEl) noteEl.hidden = true;
+        const targetErr = validateForecastTarget();
+        if (targetErr) {
+            root.querySelector('#admin-forecast-override-error').textContent = targetErr;
+            root.querySelector('#admin-forecast-override-body').innerHTML = '';
+            return;
+        }
+        try {
+            const data = await fetchPreview([storeNumber]);
+            const preview = (data.previews || []).find((row) => String(row.storeNumber) === String(storeNumber));
+            if (!preview?.ok) throw new Error(preview?.error || 'Could not load forecast preview.');
+            overrideState = buildOverrideState(preview);
+            overrideState.previewPayload = data;
+            root.querySelector('#admin-forecast-override-title').textContent =
+                `Override Forecast - ${preview.storeNumber}${preview.storeName ? ' ' + preview.storeName : ''}`;
+            if (noteEl) {
+                noteEl.hidden = false;
+                noteEl.textContent = hasLifeLenzForSubmit()
+                    ? 'Submit forecast writes to Macromatix first, then LifeLenz using your connected login.'
+                    : 'LifeLenz is not configured - submit will update Macromatix only. Use Setup LifeLenz to connect.';
+            }
+            saveBtn.disabled = false;
+            submitBtn.disabled = false;
+            syncOverrideDisplayModeToggle(root);
+            renderOverrideForecastGrid();
+        } catch (error) {
+            root.querySelector('#admin-forecast-override-error').textContent = error.message;
+            root.querySelector('#admin-forecast-override-body').innerHTML = '';
+        }
+    }
+
+    function syncBackfillButtons() {
+        const show = Boolean(canManageBackfill);
+        ensureHistoryBackdrop()
+            .querySelector('#admin-forecast-history-backfill')
+            ?.toggleAttribute('hidden', !show);
+    }
+
+    function ensureBackfillProgressModal() {
+        if (backfillProgressBackdrop) return backfillProgressBackdrop;
+        backfillProgressBackdrop = document.createElement('div');
+        backfillProgressBackdrop.className =
+            'admin-modal-backdrop admin-modal-backdrop--stacked admin-report-sub-progress-backdrop';
+        backfillProgressBackdrop.hidden = true;
+        backfillProgressBackdrop.innerHTML = `
+            <div class="admin-modal admin-modal--wide admin-report-sub-progress-modal" role="dialog" aria-modal="true" aria-labelledby="admin-forecast-backfill-progress-title">
+                <h2 id="admin-forecast-backfill-progress-title">Backfilling forecast history</h2>
+                <p class="admin-report-sub-progress-status" id="admin-forecast-backfill-progress-status">Starting…</p>
+                <div class="admin-report-sub-progress-log-wrap">
+                    <ol class="admin-report-sub-progress-log" id="admin-forecast-backfill-progress-log" role="log" aria-live="polite"></ol>
+                </div>
+                <div class="admin-report-sub-form-actions">
+                    <button type="button" id="admin-forecast-backfill-progress-close" disabled>Close</button>
+                </div>
+            </div>`;
+        document.body.appendChild(backfillProgressBackdrop);
+        backfillProgressBackdrop.querySelector('#admin-forecast-backfill-progress-close')?.addEventListener('click', () => {
+            if (!backfillProgressRunning) closeBackfillProgressModal();
+        });
+        backfillProgressBackdrop.addEventListener('click', (event) => {
+            if (event.target === backfillProgressBackdrop && !backfillProgressRunning) closeBackfillProgressModal();
+        });
+        return backfillProgressBackdrop;
+    }
+
+    function backfillProgressLogClass(type, success) {
+        const key = String(type || '').trim();
+        if (key === 'complete') return success ? 'admin-report-sub-progress-line--ok' : 'admin-report-sub-progress-line--error';
+        if (key === 'day-saved' || key === 'store-done' || key === 'scope-done') {
+            return 'admin-report-sub-progress-line--ok';
+        }
+        if (key === 'day-skipped' || key === 'warn') return 'admin-report-sub-progress-line--warn';
+        return '';
+    }
+
+    function appendBackfillProgressLine(logEl, event) {
+        if (!logEl || !event) return;
+        const li = document.createElement('li');
+        const type = String(event.type || 'info');
+        const ok = type === 'complete' ? event.success !== false : true;
+        li.className = ['admin-report-sub-progress-line', backfillProgressLogClass(type, ok)].filter(Boolean).join(' ');
+        const time = event.ts ? new Date(event.ts).toLocaleTimeString() : new Date().toLocaleTimeString();
+        const msg = event.message || event.error || JSON.stringify(event);
+        li.textContent = `[${time}] ${msg}`;
+        logEl.appendChild(li);
+        logEl.parentElement?.scrollTo({ top: logEl.parentElement.scrollHeight, behavior: 'smooth' });
+    }
+
+    function openBackfillProgressModal(statusText) {
+        const modal = ensureBackfillProgressModal();
+        modal.querySelector('#admin-forecast-backfill-progress-status').textContent = statusText || 'Starting…';
+        const logEl = modal.querySelector('#admin-forecast-backfill-progress-log');
+        if (logEl) logEl.innerHTML = '';
+        modal.querySelector('#admin-forecast-backfill-progress-close').disabled = true;
+        modal.hidden = false;
+        backfillProgressRunning = true;
+    }
+
+    function finishBackfillProgressModal(statusText, success) {
+        backfillProgressRunning = false;
+        const modal = backfillProgressBackdrop;
+        if (!modal) return;
+        const statusEl = modal.querySelector('#admin-forecast-backfill-progress-status');
+        if (statusEl) {
+            statusEl.textContent = statusText || (success ? 'Done.' : 'Failed.');
+            statusEl.classList.toggle('admin-modal-error', !success);
+            statusEl.classList.toggle('admin-report-sub-progress-status--ok', success);
+        }
+        modal.querySelector('#admin-forecast-backfill-progress-close').disabled = false;
+    }
+
+    function closeBackfillProgressModal() {
+        if (backfillProgressRunning) return;
+        if (backfillProgressBackdrop) {
+            backfillProgressBackdrop.hidden = true;
+            const statusEl = backfillProgressBackdrop.querySelector('#admin-forecast-backfill-progress-status');
+            statusEl?.classList.remove('admin-modal-error', 'admin-report-sub-progress-status--ok');
+        }
+    }
+
+    async function consumeForecastBackfillStream(response, onEvent) {
+        if (!response.body) {
+            const data = await response.json().catch(() => ({}));
+            if (data.error) throw new Error(data.error);
+            return data;
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finalResult = null;
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                let event;
+                try {
+                    event = JSON.parse(trimmed);
+                } catch {
+                    continue;
+                }
+                onEvent?.(event);
+                if (event.type === 'complete') finalResult = event;
+            }
+        }
+        const tail = buffer.trim();
+        if (tail) {
+            try {
+                const event = JSON.parse(tail);
+                onEvent?.(event);
+                if (event.type === 'complete') finalResult = event;
+            } catch {
+                /* ignore */
+            }
+        }
+        return finalResult;
+    }
+
+    async function runForecastBackfill(storeNumbers, { refreshHistory = false } = {}) {
+        const stores = [...new Set((storeNumbers || []).map((s) => String(s || '').trim()).filter(Boolean))];
+        if (!stores.length) return;
+        const root = getRoot();
+        root?.querySelector('#admin-forecast-error')?.replaceChildren();
+
+        const modal = ensureBackfillProgressModal();
+        const logEl = modal.querySelector('#admin-forecast-backfill-progress-log');
+        openBackfillProgressModal(`Backfilling ${stores.length} store(s) from MMX…`);
+
+        const disableSelectors = ['#admin-forecast-submit-all', '#admin-forecast-history-backfill'];
+        for (const sel of disableSelectors) {
+            const btn = root?.querySelector(sel) || ensureHistoryBackdrop().querySelector(sel);
+            if (btn) btn.disabled = true;
+        }
+
+        try {
+            const res = await fetch('/api/admin/forecast/backfill-stream', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ storeNumbers: stores }),
+            });
+            if (!res.ok && !res.body) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || `Request failed (${res.status}).`);
+            }
+
+            const finalEvent = await consumeForecastBackfillStream(res, (event) => {
+                if (event.type === 'complete') return;
+                appendBackfillProgressLine(logEl, event);
+                if (event.message) {
+                    modal.querySelector('#admin-forecast-backfill-progress-status').textContent = event.message;
+                }
+            });
+
+            if (!finalEvent) throw new Error('No response from server.');
+            appendBackfillProgressLine(logEl, {
+                type: 'complete',
+                success: finalEvent.success,
+                ts: new Date().toISOString(),
+                message: finalEvent.success
+                    ? finalEvent.result?.message || 'Backfill complete.'
+                    : finalEvent.error || 'Failed.',
+            });
+
+            if (!finalEvent.success) throw new Error(finalEvent.error || 'Backfill failed.');
+
+            const result = finalEvent.result || {};
+            finishBackfillProgressModal(
+                result.forecastReady
+                    ? 'Backfill complete. Forecast history ready.'
+                    : result.message || 'Backfill finished. See log for details.',
+                Boolean(result.forecastReady || result.ready)
+            );
+
+            if (root) {
+                await refresh(root);
+                if (refreshHistory && historyStoreNumber && stores.includes(historyStoreNumber)) {
+                    await loadHistoryGrid(historyStoreNumber, historyWeekStart);
+                }
+            }
+        } catch (error) {
+            finishBackfillProgressModal(error.message || 'Backfill failed.', false);
+            root?.querySelector('#admin-forecast-error') &&
+                (root.querySelector('#admin-forecast-error').textContent = error.message || 'Backfill failed.');
+        } finally {
+            for (const sel of disableSelectors) {
+                const btn = root?.querySelector(sel) || ensureHistoryBackdrop().querySelector(sel);
+                if (btn) btn.disabled = false;
+            }
+        }
     }
 
     function renderTable(root, payload) {
@@ -2722,7 +3396,7 @@
                 const histLabel = hist.ready
                     ? `History ${hist.daysRecorded}/${hist.daysRequired}d${captureNote}`
                     : `History ${hist.daysRecorded}/${hist.daysRequired}d${captureNote} - need ${escapeHtml((hist.weekdayGaps || []).join(', ') || 'more days')}`;
-                const runDisabled = hist.ready ? '' : ' disabled title="Import or wait for 5 weeks of hourly history"';
+                const runDisabled = hist.ready ? '' : ' disabled title="Open History and use Backfill data"';
                 const weekCells = weeks
                     .map((weekStart) => {
                         const row = payload.stores[storeNumber]?.[weekStart] || {};
@@ -2742,14 +3416,12 @@
                         return `<td>${dot(false)} Pending</td>`;
                     })
                     .join('');
-                const manualBtn = `<button type="button" class="mic-settings-btn" data-manual-update-store="${escapeHtml(storeNumber)}">Manual Update</button>`;
                 return `<tr>
                     <td>${escapeHtml(storeNumber)}<span class="admin-accounts-meta">${histLabel}</span></td>
                     <td>${dot(hist.ready, !hist.ready && hist.daysRecorded > 0)} ${hist.ready ? 'Ready' : 'Not ready'}</td>
                     ${weekCells}
                     <td class="admin-forecast-actions">
                         <button type="button" class="mic-settings-btn" data-history-store="${escapeHtml(storeNumber)}">History</button>
-                        ${manualBtn}
                         <button type="button" class="mic-settings-btn admin-btn-primary" data-submit-store="${escapeHtml(storeNumber)}"${runDisabled}>Submit</button>
                     </td>
                 </tr>`;
@@ -2765,17 +3437,12 @@
             </table>`;
         body.querySelectorAll('[data-submit-store]').forEach((btn) => {
             btn.addEventListener('click', () => {
-                void submitOne(btn.getAttribute('data-submit-store'));
+                void openOverrideForecast(btn.getAttribute('data-submit-store'));
             });
         });
         body.querySelectorAll('[data-history-store]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 void openHistory(btn.getAttribute('data-history-store'));
-            });
-        });
-        body.querySelectorAll('[data-manual-update-store]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                void openManualUpdate(btn.getAttribute('data-manual-update-store'));
             });
         });
     }
@@ -2917,6 +3584,7 @@
     async function refresh(root) {
         await fetchStores();
         statusPayload = await fetchStatus();
+        canManageBackfill = Boolean(statusPayload?.canManageBackfill);
         await refreshLifeLenzStatus(root);
         const allStores = Object.keys(statusPayload.stores || {});
         if (!activeArea || !ADMIN_AREAS.includes(activeArea)) {
@@ -2925,13 +3593,8 @@
         }
         renderAreaTabs(root);
         renderForecastTargetControls(root, statusPayload);
+        syncBackfillButtons();
         renderTable(root, statusPayload);
-    }
-
-    async function submitOne(storeNumber) {
-        const root = ensureBackdrop();
-        root.querySelector('#admin-forecast-error').textContent = '';
-        await openPreview([storeNumber], { focusSubmit: true });
     }
 
     async function runAll() {
@@ -2945,7 +3608,7 @@
         );
         if (!storeNumbers.length) {
             root.querySelector('#admin-forecast-error').textContent =
-                `No ready stores in ${activeArea || 'this area'}. Import backfill or wait for live capture.`;
+                `No ready stores in ${activeArea || 'this area'}. Open History and use Backfill data first.`;
             renderTable(root, data);
             return;
         }

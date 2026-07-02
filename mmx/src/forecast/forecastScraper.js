@@ -952,11 +952,16 @@ async function backfillStoreHistoryFromMmx(storeNumber, options = {}) {
         await scraper.selectStoreOnPage(page, store, { waitMs: 900 });
 
         const today = melbourneTodayIso();
+        const missingDates = [];
         for (let offset = 1; offset <= daysBack; offset += 1) {
-            const iso = addDaysToIso(today, -offset);
-            const [y, m, d] = iso.split('-').map(Number);
-            await scraper.setScheduledOrdersToYmd(page, y, m, d);
-            const data = await scraper.openDayViewAndReadSales(page, false);
+            missingDates.push(addDaysToIso(today, -offset));
+        }
+        const scraped = await scraper.scrapeMissingHistoricalDays(page, missingDates, {
+            timeZone: process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne',
+        });
+        for (const data of scraped) {
+            const iso = data.dateIso;
+            if (!iso) continue;
             const actualRaw = data.actual || [];
             if (sumHourly(actualRaw) <= 0) continue;
             recordForecastHistoryDay(

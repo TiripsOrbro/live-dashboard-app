@@ -2,7 +2,7 @@
     position: fixed;
     top: max(14px, env(safe-area-inset-top));
     left: max(14px, env(safe-area-inset-left));
-    z-index: 500;
+    z-index: 10050;
     pointer-events: none;
 }
 
@@ -13,7 +13,7 @@
     left: max(14px, env(safe-area-inset-left));
     right: auto;
     bottom: auto;
-    z-index: 500;
+    z-index: 10050;
     pointer-events: none;
 }
 

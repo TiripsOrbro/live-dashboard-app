@@ -651,6 +651,16 @@ body.login-body--dashboard-reveal .login-root {
     z-index: 10000;
 }
 
+.welcome-stage--dashboard.welcome-stage--visible {
+    pointer-events: none;
+    cursor: default;
+}
+
+.welcome-stage--dashboard.welcome-stage--visible .welcome-stage-inner {
+    pointer-events: auto;
+    cursor: pointer;
+}
+
 body.welcome-overlay-active {
     overflow: hidden;
     overflow-x: clip;
@@ -660,8 +670,8 @@ body.welcome-overlay-active #app,
 body.welcome-overlay-active .stores-header,
 body.welcome-overlay-active .store-grid,
 body.welcome-overlay-active .stores-sign-out-btn {
-    visibility: hidden;
-    pointer-events: none;
+    visibility: visible;
+    pointer-events: auto;
 }
 
 .welcome-brand {
@@ -972,8 +982,12 @@ body.area-picker-overlay-exiting #app {
 
 body.area-picker-overlay-active #app .mic-header--admin,
 body.area-picker-overlay-active #app .mic-settings-cog,
+body.area-picker-overlay-active #app .admin-promo-banner,
+body.area-picker-overlay-active #app .mic-tile--link[href^="http"],
 body.area-picker-overlay-exiting #app .mic-header--admin,
-body.area-picker-overlay-exiting #app .mic-settings-cog {
+body.area-picker-overlay-exiting #app .mic-settings-cog,
+body.area-picker-overlay-exiting #app .admin-promo-banner,
+body.area-picker-overlay-exiting #app .mic-tile--link[href^="http"] {
     pointer-events: auto;
 }
 

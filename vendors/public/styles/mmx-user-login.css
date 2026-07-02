@@ -95,6 +95,12 @@
     color: #fff;
 }
 
+.mmx-login-body--hint {
+    margin-top: -0.25rem;
+    font-size: 0.9rem;
+    color: var(--login-text-muted, #666);
+}
+
 .mmx-login-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;

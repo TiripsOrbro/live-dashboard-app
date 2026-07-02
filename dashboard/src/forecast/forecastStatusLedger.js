@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const paths = require('../../../src/paths');
+const { writeJsonAtomic } = require('./atomicJson');
 const STATUS_DIR = path.join(paths.dashboard.data, 'forecast-status');
 const FLEET_TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
 
@@ -146,8 +147,7 @@ function readLedger(weekStart) {
 function writeLedger(ledger) {
     const weekStart = String(ledger?.weekStart || '').trim();
     if (!weekStart) throw new Error('weekStart is required');
-    fs.mkdirSync(STATUS_DIR, { recursive: true });
-    fs.writeFileSync(ledgerFilePath(weekStart), `${JSON.stringify(ledger, null, 2)}\n`, 'utf8');
+    writeJsonAtomic(ledgerFilePath(weekStart), ledger);
     return ledger;
 }
 

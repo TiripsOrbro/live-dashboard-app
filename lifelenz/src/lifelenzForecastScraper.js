@@ -7,18 +7,187 @@ const {
 const { aggregateDayPartsFromHourlyPlan, LIFELENZ_DAY_PARTS } = require('./lifelenzDayParts');
 const { pasteIntoInput } = require('./lifelenzInput');
 
-const SETTLE_MS = 800;
-const DATE_SETTLE_MS = 2000;
 const DAY_PART_INPUT_SELECTOR = 'input.forecast-adjustment.form-control, input.input-number.forecast-adjustment';
 const DEFAULT_DAY_PART_INPUT_TIMEOUT_MS = 45000;
 const DEFAULT_DAY_VIEW_SWITCH_TIMEOUT_MS = 45000;
 const DAY_PART_INPUT_COUNT = 9;
-// Upper bound on the post-save reload wait. This is a cap, not a sleep: the
-// settle logic polls for the inputs to return and finishes as soon as they do,
-// so a generous cap only costs time on genuinely slow reloads.
-const DEFAULT_QUIRK_RELOAD_MAX_MS = 15000;
-const VERIFY_TIMEOUT_MS = 10000;
+const DEFAULT_POLL_MS = 100;
+const DEFAULT_POLL_MS_HEADED = 150;
+const DAY_PART_STABLE_READS = 2;
+const DATE_NAV_TIMEOUT_MS = 20000;
+const STORE_PICKER_TIMEOUT_MS = 15000;
+const FORECAST_CHROME_TIMEOUT_MS = 20000;
+const DATEPICKER_TIMEOUT_MS = 10000;
+const ANALYTICS_MENU_TIMEOUT_MS = 10000;
+// Upper bound on the post-save reload wait. Polls until inputs return; cap only limits slow reloads.
+const DEFAULT_QUIRK_RELOAD_MAX_MS = 8000;
+const VERIFY_TIMEOUT_MS_HEADLESS = 6000;
+const VERIFY_TIMEOUT_MS_HEADED = 10000;
 const WRITE_DAY_MAX_ATTEMPTS = 2;
+const FORECAST_DATE_TOOLBAR_SELECTOR =
+    '.display-date, a.display-date, [aria-label="Open calendar picker"]';
+const FORECAST_CHROME_SELECTOR =
+    'a.calendar-unit-link.day, .display-date, a.display-date, [aria-label="Open calendar picker"]';
+const DATEPICKER_WIDGET_SELECTOR =
+    '.datepicker.datepicker-dropdown, .bootstrap-datetimepicker-widget.dropdown-menu, .bootstrap-datetimepicker-widget, .datepicker:not(.datepicker-inline)';
+
+function isHeadlessOptions(options = {}) {
+    return options.headless !== false;
+}
+
+function resolvePollMs(options = {}) {
+    if (Number.isFinite(options.pollMs)) return options.pollMs;
+    return isHeadlessOptions(options) ? DEFAULT_POLL_MS : DEFAULT_POLL_MS_HEADED;
+}
+
+function resolveVerifyTimeoutMs(options = {}) {
+    if (Number.isFinite(options.verifyTimeoutMs)) return options.verifyTimeoutMs;
+    return isHeadlessOptions(options) ? VERIFY_TIMEOUT_MS_HEADLESS : VERIFY_TIMEOUT_MS_HEADED;
+}
+
+function resolveDateNavTimeoutMs(options = {}) {
+    if (Number.isFinite(options.dateNavTimeoutMs)) return options.dateNavTimeoutMs;
+    const raw = process.env.LIFELENZ_DATE_NAV_TIMEOUT_MS;
+    if (raw !== undefined && raw !== '') {
+        const n = Number(raw);
+        if (Number.isFinite(n) && n > 0) return n;
+    }
+    return DATE_NAV_TIMEOUT_MS;
+}
+
+/** Poll until checkFn returns a truthy value. Survives SPA navigation context errors. */
+async function pollUntil(checkFn, { timeoutMs = 15000, pollMs = DEFAULT_POLL_MS, label = 'condition' } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        try {
+            const result = await checkFn();
+            if (result) return result;
+        } catch (err) {
+            if (!isDestroyedContextError(err)) throw err;
+        }
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+    return null;
+}
+
+/** Poll until N consecutive reads show enough visible day-part inputs. */
+async function waitForDayPartInputsStable(page, options = {}, timeoutMs) {
+    const cap = Number.isFinite(timeoutMs) ? timeoutMs : resolveDayPartInputTimeoutMs(options);
+    const pollMs = resolvePollMs(options);
+    const stableNeeded = DAY_PART_STABLE_READS;
+    let stableCount = 0;
+    const deadline = Date.now() + cap;
+
+    while (Date.now() < deadline) {
+        let count = 0;
+        try {
+            count = await countVisibleDayPartInputs(page);
+        } catch (err) {
+            if (!isDestroyedContextError(err)) throw err;
+            count = 0;
+        }
+        if (count >= DAY_PART_INPUT_COUNT) {
+            stableCount += 1;
+            if (stableCount >= stableNeeded) return true;
+        } else {
+            stableCount = 0;
+        }
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+    return false;
+}
+
+async function waitForForecastDateToolbar(page, options = {}) {
+    const timeoutMs = Number.isFinite(options.toolbarTimeoutMs) ? options.toolbarTimeoutMs : FORECAST_CHROME_TIMEOUT_MS;
+    await page.waitForSelector(FORECAST_DATE_TOOLBAR_SELECTOR, { visible: true, timeout: timeoutMs }).catch(() => null);
+    return pollUntil(
+        async () => {
+            const visible = await page.$(FORECAST_DATE_TOOLBAR_SELECTOR);
+            if (!visible) return false;
+            const box = await visible.boundingBox().catch(() => null);
+            return Boolean(box && box.width > 0 && box.height > 0);
+        },
+        { timeoutMs: Math.min(timeoutMs, 5000), pollMs: resolvePollMs(options), label: 'forecast date toolbar' }
+    );
+}
+
+async function waitForDatepickerWidget(page, options = {}, timeoutMs = DATEPICKER_TIMEOUT_MS) {
+    return pollUntil(
+        () =>
+            page.evaluate((selector) => {
+                for (const el of document.querySelectorAll(selector)) {
+                    const r = el.getBoundingClientRect();
+                    if (r.width > 0 && r.height > 0) return true;
+                }
+                return false;
+            }, DATEPICKER_WIDGET_SELECTOR),
+        { timeoutMs, pollMs: resolvePollMs(options), label: 'datepicker widget' }
+    );
+}
+
+async function waitForDropdownOptions(page, options = {}, timeoutMs = STORE_PICKER_TIMEOUT_MS) {
+    return pollUntil(
+        () =>
+            page.evaluate(() => {
+                const container =
+                    document.querySelector('[role="listbox"]') ||
+                    document.querySelector('[role="menu"]') ||
+                    document.querySelector('[data-radix-popper-content-wrapper]');
+                if (!container) return false;
+                const r = container.getBoundingClientRect();
+                if (r.width <= 0 || r.height <= 0) return false;
+                return Boolean(
+                    container.querySelector('[role="option"], [role="menuitem"], li, button, a')
+                );
+            }),
+        { timeoutMs, pollMs: resolvePollMs(options), label: 'store dropdown options' }
+    );
+}
+
+async function waitForAnalyticsMenuOpen(page, options = {}, timeoutMs = ANALYTICS_MENU_TIMEOUT_MS) {
+    return pollUntil(
+        () =>
+            page.evaluate(() => {
+                for (const el of document.querySelectorAll(
+                    '[role="menuitem"], [role="option"], span, a, button, li'
+                )) {
+                    const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+                    if (!/^forecast$/i.test(text)) continue;
+                    const r = el.getBoundingClientRect();
+                    if (r.width > 0 && r.height > 0) return true;
+                }
+                return false;
+            }),
+        { timeoutMs, pollMs: resolvePollMs(options), label: 'analytics forecast menu' }
+    );
+}
+
+async function waitForInputValueAt(page, index, expected, options = {}, timeoutMs = 4000) {
+    const expectedStr = String(expected);
+    const numericExpected = /^-?\d+(\.\d+)?$/.test(expectedStr.trim());
+    const ok = await pollUntil(
+        async () => {
+            const raw = await page.evaluate(
+                (selector, idx) => {
+                    const inputs = [...document.querySelectorAll(selector)].filter((input) => {
+                        const r = input.getBoundingClientRect();
+                        return r.width > 0 && r.height > 0;
+                    });
+                    return inputs[idx]?.value ?? '';
+                },
+                DAY_PART_INPUT_SELECTOR,
+                index
+            );
+            if (numericExpected) {
+                const actual = parseDayPartInputNumber(raw);
+                return actual != null && Math.round(actual) === Math.round(Number(expectedStr));
+            }
+            return String(raw).trim().toLowerCase() === expectedStr.trim().toLowerCase();
+        },
+        { timeoutMs, pollMs: resolvePollMs(options), label: `day-part input ${index}` }
+    );
+    return Boolean(ok);
+}
 
 /** True for puppeteer evaluate errors caused by an in-flight SPA navigation. */
 function isDestroyedContextError(err) {
@@ -81,12 +250,6 @@ function resolveQuirkReloadMaxMs(options = {}) {
     return DEFAULT_QUIRK_RELOAD_MAX_MS;
 }
 
-function resolveFieldDelayMs(options = {}) {
-    if (Number.isFinite(options.fieldDelayMs)) return options.fieldDelayMs;
-    const headless = options.headless !== false;
-    return headless ? 50 : 80;
-}
-
 function emitProgress(options, payload) {
     if (typeof options.onProgress === 'function') {
         options.onProgress({ platform: 'lifelenz', ...payload });
@@ -131,14 +294,15 @@ async function readCurrentStoreTriggerLabel(page) {
 }
 
 /** Poll until the store picker trigger shows the requested store. */
-async function waitForStoreSelected(page, labelNeedle, timeoutMs = 10000) {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-        const current = await readCurrentStoreTriggerLabel(page).catch(() => '');
-        if (current.startsWith(labelNeedle)) return true;
-        await page.waitForTimeout(200);
-    }
-    return false;
+async function waitForStoreSelected(page, labelNeedle, timeoutMs = STORE_PICKER_TIMEOUT_MS, options = {}) {
+    const ok = await pollUntil(
+        async () => {
+            const current = await readCurrentStoreTriggerLabel(page).catch(() => '');
+            return current.startsWith(labelNeedle) ? current : null;
+        },
+        { timeoutMs, pollMs: resolvePollMs(options), label: 'store selected' }
+    );
+    return Boolean(ok);
 }
 
 async function scrollStoreDropdown(page) {
@@ -175,7 +339,7 @@ async function findStorePickerTrigger(page) {
     return handle.asElement();
 }
 
-async function pickStoreOptionFromOpenDropdown(page, storeNumber) {
+async function pickStoreOptionFromOpenDropdown(page, storeNumber, options = {}) {
     const storePattern = new RegExp(`\\b${storeNumber}\\s*-`, 'i');
     for (let pass = 0; pass < 30; pass += 1) {
         if (
@@ -184,18 +348,29 @@ async function pickStoreOptionFromOpenDropdown(page, storeNumber) {
             return true;
         }
         const atEnd = await scrollStoreDropdown(page);
-        await page.waitForTimeout(120);
         if (atEnd) break;
+        await new Promise((resolve) => setTimeout(resolve, resolvePollMs(options)));
     }
     return false;
 }
 
-async function selectStoreInLifeLenz(page, storeNumber) {
+async function selectStoreInLifeLenz(page, storeNumber, options = {}) {
     const store = String(storeNumber || '').trim();
     const labelNeedle = `${store} -`;
 
     await page.keyboard.press('Escape').catch(() => null);
-    await page.waitForTimeout(300);
+    await pollUntil(
+        () =>
+            page.evaluate(() => {
+                const open = document.querySelector(
+                    '[role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]'
+                );
+                if (!open) return true;
+                const r = open.getBoundingClientRect();
+                return r.width <= 0 || r.height <= 0;
+            }),
+        { timeoutMs: 2000, pollMs: resolvePollMs(options), label: 'dropdown closed' }
+    ).catch(() => null);
 
     const current = await readCurrentStoreTriggerLabel(page);
     if (current.startsWith(labelNeedle)) return true;
@@ -206,18 +381,21 @@ async function selectStoreInLifeLenz(page, storeNumber) {
     }
 
     await safeClickHandle(page, trigger);
-    await page.waitForTimeout(500);
+    if (!(await waitForDropdownOptions(page, options))) {
+        await page.keyboard.press('Escape').catch(() => null);
+        throw new Error(`Store dropdown did not open for store ${store}.`);
+    }
 
-    if (!(await pickStoreOptionFromOpenDropdown(page, store))) {
+    if (!(await pickStoreOptionFromOpenDropdown(page, store, options))) {
         await page.keyboard.press('Escape').catch(() => null);
         throw new Error(`Store ${store} was not found in the LifeLenz store list.`);
     }
 
-    if (await waitForStoreSelected(page, labelNeedle)) return true;
+    if (await waitForStoreSelected(page, labelNeedle, STORE_PICKER_TIMEOUT_MS, options)) return true;
     throw new Error(`Clicked store ${store} in the LifeLenz picker but it did not become active.`);
 }
 
-async function navigateToForecast(page) {
+async function navigateToForecast(page, options = {}) {
     await page.waitForSelector('[data-testid="lz-dropdown-trigger-analytics"]', {
         visible: true,
         timeout: 15000,
@@ -225,7 +403,6 @@ async function navigateToForecast(page) {
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
         await page.keyboard.press('Escape').catch(() => null);
-        await page.waitForTimeout(200);
 
         const analyticsBtn = await page.$('[data-testid="lz-dropdown-trigger-analytics"]');
         if (analyticsBtn) {
@@ -233,26 +410,27 @@ async function navigateToForecast(page) {
         } else {
             await clickByText(page, ['button'], /analytics/i);
         }
-        await page.waitForTimeout(600);
+
+        if (!(await waitForAnalyticsMenuOpen(page, options))) {
+            continue;
+        }
 
         const opened = await clickByText(
             page,
             ['span', 'a', 'button', '[role="menuitem"]', 'li'],
             /^forecast$/i
         );
-        if (opened) {
-            // Wait for the forecast page chrome instead of a fixed sleep.
-            const ready = await page
-                .waitForSelector(
-                    'a.calendar-unit-link.day, .display-date, a.display-date, [aria-label="Open calendar picker"]',
-                    { visible: true, timeout: 15000 }
-                )
-                .then(() => true)
-                .catch(() => false);
-            if (ready) {
-                await page.waitForTimeout(SETTLE_MS);
-                return;
-            }
+        if (!opened) continue;
+
+        const ready = await page
+            .waitForSelector(FORECAST_CHROME_SELECTOR, { visible: true, timeout: FORECAST_CHROME_TIMEOUT_MS })
+            .then(() => true)
+            .catch(() => false);
+        if (ready && (await waitForDayPartInputsStable(page, options, 12000))) {
+            return;
+        }
+        if (ready && (await waitForForecastDateToolbar(page, options))) {
+            return;
         }
     }
 
@@ -292,6 +470,7 @@ async function switchToDayView(page, options = {}) {
     const deadline = Date.now() + timeoutMs;
     let lastClickAt = 0;
     const clickEveryMs = 2000;
+    const pollMs = resolvePollMs(options);
 
     await page
         .waitForSelector(
@@ -301,21 +480,22 @@ async function switchToDayView(page, options = {}) {
         .catch(() => null);
 
     while (Date.now() < deadline) {
-        const count = await countVisibleDayPartInputs(page).catch(() => 0);
-        if (count >= DAY_PART_INPUT_COUNT) {
-            await page.waitForTimeout(300);
-            const settled = await countVisibleDayPartInputs(page).catch(() => 0);
-            if (settled >= DAY_PART_INPUT_COUNT) return;
+        if (await waitForDayPartInputsStable(page, options, clickEveryMs)) {
+            return;
         }
 
         if (Date.now() - lastClickAt >= clickEveryMs) {
             await clickDayViewTab(page);
             lastClickAt = Date.now();
-            await page.waitForTimeout(SETTLE_MS);
+            if (await waitForDayPartInputsStable(page, options, clickEveryMs)) {
+                return;
+            }
         }
 
-        await page.waitForTimeout(250);
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
     }
+
+    if (await waitForDayPartInputsStable(page, options, 1000)) return;
 
     const count = await countVisibleDayPartInputs(page).catch(() => 0);
     if (count >= DAY_PART_INPUT_COUNT) return;
@@ -430,16 +610,6 @@ async function isForecastDateActive(page, isoDate) {
     return page.url().includes(isoDate);
 }
 
-async function waitForForecastDateToolbar(page) {
-    await page
-        .waitForSelector('.display-date, a.display-date, [aria-label="Open calendar picker"]', {
-            visible: true,
-            timeout: 15000,
-        })
-        .catch(() => null);
-    await page.waitForTimeout(400);
-}
-
 function buildForecastUrlsForDate(currentUrl, isoDate) {
     const out = [];
     if (!isoDate) return out;
@@ -469,30 +639,31 @@ function buildForecastUrlsForDate(currentUrl, isoDate) {
     return [...new Set(out.filter(Boolean))];
 }
 
-async function setForecastDateViaUrl(page, isoDate) {
+async function setForecastDateViaUrl(page, isoDate, options = {}) {
     const current = page.url();
     if (current.includes(isoDate)) return true;
 
     const candidates = buildForecastUrlsForDate(current, isoDate);
+    const dateTimeoutMs = resolveDateNavTimeoutMs(options) * 2;
     for (const nextUrl of candidates) {
         if (nextUrl === current) continue;
         await page.goto(nextUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => null);
-        // Poll for the SPA to hydrate and show the target date rather than
-        // sleeping a fixed interval and hoping it was long enough.
-        if (await waitForForecastDate(page, isoDate, DATE_SETTLE_MS * 3)) return true;
+        if (await waitForForecastDate(page, isoDate, dateTimeoutMs, options)) return true;
     }
     return false;
 }
 
 /** Poll until the displayed date differs from previousIso (arrow click landed). */
-async function waitForActiveDateChange(page, previousIso, timeoutMs = DATE_SETTLE_MS * 2) {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-        const current = await readActiveForecastIsoDate(page).catch(() => '');
-        if (current && current !== previousIso) return current;
-        await page.waitForTimeout(200);
-    }
-    return readActiveForecastIsoDate(page).catch(() => '');
+async function waitForActiveDateChange(page, previousIso, options = {}, timeoutMs) {
+    const cap = Number.isFinite(timeoutMs) ? timeoutMs : resolveDateNavTimeoutMs(options);
+    const changed = await pollUntil(
+        async () => {
+            const current = await readActiveForecastIsoDate(page).catch(() => '');
+            return current && current !== previousIso ? current : null;
+        },
+        { timeoutMs: cap, pollMs: resolvePollMs(options), label: 'forecast date change' }
+    );
+    return changed || readActiveForecastIsoDate(page).catch(() => '');
 }
 
 async function clickForecastDateArrow(page, forward) {
@@ -559,7 +730,7 @@ async function clickForecastDateArrow(page, forward) {
     }, forward);
 }
 
-async function advanceForecastDateByDays(page, dayCount) {
+async function advanceForecastDateByDays(page, dayCount, options = {}) {
     const steps = Math.max(0, Number(dayCount) || 0);
     if (!steps) return true;
 
@@ -567,12 +738,13 @@ async function advanceForecastDateByDays(page, dayCount) {
         const before = await readActiveForecastIsoDate(page).catch(() => '');
         const clicked = await clickForecastDateArrow(page, true);
         if (!clicked) return false;
-        await waitForActiveDateChange(page, before);
+        const changed = await waitForActiveDateChange(page, before, options);
+        if (!changed || changed === before) return false;
     }
     return true;
 }
 
-async function advanceForecastDateWithArrows(page, isoDate) {
+async function advanceForecastDateWithArrows(page, isoDate, options = {}) {
     const targetMs = Date.parse(`${isoDate}T12:00:00Z`);
     for (let step = 0; step < 45; step += 1) {
         if (await isForecastDateActive(page, isoDate)) return true;
@@ -581,14 +753,25 @@ async function advanceForecastDateWithArrows(page, isoDate) {
         const goForward = !currentIso || targetMs >= Date.parse(`${currentIso}T12:00:00Z`);
         const advanced = await clickForecastDateArrow(page, goForward);
         if (!advanced) return false;
-        await waitForActiveDateChange(page, currentIso);
+        await waitForActiveDateChange(page, currentIso, options);
     }
     return await isForecastDateActive(page, isoDate);
 }
 
-async function openForecastCalendarPicker(page) {
+async function openForecastCalendarPicker(page, options = {}) {
     await page.keyboard.press('Escape').catch(() => null);
-    await page.waitForTimeout(200);
+    await pollUntil(
+        () =>
+            page.evaluate(() => {
+                const open = document.querySelector(
+                    '.datepicker.datepicker-dropdown, .bootstrap-datetimepicker-widget.dropdown-menu'
+                );
+                if (!open) return true;
+                const r = open.getBoundingClientRect();
+                return r.width <= 0 || r.height <= 0;
+            }),
+        { timeoutMs: 1500, pollMs: resolvePollMs(options), label: 'calendar closed' }
+    ).catch(() => null);
 
     const dateTrigger = await page.$('.display-date, a.display-date, [aria-label="Open calendar picker"]');
     if (dateTrigger) {
@@ -601,23 +784,11 @@ async function openForecastCalendarPicker(page) {
         );
         if (!clicked) return false;
     }
-    await page.waitForTimeout(500);
-    return page.evaluate(() => {
-        const widgetSelectors = [
-            '.datepicker.datepicker-dropdown',
-            '.bootstrap-datetimepicker-widget.dropdown-menu',
-            '.bootstrap-datetimepicker-widget',
-            '.datepicker:not(.datepicker-inline)',
-        ];
-        return widgetSelectors.some((selector) => {
-            const el = document.querySelector(selector);
-            return el && el.getBoundingClientRect().width > 0;
-        });
-    });
+    return Boolean(await waitForDatepickerWidget(page, options));
 }
 
-async function pickForecastDateFromCalendar(page, isoDate, display) {
-    const opened = await openForecastCalendarPicker(page);
+async function pickForecastDateFromCalendar(page, isoDate, display, options = {}) {
+    const opened = await openForecastCalendarPicker(page, options);
     if (!opened) return false;
 
     const picked = await page.evaluate(({ day, monthIdx, year, isoDate: targetIso }) => {
@@ -703,18 +874,16 @@ async function pickForecastDateFromCalendar(page, isoDate, display) {
         return false;
     }
 
-    await page.waitForTimeout(DATE_SETTLE_MS);
     await page.keyboard.press('Escape').catch(() => null);
-    return await isForecastDateActive(page, isoDate);
+    return await waitForForecastDate(page, isoDate, resolveDateNavTimeoutMs(options), options);
 }
 
-async function waitForForecastDate(page, isoDate, timeoutMs = 15000) {
-    const started = Date.now();
-    while (Date.now() - started < timeoutMs) {
-        if (await isForecastDateActive(page, isoDate)) return true;
-        await page.waitForTimeout(300);
-    }
-    return false;
+async function waitForForecastDate(page, isoDate, timeoutMs = 15000, options = {}) {
+    const ok = await pollUntil(
+        () => isForecastDateActive(page, isoDate),
+        { timeoutMs, pollMs: resolvePollMs(options), label: `forecast date ${isoDate}` }
+    );
+    return Boolean(ok);
 }
 
 function resolveDayPartInputTimeoutMs(options = {}) {
@@ -741,11 +910,14 @@ async function ensureForecastDayViewReady(page, options = {}) {
     const timeoutMs = resolveDayPartInputTimeoutMs(options);
     const switchTimeoutMs = Math.max(resolveDayViewSwitchTimeoutMs(options), timeoutMs);
     await switchToDayView(page, { ...options, dayViewSwitchTimeoutMs: switchTimeoutMs });
-    await waitForForecastDateToolbar(page);
+    await waitForForecastDateToolbar(page, options);
+
+    if (await waitForDayPartInputsStable(page, options, timeoutMs)) return;
 
     const deadline = Date.now() + timeoutMs;
     let lastCount = 0;
     let lastRetryClickAt = 0;
+    const pollMs = resolvePollMs(options);
 
     while (Date.now() < deadline) {
         try {
@@ -754,18 +926,15 @@ async function ensureForecastDayViewReady(page, options = {}) {
             if (!isDestroyedContextError(err)) throw err;
             lastCount = 0;
         }
-        if (lastCount >= DAY_PART_INPUT_COUNT) {
-            await page.waitForTimeout(300);
-            const settled = await countVisibleDayPartInputs(page).catch(() => 0);
-            if (settled >= DAY_PART_INPUT_COUNT) return;
-            lastCount = settled;
+        if (lastCount >= DAY_PART_INPUT_COUNT && (await waitForDayPartInputsStable(page, options, pollMs * 4))) {
+            return;
         }
         if (Date.now() - lastRetryClickAt >= 3000) {
             await clickDayViewTab(page);
             lastRetryClickAt = Date.now();
-            await page.waitForTimeout(SETTLE_MS);
+            if (await waitForDayPartInputsStable(page, options, 4000)) return;
         }
-        await page.waitForTimeout(250);
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
     }
 
     const activeDate = await readActiveForecastIsoDate(page).catch(() => 'unknown');
@@ -778,6 +947,13 @@ async function ensureForecastDayViewReady(page, options = {}) {
 
 async function finishForecastDateNavigation(page, target, options = {}) {
     if (!(await isForecastDateActive(page, target))) return false;
+
+    if (options.lightDayViewReady) {
+        if (await waitForDayPartInputsStable(page, options, 8000)) return true;
+        await switchToDayView(page, { ...options, dayViewSwitchTimeoutMs: 12000 });
+        if (await waitForDayPartInputsStable(page, options, 8000)) return true;
+    }
+
     await ensureForecastDayViewReady(page, options);
     return true;
 }
@@ -786,7 +962,22 @@ async function setForecastDate(page, isoDate, options = {}) {
     const target = String(isoDate || '').trim();
     if (!target) throw new Error('Forecast date is required.');
 
-    if (await finishForecastDateNavigation(page, target, options)) return;
+    if (await isForecastDateActive(page, target)) {
+        if (await finishForecastDateNavigation(page, target, options)) return;
+    }
+
+    const prevIso = String(options.sequentialFromIso || '').trim();
+    if (prevIso && target === addDaysToIso(prevIso, 1)) {
+        const currentIso = await readActiveForecastIsoDate(page);
+        if (currentIso === prevIso) {
+            if (
+                (await advanceForecastDateByDays(page, 1, options)) &&
+                (await finishForecastDateNavigation(page, target, { ...options, lightDayViewReady: true }))
+            ) {
+                return;
+            }
+        }
+    }
 
     const currentIso = await readActiveForecastIsoDate(page);
     const tomorrowIso = getMelbourneTomorrowIso();
@@ -797,11 +988,18 @@ async function setForecastDate(page, isoDate, options = {}) {
 
     if (target === tomorrowIso) {
         if (await clickByText(page, ['a', 'button', 'span'], /^tomorrow$/i)) {
-            await page.waitForTimeout(DATE_SETTLE_MS);
-            if (await finishForecastDateNavigation(page, target, options)) return;
+            if (
+                (await waitForForecastDate(page, target, resolveDateNavTimeoutMs(options), options)) &&
+                (await finishForecastDateNavigation(page, target, options))
+            ) {
+                return;
+            }
         }
         if (!currentIso || currentIso === getMelbourneTodayIso()) {
-            if ((await advanceForecastDateByDays(page, 1)) && (await finishForecastDateNavigation(page, target, options))) {
+            if (
+                (await advanceForecastDateByDays(page, 1, options)) &&
+                (await finishForecastDateNavigation(page, target, options))
+            ) {
                 return;
             }
         }
@@ -813,35 +1011,53 @@ async function setForecastDate(page, isoDate, options = {}) {
         );
         if (dayOffset > 0 && dayOffset <= 14) {
             if (
-                (await advanceForecastDateByDays(page, dayOffset)) &&
-                (await finishForecastDateNavigation(page, target, options))
+                (await advanceForecastDateByDays(page, dayOffset, options)) &&
+                (await finishForecastDateNavigation(page, target, { ...options, lightDayViewReady: dayOffset === 1 }))
             ) {
                 return;
             }
         }
     }
 
-    if ((await setForecastDateViaUrl(page, target)) && (await finishForecastDateNavigation(page, target, options))) {
+    if (
+        (await setForecastDateViaUrl(page, target, options)) &&
+        (await finishForecastDateNavigation(page, target, options))
+    ) {
         return;
     }
-    if ((await advanceForecastDateWithArrows(page, target)) && (await finishForecastDateNavigation(page, target, options))) {
+    if (
+        (await advanceForecastDateWithArrows(page, target, options)) &&
+        (await finishForecastDateNavigation(page, target, options))
+    ) {
         return;
     }
 
     const display = isoToLifeLenzDisplay(target);
     if (!display) throw new Error(`Invalid forecast date: ${target}`);
 
-    if ((await pickForecastDateFromCalendar(page, target, display)) && (await finishForecastDateNavigation(page, target, options))) {
+    if (
+        (await pickForecastDateFromCalendar(page, target, display, options)) &&
+        (await finishForecastDateNavigation(page, target, options))
+    ) {
         return;
     }
 
-    if ((await setForecastDateViaUrl(page, target)) && (await finishForecastDateNavigation(page, target, options))) {
+    if (
+        (await setForecastDateViaUrl(page, target, options)) &&
+        (await finishForecastDateNavigation(page, target, options))
+    ) {
         return;
     }
-    if ((await advanceForecastDateWithArrows(page, target)) && (await finishForecastDateNavigation(page, target, options))) {
+    if (
+        (await advanceForecastDateWithArrows(page, target, options)) &&
+        (await finishForecastDateNavigation(page, target, options))
+    ) {
         return;
     }
-    if ((await waitForForecastDate(page, target, 3000)) && (await finishForecastDateNavigation(page, target, options))) {
+    if (
+        (await waitForForecastDate(page, target, resolveDateNavTimeoutMs(options), options)) &&
+        (await finishForecastDateNavigation(page, target, options))
+    ) {
         return;
     }
 
@@ -939,42 +1155,12 @@ async function describeForecastPageState(page) {
  */
 async function waitForDayPartSaveSettle(page, options = {}) {
     const maxMs = resolveQuirkReloadMaxMs(options);
-    const deadline = Date.now() + maxMs;
-
-    let count = 0;
-    while (Date.now() < deadline) {
-        try {
-            count = await countVisibleDayPartInputs(page);
-        } catch (err) {
-            if (!isDestroyedContextError(err)) throw err;
-            count = 0;
-        }
-        if (count >= DAY_PART_INPUT_COUNT) break;
-        await page.waitForTimeout(150);
-    }
-
-    if (count < DAY_PART_INPUT_COUNT) {
+    const appeared = await waitForDayPartInputsStable(page, options, maxMs);
+    if (!appeared) {
+        const count = await countVisibleDayPartInputs(page).catch(() => 0);
         throw new Error(
             `LifeLenz day-part inputs not ready after save (${count} visible, need ${DAY_PART_INPUT_COUNT}, waited ${maxMs}ms).`
         );
-    }
-
-    // Require the input count to hold steady so we don't read/type against a
-    // page that is still re-rendering mid-reload.
-    await page.waitForTimeout(300);
-    const settled = await countVisibleDayPartInputs(page).catch(() => 0);
-    if (settled < DAY_PART_INPUT_COUNT) {
-        const graceDeadline = Date.now() + Math.min(maxMs, 5000);
-        let recovered = settled;
-        while (recovered < DAY_PART_INPUT_COUNT && Date.now() < graceDeadline) {
-            await page.waitForTimeout(200);
-            recovered = await countVisibleDayPartInputs(page).catch(() => 0);
-        }
-        if (recovered < DAY_PART_INPUT_COUNT) {
-            throw new Error(
-                `LifeLenz day-part inputs disappeared while settling after save (${recovered} visible, need ${DAY_PART_INPUT_COUNT}).`
-            );
-        }
     }
 }
 
@@ -1005,10 +1191,11 @@ async function readDayPartInputValues(page) {
  * stale values before the saved ones render.
  */
 async function verifyDayPartValues(page, dayParts, options = {}) {
-    const timeoutMs = Number.isFinite(options.verifyTimeoutMs) ? options.verifyTimeoutMs : VERIFY_TIMEOUT_MS;
+    const timeoutMs = resolveVerifyTimeoutMs(options);
     const expected = dayParts.map((part) => Math.round(Number(part.adjusted) || 0));
     const deadline = Date.now() + timeoutMs;
     let mismatches = [];
+    const pollMs = resolvePollMs(options);
 
     while (Date.now() < deadline) {
         let values = null;
@@ -1027,7 +1214,7 @@ async function verifyDayPartValues(page, dayParts, options = {}) {
             }
             if (!mismatches.length) return { ok: true };
         }
-        await page.waitForTimeout(400);
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
     }
 
     return { ok: false, mismatches };
@@ -1043,18 +1230,17 @@ async function fillDayPartsWithOvernightQuirk(page, dayParts, options = {}) {
     }
 
     const firstOvernightValue = dayParts[0]?.adjusted ?? 0;
-    const fieldDelayMs = resolveFieldDelayMs(options);
 
     emitProgress(options, { type: 'daypart-entering', label: 'OVERNIGHT', phase: 'quirk-start' });
     await clearAndPasteForecastAdjustment(page, 0, 'x');
-    await page.waitForTimeout(Math.min(fieldDelayMs, 150));
+    await waitForInputValueAt(page, 0, 'x', options, 3000).catch(() => null);
 
     for (let i = 1; i < dayParts.length; i += 1) {
         const part = dayParts[i];
         emitProgress(options, { type: 'daypart-entering', label: part.label, value: part.adjusted });
         const isLastDayPart = i === dayParts.length - 1;
         await clearAndPasteForecastAdjustment(page, i, part.adjusted, { avoidTab: isLastDayPart });
-        await page.waitForTimeout(fieldDelayMs);
+        await waitForInputValueAt(page, i, part.adjusted, options, 4000);
     }
 
     emitProgress(options, {
@@ -1064,6 +1250,7 @@ async function fillDayPartsWithOvernightQuirk(page, dayParts, options = {}) {
         value: firstOvernightValue,
     });
     await clearAndPasteForecastAdjustment(page, 0, firstOvernightValue, { avoidTab: true });
+    await waitForInputValueAt(page, 0, firstOvernightValue, options, 4000);
 
     await waitForDayPartSaveSettle(page, options);
 }
@@ -1109,16 +1296,22 @@ async function writeForecastPlanOnPage(page, storeNumber, plan, accessibleStores
         throw new Error(`Store ${store} is not in this LifeLenz account (accessible: ${[...allowed].join(', ')}).`);
     }
 
-    await selectStoreInLifeLenz(page, store);
-    await navigateToForecast(page);
-    await page.waitForTimeout(SETTLE_MS);
+    await selectStoreInLifeLenz(page, store, options);
+    await navigateToForecast(page, options);
     await ensureForecastDayViewReady(page, options);
 
     const applied = [];
+    let previousDate = null;
     for (const day of plan || []) {
+        const dayOptions = {
+            ...options,
+            lightDayViewReady: Boolean(previousDate),
+            sequentialFromIso: previousDate,
+        };
         try {
-            const result = await writeForecastDay(page, day.date, day, options);
+            const result = await writeForecastDay(page, day.date, day, dayOptions);
             applied.push(result);
+            previousDate = day.date;
         } catch (err) {
             emitProgress(options, { type: 'day-error', date: day.date, error: err.message || String(err) });
             throw err;

@@ -147,7 +147,6 @@ async function openForecastDateCalendar(page) {
     const picker = await page.$(`${DATE_PICKER_SEL} .mx-date-picker-selected-date`);
     if (!picker) return false;
     await picker.click();
-    await page.waitForTimeout(150);
     try {
         await page.waitForSelector('.uib-datepicker-popup', { visible: true, timeout: 3000 });
         return true;
@@ -259,15 +258,17 @@ async function setForecastPageDateByKeyboard(page, displayStr) {
     const picker = await page.$(`${DATE_PICKER_SEL} .mx-date-picker-selected-date`);
     if (!picker) return { ok: false };
     await picker.click();
-    await page.waitForTimeout(400);
+    await page.waitForSelector(`${DATE_PICKER_SEL} .mx-date-picker-selected-date`, { visible: true, timeout: 3000 }).catch(
+        () => null
+    );
     await page.keyboard.down('Control');
     await page.keyboard.press('KeyA');
     await page.keyboard.up('Control');
     await page.keyboard.type(displayStr, { delay: 35 });
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(1200);
+    const landed = await waitForDisplayedForecastDate(page, displayStr, DATE_CHANGE_MS);
     const current = await readDisplayedForecastDate(page);
-    if (current === displayStr) {
+    if (landed || current === displayStr) {
         return { ok: true, method: 'keyboard-type', previous: current };
     }
     return { ok: false, current };
@@ -326,7 +327,16 @@ async function waitForForecastGrid(page, { settleMs = GRID_SETTLE_MS } = {}) {
             { timeout: GRID_WAIT_MS }
         )
         .catch(() => {});
-    if (settleMs > 0) await page.waitForTimeout(settleMs);
+    if (settleMs <= 0) return;
+    await page
+        .waitForFunction(
+            () => {
+                const rows = document.querySelectorAll('tr.mx-fg-hour').length;
+                return rows > 0;
+            },
+            { timeout: settleMs + 500, polling: 50 }
+        )
+        .catch(() => {});
 }
 
 /** Wait until manager-forecast hour rows are present (grid finished reloading after date change). */
@@ -339,11 +349,10 @@ async function waitForForecastHourRows(page, { minRows = 8, timeoutMs = GRID_WAI
                 );
                 return rows.length >= min;
             },
-            { timeout: timeoutMs },
+            { timeout: timeoutMs, polling: 60 },
             minRows
         )
         .catch(() => {});
-    await page.waitForTimeout(POST_DATE_GRID_MS);
 }
 
 async function dismissForecastOverrideEditor(page) {
@@ -354,7 +363,14 @@ async function dismissForecastOverrideEditor(page) {
         const header = document.querySelector('#ForecastGridHeader, .mx-grid-header-container');
         header?.click();
     });
-    await page.waitForTimeout(40);
+    await page
+        .waitForFunction(() => {
+            const inp = document.querySelector('#overrideInput');
+            if (!inp) return true;
+            const r = inp.getBoundingClientRect();
+            return r.width <= 0 || r.height <= 0;
+        }, { timeout: 1500, polling: 40 })
+        .catch(() => {});
 }
 
 async function ensureManagerForecastDollarMode(page, { skipWait = false } = {}) {
@@ -486,8 +502,8 @@ async function fillForecastHourCell(page, wantLabel, forecast) {
     );
     if (!ok) return false;
     await dismissForecastOverrideEditor(page);
-    await page.waitForTimeout(FILL_CELL_SETTLE_MS);
-    return true;
+    const verified = await waitForManagerForecastValue(page, wantLabel, wanted, 1500);
+    return verified.ok;
 }
 
 async function enterAndVerifyForecastSlot(page, slot, onProgress, { retry = false } = {}) {
@@ -663,12 +679,15 @@ async function waitForForecastSaveButton(page, timeoutMs = 15000) {
     return handle.jsonValue();
 }
 
-async function commitForecastDaySave(page) {
-    const savedAs = await clickForecastSave(page, { timeoutMs: SAVE_APPEAR_MS });
+async function commitForecastDaySave(page, options = {}) {
+    const savedAs = await clickForecastSave(page, {
+        timeoutMs: SAVE_APPEAR_MS,
+        saveSettleMs: options.fast ? 1500 : SAVE_SETTLE_MS,
+    });
     return savedAs || 'unchanged';
 }
 
-async function clickForecastSave(page, { timeoutMs = SAVE_APPEAR_MS } = {}) {
+async function clickForecastSave(page, { timeoutMs = SAVE_APPEAR_MS, saveSettleMs = SAVE_SETTLE_MS } = {}) {
     const meta = await waitForForecastSaveButton(page, timeoutMs);
     if (!meta) return null;
 
@@ -689,7 +708,7 @@ async function clickForecastSave(page, { timeoutMs = SAVE_APPEAR_MS } = {}) {
     }, meta);
 
     if (clicked) {
-        await waitForForecastSaveSettled(page);
+        await waitForForecastSaveSettled(page, saveSettleMs);
         await waitForForecastGrid(page, { settleMs: GRID_SETTLE_MS });
     }
     return clicked;
@@ -704,7 +723,9 @@ async function setForecastPageDate(page, isoDate, options = {}) {
 
     if (!options.skipScroll) {
         await page.evaluate(() => window.scrollTo(0, 0));
-        await page.waitForTimeout(80);
+        await page
+            .waitForFunction(() => window.scrollY === 0, { timeout: 1000, polling: 40 })
+            .catch(() => null);
     }
     await waitForForecastGrid(page, { settleMs: options.fast ? 0 : GRID_SETTLE_MS });
 
@@ -773,7 +794,7 @@ async function writeForecastPlanToSpa(page, storeNumber, plan, options = {}) {
         const onChangeStore = await sssg.isOnChangeStorePage(page);
         if (!onChangeStore) {
             await page.goto(CHANGE_STORE_URL, SPA_GOTO_OPTS);
-            await page.waitForTimeout(250);
+            await waitForForecastGrid(page, { settleMs: 0 });
         }
         await sssg.selectStoreOnSpa(page, store, { quick: true });
         await page.goto(FORECASTING_URL, SPA_GOTO_OPTS);
@@ -825,8 +846,7 @@ async function writeForecastPlanToSpa(page, storeNumber, plan, options = {}) {
 
         emit({ type: 'day-saving', date: day.date, fill: fillResult, verify: verifyResult });
 
-        await page.waitForTimeout(120);
-        const savedAs = await commitForecastDaySave(page);
+        const savedAs = await commitForecastDaySave(page, { fast: dayIndex > 0 });
 
         const dayResult = {
             date: day.date,

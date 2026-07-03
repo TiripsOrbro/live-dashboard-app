@@ -4889,6 +4889,7 @@ app.post('/api/admin/forecast/run', async (req, res) => {
                     lifelenzHeadless,
                     lifelenzCredentials,
                     keepBrowserOpen: headed && req.body?.keepBrowserOpen === true,
+                    skipResume: req.body?.skipResume === true,
                     shouldAbort: () => runCancelled,
                     onProgress: (payload) => {
                         writeSse('progress', payload);

@@ -8,7 +8,7 @@ const {
 const { saveManualEntryPacksForRun } = require('./forecastManualPack');
 const { loadAdjustmentRules } = require('./forecastAdjustmentsLedger');
 const { LIFELENZ_DAY_PARTS } = require('../../../lifelenz/src/lifelenzDayParts');
-const { recordForecastDayUpdate } = require('./forecastUpdateLedger');
+const { recordForecastDayUpdate, filterPlanForPlatformResume } = require('./forecastUpdateLedger');
 const { getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../../../stores/src/storeList');
 const { closeAllTrackedBrowsers } = require('../../../mmx/src/browserLifecycle');
 const { acquireMmxResource, releaseMmxResource } = require('../../../mmx/src/mmxResourceGate');
@@ -19,6 +19,24 @@ function resolveLifeLenzHeadlessOption(options = {}) {
         return options.lifelenzHeadless;
     }
     return resolveLifeLenzHeadless(options);
+}
+
+function shouldResumeForecast(options = {}) {
+    return options.skipResume !== true && options.force !== true;
+}
+
+function splitPlanForResume(storeNumber, plan, weekStart, platform, options = {}) {
+    if (!shouldResumeForecast(options)) {
+        return { plan: plan || [], skippedDates: [] };
+    }
+    return filterPlanForPlatformResume(storeNumber, plan, weekStart, platform);
+}
+
+function emitResumedDaySkips(onProgress, storeNumber, platform, skippedDates) {
+    if (!skippedDates?.length || typeof onProgress !== 'function') return;
+    for (const date of skippedDates) {
+        onProgress({ platform, storeNumber, type: 'day-skipped', date, resumed: true });
+    }
 }
 
 function wrapForecastProgress(options = {}, context = {}) {
@@ -625,17 +643,43 @@ async function runForecastForStore(storeNumber, options = {}) {
         throw new Error(`Could not build hourly forecast plan for store ${store}.`);
     }
 
+    const adjustmentWeek = targetWeeks[0];
+    const { plan: activePlan, skippedDates } = splitPlanForResume(store, plan, adjustmentWeek, 'mmx', options);
+
     if (typeof options.onProgress === 'function') {
         options.onProgress({
             type: 'store-start',
             storeNumber: store,
             storeName: cfg.storeName || store,
-            dayCount: plan.length,
+            dayCount: activePlan.length,
+            skippedDays: skippedDates.length,
             targetWeeks,
         });
+        emitResumedDaySkips(options.onProgress, store, 'mmx', skippedDates);
     }
 
-    const writeResult = await writeForecastPlanToMmx(store, plan, {
+    if (!activePlan.length) {
+        if (options.markPlatformComplete !== false) {
+            for (const weekStart of targetWeeks) {
+                markStoreWeekPlatformComplete(weekStart, store, 'mmx', {
+                    completedBy: options.completedBy || null,
+                });
+            }
+        }
+        return {
+            storeNumber: store,
+            storeName: cfg.storeName || store,
+            daysSampled: dailyRows.length,
+            forecastDays: plan.length,
+            targetWeeks,
+            history: readiness,
+            resumed: skippedDates.length > 0,
+            skippedDays: skippedDates,
+            mmx: { ok: true, resumed: true, dayTouched: 0, days: [] },
+        };
+    }
+
+    const writeResult = await writeForecastPlanToMmx(store, activePlan, {
         ...options,
         onProgress: wrapForecastProgress(options, {
             weekStart: targetWeeks[0],
@@ -650,6 +694,8 @@ async function runForecastForStore(storeNumber, options = {}) {
         forecastDays: plan.length,
         targetWeeks,
         history: readiness,
+        skippedDays: skippedDates,
+        resumed: skippedDates.length > 0,
         ...writeResult,
     };
 }
@@ -762,16 +808,60 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
             }
             try {
                 const preview = previewForecastForStore(store, { ...options, ...runTarget });
+                const weekStart = preview.weekStart || preview.targetWeeks?.[0];
+                const { plan: activePlan, skippedDates } = splitPlanForResume(
+                    store,
+                    preview.plan,
+                    weekStart,
+                    'lifelenz',
+                    options
+                );
                 if (typeof options.onProgress === 'function') {
                     options.onProgress({
                         platform: 'lifelenz',
                         type: 'store-start',
                         storeNumber: store,
                         storeName: preview.storeName,
-                        dayCount: preview.plan?.length || 0,
+                        dayCount: activePlan.length,
+                        skippedDays: skippedDates.length,
                     });
+                    emitResumedDaySkips(
+                        (payload) => options.onProgress?.({ platform: 'lifelenz', storeNumber: store, ...payload }),
+                        store,
+                        'lifelenz',
+                        skippedDates
+                    );
                 }
-                const applied = await writeForecastPlanOnPage(page, store, preview.plan, accessibleStores, {
+                if (!activePlan.length) {
+                    if (options.markPlatformComplete !== false) {
+                        for (const ws of preview.targetWeeks || []) {
+                            markStoreWeekPlatformComplete(ws, store, 'lifelenz', {
+                                completedBy: options.completedBy || null,
+                            });
+                        }
+                    }
+                    results.push({
+                        storeNumber: store,
+                        ok: true,
+                        storeName: preview.storeName,
+                        forecastDays: preview.plan?.length || 0,
+                        resumed: skippedDates.length > 0,
+                        skippedDays: skippedDates,
+                        lifelenz: [],
+                    });
+                    if (typeof options.onProgress === 'function') {
+                        options.onProgress({
+                            platform: 'lifelenz',
+                            type: 'store-complete',
+                            storeNumber: store,
+                            ok: true,
+                            resumed: true,
+                            forecastDays: 0,
+                        });
+                    }
+                    continue;
+                }
+                const applied = await writeForecastPlanOnPage(page, store, activePlan, accessibleStores, {
                     headless: lifelenzHeadless,
                     onProgress: wrapForecastProgress(
                         {

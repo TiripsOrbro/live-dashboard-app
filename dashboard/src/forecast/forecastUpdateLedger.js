@@ -88,6 +88,31 @@ function buildForecastUpdatesForStores(storeNumbers, weekStart) {
     return stores;
 }
 
+function isForecastDayCompleteForPlatform(storeNumber, weekStart, date, platform) {
+    const doc = readForecastUpdates(storeNumber, weekStart);
+    const row = doc.days?.[String(date || '').trim()];
+    if (!row) return false;
+    const plat = String(platform || 'mmx').trim().toLowerCase();
+    return plat === 'lifelenz' ? Boolean(row.lifelenz) : Boolean(row.mmx);
+}
+
+/** Drop days already written for this platform (used when resuming after a disconnect). */
+function filterPlanForPlatformResume(storeNumber, plan, weekStart, platform) {
+    const store = String(storeNumber || '').trim();
+    const week = String(weekStart || '').trim();
+    const plat = String(platform || 'mmx').trim().toLowerCase();
+    const skippedDates = [];
+    const remaining = [];
+    for (const day of plan || []) {
+        if (isForecastDayCompleteForPlatform(store, week, day.date, plat)) {
+            skippedDates.push(day.date);
+        } else {
+            remaining.push(day);
+        }
+    }
+    return { plan: remaining, skippedDates };
+}
+
 function summarizeForecastUpdates(doc) {
     const days = doc?.days || {};
     const keys = Object.keys(days).sort();
@@ -106,6 +131,8 @@ module.exports = {
     writeForecastUpdates,
     recordForecastDayUpdate,
     buildForecastUpdatesForStores,
+    isForecastDayCompleteForPlatform,
+    filterPlanForPlatformResume,
     summarizeForecastUpdates,
     sourceFromUpdatedBy,
     normalizeUpdatedBy,

@@ -843,6 +843,104 @@
     }
 
     const PROGRESS_STALL_WARN_MS = 45000;
+    const STREAM_RETRY_ATTEMPTS = 4;
+    const STREAM_RETRY_BASE_MS = 3000;
+
+    function isRetryableStreamError(message) {
+        return /Lost connection|closed the connection before finishing/i.test(String(message || ''));
+    }
+
+    function showStreamRetryStatus(attempt, maxAttempts, delayMs) {
+        progressLastEventAt = Date.now();
+        const el = progressBackdrop?.querySelector('#admin-forecast-progress-error');
+        if (!el) return;
+        delete el.dataset.stallWarning;
+        el.textContent = `Connection lost — resuming from the last saved day (attempt ${attempt + 1}/${maxAttempts}) in ${Math.round(delayMs / 1000)}s…`;
+    }
+
+    async function runStoresWithProgress(storeNumbers, onEvent, runOptions = {}) {
+        const bodyBase = {
+            storeNumbers,
+            streamProgress: true,
+            skipResume: runOptions.skipResume === true,
+            ...getActiveForecastTargetPayload(),
+        };
+        if (sessionLifeLenzCredentials) {
+            bodyBase.lifelenzCredentials = {
+                email: sessionLifeLenzCredentials.email,
+                password: sessionLifeLenzCredentials.password,
+            };
+        }
+
+        let lastError = null;
+        startProgressWatchdog();
+
+        try {
+            for (let attempt = 1; attempt <= STREAM_RETRY_ATTEMPTS; attempt += 1) {
+                progressAbortController = new AbortController();
+                try {
+                    const res = await fetch('/api/admin/forecast/run', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'text/event-stream',
+                        },
+                        credentials: 'same-origin',
+                        body: JSON.stringify(bodyBase),
+                        signal: progressAbortController.signal,
+                    });
+                    const contentType = res.headers.get('content-type') || '';
+                    if (contentType.includes('text/event-stream') && res.body) {
+                        let finalPayload = null;
+                        try {
+                            await consumeSseStream(res, (eventName, data) => {
+                                progressLastEventAt = Date.now();
+                                if (eventName === 'progress') onEvent?.('progress', data);
+                                else if (eventName === 'platform-started') onEvent?.('platform-started', data);
+                                else if (eventName === 'lifelenz-started') onEvent?.('lifelenz-started', data);
+                                else if (eventName === 'complete' || eventName === 'error') finalPayload = data;
+                                else if (eventName === 'started') onEvent?.('started', data);
+                            });
+                        } catch (streamErr) {
+                            if (streamErr?.name === 'AbortError') throw streamErr;
+                            throw new Error(
+                                'Lost connection to the server mid-run (it may have restarted).'
+                            );
+                        }
+                        if (!finalPayload) {
+                            throw new Error('The server closed the connection before finishing.');
+                        }
+                        return finalPayload;
+                    }
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok || !data.success) throw new Error(data.error || 'Forecast run failed.');
+                    return data;
+                } catch (err) {
+                    if (err?.name === 'AbortError') {
+                        return { success: false, cancelled: true, error: 'Cancelled — remaining days were not submitted.' };
+                    }
+                    lastError = err;
+                    const retryable = isRetryableStreamError(err.message);
+                    if (!retryable || attempt >= STREAM_RETRY_ATTEMPTS) {
+                        const msg =
+                            attempt > 1
+                                ? `${err.message} Auto-resume was attempted ${attempt - 1} time(s). Check the status table and try again.`
+                                : err.message;
+                        throw new Error(msg);
+                    }
+                    const delayMs = STREAM_RETRY_BASE_MS * attempt;
+                    showStreamRetryStatus(attempt, STREAM_RETRY_ATTEMPTS, delayMs);
+                    await new Promise((resolve) => setTimeout(resolve, delayMs));
+                } finally {
+                    progressAbortController = null;
+                }
+            }
+            throw lastError || new Error('Forecast run failed.');
+        } finally {
+            stopProgressWatchdog();
+            progressAbortController = null;
+        }
+    }
 
     function startProgressWatchdog() {
         stopProgressWatchdog();
@@ -853,7 +951,7 @@
             if (!el) return;
             const quietMs = Date.now() - progressLastEventAt;
             if (quietMs >= PROGRESS_STALL_WARN_MS) {
-                el.textContent = `No updates from the server for ${Math.round(quietMs / 1000)} seconds — it may have restarted or stalled. You can cancel and try again.`;
+                el.textContent = `No updates from the server for ${Math.round(quietMs / 1000)} seconds — it may have restarted or stalled. Retrying automatically if the connection drops.`;
                 el.dataset.stallWarning = '1';
             } else if (el.dataset.stallWarning) {
                 el.textContent = '';
@@ -878,66 +976,6 @@
             btn.textContent = 'Cancelling…';
         }
         progressAbortController.abort();
-    }
-
-    async function runStoresWithProgress(storeNumbers, onEvent) {
-        const body = { storeNumbers, streamProgress: true, ...getActiveForecastTargetPayload() };
-        if (sessionLifeLenzCredentials) {
-            body.lifelenzCredentials = {
-                email: sessionLifeLenzCredentials.email,
-                password: sessionLifeLenzCredentials.password,
-            };
-        }
-        progressAbortController = new AbortController();
-        startProgressWatchdog();
-        try {
-            const res = await fetch('/api/admin/forecast/run', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Accept: 'text/event-stream',
-                },
-                credentials: 'same-origin',
-                body: JSON.stringify(body),
-                signal: progressAbortController.signal,
-            });
-            const contentType = res.headers.get('content-type') || '';
-            if (contentType.includes('text/event-stream') && res.body) {
-                let finalPayload = null;
-                try {
-                    await consumeSseStream(res, (eventName, data) => {
-                        progressLastEventAt = Date.now();
-                        if (eventName === 'progress') onEvent?.('progress', data);
-                        else if (eventName === 'platform-started') onEvent?.('platform-started', data);
-                        else if (eventName === 'lifelenz-started') onEvent?.('lifelenz-started', data);
-                        else if (eventName === 'complete' || eventName === 'error') finalPayload = data;
-                        else if (eventName === 'started') onEvent?.('started', data);
-                    });
-                } catch (streamErr) {
-                    if (streamErr?.name === 'AbortError') throw streamErr;
-                    throw new Error(
-                        'Lost connection to the server mid-run (it may have restarted). Check the status table before retrying.'
-                    );
-                }
-                if (!finalPayload) {
-                    throw new Error(
-                        'The server closed the connection before finishing. Check the status table before retrying.'
-                    );
-                }
-                return finalPayload;
-            }
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data.success) throw new Error(data.error || 'Forecast run failed.');
-            return data;
-        } catch (err) {
-            if (err?.name === 'AbortError') {
-                return { success: false, cancelled: true, error: 'Cancelled — remaining days were not submitted.' };
-            }
-            throw err;
-        } finally {
-            stopProgressWatchdog();
-            progressAbortController = null;
-        }
     }
 
     function aggregateDayPartsFromHourly(hourly) {
@@ -1161,18 +1199,22 @@
                     state.lifelenzLiveLabel = `Failed ${payload.label || 'day part'}`;
                 }
                 if (store) store.lifelenzLiveLabel = state.lifelenzLiveLabel;
-            } else if (payload.type === 'day-complete' && store) {
+            } else if ((payload.type === 'day-complete' || payload.type === 'day-skipped') && store) {
                 const day = findProgressLifelenzDay(store, payload.date);
                 if (day) {
                     day.status = 'done';
-                    for (const part of day.dayParts || []) {
-                        if (part.status !== 'failed') {
-                            part.status = 'confirmed';
-                            if (part.readValue == null) part.readValue = part.adjusted;
+                    if (payload.type === 'day-complete') {
+                        for (const part of day.dayParts || []) {
+                            if (part.status !== 'failed') {
+                                part.status = 'confirmed';
+                                if (part.readValue == null) part.readValue = part.adjusted;
+                            }
                         }
                     }
                 }
-                state.lifelenzLiveLabel = `Saved ${formatShortDate(payload.date)} in LifeLenz`;
+                if (payload.type === 'day-complete') {
+                    state.lifelenzLiveLabel = `Saved ${formatShortDate(payload.date)} in LifeLenz`;
+                }
                 if (state.activeLifelenzDate === payload.date) {
                     state.activeLifelenzDate = null;
                 }
@@ -1253,12 +1295,14 @@
             state.activeDate = payload.date;
             const day = findProgressDay(store, payload.date);
             if (day) day.status = 'saving';
-        } else if (payload.type === 'day-done') {
+        } else if (payload.type === 'day-done' || payload.type === 'day-skipped') {
             const day = findProgressDay(store, payload.date);
             if (day) {
                 day.status = 'done';
-                day.fill = payload.fill;
-                day.savedAs = payload.savedAs;
+                if (payload.type === 'day-done') {
+                    day.fill = payload.fill;
+                    day.savedAs = payload.savedAs;
+                }
             }
             if (state.activeDate === payload.date) {
                 state.activeDate = null;
@@ -3817,7 +3861,7 @@
                 if (eventName === 'progress') handleProgressPayload(data);
                 else if (eventName === 'platform-started') handlePlatformStarted(data);
                 else if (eventName === 'lifelenz-started') handleLifeLenzStarted(data);
-            });
+            }, { skipResume: st.dirty });
             renderProgressComplete(payload);
             if (!payload?.success) {
                 const progressRoot = ensureProgressBackdrop();

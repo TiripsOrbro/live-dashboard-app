@@ -129,6 +129,57 @@ function computeTrimmedWeekdayHourlyMix(dailyRows) {
     return out;
 }
 
+/** Trimmed average actual sales per hour index for each weekday (same day trim as hourly mix). */
+function computeTrimmedWeekdayHourSalesAverages(dailyRows) {
+    const byWeekday = new Map();
+    for (const row of dailyRows || []) {
+        const weekday = Number(row.weekday);
+        if (!Number.isFinite(weekday) || weekday < 0 || weekday > 6) continue;
+        if (!Array.isArray(row.actual) || !row.actual.length) continue;
+        if (!byWeekday.has(weekday)) byWeekday.set(weekday, []);
+        byWeekday.get(weekday).push(row);
+    }
+
+    const out = new Map();
+    for (const [weekday, rows] of byWeekday) {
+        const trimmedDays = trimWeekdayDayRows(rows);
+        if (!trimmedDays.length) continue;
+
+        const hourCount = Math.max(...trimmedDays.map((r) => r.actual.length));
+        const hourSums = new Array(hourCount).fill(0);
+        for (const day of trimmedDays) {
+            for (let i = 0; i < day.actual.length; i += 1) {
+                hourSums[i] += Number(day.actual[i]) || 0;
+            }
+        }
+        const avgs = hourSums.map((s) => Math.round((s / trimmedDays.length) * 100) / 100);
+        const ref = trimmedDays[0];
+        out.set(weekday, {
+            avgs,
+            openHour: Number.isFinite(ref.openHour) ? ref.openHour : DEFAULT_OPEN_HOUR,
+            closeHour: Number.isFinite(ref.closeHour) ? ref.closeHour : DEFAULT_CLOSE_HOUR,
+        });
+    }
+    return out;
+}
+
+function isZeroSalesHour(slot) {
+    return Boolean(slot?.zeroSales);
+}
+
+function lastNonZeroSalesHourIndex(hourly) {
+    for (let i = hourly.length - 1; i >= 0; i -= 1) {
+        if (!isZeroSalesHour(hourly[i])) return i;
+    }
+    return -1;
+}
+
+function copyHourSlot(slot, forecast) {
+    const row = { hour: slot.hour, forecast };
+    if (isZeroSalesHour(slot)) row.zeroSales = true;
+    return row;
+}
+
 function buildDailyForecastPlan(dailyRows, targetDates, timeZone = 'Australia/Melbourne') {
     const averages = computeTrimmedWeekdayAverages(dailyRows);
     const plan = [];
@@ -146,6 +197,7 @@ function buildHourlyForecastPlan(dailyRows, targetDates, storeNumber) {
     const timeZone = String(cfg.timeZone || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne').trim();
     const dailyAvgs = computeTrimmedWeekdayAverages(dailyRows);
     const hourlyMix = computeTrimmedWeekdayHourlyMix(dailyRows);
+    const hourSalesAvgs = computeTrimmedWeekdayHourSalesAverages(dailyRows);
     const defaultOpen = Number.isFinite(cfg.openHour) ? cfg.openHour : DEFAULT_OPEN_HOUR;
     const defaultClose = Number.isFinite(cfg.closeHour) ? cfg.closeHour : DEFAULT_CLOSE_HOUR;
 
@@ -157,14 +209,29 @@ function buildHourlyForecastPlan(dailyRows, targetDates, storeNumber) {
         if (dailyTotal == null || !mix?.shares?.length) continue;
 
         const openHour = mix.openHour ?? defaultOpen;
-        const hourly = mix.shares.map((share, index) => ({
-            hour: openHour + index,
-            forecast: Math.round(dailyTotal * share * 100) / 100,
-        }));
+        const salesAvgs = hourSalesAvgs.get(weekday)?.avgs || [];
+        const zeroSalesFlags = mix.shares.map((_, index) => (Number(salesAvgs[index]) || 0) <= 0);
+        let activeShareSum = 0;
+        mix.shares.forEach((share, index) => {
+            if (!zeroSalesFlags[index]) activeShareSum += share;
+        });
+
+        const hourly = mix.shares.map((share, index) => {
+            const hour = openHour + index;
+            if (zeroSalesFlags[index]) {
+                return { hour, forecast: 0, zeroSales: true };
+            }
+            const forecast =
+                activeShareSum > 0
+                    ? Math.round(dailyTotal * (share / activeShareSum) * 100) / 100
+                    : 0;
+            return { hour, forecast };
+        });
         const shapedTotal = Math.round(hourly.reduce((sum, row) => sum + row.forecast, 0) * 100) / 100;
         const remainder = Math.round((dailyTotal - shapedTotal) * 100) / 100;
-        if (hourly.length && Math.abs(remainder) >= 0.01) {
-            hourly[hourly.length - 1].forecast = Math.round((hourly[hourly.length - 1].forecast + remainder) * 100) / 100;
+        const remainderIdx = lastNonZeroSalesHourIndex(hourly);
+        if (remainderIdx >= 0 && Math.abs(remainder) >= 0.01) {
+            hourly[remainderIdx].forecast = Math.round((hourly[remainderIdx].forecast + remainder) * 100) / 100;
         }
 
         plan.push({
@@ -193,24 +260,32 @@ function reshapeHourlyForTotal(day, newTotal) {
         return { ...day, forecastTotal: roundedTotal, hourly: [] };
     }
     if (oldTotal <= 0) {
-        const perHour = Math.round((roundedTotal / day.hourly.length) * 100) / 100;
-        const hourly = day.hourly.map((slot) => ({ hour: slot.hour, forecast: perHour }));
+        const unlocked = day.hourly.filter((slot) => !isZeroSalesHour(slot));
+        const perHour = unlocked.length ? Math.round((roundedTotal / unlocked.length) * 100) / 100 : 0;
+        const hourly = day.hourly.map((slot) =>
+            isZeroSalesHour(slot) ? copyHourSlot(slot, 0) : copyHourSlot(slot, perHour)
+        );
         const shaped = Math.round(hourly.reduce((sum, row) => sum + row.forecast, 0) * 100) / 100;
         const remainder = Math.round((roundedTotal - shaped) * 100) / 100;
-        if (hourly.length && Math.abs(remainder) >= 0.01) {
-            hourly[hourly.length - 1].forecast = Math.round((hourly[hourly.length - 1].forecast + remainder) * 100) / 100;
+        const remainderIdx = lastNonZeroSalesHourIndex(hourly);
+        if (remainderIdx >= 0 && Math.abs(remainder) >= 0.01) {
+            hourly[remainderIdx].forecast = Math.round((hourly[remainderIdx].forecast + remainder) * 100) / 100;
         }
         return { ...day, forecastTotal: roundedTotal, hourly };
     }
 
-    const hourly = day.hourly.map((slot) => ({
-        hour: slot.hour,
-        forecast: Math.round(roundedTotal * ((Number(slot.forecast) || 0) / oldTotal) * 100) / 100,
-    }));
+    const unlocked = day.hourly.filter((slot) => !isZeroSalesHour(slot));
+    const oldUnlockedTotal = unlocked.reduce((sum, slot) => sum + (Number(slot.forecast) || 0), 0);
+    const hourly = day.hourly.map((slot) => {
+        if (isZeroSalesHour(slot)) return copyHourSlot(slot, 0);
+        const share = oldUnlockedTotal > 0 ? (Number(slot.forecast) || 0) / oldUnlockedTotal : 1 / unlocked.length;
+        return copyHourSlot(slot, Math.round(roundedTotal * share * 100) / 100);
+    });
     const shapedTotal = Math.round(hourly.reduce((sum, row) => sum + row.forecast, 0) * 100) / 100;
     const remainder = Math.round((roundedTotal - shapedTotal) * 100) / 100;
-    if (hourly.length && Math.abs(remainder) >= 0.01) {
-        hourly[hourly.length - 1].forecast = Math.round((hourly[hourly.length - 1].forecast + remainder) * 100) / 100;
+    const remainderIdx = lastNonZeroSalesHourIndex(hourly);
+    if (remainderIdx >= 0 && Math.abs(remainder) >= 0.01) {
+        hourly[remainderIdx].forecast = Math.round((hourly[remainderIdx].forecast + remainder) * 100) / 100;
     }
     return { ...day, forecastTotal: roundedTotal, hourly };
 }
@@ -242,7 +317,7 @@ function reshapeHourlyRespectingLocks(day, newTotal, baseDay, lockedHours) {
     const lockedSum = [...lockedHours.values()].reduce((sum, v) => sum + (Number(v) || 0), 0);
     let remainder = Math.round((roundedTotal - lockedSum) * 100) / 100;
 
-    const unlocked = day.hourly.filter((slot) => !lockedHours.has(slot.hour));
+    const unlocked = day.hourly.filter((slot) => !lockedHours.has(slot.hour) && !isZeroSalesHour(slot));
     const baseUnlockedTotal = unlocked.reduce((sum, slot) => {
         const baseSlot = (baseDay.hourly || []).find((h) => h.hour === slot.hour);
         return sum + (Number(baseSlot?.forecast) || 0);
@@ -250,7 +325,10 @@ function reshapeHourlyRespectingLocks(day, newTotal, baseDay, lockedHours) {
 
     const hourly = day.hourly.map((slot) => {
         if (lockedHours.has(slot.hour)) {
-            return { hour: slot.hour, forecast: lockedHours.get(slot.hour) };
+            return copyHourSlot(slot, lockedHours.get(slot.hour));
+        }
+        if (isZeroSalesHour(slot)) {
+            return copyHourSlot(slot, 0);
         }
         const baseSlot = (baseDay.hourly || []).find((h) => h.hour === slot.hour);
         const baseVal = Number(baseSlot?.forecast) || 0;
@@ -262,10 +340,13 @@ function reshapeHourlyRespectingLocks(day, newTotal, baseDay, lockedHours) {
         } else {
             forecast = Math.round(remainder * (baseVal / baseUnlockedTotal) * 100) / 100;
         }
-        return { hour: slot.hour, forecast };
+        return copyHourSlot(slot, forecast);
     });
 
-    const lastUnlockedIdx = hourly.map((s, i) => (!lockedHours.has(s.hour) ? i : -1)).filter((i) => i >= 0).pop();
+    const lastUnlockedIdx = hourly
+        .map((s, i) => (!lockedHours.has(s.hour) && !isZeroSalesHour(s) ? i : -1))
+        .filter((i) => i >= 0)
+        .pop();
     const shapedTotal = Math.round(hourly.reduce((sum, row) => sum + row.forecast, 0) * 100) / 100;
     const fix = Math.round((roundedTotal - shapedTotal) * 100) / 100;
     if (lastUnlockedIdx != null && Math.abs(fix) >= 0.01) {
@@ -293,7 +374,7 @@ function foldDayPartRulesIntoLocked(baseDay, dayPartRules, locked) {
 
         const basePartTotal = inPart.reduce((sum, slot) => sum + (Number(slot.forecast) || 0), 0);
         const target = applyAdjustmentValue(basePartTotal, rule);
-        const unlockedInPart = inPart.filter((slot) => !locked.has(slot.hour));
+        const unlockedInPart = inPart.filter((slot) => !locked.has(slot.hour) && !isZeroSalesHour(slot));
         const lockedSum = inPart.reduce(
             (sum, slot) => (locked.has(slot.hour) ? sum + (Number(locked.get(slot.hour)) || 0) : sum),
             0
@@ -321,10 +402,15 @@ function foldDayPartRulesIntoLocked(baseDay, dayPartRules, locked) {
 
 /** Apply a locked-hour map directly: locked hours take their value, others keep their current forecast. */
 function applyLockedValues(day, locked) {
-    const hourly = (day.hourly || []).map((slot) => ({
-        hour: slot.hour,
-        forecast: locked.has(slot.hour) ? round2(locked.get(slot.hour)) : Number(slot.forecast) || 0,
-    }));
+    const hourly = (day.hourly || []).map((slot) => {
+        if (locked.has(slot.hour)) {
+            return copyHourSlot(slot, round2(locked.get(slot.hour)));
+        }
+        if (isZeroSalesHour(slot)) {
+            return copyHourSlot(slot, 0);
+        }
+        return copyHourSlot(slot, Number(slot.forecast) || 0);
+    });
     const forecastTotal = round2(hourly.reduce((sum, row) => sum + row.forecast, 0));
     return { ...day, hourly, forecastTotal };
 }
@@ -842,6 +928,7 @@ async function runCombinedForecastForStores(storeNumbers, options = {}) {
 module.exports = {
     computeTrimmedWeekdayAverages,
     computeTrimmedWeekdayHourlyMix,
+    computeTrimmedWeekdayHourSalesAverages,
     buildDailyForecastPlan,
     buildHourlyForecastPlan,
     buildTargetForecastDates,

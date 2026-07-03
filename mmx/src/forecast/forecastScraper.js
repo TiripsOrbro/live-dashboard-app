@@ -426,7 +426,10 @@ function parseForecastDollar(text) {
 function forecastValuesMatch(readText, want) {
     const wanted = Math.round(Number(want) || 0);
     const read = parseForecastDollar(readText);
-    if (read == null) return wanted === 0;
+    if (wanted === 0) {
+        return read === 0;
+    }
+    if (read == null) return false;
     return read === wanted;
 }
 

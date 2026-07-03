@@ -27,10 +27,10 @@ function mmxDateToIso(mmx) {
 
 const DATE_PICKER_SEL = '#mx-forecast-dateselection-dropdown-edit';
 const MANAGER_OVERRIDE_INPUT = '#overrideInput';
-const FILL_CELL_SETTLE_MS = 25;
+const FILL_CELL_SETTLE_MS = 180;
 const VERIFY_READ_MS = 120;
-const VERIFY_POLL_MS = 80;
-const VERIFY_TIMEOUT_MS = 2500;
+const VERIFY_POLL_MS = 100;
+const VERIFY_TIMEOUT_MS = 4500;
 const POST_DATE_GRID_MS = 350;
 const GRID_SETTLE_MS = 100;
 const DATE_CHANGE_MS = 6000;
@@ -484,17 +484,52 @@ async function waitForManagerForecastValue(page, wantLabel, forecast, timeoutMs 
     };
 }
 
-/** Click hour row Manager Forecast cell, fill #overrideInput (MMX inline editor). */
-async function fillForecastHourCell(page, wantLabel, forecast) {
-    const wanted = Math.round(Number(forecast) || 0);
-    await dismissForecastOverrideEditor(page);
+/** Commit a value into #overrideInput (Angular-aware) so MMX replaces existing manager values. */
+async function writeForecastOverrideValue(page, value) {
+    const text = String(Math.round(Number(value) || 0));
+    const ready = await page
+        .waitForSelector(MANAGER_OVERRIDE_INPUT, { visible: true, timeout: 2000 })
+        .catch(() => null);
+    if (!ready) return false;
 
-    const existing = await readManagerForecastCell(page, wantLabel);
-    if (forecastValuesMatch(existing, wanted)) {
-        return 'already';
-    }
+    const ok = await page.evaluate(
+        (sel, val) => {
+            const el = document.querySelector(sel);
+            if (!el) return false;
+            el.focus();
+            if (typeof el.select === 'function') el.select();
+            const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+            if (setter) setter.call(el, val);
+            else el.value = val;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
+            el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', bubbles: true }));
+            el.blur();
+            return true;
+        },
+        MANAGER_OVERRIDE_INPUT,
+        text
+    );
+    if (!ok) return false;
 
-    const clicked = await page.evaluate((label) => {
+    await page.keyboard.down('Control');
+    await page.keyboard.press('KeyA');
+    await page.keyboard.up('Control');
+    await page.keyboard.type(text, { delay: 8 });
+    await page.evaluate((sel) => {
+        const el = document.querySelector(sel);
+        if (!el) return;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.blur();
+    }, MANAGER_OVERRIDE_INPUT);
+    await page.waitForTimeout(120);
+    return true;
+}
+
+async function openForecastHourCell(page, wantLabel) {
+    return page.evaluate((label) => {
         for (const tr of document.querySelectorAll('tr.mx-fg-hour')) {
             const labelSpan = tr.querySelector('[id^="mx-forecast-grid-interval-directive-list-hour-"]');
             const rowLabel = (labelSpan?.textContent || '').replace(/\s+/g, ' ').trim();
@@ -505,11 +540,28 @@ async function fillForecastHourCell(page, wantLabel, forecast) {
                 tr.querySelector('td:last-child');
             if (!cell) return false;
             cell.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, view: window }));
             cell.click();
             return true;
         }
         return false;
     }, wantLabel);
+}
+
+/** Click hour row Manager Forecast cell, fill #overrideInput (MMX inline editor). */
+async function fillForecastHourCell(page, wantLabel, forecast, options = {}) {
+    const wanted = Math.round(Number(forecast) || 0);
+    const force = Boolean(options.force);
+    await dismissForecastOverrideEditor(page);
+
+    if (!force) {
+        const existing = await readManagerForecastCell(page, wantLabel);
+        if (forecastValuesMatch(existing, wanted)) {
+            return 'already';
+        }
+    }
+
+    const clicked = await openForecastHourCell(page, wantLabel);
     if (!clicked) return false;
 
     try {
@@ -519,22 +571,24 @@ async function fillForecastHourCell(page, wantLabel, forecast) {
         return forecastValuesMatch(afterClick, wanted) ? 'already' : false;
     }
 
-    const value = String(wanted);
-    const ok = await page.evaluate(
-        (sel, val) => {
-            const el = document.querySelector(sel);
-            if (!el) return false;
-            el.focus();
-            el.value = val;
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-            el.blur();
-            return true;
-        },
-        MANAGER_OVERRIDE_INPUT,
-        value
-    );
-    if (!ok) return false;
+    let wrote = await writeForecastOverrideValue(page, wanted);
+    if (!wrote) {
+        wrote = await page.evaluate(
+            (sel, val) => {
+                const el = document.querySelector(sel);
+                if (!el) return false;
+                el.focus();
+                el.value = val;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                el.blur();
+                return true;
+            },
+            MANAGER_OVERRIDE_INPUT,
+            String(wanted)
+        );
+    }
+    if (!wrote) return false;
     await dismissForecastOverrideEditor(page);
     await page.waitForTimeout(FILL_CELL_SETTLE_MS);
     return true;
@@ -585,6 +639,25 @@ async function enterAndVerifyForecastSlot(page, slot, onProgress, { retry = fals
     const verified = await waitForManagerForecastValue(page, slot.label, slot.forecast);
     if (!verified.ok) {
         if (!retry) {
+            if (slot.forecast !== 0) {
+                await fillForecastHourCell(page, slot.label, 0, { force: true });
+                await page.waitForTimeout(150);
+                const refilled = await fillForecastHourCell(page, slot.label, slot.forecast, { force: true });
+                if (refilled) {
+                    const retryVerified = await waitForManagerForecastValue(page, slot.label, slot.forecast);
+                    if (retryVerified.ok) {
+                        emitSlotProgress(onProgress, {
+                            type: 'hour-confirmed',
+                            hour: slot.hour,
+                            label: slot.label,
+                            forecast: slot.forecast,
+                            read: retryVerified.read,
+                            retry: true,
+                        });
+                        return { ok: true, read: retryVerified.read };
+                    }
+                }
+            }
             return enterAndVerifyForecastSlot(page, slot, onProgress, { retry: true });
         }
         emitSlotProgress(onProgress, {

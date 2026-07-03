@@ -51,7 +51,10 @@ const TIMING = {
     loginFade: 550,
     welcomeDisplay: 3400,
     exit: 950,
+    minWelcome: 1200,
 };
+
+const PRELOAD_READY_TYPE = 'dashboard-preload-ready';
 
 function delay(ms) {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -91,7 +94,7 @@ function createWelcomeSkipController() {
         return () => stage.removeEventListener('pointerdown', onPointer);
     }
 
-    return { skip, wait, attach };
+    return { skip, wait, attach, isSkipped: () => skipped };
 }
 
 function prefersReducedMotion() {
@@ -192,6 +195,7 @@ function loginDestination(data, username) {
 }
 
 let dashboardPreloadFrame = null;
+let activePreloadSession = null;
 
 const OVERVIEW_SESSION_KEYS = [
     'mic-overview-area',
@@ -247,41 +251,99 @@ function ensureDashboardPreloadFrame() {
     return iframe;
 }
 
-function preloadDashboard(dest) {
+function createDashboardPreloadSession(dest) {
     const target = dest || '/';
     const iframe = ensureDashboardPreloadFrame();
+    iframe.classList.add('dashboard-preload--behind');
 
-    return new Promise((resolve) => {
-        let settled = false;
-        const finish = (ok) => {
-            if (settled) return;
-            settled = true;
-            resolve(ok);
-        };
-
-        const timeoutId = window.setTimeout(() => finish(false), 15000);
-
-        iframe.addEventListener(
-            'load',
-            () => {
-                window.clearTimeout(timeoutId);
-                clearOverviewSessionKeysInPreloadFrame(iframe);
-                try {
-                    if (iframe.contentWindow?.location?.pathname === '/login') {
-                        finish(false);
-                        return;
-                    }
-                } catch {
-                    /* ignore */
-                }
-                finish(true);
-            },
-            { once: true }
-        );
-
-        iframe.removeAttribute('hidden');
-        iframe.src = target;
+    let domSettled = false;
+    let contentSettled = false;
+    let domResolve;
+    let contentResolve;
+    const domReady = new Promise((resolve) => {
+        domResolve = resolve;
     });
+    const contentReady = new Promise((resolve) => {
+        contentResolve = resolve;
+    });
+
+    function settleDom(ok) {
+        if (domSettled) return;
+        domSettled = true;
+        domResolve(!!ok);
+        if (!ok && !contentSettled) {
+            contentSettled = true;
+            contentResolve(false);
+        }
+    }
+
+    function settleContent(ok) {
+        if (contentSettled) return;
+        contentSettled = true;
+        contentResolve(!!ok);
+    }
+
+    const onMessage = (event) => {
+        if (event.origin !== window.location.origin) return;
+        if (event.data?.type !== PRELOAD_READY_TYPE) return;
+        const phase = String(event.data.phase || 'content');
+        if (phase === 'shell') {
+            settleDom(true);
+            return;
+        }
+        settleDom(true);
+        settleContent(true);
+    };
+    window.addEventListener('message', onMessage);
+
+    const domTimeoutId = window.setTimeout(() => settleDom(false), 15000);
+    const contentTimeoutId = window.setTimeout(() => {
+        if (!contentSettled) settleContent(domSettled);
+    }, 20000);
+
+    const cleanup = () => {
+        window.removeEventListener('message', onMessage);
+        window.clearTimeout(contentTimeoutId);
+    };
+
+    iframe.addEventListener(
+        'load',
+        () => {
+            window.clearTimeout(domTimeoutId);
+            clearOverviewSessionKeysInPreloadFrame(iframe);
+            try {
+                if (iframe.contentWindow?.location?.pathname === '/login') {
+                    settleDom(false);
+                    return;
+                }
+            } catch {
+                /* ignore */
+            }
+            settleDom(true);
+        },
+        { once: true }
+    );
+
+    iframe.removeAttribute('hidden');
+    iframe.src = target;
+
+    return {
+        iframe,
+        domReady,
+        contentReady: contentReady.finally(cleanup),
+        isDomReady: () => domSettled,
+        isContentReady: () => contentSettled,
+    };
+}
+
+function beginDashboardPreload(dest) {
+    if (activePreloadSession) return activePreloadSession;
+    activePreloadSession = createDashboardPreloadSession(dest);
+    return activePreloadSession;
+}
+
+function preloadDashboard(dest) {
+    return beginDashboardPreload(dest).domReady;
 }
 
 function isDashboardPreloadReady() {
@@ -336,10 +398,10 @@ function completePreloadedTransition(dest) {
     return true;
 }
 
-async function playWelcomeTransition(welcomeName, dest) {
+async function playWelcomeTransition(welcomeName, dest, preloadSession) {
     const reduced = prefersReducedMotion();
     const skipCtrl = createWelcomeSkipController();
-    const preloadPromise = preloadDashboard(dest);
+    const preload = preloadSession || beginDashboardPreload(dest);
 
     resetWelcomeAnimation();
     welcomeMessage.textContent = buildWelcomeText(welcomeName);
@@ -370,9 +432,16 @@ async function playWelcomeTransition(welcomeName, dest) {
 
     const detachSkip = skipCtrl.attach(welcomeStage);
     try {
-        await skipCtrl.wait(reduced ? 280 : TIMING.welcomeDisplay);
+        const minWelcome = reduced ? 280 : TIMING.minWelcome;
+        const maxWelcome = reduced ? 400 : TIMING.welcomeDisplay;
+        await skipCtrl.wait(minWelcome);
 
-        const preloadReady = (await preloadPromise) || isDashboardPreloadReady();
+        const remaining = Math.max(0, maxWelcome - minWelcome);
+        if (remaining > 0 && !skipCtrl.isSkipped()) {
+            await Promise.race([skipCtrl.wait(remaining), preload.contentReady]);
+        }
+
+        const preloadReady = preload.isDomReady() || (await preload.domReady) || isDashboardPreloadReady();
 
         welcomeStage.classList.remove('welcome-stage--visible');
         welcomeStage.classList.add('welcome-stage--exit');
@@ -448,12 +517,13 @@ async function submitLogin() {
         } catch (_) {
             /* ignore */
         }
+        const preload = beginDashboardPreload(dest);
         if (shouldSkipWelcomeToday()) {
             window.location.replace(dest);
             return;
         }
 
-        await playWelcomeTransition(data.welcomeName, dest);
+        await playWelcomeTransition(data.welcomeName, dest, preload);
     } catch (err) {
         console.error('Login failed:', err);
         showError('Could not sign in. Check your connection and try again.');

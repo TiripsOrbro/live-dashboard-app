@@ -82,6 +82,12 @@ body.login-body--welcome-active .login-root {
     pointer-events: none;
 }
 
+/* Load and paint behind the welcome overlay (z-index 20) during sign-in. */
+.dashboard-preload--behind {
+    visibility: visible;
+    pointer-events: none;
+}
+
 .dashboard-preload--active {
     visibility: visible;
     pointer-events: auto;

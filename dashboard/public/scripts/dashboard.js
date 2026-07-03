@@ -919,6 +919,7 @@ function restoreCachedSalesPayload() {
     });
     salesDataLoadedOnce = true;
     updateGrid();
+    window.DashboardPreloadBridge?.signalReady?.('content');
     return true;
 }
 
@@ -961,6 +962,7 @@ async function loadSalesData() {
         await loadAuditSchedule();
         updateTimestamp(data.timestamp);
         updateSalesStatus(data);
+        window.DashboardPreloadBridge?.signalReady?.('content');
     } catch (err) {
         console.error('Failed to load sales data:', err);
         updateSalesStatus({ stale: true, warning: 'Unable to refresh sales data. If issue persists, contact Ash.' });
@@ -2781,6 +2783,7 @@ function renderDashboard() {
         document.body.classList.add('dashboard-page--admin-store');
         window.AdminStoreTabs?.mount?.(STORE_NUMBER, { areaCode: getAdminAreaCode() });
     }
+    window.DashboardPreloadBridge?.signalReady?.('shell');
 }
 
 /* -----------------------------------------------------------

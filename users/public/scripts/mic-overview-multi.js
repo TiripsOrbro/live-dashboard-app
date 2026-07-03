@@ -1104,6 +1104,7 @@
             } else {
                 renderTiles();
             }
+            global.DashboardPreloadBridge?.signalReady?.('content');
         } finally {
             overviewLoadInFlight = false;
         }
@@ -1150,6 +1151,7 @@
         });
         renderShell(promoBannerHtml);
         syncMicLayoutMode();
+        global.DashboardPreloadBridge?.signalReady?.('shell');
 
         const pickerAreas = global.MicAreaPicker?.resolveInitialAreaNames?.(profile, null) || [];
         const showPicker =

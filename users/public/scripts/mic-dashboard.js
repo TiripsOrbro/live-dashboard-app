@@ -210,6 +210,10 @@ function stopMicStoreOverviewLoops() {
     }
 }
 
+function signalLoginPreloadReady(phase) {
+    window.DashboardPreloadBridge?.signalReady?.(phase);
+}
+
 function salesHasMeaningfulTable(sales = {}) {
     if (!sales || typeof sales !== 'object') return false;
     const resolved = window.MicMiniDashboard?.resolveHourly?.(sales);
@@ -1160,6 +1164,7 @@ function restoreCachedMicOverview() {
         salesUpdatedAt: entry.data.salesToday?.updatedAt || entry.data.timestamp || null,
         timeZone: entry.data.salesToday?.timeZone || TIME_ZONE,
     });
+    signalLoginPreloadReady('content');
     return true;
 }
 
@@ -1225,6 +1230,9 @@ async function loadMicDataInner() {
         const grid = document.getElementById('mic-grid');
         if (grid) grid.classList.remove('mic-grid--loading');
         renderTiles(micData);
+        if (salesHasMeaningfulTable(micData?.salesToday)) {
+            signalLoginPreloadReady('content');
+        }
         void patchStockLevelsForMode().then(() => {
             if (micData) renderTiles(micData);
         });
@@ -1311,6 +1319,7 @@ function paintOverviewShellEarly() {
     renderShell();
     if (!restoreCachedMicOverview()) renderPlaceholderTiles();
     void loadMicData();
+    signalLoginPreloadReady('shell');
     return true;
 }
 
@@ -1328,6 +1337,7 @@ async function initStoreOverview(me, { skipShell = false } = {}) {
     });
     if (!skipShell) {
         renderShell();
+        signalLoginPreloadReady('shell');
         const hadCachedOverview = restoreCachedMicOverview();
         if (!hadCachedOverview) renderPlaceholderTiles();
     }

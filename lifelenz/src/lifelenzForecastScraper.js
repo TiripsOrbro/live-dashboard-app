@@ -1230,27 +1230,50 @@ async function fillDayPartsWithOvernightQuirk(page, dayParts, options = {}) {
     }
 
     const firstOvernightValue = dayParts[0]?.adjusted ?? 0;
+    const progressDate = options.activeDate || null;
+    const emitDayPart = (type, part, extra = {}) => {
+        emitProgress(options, {
+            type,
+            date: progressDate,
+            label: part?.label,
+            key: part?.key,
+            value: part?.adjusted,
+            ...extra,
+        });
+    };
 
-    emitProgress(options, { type: 'daypart-entering', label: 'OVERNIGHT', phase: 'quirk-start' });
+    emitProgress(options, {
+        type: 'daypart-entering',
+        date: progressDate,
+        label: 'OVERNIGHT',
+        key: dayParts[0]?.key,
+        phase: 'quirk-start',
+    });
     await clearAndPasteForecastAdjustment(page, 0, 'x');
     await waitForInputValueAt(page, 0, 'x', options, 3000).catch(() => null);
 
     for (let i = 1; i < dayParts.length; i += 1) {
         const part = dayParts[i];
-        emitProgress(options, { type: 'daypart-entering', label: part.label, value: part.adjusted });
+        emitDayPart('daypart-entering', part);
         const isLastDayPart = i === dayParts.length - 1;
         await clearAndPasteForecastAdjustment(page, i, part.adjusted, { avoidTab: isLastDayPart });
-        await waitForInputValueAt(page, i, part.adjusted, options, 4000);
+        const entered = await waitForInputValueAt(page, i, part.adjusted, options, 4000);
+        if (entered) emitDayPart('daypart-confirmed', part, { read: part.adjusted });
     }
 
     emitProgress(options, {
         type: 'daypart-entering',
+        date: progressDate,
         label: 'OVERNIGHT',
+        key: dayParts[0]?.key,
         phase: 'quirk-finish',
         value: firstOvernightValue,
     });
     await clearAndPasteForecastAdjustment(page, 0, firstOvernightValue, { avoidTab: true });
-    await waitForInputValueAt(page, 0, firstOvernightValue, options, 4000);
+    const overnightEntered = await waitForInputValueAt(page, 0, firstOvernightValue, options, 4000);
+    if (overnightEntered) {
+        emitDayPart('daypart-confirmed', dayParts[0], { read: firstOvernightValue });
+    }
 
     await waitForDayPartSaveSettle(page, options);
 }
@@ -1258,11 +1281,12 @@ async function fillDayPartsWithOvernightQuirk(page, dayParts, options = {}) {
 async function writeForecastDay(page, isoDate, planDay, options = {}) {
     emitProgress(options, { type: 'day-start', date: isoDate, forecastTotal: planDay.forecastTotal });
     const dayParts = aggregateDayPartsFromHourlyPlan(planDay);
+    const runOptions = { ...options, activeDate: isoDate };
 
     let verification = null;
     for (let attempt = 1; attempt <= WRITE_DAY_MAX_ATTEMPTS; attempt += 1) {
         await setForecastDate(page, isoDate, options);
-        await fillDayPartsWithOvernightQuirk(page, dayParts, options);
+        await fillDayPartsWithOvernightQuirk(page, dayParts, runOptions);
 
         verification = await verifyDayPartValues(page, dayParts, options);
         if (verification.ok) break;

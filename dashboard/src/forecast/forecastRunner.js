@@ -11,6 +11,15 @@ const { LIFELENZ_DAY_PARTS } = require('../../../lifelenz/src/lifelenzDayParts')
 const { recordForecastDayUpdate } = require('./forecastUpdateLedger');
 const { getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../../../stores/src/storeList');
 const { closeAllTrackedBrowsers } = require('../../../mmx/src/browserLifecycle');
+const { acquireMmxResource, releaseMmxResource } = require('../../../mmx/src/mmxResourceGate');
+const { resolveLifeLenzHeadless } = require('../../../lifelenz/src/lifelenzAuth');
+
+function resolveLifeLenzHeadlessOption(options = {}) {
+    if (options.lifelenzHeadless === false || options.lifelenzHeadless === true) {
+        return options.lifelenzHeadless;
+    }
+    return resolveLifeLenzHeadless(options);
+}
 
 function wrapForecastProgress(options = {}, context = {}) {
     const weekStart = context.weekStart || getTargetForecastWeekStarts()[0];
@@ -640,12 +649,21 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
     let browser;
     let page;
     let accessibleStores = [];
+    const lifelenzHeadless = resolveLifeLenzHeadlessOption(options);
+    const lifelenzBrowserOptions = {
+        ...options,
+        headless: lifelenzHeadless,
+        skipSlowMo: true,
+    };
 
     try {
         if (typeof options.onProgress === 'function') {
             options.onProgress({ platform: 'lifelenz', type: 'session-start', storeNumbers });
         }
-        const session = await createAuthenticatedLifeLenzSession(email, password, options);
+        if (!lifelenzHeadless) {
+            console.log('[Forecast] Headed LifeLenz browser (LIFELENZ_SCRAPER_HEADLESS=false)');
+        }
+        const session = await createAuthenticatedLifeLenzSession(email, password, lifelenzBrowserOptions);
         browser = session.browser;
         page = session.page;
         accessibleStores = session.stores || [];
@@ -668,7 +686,7 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
                     });
                 }
                 const applied = await writeForecastPlanOnPage(page, store, preview.plan, accessibleStores, {
-                    headless: options.headless,
+                    headless: lifelenzHeadless,
                     onProgress: wrapForecastProgress(
                         {
                             ...options,
@@ -784,13 +802,19 @@ async function runCombinedForecastForStores(storeNumbers, options = {}) {
     if (options.lifelenzCredentials && !options.shouldAbort?.()) {
         console.log('[Forecast] Macromatix complete — starting LifeLenz phase…');
         onProgress?.({ type: 'lifelenz-phase-start', storeNumbers });
-        await closeAllTrackedBrowsers('forecast-mmx-complete-before-lifelenz');
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        lifelenzResults = await runLifeLenzForecastForStores(storeNumbers, options.lifelenzCredentials, {
-            ...options,
-            ...runTarget,
-            onProgress: (payload) => onProgress?.({ platform: 'lifelenz', ...payload }),
-        });
+        // Hold before closing MMX browsers so interval scrapes cannot start in the gap.
+        acquireMmxResource('LifeLenz forecast phase');
+        try {
+            await closeAllTrackedBrowsers('forecast-mmx-complete-before-lifelenz');
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            lifelenzResults = await runLifeLenzForecastForStores(storeNumbers, options.lifelenzCredentials, {
+                ...options,
+                ...runTarget,
+                onProgress: (payload) => onProgress?.({ platform: 'lifelenz', ...payload }),
+            });
+        } finally {
+            releaseMmxResource('LifeLenz forecast phase');
+        }
     }
 
     const manualSaved =

@@ -4778,6 +4778,7 @@ app.post('/api/admin/forecast/run', async (req, res) => {
                     req.body?.lifelenzHeaded === true ||
                     /^(0|false|no|off)$/i.test(String(process.env.LIFELENZ_SCRAPER_HEADLESS ?? '').trim());
                 const headless = headed ? false : true;
+                const lifelenzHeadless = lifelenzHeaded ? false : true;
 
                 const oneTimeEmail = String(req.body?.lifelenzCredentials?.email || '').trim();
                 const oneTimePassword = String(req.body?.lifelenzCredentials?.password || '');
@@ -4806,6 +4807,7 @@ app.post('/api/admin/forecast/run', async (req, res) => {
                 const combined = await runCombinedForecastForStores(storeNumbers, {
                     completedBy: user.username,
                     headless,
+                    lifelenzHeadless,
                     lifelenzCredentials,
                     keepBrowserOpen: headed && req.body?.keepBrowserOpen === true,
                     shouldAbort: () => runCancelled,

@@ -1,4 +1,5 @@
 const puppeteer = require('puppeteer');
+const { pasteIntoSelector } = require('./lifelenzInput');
 
 const { getPuppeteerLaunchOptions } = require('../../mmx/src/macromatixScraper');
 const { trackBrowser, closeBrowserQuietly } = require('../../mmx/src/browserLifecycle');
@@ -251,10 +252,8 @@ async function fillLifeLenzLogin(page, email, password) {
         if (await isOnBusinessExplorer(page)) return;
         throw new Error('LifeLenz login page did not load.');
     }
-    await page.click('#email', { clickCount: 3 });
-    await page.type('#email', String(email || '').trim(), { delay: 20 });
-    await page.click('#password', { clickCount: 3 });
-    await page.type('#password', String(password || ''), { delay: 20 });
+    await pasteIntoSelector(page, '#email', String(email || '').trim(), 8000);
+    await pasteIntoSelector(page, '#password', String(password || ''), 8000);
     await page.click('button[type="submit"]');
     await waitForPostLoginLanding(page, LOGIN_WAIT_MS);
 }
@@ -487,6 +486,7 @@ module.exports = {
     parseStoreLabel,
     cleanStoreDisplayName,
     dedupeStores,
+    resolveLifeLenzHeadless,
     getLifeLenzLaunchOptions,
     verifyLifeLenzLogin,
     createAuthenticatedLifeLenzSession,

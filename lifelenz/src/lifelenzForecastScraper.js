@@ -5,11 +5,13 @@ const {
     dedupeStores,
 } = require('./lifelenzAuth');
 const { aggregateDayPartsFromHourlyPlan, LIFELENZ_DAY_PARTS } = require('./lifelenzDayParts');
+const { pasteIntoInput } = require('./lifelenzInput');
 
 const SETTLE_MS = 800;
 const DATE_SETTLE_MS = 2000;
 const DAY_PART_INPUT_SELECTOR = 'input.forecast-adjustment.form-control, input.input-number.forecast-adjustment';
-const DEFAULT_DAY_PART_INPUT_TIMEOUT_MS = 20000;
+const DEFAULT_DAY_PART_INPUT_TIMEOUT_MS = 45000;
+const DEFAULT_DAY_VIEW_SWITCH_TIMEOUT_MS = 45000;
 const DAY_PART_INPUT_COUNT = 9;
 // Upper bound on the post-save reload wait. This is a cap, not a sleep: the
 // settle logic polls for the inputs to return and finishes as soon as they do,
@@ -82,7 +84,7 @@ function resolveQuirkReloadMaxMs(options = {}) {
 function resolveFieldDelayMs(options = {}) {
     if (Number.isFinite(options.fieldDelayMs)) return options.fieldDelayMs;
     const headless = options.headless !== false;
-    return headless ? 90 : 200;
+    return headless ? 50 : 80;
 }
 
 function emitProgress(options, payload) {
@@ -247,7 +249,10 @@ async function navigateToForecast(page) {
                 )
                 .then(() => true)
                 .catch(() => false);
-            if (ready) return;
+            if (ready) {
+                await page.waitForTimeout(SETTLE_MS);
+                return;
+            }
         }
     }
 
@@ -282,27 +287,44 @@ async function clickDayViewTab(page) {
     );
 }
 
-async function switchToDayView(page) {
-    const deadline = Date.now() + 15000;
-    let clicked = false;
+async function switchToDayView(page, options = {}) {
+    const timeoutMs = resolveDayViewSwitchTimeoutMs(options);
+    const deadline = Date.now() + timeoutMs;
+    let lastClickAt = 0;
+    const clickEveryMs = 2000;
+
+    await page
+        .waitForSelector(
+            'a.calendar-unit-link.day, a.calendar-unit-link.week, .display-date, a.display-date, [aria-label="Open calendar picker"]',
+            { visible: true, timeout: Math.min(timeoutMs, 25000) }
+        )
+        .catch(() => null);
 
     while (Date.now() < deadline) {
         const count = await countVisibleDayPartInputs(page).catch(() => 0);
-        if (count >= DAY_PART_INPUT_COUNT) return;
-
-        if (!clicked) {
-            clicked = (await clickDayViewTab(page)) || false;
-            if (clicked) await page.waitForTimeout(SETTLE_MS);
+        if (count >= DAY_PART_INPUT_COUNT) {
+            await page.waitForTimeout(300);
+            const settled = await countVisibleDayPartInputs(page).catch(() => 0);
+            if (settled >= DAY_PART_INPUT_COUNT) return;
         }
 
-        await page.waitForTimeout(300);
+        if (Date.now() - lastClickAt >= clickEveryMs) {
+            await clickDayViewTab(page);
+            lastClickAt = Date.now();
+            await page.waitForTimeout(SETTLE_MS);
+        }
+
+        await page.waitForTimeout(250);
     }
 
     const count = await countVisibleDayPartInputs(page).catch(() => 0);
     if (count >= DAY_PART_INPUT_COUNT) return;
 
+    const activeDate = await readActiveForecastIsoDate(page).catch(() => 'unknown');
+    const inDayView = await isForecastDayViewActive(page).catch(() => false);
     throw new Error(
-        `Could not switch LifeLenz forecast to Day view (${count} day-part inputs visible, need ${DAY_PART_INPUT_COUNT}).`
+        `Could not switch LifeLenz forecast to Day view (${count} day-part inputs visible, need ${DAY_PART_INPUT_COUNT}, ` +
+            `date showing ${activeDate}, day view ${inDayView ? 'active' : 'not active'}).`
     );
 }
 
@@ -700,16 +722,30 @@ function resolveDayPartInputTimeoutMs(options = {}) {
     return DEFAULT_DAY_PART_INPUT_TIMEOUT_MS;
 }
 
+function resolveDayViewSwitchTimeoutMs(options = {}) {
+    if (Number.isFinite(options.dayViewSwitchTimeoutMs)) return options.dayViewSwitchTimeoutMs;
+    const raw = process.env.LIFELENZ_DAY_VIEW_TIMEOUT_MS;
+    if (raw !== undefined && raw !== '') {
+        const n = Number(raw);
+        if (Number.isFinite(n) && n > 0) return n;
+    }
+    return DEFAULT_DAY_VIEW_SWITCH_TIMEOUT_MS;
+}
+
 /**
  * Day-part adjusted inputs only appear in day view. After date navigation the
  * Aurelia forecast page can briefly show the date toolbar while still in week
  * view or while inputs are hydrating - poll until 9 fields are visible.
  */
 async function ensureForecastDayViewReady(page, options = {}) {
-    await switchToDayView(page).catch(() => null);
     const timeoutMs = resolveDayPartInputTimeoutMs(options);
+    const switchTimeoutMs = Math.max(resolveDayViewSwitchTimeoutMs(options), timeoutMs);
+    await switchToDayView(page, { ...options, dayViewSwitchTimeoutMs: switchTimeoutMs });
+    await waitForForecastDateToolbar(page);
+
     const deadline = Date.now() + timeoutMs;
     let lastCount = 0;
+    let lastRetryClickAt = 0;
 
     while (Date.now() < deadline) {
         try {
@@ -724,7 +760,12 @@ async function ensureForecastDayViewReady(page, options = {}) {
             if (settled >= DAY_PART_INPUT_COUNT) return;
             lastCount = settled;
         }
-        await page.waitForTimeout(200);
+        if (Date.now() - lastRetryClickAt >= 3000) {
+            await clickDayViewTab(page);
+            lastRetryClickAt = Date.now();
+            await page.waitForTimeout(SETTLE_MS);
+        }
+        await page.waitForTimeout(250);
     }
 
     const activeDate = await readActiveForecastIsoDate(page).catch(() => 'unknown');
@@ -827,25 +868,23 @@ async function locateDayPartInputs(page) {
     return inputs.slice(0, DAY_PART_INPUT_COUNT).map((_, index) => ({ index }));
 }
 
-async function clearAndTypeForecastAdjustment(page, visibleIndex, value, options = {}) {
+async function clearAndPasteForecastAdjustment(page, visibleIndex, value, options = {}) {
     const inputs = await getDayPartAdjustmentInputs(page);
     const input = inputs[visibleIndex];
     if (!input) {
         throw new Error(`Forecast adjustment input ${visibleIndex} not found (${inputs.length} day-part fields).`);
     }
-    await page.evaluate((el) => {
-        el.focus();
-        el.select();
-    }, input);
-    await page.keyboard.down('Control');
-    await page.keyboard.press('KeyA');
-    await page.keyboard.up('Control');
-    await input.type(String(value), { delay: 25 });
+    await pasteIntoInput(page, input, value);
     if (options.avoidTab) {
         await input.evaluate((el) => el.blur());
     } else {
         await input.press('Tab').catch(() => null);
     }
+}
+
+/** @deprecated use clearAndPasteForecastAdjustment */
+async function clearAndTypeForecastAdjustment(page, visibleIndex, value, options = {}) {
+    return clearAndPasteForecastAdjustment(page, visibleIndex, value, options);
 }
 
 async function clearAndTypeInput(page, _selectorOrIndex, value, inputIndex) {
@@ -1007,14 +1046,14 @@ async function fillDayPartsWithOvernightQuirk(page, dayParts, options = {}) {
     const fieldDelayMs = resolveFieldDelayMs(options);
 
     emitProgress(options, { type: 'daypart-entering', label: 'OVERNIGHT', phase: 'quirk-start' });
-    await clearAndTypeForecastAdjustment(page, 0, 'x');
+    await clearAndPasteForecastAdjustment(page, 0, 'x');
     await page.waitForTimeout(Math.min(fieldDelayMs, 150));
 
     for (let i = 1; i < dayParts.length; i += 1) {
         const part = dayParts[i];
         emitProgress(options, { type: 'daypart-entering', label: part.label, value: part.adjusted });
         const isLastDayPart = i === dayParts.length - 1;
-        await clearAndTypeForecastAdjustment(page, i, part.adjusted, { avoidTab: isLastDayPart });
+        await clearAndPasteForecastAdjustment(page, i, part.adjusted, { avoidTab: isLastDayPart });
         await page.waitForTimeout(fieldDelayMs);
     }
 
@@ -1024,7 +1063,7 @@ async function fillDayPartsWithOvernightQuirk(page, dayParts, options = {}) {
         phase: 'quirk-finish',
         value: firstOvernightValue,
     });
-    await clearAndTypeForecastAdjustment(page, 0, firstOvernightValue, { avoidTab: true });
+    await clearAndPasteForecastAdjustment(page, 0, firstOvernightValue, { avoidTab: true });
 
     await waitForDayPartSaveSettle(page, options);
 }
@@ -1072,8 +1111,8 @@ async function writeForecastPlanOnPage(page, storeNumber, plan, accessibleStores
 
     await selectStoreInLifeLenz(page, store);
     await navigateToForecast(page);
-    await switchToDayView(page);
-    await waitForForecastDateToolbar(page);
+    await page.waitForTimeout(SETTLE_MS);
+    await ensureForecastDayViewReady(page, options);
 
     const applied = [];
     for (const day of plan || []) {

@@ -104,6 +104,7 @@ async function runScheduledForecastJob() {
         runCombinedForecastForStores([storeNumber], {
             completedBy: 'auto',
             headless: true,
+            lifelenzHeadless: true,
             lifelenzCredentials,
             onProgress: (payload) => {
                 console.log(`[ForecastScheduler] [${storeNumber}]`, JSON.stringify(payload));

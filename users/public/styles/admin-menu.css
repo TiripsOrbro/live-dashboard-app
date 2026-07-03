@@ -3816,6 +3816,7 @@ html.mic-dark-mode .admin-forecast-override-target {
     flex: 0 0 auto;
     white-space: nowrap;
     min-height: 2.125rem;
+    text-align: center;
 }
 
 @media (max-width: 640px) {

@@ -386,9 +386,9 @@
                                 <input type="date" id="admin-forecast-target-day" />
                             </label>
                         </div>
-                        <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-update-three-weeks">Update next 3 weeks</button>
+                        <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-update-three-weeks">Update All store Next 3 weeks</button>
                     </div>
-                    <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-submit-all">Submit all in scope</button>
+                    <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-submit-all">submit all stores</button>
                     <button type="button" class="mic-settings-btn" id="admin-forecast-setup-lifelenz">Setup LifeLenz</button>
                     <span class="admin-forecast-lifelenz-status" id="admin-forecast-lifelenz-status">LifeLenz: checking…</span>
                     <span id="admin-forecast-busy" hidden>MMX busy…</span>

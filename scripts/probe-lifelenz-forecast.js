@@ -21,9 +21,17 @@ const { closeBrowserQuietly } = require('../mmx/src/macromatixScraper');
 async function main() {
     const storeNumber = process.argv[2] || '3806';
     const onlyDate = process.argv[3] || null;
-    const creds = getDevLifeLenzCredentials();
-    if (!creds) {
-        console.error('[probe-lifelenz-forecast] Set TempLifeLenzU / TempLifeLenzP in .env');
+    const emailArg = process.argv[4];
+    const passwordArg = process.argv[5];
+    const dev = getDevLifeLenzCredentials();
+    const creds =
+        emailArg && passwordArg
+            ? { email: emailArg, password: passwordArg }
+            : dev;
+    if (!creds?.email || !creds?.password) {
+        console.error(
+            '[probe-lifelenz-forecast] Set TempLifeLenzU / TempLifeLenzP in .env or pass email and password as args 4–5'
+        );
         process.exit(1);
     }
 

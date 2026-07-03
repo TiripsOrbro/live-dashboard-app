@@ -359,7 +359,6 @@ async function openStoreDropdown(page) {
         'div.max-w-60.min-w-20',
         'div.max-w-60',
     ];
-    let bestLabels = [];
 
     for (const selector of triggers) {
         await page.keyboard.press('Escape').catch(() => null);
@@ -369,10 +368,12 @@ async function openStoreDropdown(page) {
         await el.click().catch(() => null);
         await page.waitForTimeout(600);
         const labels = await collectStoreLabelsFromOpenDropdown(page);
-        if (labels.length > bestLabels.length) bestLabels = labels;
+        // Stop at the first trigger that opens a real store list — do not
+        // iterate all selectors (that visibly opens the picker 4–5 times).
+        if (labels.length > 0) return labels;
     }
 
-    return bestLabels;
+    return [];
 }
 
 async function listAccessibleStores(page) {

@@ -139,6 +139,55 @@ async function waitForStoreSelected(page, labelNeedle, timeoutMs = 10000) {
     return false;
 }
 
+async function scrollStoreDropdown(page) {
+    return page.evaluate(() => {
+        const container =
+            document.querySelector('[role="listbox"]') ||
+            document.querySelector('[role="menu"]') ||
+            document.querySelector('[data-radix-popper-content-wrapper]') ||
+            document.querySelector('[role="option"]')?.closest('ul, div');
+        if (!container) return true;
+        const before = container.scrollTop;
+        container.scrollTop += 320;
+        return (
+            container.scrollTop === before ||
+            container.scrollTop + container.clientHeight >= container.scrollHeight - 2
+        );
+    });
+}
+
+async function findStorePickerTrigger(page) {
+    const handle = await page.evaluateHandle(() => {
+        const isStoreLabel = (text) => /^\d{4}\s*-\s*\S/.test(String(text || '').replace(/\s+/g, ' ').trim());
+        const candidates = [
+            ...document.querySelectorAll('button[aria-haspopup="listbox"]'),
+            ...document.querySelectorAll('button[aria-haspopup="menu"]'),
+            ...document.querySelectorAll('[data-slot="trigger"]'),
+            ...document.querySelectorAll('div.max-w-60'),
+        ];
+        for (const el of candidates) {
+            if (isStoreLabel(el.textContent)) return el;
+        }
+        return candidates[0] || null;
+    });
+    return handle.asElement();
+}
+
+async function pickStoreOptionFromOpenDropdown(page, storeNumber) {
+    const storePattern = new RegExp(`\\b${storeNumber}\\s*-`, 'i');
+    for (let pass = 0; pass < 30; pass += 1) {
+        if (
+            await clickByText(page, ['[role="option"]', '[role="menuitem"]', 'li', 'button', 'a'], storePattern)
+        ) {
+            return true;
+        }
+        const atEnd = await scrollStoreDropdown(page);
+        await page.waitForTimeout(120);
+        if (atEnd) break;
+    }
+    return false;
+}
+
 async function selectStoreInLifeLenz(page, storeNumber) {
     const store = String(storeNumber || '').trim();
     const labelNeedle = `${store} -`;
@@ -149,33 +198,21 @@ async function selectStoreInLifeLenz(page, storeNumber) {
     const current = await readCurrentStoreTriggerLabel(page);
     if (current.startsWith(labelNeedle)) return true;
 
-    const storePattern = new RegExp(`\\b${store}\\s*-`, 'i');
-    const triggers = [
-        'button[aria-haspopup="listbox"]',
-        'button[aria-haspopup="menu"]',
-        '[data-slot="trigger"]',
-        'div.max-w-60',
-    ];
-    for (const selector of triggers) {
-        const el = await page.$(selector);
-        if (!el) continue;
-        await safeClickHandle(page, el);
-        await page.waitForTimeout(500);
-        const picked = await clickByText(
-            page,
-            ['[role="option"]', '[role="menuitem"]', 'li', 'button', 'a'],
-            storePattern
-        );
-        if (picked) {
-            // Confirm the picker actually switched before touching the forecast:
-            // typing against the previous store silently corrupts its data.
-            if (await waitForStoreSelected(page, labelNeedle)) return true;
-            throw new Error(`Clicked store ${store} in the LifeLenz picker but it did not become active.`);
-        }
-        await page.keyboard.press('Escape').catch(() => null);
+    const trigger = await findStorePickerTrigger(page);
+    if (!trigger) {
+        throw new Error(`Store picker trigger not found (could not select store ${store}).`);
     }
 
-    throw new Error(`Store ${store} was not found in the LifeLenz store list.`);
+    await safeClickHandle(page, trigger);
+    await page.waitForTimeout(500);
+
+    if (!(await pickStoreOptionFromOpenDropdown(page, store))) {
+        await page.keyboard.press('Escape').catch(() => null);
+        throw new Error(`Store ${store} was not found in the LifeLenz store list.`);
+    }
+
+    if (await waitForStoreSelected(page, labelNeedle)) return true;
+    throw new Error(`Clicked store ${store} in the LifeLenz picker but it did not become active.`);
 }
 
 async function navigateToForecast(page) {
@@ -236,29 +273,37 @@ async function isForecastDayViewActive(page) {
     });
 }
 
+async function clickDayViewTab(page) {
+    const dayLink = await page.$('a.calendar-unit-link.day, a[aria-label="Day View"]');
+    if (dayLink && (await safeClickHandle(page, dayLink))) return true;
+    return (
+        (await clickByText(page, ['a.calendar-unit-link', 'a', 'button'], /^day$/i)) ||
+        (await clickByText(page, ['a', 'button'], /^d$/i))
+    );
+}
+
 async function switchToDayView(page) {
-    const alreadyDay = await isForecastDayViewActive(page).catch(() => false);
-    if (!alreadyDay) {
-        let switched = false;
-        const dayLink = await page.$('a.calendar-unit-link.day, a[aria-label="Day View"]');
-        if (dayLink) switched = await safeClickHandle(page, dayLink);
-        if (!switched) {
-            switched =
-                (await clickByText(page, ['a', 'button'], /^day$/i)) ||
-                (await clickByText(page, ['a', 'button'], /^d$/i));
+    const deadline = Date.now() + 15000;
+    let clicked = false;
+
+    while (Date.now() < deadline) {
+        const count = await countVisibleDayPartInputs(page).catch(() => 0);
+        if (count >= DAY_PART_INPUT_COUNT) return;
+
+        if (!clicked) {
+            clicked = (await clickDayViewTab(page)) || false;
+            if (clicked) await page.waitForTimeout(SETTLE_MS);
         }
-        if (!switched) throw new Error('Could not switch LifeLenz forecast to Day view.');
+
+        await page.waitForTimeout(300);
     }
-    // Day view is ready when the date toolbar renders; fall back to a short
-    // settle if the selector never appears (older UI variants).
-    const ready = await page
-        .waitForSelector('.display-date, a.display-date, [aria-label="Open calendar picker"]', {
-            visible: true,
-            timeout: 10000,
-        })
-        .then(() => true)
-        .catch(() => false);
-    if (!ready) await page.waitForTimeout(SETTLE_MS);
+
+    const count = await countVisibleDayPartInputs(page).catch(() => 0);
+    if (count >= DAY_PART_INPUT_COUNT) return;
+
+    throw new Error(
+        `Could not switch LifeLenz forecast to Day view (${count} day-part inputs visible, need ${DAY_PART_INPUT_COUNT}).`
+    );
 }
 
 const LIFELENZ_TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
@@ -661,12 +706,12 @@ function resolveDayPartInputTimeoutMs(options = {}) {
  * view or while inputs are hydrating - poll until 9 fields are visible.
  */
 async function ensureForecastDayViewReady(page, options = {}) {
+    await switchToDayView(page).catch(() => null);
     const timeoutMs = resolveDayPartInputTimeoutMs(options);
     const deadline = Date.now() + timeoutMs;
     let lastCount = 0;
 
     while (Date.now() < deadline) {
-        await switchToDayView(page).catch(() => null);
         try {
             lastCount = await countVisibleDayPartInputs(page);
         } catch (err) {
@@ -814,6 +859,36 @@ async function countVisibleDayPartInputs(page) {
             const r = input.getBoundingClientRect();
             return r.width > 0 && r.height > 0;
         }).length;
+    }, DAY_PART_INPUT_SELECTOR);
+}
+
+/** Debug helper — snapshot Day/Week state and visible forecast inputs. */
+async function describeForecastPageState(page) {
+    return page.evaluate((selector) => {
+        const pick = (sel) =>
+            [...document.querySelectorAll(sel)].map((el) => ({
+                tag: el.tagName,
+                text: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 30),
+                className: (el.className || '').toString().slice(0, 60),
+                active: el.classList?.contains('active') || el.classList?.contains('is-active'),
+            }));
+        const inputs = [...document.querySelectorAll(selector)].filter((el) => {
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+        });
+        const dateEl = document.querySelector('.display-date, a.display-date, [aria-label="Open calendar picker"]');
+        return {
+            url: location.href,
+            dateLabel: (dateEl?.textContent || '').replace(/\s+/g, ' ').trim(),
+            dayTab: pick('a.calendar-unit-link.day, a[aria-label="Day View"]'),
+            weekTab: pick('a.calendar-unit-link.week, a[aria-label="Week View"]'),
+            visibleDayPartInputs: inputs.length,
+            dayPartSamples: inputs.slice(0, 3).map((el, i) => ({
+                index: i,
+                className: (el.className || '').slice(0, 60),
+                value: el.value,
+            })),
+        };
     }, DAY_PART_INPUT_SELECTOR);
 }
 
@@ -999,7 +1074,6 @@ async function writeForecastPlanOnPage(page, storeNumber, plan, accessibleStores
     await navigateToForecast(page);
     await switchToDayView(page);
     await waitForForecastDateToolbar(page);
-    await ensureForecastDayViewReady(page, options);
 
     const applied = [];
     for (const day of plan || []) {
@@ -1067,6 +1141,7 @@ module.exports = {
     readDayPartInputValues,
     verifyDayPartValues,
     countVisibleDayPartInputs,
+    describeForecastPageState,
     resolveQuirkReloadMaxMs,
     writeForecastPlanToLifeLenz,
     writeForecastPlanOnPage,

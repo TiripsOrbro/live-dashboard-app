@@ -65,6 +65,15 @@
             activate: () => global.AdminBuildTo?.setInlineHost?.(sectionPanels.get('build-to')?.host),
         },
         {
+            id: 'store-hours',
+            label: 'Operating times',
+            group: 'admin',
+            navGroup: 'admin',
+            visible: (p) => p.canAccessAdminMenu,
+            mount: (host, opts) => global.AdminStoreHours?.mount?.(host, opts),
+            activate: () => global.AdminStoreHours?.setInlineHost?.(sectionPanels.get('store-hours')?.host),
+        },
+        {
             id: 'five-am-reports',
             label: 'Daily reports',
             group: 'admin',

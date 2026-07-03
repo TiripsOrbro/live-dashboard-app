@@ -44,6 +44,7 @@
                     <button type="button" class="mic-settings-btn" data-admin-action="smg-nsf" hidden>Setup SMG/NSF</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="forecast">Forecast tool</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="build-to">Build to adjustments</button>
+                    <button type="button" class="mic-settings-btn" data-admin-action="store-hours">Operating times</button>
                     <button type="button" class="mic-settings-btn" data-admin-action="feature-requests" hidden>Feature requests</button>
                 </div>`;
     }
@@ -62,7 +63,7 @@
         const smgNsfBtn = root.querySelector('[data-admin-action="smg-nsf"]');
         if (smgNsfBtn) smgNsfBtn.hidden = true;
         root.querySelectorAll(
-            '[data-admin-action="view-accounts"], [data-admin-action="forecast"], [data-admin-action="build-to"]'
+            '[data-admin-action="view-accounts"], [data-admin-action="forecast"], [data-admin-action="build-to"], [data-admin-action="store-hours"]'
         ).forEach((btn) => {
             btn.hidden = !data.canAccessAdminMenu;
         });
@@ -92,6 +93,10 @@
         root.querySelector('[data-admin-action="build-to"]')?.addEventListener('click', () => {
             onBeforeAction();
             goToAdminPage('build-to', viewAccountsOptions());
+        });
+        root.querySelector('[data-admin-action="store-hours"]')?.addEventListener('click', () => {
+            onBeforeAction();
+            goToAdminPage('store-hours', viewAccountsOptions());
         });
         root.querySelector('[data-admin-action="store-logins"]')?.addEventListener('click', () => {
             onBeforeAction();

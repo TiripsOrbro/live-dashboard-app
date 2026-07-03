@@ -45,7 +45,7 @@ const {
     closeAllTrackedBrowsers,
     getTrackedBrowserCount,
 } = require('../mmx/src/browserLifecycle');
-const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./services/storeList');
+const { getStoreList, getStoreConfig, getStoreHoursConfig, updateStoreHours, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('./services/storeList');
 const {
     TEST_STORE_SLUG,
     TEST_STORE_NAME,
@@ -3242,6 +3242,85 @@ app.get('/api/admin/store-scope', (req, res) => {
         return;
     }
     res.json({ success: true, scopeTree });
+});
+
+app.get('/api/admin/store-hours', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const stores = filterStoresForUser(user, getStoreList())
+        .filter((s) => !isTestStore(s.storeNumber))
+        .map((s) => {
+            const config = getStoreHoursConfig(s.storeNumber);
+            if (!config) return null;
+            return {
+                storeNumber: config.storeNumber,
+                storeName: config.storeName,
+                area: config.area,
+                timeZone: config.timeZone,
+                scheduleType: config.scheduleType,
+                uniform: config.uniform,
+                hoursByDay: config.hoursByDay,
+                openHour: config.openHour,
+                closeHour: config.closeHour,
+            };
+        })
+        .filter(Boolean);
+    res.json({
+        success: true,
+        canEdit: canUserEditGlobalBuildTo(user),
+        stores,
+    });
+});
+
+app.get('/api/admin/store-hours/:storeNumber', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    const storeNumber = String(req.params.storeNumber || '').replace(/[^0-9]/g, '');
+    if (!storeNumber || isTestStore(storeNumber)) {
+        res.status(400).json({ success: false, error: 'Valid store number required.' });
+        return;
+    }
+    if (!assertStoreAccess(req, res, storeNumber)) return;
+    const config = getStoreHoursConfig(storeNumber);
+    if (!config) {
+        res.status(404).json({ success: false, error: 'Store not found in .storelist.' });
+        return;
+    }
+    res.json({
+        success: true,
+        canEdit: canUserEditGlobalBuildTo(user),
+        ...config,
+    });
+});
+
+app.put('/api/admin/store-hours/:storeNumber', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    if (!canUserEditGlobalBuildTo(user)) {
+        res.status(403).json({ success: false, error: 'Area Manager access or above required.' });
+        return;
+    }
+    const storeNumber = String(req.params.storeNumber || '').replace(/[^0-9]/g, '');
+    if (!storeNumber || isTestStore(storeNumber)) {
+        res.status(400).json({ success: false, error: 'Valid store number required.' });
+        return;
+    }
+    if (!assertStoreAccess(req, res, storeNumber)) return;
+    try {
+        const updated = updateStoreHours(storeNumber, req.body || {});
+        res.json({ success: true, ...updated });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not save store hours.' });
+    }
 });
 
 app.get('/change-password', (req, res) => {

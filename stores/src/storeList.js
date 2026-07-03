@@ -11,6 +11,7 @@ const DEFAULT_OPEN_HOUR = 10;
 const DEFAULT_CLOSE_HOUR = 22;
 
 const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_ALIASES = {
     sun: 0,
     mon: 1,
@@ -209,9 +210,198 @@ function getStoreConfig(storeNumber) {
     return getStoreList().find((s) => s.storeNumber === want) || null;
 }
 
+function readStoreListText() {
+    const filePath = resolveStoreListPath();
+    if (!filePath) return { filePath: null, text: '' };
+    try {
+        return { filePath, text: fs.readFileSync(filePath, 'utf8') };
+    } catch {
+        return { filePath, text: '' };
+    }
+}
+
+function isDayLine(trimmed) {
+    if (!trimmed || trimmed.startsWith('#')) return false;
+    const parts = trimmed.split('|').map((p) => p.trim());
+    return dayNameToIndex(parts[0]) >= 0;
+}
+
+function isStoreHeaderLine(trimmed) {
+    if (!trimmed || trimmed.startsWith('#')) return false;
+    const parts = trimmed.split('|').map((p) => p.trim());
+    if (dayNameToIndex(parts[0]) >= 0) return false;
+    const num = (parts[0] || '').replace(/[^0-9]/g, '');
+    return Boolean(num);
+}
+
+function serializeStoreBlock(store, scheduleType, uniform, hoursByDay) {
+    const lines = [];
+    const area = store.area || inferAreaFromStore(store.storeNumber, store.storeName, store.area, store.timeZone);
+    const timeZone =
+        store.timeZone || inferStoreTimeZone(store.storeNumber, store.storeName, store.timeZone);
+    if (scheduleType === 'uniform') {
+        const { openHour, closeHour } = normalizeHours(uniform.openHour, uniform.closeHour);
+        lines.push(
+            `${store.storeNumber} | ${store.storeName} | ${openHour} | ${closeHour} | ${area} | ${timeZone}`
+        );
+        return lines;
+    }
+
+    lines.push(`${store.storeNumber} | ${store.storeName} | ${area} | ${timeZone}`);
+    for (let i = 0; i < 7; i++) {
+        const dayHours = hoursByDay[i];
+        if (!dayHours) continue;
+        const { openHour, closeHour } = normalizeHours(dayHours.openHour, dayHours.closeHour);
+        lines.push(`    ${DAY_LABELS[i].padEnd(9)} | ${openHour} | ${closeHour}`);
+    }
+    return lines;
+}
+
+function replaceStoreBlockInText(text, storeNumber, newBlockLines) {
+    const lines = text.split(/\r?\n/);
+    const result = [];
+    let i = 0;
+    let replaced = false;
+
+    while (i < lines.length) {
+        const trimmed = lines[i].trim();
+        if (isStoreHeaderLine(trimmed)) {
+            const num = (trimmed.split('|')[0] || '').trim().replace(/[^0-9]/g, '');
+            if (num === storeNumber && !replaced) {
+                i++;
+                while (i < lines.length) {
+                    const nextTrim = lines[i].trim();
+                    if (!nextTrim || nextTrim.startsWith('#')) break;
+                    if (isDayLine(nextTrim)) {
+                        i++;
+                        continue;
+                    }
+                    if (isStoreHeaderLine(nextTrim)) break;
+                    i++;
+                }
+                result.push(...newBlockLines);
+                replaced = true;
+                continue;
+            }
+        }
+        result.push(lines[i]);
+        i++;
+    }
+
+    if (!replaced) {
+        throw new Error(`Store ${storeNumber} not found in .storelist.`);
+    }
+    return result.join('\n');
+}
+
+/** Full hours config for one store (uniform or per-day), for admin editing. */
+function getStoreHoursConfig(storeNumber) {
+    const want = String(storeNumber || '').replace(/[^0-9]/g, '');
+    if (!want) return null;
+
+    const { text } = readStoreListText();
+    if (!text) return null;
+
+    const store = parseStoreList(text).find((s) => s.storeNumber === want);
+    if (!store) return null;
+
+    const scheduleType = store.hoursByDay ? 'per-day' : 'uniform';
+    const uniform = store.uniform
+        ? { openHour: store.uniform.openHour, closeHour: store.uniform.closeHour }
+        : { openHour: DEFAULT_OPEN_HOUR, closeHour: DEFAULT_CLOSE_HOUR };
+    let hoursByDay = null;
+    if (store.hoursByDay) {
+        hoursByDay = {};
+        for (const [dayIdx, hours] of Object.entries(store.hoursByDay)) {
+            hoursByDay[String(dayIdx)] = {
+                openHour: hours.openHour,
+                closeHour: hours.closeHour,
+            };
+        }
+    }
+
+    const { openHour, closeHour } = resolveHours(store, new Date());
+    return {
+        storeNumber: store.storeNumber,
+        storeName: store.storeName,
+        area: store.area,
+        timeZone: store.timeZone || inferStoreTimeZone(store.storeNumber, store.storeName),
+        scheduleType,
+        uniform,
+        hoursByDay,
+        openHour,
+        closeHour,
+        defaultOpenHour: DEFAULT_OPEN_HOUR,
+        defaultCloseHour: DEFAULT_CLOSE_HOUR,
+    };
+}
+
+function normalizeHoursByDayInput(raw = {}) {
+    const hoursByDay = {};
+    for (let i = 0; i < 7; i++) {
+        const dayHours = raw[String(i)] ?? raw[i];
+        if (!dayHours) {
+            throw new Error(`Missing hours for ${DAY_LABELS[i]}.`);
+        }
+        hoursByDay[i] = normalizeHours(dayHours.openHour, dayHours.closeHour);
+    }
+    return hoursByDay;
+}
+
+/** Persist updated trading hours for one store back to `.storelist`. */
+function updateStoreHours(storeNumber, payload = {}) {
+    if (!fs.existsSync(STORELIST_PATH)) {
+        throw new Error('.storelist file not found. Create it before editing store hours.');
+    }
+
+    const want = String(storeNumber || '').replace(/[^0-9]/g, '');
+    if (!want) throw new Error('Store number is required.');
+
+    const text = fs.readFileSync(STORELIST_PATH, 'utf8');
+    const store = parseStoreList(text).find((s) => s.storeNumber === want);
+    if (!store) throw new Error(`Store ${want} not found in .storelist.`);
+
+    const scheduleType = payload.scheduleType === 'per-day' ? 'per-day' : 'uniform';
+    let uniform = null;
+    let hoursByDay = null;
+    if (scheduleType === 'uniform') {
+        uniform = normalizeHours(payload.uniform?.openHour, payload.uniform?.closeHour);
+    } else {
+        hoursByDay = normalizeHoursByDayInput(payload.hoursByDay || {});
+    }
+
+    const newBlock = serializeStoreBlock(store, scheduleType, uniform, hoursByDay);
+    const newText = replaceStoreBlockInText(text, want, newBlock);
+    fs.writeFileSync(STORELIST_PATH, newText, 'utf8');
+
+    const resolved = resolveHours(
+        {
+            uniform,
+            hoursByDay,
+            timeZone: store.timeZone,
+        },
+        new Date()
+    );
+
+    return {
+        storeNumber: want,
+        scheduleType,
+        uniform,
+        hoursByDay: hoursByDay
+            ? Object.fromEntries(
+                  Object.entries(hoursByDay).map(([dayIdx, hours]) => [String(dayIdx), { ...hours }])
+              )
+            : null,
+        openHour: resolved.openHour,
+        closeHour: resolved.closeHour,
+    };
+}
+
 module.exports = {
     getStoreList,
     getStoreConfig,
+    getStoreHoursConfig,
+    updateStoreHours,
     parseStoreList,
     resolveHours,
     DEFAULT_OPEN_HOUR,

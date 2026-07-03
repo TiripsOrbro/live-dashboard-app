@@ -4175,6 +4175,102 @@ html.mic-dark-mode .admin-forecast-override-unit {
     font-weight: 600;
 }
 
+/* Store operating times */
+.admin-store-hours-area-nav {
+    margin-bottom: 1rem;
+    width: 100%;
+}
+
+.admin-store-hours-area-nav .admin-accounts-scope-row-wrap,
+.admin-store-hours-area-nav .admin-store-hours-area-tabs {
+    width: 100%;
+    max-width: none;
+}
+
+.admin-store-hours-store-table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+.admin-store-hours-store-table .admin-store-hours-col-store {
+    width: 34%;
+}
+
+.admin-store-hours-store-row {
+    cursor: pointer;
+}
+
+.admin-store-hours-store-row.is-selected {
+    background: color-mix(in srgb, var(--tb-purple-light, #9b59d0) 12%, var(--white, #fff));
+}
+
+.admin-store-hours-store-row:focus-visible {
+    outline: 2px solid var(--tb-purple-light, #9b59d0);
+    outline-offset: -2px;
+}
+
+.admin-store-hours-editor {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.admin-store-hours-editor-title {
+    margin: 0 0 0.25rem;
+    font-size: var(--font-size-3, 1.1rem);
+    font-weight: 700;
+}
+
+.admin-store-hours-uniform {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    margin-top: 1rem;
+}
+
+.admin-store-hours-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    min-width: 8rem;
+}
+
+.admin-store-hours-field-label {
+    font-size: var(--font-size-6);
+    font-weight: 600;
+}
+
+.admin-store-hours-input {
+    width: 5.5rem;
+    min-height: 2.5rem;
+    padding: 0.45rem 0.65rem;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+    font: inherit;
+}
+
+.admin-store-hours-table {
+    margin-top: 1rem;
+    width: 100%;
+    max-width: 36rem;
+}
+
+.admin-store-hours-day-hint {
+    font-size: var(--font-size-6);
+    color: rgba(0, 0, 0, 0.55);
+    white-space: nowrap;
+}
+
+.admin-store-hours-table th,
+.admin-store-hours-table td {
+    padding: 0.55rem 0.65rem;
+    vertical-align: middle;
+}
+
+.admin-store-hours-actions {
+    margin-top: 1rem;
+}
+
 /* Report subscriptions — area tabs + store × report matrix */
 .admin-report-sub-area-nav {
     margin-bottom: 1rem;

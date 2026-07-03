@@ -1599,7 +1599,7 @@
         if (!day) return '-';
         if (day.status === 'error') return day.error || 'Failed';
         if (day.status === 'done') return `Saved · ${formatMoney(day.forecastTotal)}`;
-        if (day.dayParts?.length) {
+        if (day.dayParts?.length && day.status === 'filling') {
             const confirmed = day.dayParts.filter((part) => part.status === 'confirmed').length;
             const active = day.dayParts.some(
                 (part) => part.status === 'entering' || part.status === 'verifying'
@@ -1611,10 +1611,8 @@
             if (liveLabel.length > 32) return `${liveLabel.slice(0, 30)}…`;
             return liveLabel;
         }
-        if (day.status === 'pending' && liveLabel) {
-            if (/quirk/i.test(liveLabel)) return 'Overnight quirk…';
-            if (liveLabel.length > 32) return `${liveLabel.slice(0, 30)}…`;
-            return liveLabel;
+        if (day.status === 'pending') {
+            return day.forecastTotal != null ? `${formatMoney(day.forecastTotal)} · Pending` : 'Pending';
         }
         return progressDayStatusLabel(day.status);
     }
@@ -1713,7 +1711,6 @@
         const activeStatuses =
             channel === 'mmx' ? ['filling', 'verifying', 'saving'] : ['filling'];
         if (active || activeStatuses.includes(day.status)) return 'active';
-        if (channel === 'll' && day.status === 'pending' && liveLabel) return 'active';
         return 'pending';
     }
 
@@ -1723,11 +1720,13 @@
     }
 
     function lifelenzDayDetailMessage(day, liveLabel) {
-        if (!day) return liveLabel || 'Waiting for LifeLenz…';
+        if (!day) return 'Waiting for LifeLenz…';
         if (day.status === 'done') return `Saved in LifeLenz · ${formatMoney(day.forecastTotal)}`;
         if (day.status === 'error') return day.error || 'LifeLenz entry failed';
         if (day.status === 'filling' && liveLabel) return liveLabel;
-        if (day.status === 'pending' && liveLabel) return liveLabel;
+        if (day.status === 'pending') {
+            return day.forecastTotal != null ? `Pending · ${formatMoney(day.forecastTotal)}` : 'Pending';
+        }
         return progressDayStatusLabel(day.status);
     }
 
@@ -1771,7 +1770,7 @@
             mmxEl.textContent = mmxDayColumnSummary(mmxDay);
             llEl.textContent = lifelenzDayColumnSummary(llDay, {
                 isActive: llActive,
-                liveLabel: llActive || llDay?.status === 'pending' ? liveLabel : '',
+                liveLabel: llActive ? liveLabel : '',
             });
             applyProgressWeekColumnClass(
                 mmxEl,
@@ -1784,7 +1783,6 @@
                 progressWeekColumnStatus(llDay, {
                     active: llActive,
                     channel: 'll',
-                    liveLabel: llActive || llDay?.status === 'pending' ? liveLabel : '',
                 })
             );
         });
@@ -1850,7 +1848,8 @@
         const globalLiveLabel = activeStore?.lifelenzLiveLabel || state.lifelenzLiveLabel || '';
         const llLiveLabel =
             globalLiveLabel &&
-            (!state.lifelenzViewPinned || displayLlDay?.date === state.activeLifelenzDate)
+            displayLlDay?.date === state.activeLifelenzDate &&
+            displayLlDay?.status === 'filling'
                 ? globalLiveLabel
                 : '';
 

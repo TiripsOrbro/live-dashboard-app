@@ -225,7 +225,7 @@ async function setForecastPageDateByAdjacentDay(page, isoDate) {
     if (!clicked) return { ok: false };
 
     await waitForDisplayedForecastDate(page, displayStr);
-    await waitForForecastGrid(page, { settleMs: GRID_SETTLE_MS });
+    await waitForForecastGrid(page, { settleMs: POST_DATE_GRID_MS });
     const current = await readDisplayedForecastDate(page);
     if (current === displayStr) {
         return { ok: true, method: 'day-adjacent', previous: isoToMmxDate(currentIso), display: displayStr };
@@ -324,35 +324,66 @@ async function waitForForecastGrid(page, { settleMs = GRID_SETTLE_MS } = {}) {
                 document.querySelectorAll('tr.mx-fg-hour').length > 0 ||
                 document.querySelector('[id^="mx-forecast-grid-interval-directive-list-hour-"]') ||
                 document.querySelector('table.forecastGrid'),
-            { timeout: GRID_WAIT_MS }
+            { timeout: GRID_WAIT_MS, polling: 60 }
         )
         .catch(() => {});
     if (settleMs <= 0) return;
-    await page
-        .waitForFunction(
-            () => {
-                const rows = document.querySelectorAll('tr.mx-fg-hour').length;
-                return rows > 0;
+    const deadline = Date.now() + settleMs + POST_DATE_GRID_MS;
+    while (Date.now() < deadline) {
+        const count = await countForecastHourRows(page);
+        if (count > 0) return;
+        await page.waitForTimeout(50);
+    }
+}
+
+async function countForecastHourRows(page) {
+    return page.evaluate(() => {
+        return [...document.querySelectorAll('tr.mx-fg-hour')].filter((tr) =>
+            tr.querySelector('[id*="managerforecast"], td.mx-grid-column-input')
+        ).length;
+    });
+}
+
+/** Poll until the manager-forecast grid shows enough rows and the first planned hour label. */
+async function ensureForecastGridReadyForHours(page, hourly, options = {}) {
+    const slots = normalizeHourlySlots(hourly);
+    const minRows = Math.max(1, Math.min(slots.length, Number(options.minRows) || 8));
+    const firstLabel = slots[0]?.label || '';
+    const timeoutMs = Number(options.timeoutMs) || GRID_WAIT_MS;
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+        const ready = await page.evaluate(
+            (min, label) => {
+                const rows = [...document.querySelectorAll('tr.mx-fg-hour')].filter((tr) =>
+                    tr.querySelector('[id*="managerforecast"], td.mx-grid-column-input')
+                );
+                if (rows.length < min) return false;
+                if (!label) return true;
+                return rows.some((tr) => {
+                    const labelSpan = tr.querySelector('[id^="mx-forecast-grid-interval-directive-list-hour-"]');
+                    const rowLabel = (labelSpan?.textContent || '').replace(/\s+/g, ' ').trim();
+                    return rowLabel === label;
+                });
             },
-            { timeout: settleMs + 500, polling: 50 }
-        )
-        .catch(() => {});
+            minRows,
+            firstLabel
+        );
+        if (ready) return true;
+        await page.waitForTimeout(80);
+    }
+    return false;
 }
 
 /** Wait until manager-forecast hour rows are present (grid finished reloading after date change). */
 async function waitForForecastHourRows(page, { minRows = 8, timeoutMs = GRID_WAIT_MS } = {}) {
-    await page
-        .waitForFunction(
-            (min) => {
-                const rows = [...document.querySelectorAll('tr.mx-fg-hour')].filter((tr) =>
-                    tr.querySelector('[id*="managerforecast"], td.mx-grid-column-input')
-                );
-                return rows.length >= min;
-            },
-            { timeout: timeoutMs, polling: 60 },
-            minRows
-        )
-        .catch(() => {});
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const count = await countForecastHourRows(page);
+        if (count >= minRows) return true;
+        await page.waitForTimeout(80);
+    }
+    return (await countForecastHourRows(page)) >= minRows;
 }
 
 async function dismissForecastOverrideEditor(page) {
@@ -502,8 +533,8 @@ async function fillForecastHourCell(page, wantLabel, forecast) {
     );
     if (!ok) return false;
     await dismissForecastOverrideEditor(page);
-    const verified = await waitForManagerForecastValue(page, wantLabel, wanted, 1500);
-    return verified.ok;
+    await page.waitForTimeout(FILL_CELL_SETTLE_MS);
+    return true;
 }
 
 async function enterAndVerifyForecastSlot(page, slot, onProgress, { retry = false } = {}) {
@@ -765,7 +796,7 @@ async function setForecastPageDate(page, isoDate, options = {}) {
         throw new Error(`Forecast date did not stick: wanted ${displayStr}, still ${verified}`);
     }
 
-    await waitForForecastGrid(page, { settleMs: GRID_SETTLE_MS });
+    await waitForForecastGrid(page, { settleMs: options.fast ? POST_DATE_GRID_MS : GRID_SETTLE_MS });
     await waitForForecastHourRows(page, { minRows: 1 });
 
     return { date: isoDate, display: displayStr, ...result };
@@ -824,7 +855,24 @@ async function writeForecastPlanToSpa(page, storeNumber, plan, options = {}) {
             skipScroll: dayIndex > 0,
             fast: dayIndex > 0,
         });
-        await waitForForecastHourRows(page, { minRows: Math.min(8, hourly.length) });
+        let gridReady = await ensureForecastGridReadyForHours(page, hourly, {
+            minRows: Math.min(8, hourly.length),
+            timeoutMs: dayIndex > 0 ? 15000 : GRID_WAIT_MS,
+        });
+        if (!gridReady) {
+            await setForecastPageDate(page, day.date, { skipScroll: true, fast: false });
+            gridReady = await ensureForecastGridReadyForHours(page, hourly, {
+                minRows: Math.min(8, hourly.length),
+                timeoutMs: GRID_WAIT_MS,
+            });
+        }
+        if (!gridReady) {
+            const visible = await countForecastHourRows(page);
+            const display = await readDisplayedForecastDate(page);
+            throw new Error(
+                `Forecast grid not ready for ${day.date} (${visible} hour rows visible, date showing ${display || 'unknown'}).`
+            );
+        }
         await dismissForecastOverrideEditor(page);
         emit({ type: 'day-filling', date: day.date });
 

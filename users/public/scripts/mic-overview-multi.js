@@ -1101,6 +1101,7 @@
             subtitle: subtitleForScope(),
             promoBannerHtml: promoBannerHtml || '',
         });
+        global.AdminStoreView?.afterShellRendered?.(meProfile);
         bindMicNavigationSettings();
         renderTiles();
     }

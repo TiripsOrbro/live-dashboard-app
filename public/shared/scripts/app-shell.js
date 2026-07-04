@@ -145,6 +145,7 @@
         await loadScript('/scripts/mic-overview-shell.js');
         await loadScript('/scripts/mic-overview-tiles.js');
         await loadScript('/scripts/mic-overview-multi.js');
+        await loadScriptBatch(['/scripts/admin-scope-picker.js', '/scripts/admin-store-view.js']);
         await loadScript('/scripts/mic-dashboard.js');
     }
 
@@ -158,8 +159,6 @@
             '/scripts/admin-store-logins.js',
             '/scripts/admin-smg-nsf.js',
             '/scripts/admin-store-picker.js',
-            '/scripts/admin-scope-picker.js',
-            '/scripts/admin-store-view.js',
             '/scripts/mmx-user-login-prompt.js',
         ]);
     }

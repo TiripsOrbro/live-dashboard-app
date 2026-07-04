@@ -1079,8 +1079,54 @@ html.mic-rounded-corners .admin-modal--build-to {
     color: #5a5a66;
 }
 
+.admin-buildto-table--configure {
+    table-layout: fixed;
+    width: max-content;
+    min-width: 100%;
+}
+
 .admin-buildto-table--configure thead th {
     white-space: nowrap;
+}
+
+.admin-buildto-table--configure thead th.admin-buildto-col-header {
+    position: relative;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.admin-buildto-col-resize {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 100%;
+    cursor: col-resize;
+    user-select: none;
+    touch-action: none;
+}
+
+.admin-buildto-col-resize:hover,
+body.admin-buildto-col-resizing .admin-buildto-col-resize {
+    background: rgba(122, 62, 177, 0.28);
+}
+
+body.admin-buildto-col-resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
+.admin-buildto-table--configure td {
+    overflow: hidden;
+    vertical-align: middle;
+}
+
+.admin-buildto-table--configure .admin-buildto-name-input,
+.admin-buildto-table--configure .admin-buildto-code-input,
+.admin-buildto-table--configure .admin-buildto-fallback-input,
+.admin-buildto-table--configure .admin-buildto-type-select {
+    max-width: 100%;
+    min-width: 0;
 }
 
 .admin-buildto-unit-select--off {
@@ -1455,14 +1501,6 @@ html.mic-rounded-corners .admin-modal--build-to {
     width: 100%;
     min-width: 8rem;
     box-sizing: border-box;
-}
-
-.admin-buildto-table--configure td:first-child .admin-buildto-name-input {
-    min-width: 14rem;
-}
-
-.admin-buildto-table--configure td:nth-child(2) .admin-buildto-name-input {
-    min-width: 7rem;
 }
 
 .admin-buildto-code-input:focus,

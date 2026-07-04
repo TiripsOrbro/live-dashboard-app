@@ -17,6 +17,120 @@
     let configureVendorFilter = '';
     let unitLabelOptions = [];
 
+    const CONFIGURE_COL_KEYS = [
+        'mmxName',
+        'commonName',
+        'vendor',
+        'mmxCode',
+        'vendorCode',
+        'fallbackCodes',
+        'outer',
+        'inner',
+        'unit',
+        'unitsPerPack',
+        'packsPerBox',
+        'countOuter',
+        'countInner',
+        'countUnit',
+    ];
+    const CONFIGURE_COL_DEFAULTS = {
+        mmxName: 280,
+        commonName: 120,
+        vendor: 110,
+        mmxCode: 88,
+        vendorCode: 88,
+        fallbackCodes: 140,
+        outer: 72,
+        inner: 72,
+        unit: 72,
+        unitsPerPack: 108,
+        packsPerBox: 108,
+        countOuter: 76,
+        countInner: 76,
+        countUnit: 76,
+    };
+    const CONFIGURE_COL_WIDTHS_KEY = 'admin-buildto-configure-col-widths';
+
+    function loadConfigureColWidths() {
+        try {
+            const raw = localStorage.getItem(CONFIGURE_COL_WIDTHS_KEY);
+            if (!raw) return { ...CONFIGURE_COL_DEFAULTS };
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object') return { ...CONFIGURE_COL_DEFAULTS };
+            return { ...CONFIGURE_COL_DEFAULTS, ...parsed };
+        } catch {
+            return { ...CONFIGURE_COL_DEFAULTS };
+        }
+    }
+
+    function saveConfigureColWidth(key, width) {
+        const widths = loadConfigureColWidths();
+        widths[key] = Math.max(48, Math.round(width));
+        try {
+            localStorage.setItem(CONFIGURE_COL_WIDTHS_KEY, JSON.stringify(widths));
+        } catch {
+            /* ignore quota errors */
+        }
+    }
+
+    function configureColgroupHtml() {
+        const widths = loadConfigureColWidths();
+        return `<colgroup>${CONFIGURE_COL_KEYS.map(
+            (key) => `<col data-col-key="${escapeHtml(key)}" style="width:${widths[key]}px">`
+        ).join('')}</colgroup>`;
+    }
+
+    function bindConfigureColumnResize(table) {
+        if (!table) return;
+        CONFIGURE_COL_KEYS.forEach((key, index) => {
+            const col = table.querySelector(`colgroup col[data-col-key="${key}"]`);
+            const th = table.querySelector(`thead th:nth-child(${index + 1})`);
+            if (!col || !th || th.querySelector('.admin-buildto-col-resize')) return;
+
+            th.classList.add('admin-buildto-col-header');
+            const handle = document.createElement('span');
+            handle.className = 'admin-buildto-col-resize';
+            handle.setAttribute('role', 'separator');
+            handle.setAttribute('aria-orientation', 'vertical');
+            handle.title = 'Drag to resize column';
+            th.appendChild(handle);
+
+            let startX = 0;
+            let startWidth = 0;
+
+            const onMove = (event) => {
+                const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+                const next = Math.max(48, startWidth + (clientX - startX));
+                col.style.width = `${next}px`;
+            };
+
+            const onEnd = () => {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onEnd);
+                document.removeEventListener('touchmove', onMove);
+                document.removeEventListener('touchend', onEnd);
+                document.body.classList.remove('admin-buildto-col-resizing');
+                const width = parseInt(col.style.width, 10);
+                if (Number.isFinite(width)) saveConfigureColWidth(key, width);
+            };
+
+            const onStart = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                startX = event.touches ? event.touches[0].clientX : event.clientX;
+                startWidth = th.getBoundingClientRect().width;
+                document.body.classList.add('admin-buildto-col-resizing');
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onEnd);
+                document.addEventListener('touchmove', onMove, { passive: false });
+                document.addEventListener('touchend', onEnd);
+            };
+
+            handle.addEventListener('mousedown', onStart);
+            handle.addEventListener('touchstart', onStart, { passive: false });
+        });
+    }
+
     const BUILD_TO_COG_SVG = `<svg class="admin-buildto-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96c-.5-.38-1.05-.7-1.65-.94l-.36-2.54a.5.5 0 0 0-.49-.42h-3.84a.5.5 0 0 0-.49.42l-.36 2.54c-.6.24-1.15.56-1.65.94l-2.39-.96a.5.5 0 0 0-.6.22l-1.92 3.32a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.38 1.05.7 1.65.94l.36 2.54a.5.5 0 0 0 .49.42h3.84a.5.5 0 0 0 .49-.42l.36-2.54c.6-.24 1.15-.56 1.65-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"/>
             </svg>`;
@@ -718,6 +832,7 @@
         const itemsByCode = new Map(items.map((item) => [String(item.itemCode), item]));
         body.innerHTML = `
             <table class="admin-table admin-buildto-table admin-buildto-table--configure">
+                ${configureColgroupHtml()}
                 <thead>
                     <tr>
                         <th>MMX name</th>
@@ -764,6 +879,8 @@
                         .join('')}
                 </tbody>
             </table>`;
+        const table = body.querySelector('.admin-buildto-table--configure');
+        bindConfigureColumnResize(table);
         bindConfigureRowControls(itemsByCode);
     }
 

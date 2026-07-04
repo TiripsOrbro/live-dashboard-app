@@ -69,9 +69,26 @@ function upsertVendorOrderForCatalog({ catalogSlug, label, vendorMatch }) {
     return doc;
 }
 
+function removeVendorOrdersForCatalogSlug(catalogSlug) {
+    const slug = String(catalogSlug || '').trim().toLowerCase();
+    if (!slug) throw new Error('Catalog slug is required.');
+
+    const doc = loadVendorOrdersConfig();
+    doc.vendors = Array.isArray(doc.vendors) ? doc.vendors : [];
+    const next = doc.vendors.filter(
+        (entry) => String(entry.catalogSlug || '').trim().toLowerCase() !== slug
+    );
+    if (next.length === doc.vendors.length) return doc;
+
+    doc.vendors = next;
+    writeVendorOrdersConfig(doc);
+    return doc;
+}
+
 module.exports = {
     CONFIG_PATH,
     loadVendorOrdersConfig,
     writeVendorOrdersConfig,
     upsertVendorOrderForCatalog,
+    removeVendorOrdersForCatalogSlug,
 };

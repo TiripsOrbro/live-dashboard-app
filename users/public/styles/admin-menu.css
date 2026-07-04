@@ -1154,6 +1154,34 @@ html.mic-rounded-corners .admin-modal--build-to {
     color: #5a5a66;
 }
 
+.admin-buildto-vendor-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.admin-buildto-vendor-filter-row .admin-buildto-type-select {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.admin-buildto-vendor-remove {
+    flex: 0 0 auto;
+}
+
+.admin-buildto-vendor-remove:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.admin-buildto-vendor-remove:not(:disabled):hover {
+    color: #b42318;
+}
+
+html.mic-dark-mode .admin-buildto-vendor-remove:not(:disabled):hover {
+    color: #f87171;
+}
+
 .admin-buildto-table--configure {
     table-layout: fixed;
     width: 0;

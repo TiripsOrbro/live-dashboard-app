@@ -195,6 +195,52 @@ function registerCustomVendor({ label, slug: slugInput }) {
     return { ...entry, custom: true };
 }
 
+function removeCustomVendor(slug) {
+    const normalized = slugifyKey(slug);
+    if (!normalized) throw new Error('Vendor slug is required.');
+    if (VENDOR_DEFINITIONS.some((def) => def.slug === normalized)) {
+        throw new Error('Built-in vendors cannot be removed.');
+    }
+
+    const def = getVendorDefinition(normalized);
+    if (!def) throw new Error('Unknown vendor.');
+
+    if (!fs.existsSync(CUSTOM_VENDORS_PATH)) {
+        throw new Error('Only custom vendors can be removed.');
+    }
+
+    let doc = { vendors: [] };
+    try {
+        doc = JSON.parse(fs.readFileSync(CUSTOM_VENDORS_PATH, 'utf8'));
+    } catch {
+        throw new Error('Could not read custom vendor registry.');
+    }
+    doc.vendors = Array.isArray(doc.vendors) ? doc.vendors : [];
+    const next = doc.vendors.filter((v) => slugifyKey(v.slug) !== normalized);
+    if (next.length === doc.vendors.length) {
+        throw new Error('Only custom vendors can be removed.');
+    }
+
+    doc.vendors = next;
+    fs.mkdirSync(path.dirname(CUSTOM_VENDORS_PATH), { recursive: true });
+    fs.writeFileSync(CUSTOM_VENDORS_PATH, `${JSON.stringify(doc, null, 2)}\n`, 'utf8');
+
+    const livePath = path.join(VENDORS_DIR, def.dotfile);
+    if (fs.existsSync(livePath)) {
+        fs.unlinkSync(livePath);
+    }
+
+    try {
+        const { removeVendorOrdersForCatalogSlug } = require('./vendorOrdersConfig');
+        removeVendorOrdersForCatalogSlug(normalized);
+    } catch (err) {
+        console.warn('[vendorCatalog] Could not update vendor-orders after vendor removal:', err.message);
+    }
+
+    invalidateVendorRegistry();
+    return { slug: normalized, label: def.label };
+}
+
 function readCatalogFileSections(def) {
     const filePath = resolveCatalogPath(def);
     if (!filePath) return { header: [], itemLines: [], filePath: null };
@@ -1062,6 +1108,7 @@ module.exports = {
     listAllVendorDefinitions,
     getAllVendorDefinitions,
     registerCustomVendor,
+    removeCustomVendor,
     readCatalogFileSections,
     ensureLiveCatalogPath,
     invalidateVendorRegistry,

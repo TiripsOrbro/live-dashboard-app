@@ -55,7 +55,7 @@ const {
     stickyKeyForTestMirror,
     testStoreListEntry,
 } = require('./services/testStore');
-const { listConfiguredVendors, getVendorCatalog, appendVendorCatalogItem, removeVendorCatalogItem, findCatalogItemByCode } = require('./services/vendorCatalog');
+const { listConfiguredVendors, getVendorCatalog, appendVendorCatalogItem, removeVendorCatalogItem, removeCustomVendor, findCatalogItemByCode } = require('./services/vendorCatalog');
 const {
     buildCombinedStockCountCatalog,
     isCombinedStockCountSlug,
@@ -5248,6 +5248,30 @@ app.delete('/api/admin/build-to/items', (req, res) => {
         res.json({ success: true, itemCode: result.itemCode });
     } catch (err) {
         res.status(400).json({ success: false, error: err.message || 'Could not delete item.' });
+    }
+});
+
+app.delete('/api/admin/build-to/vendors/:slug', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    if (!canUserEditGlobalBuildTo(user)) {
+        res.status(403).json({ success: false, error: 'Area Manager or above can remove vendors.' });
+        return;
+    }
+    try {
+        const result = removeCustomVendor(String(req.params.slug || '').trim());
+        appendAccountAudit({
+            action: 'remove-custom-vendor',
+            updatedBy: user.username,
+            vendor: result.slug,
+            label: result.label,
+        });
+        res.json({ success: true, ...result });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not remove vendor.' });
     }
 });
 

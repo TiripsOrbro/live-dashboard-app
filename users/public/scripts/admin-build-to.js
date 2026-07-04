@@ -411,7 +411,10 @@
                 <div class="admin-modal-toolbar admin-buildto-toolbar">
                     <div class="admin-buildto-vendor-filter-wrap" id="admin-buildto-vendor-filter-wrap" hidden>
                         <label class="admin-buildto-vendor-filter-label">Vendor
-                            <select id="admin-buildto-vendor-filter" class="admin-buildto-type-select" aria-label="Filter by vendor"></select>
+                            <span class="admin-buildto-vendor-filter-row">
+                                <select id="admin-buildto-vendor-filter" class="admin-buildto-type-select" aria-label="Filter by vendor"></select>
+                                <button type="button" class="mic-settings-btn admin-buildto-vendor-remove admin-buildto-header-icon-btn" id="admin-buildto-vendor-remove" hidden aria-label="Remove vendor" title="Remove inactive vendor">${BUILD_TO_REMOVE_SVG}</button>
+                            </span>
                         </label>
                     </div>
                     <div class="admin-buildto-search-wrap">
@@ -447,7 +450,11 @@
         });
         root.querySelector('#admin-buildto-vendor-filter')?.addEventListener('change', (event) => {
             configureVendorFilter = event.target.value || '';
+            updateVendorRemoveButton();
             renderTable();
+        });
+        root.querySelector('#admin-buildto-vendor-remove')?.addEventListener('click', () => {
+            void removeSelectedVendor();
         });
         root.querySelector('#admin-buildto-search')?.addEventListener('input', () => renderTable());
     }
@@ -515,6 +522,8 @@
         }
         if (browseScopeHost) browseScopeHost.hidden = isConfigure;
         if (vendorFilterWrap) vendorFilterWrap.hidden = !isConfigure;
+        const vendorRemoveBtn = root.querySelector('#admin-buildto-vendor-remove');
+        if (vendorRemoveBtn) vendorRemoveBtn.hidden = !(isConfigure && canAddItems);
         if (copyBtn) copyBtn.hidden = !(isConfigure && canCopyVendor);
         if (addBtn) addBtn.hidden = !isConfigure || !canAddItems;
     }
@@ -550,20 +559,84 @@
         });
     }
 
+    function vendorsForFilter() {
+        if (allVendorsCache.length) return allVendorsCache;
+        return (catalogCache?.vendors || newItemVendors()).map((v) => ({
+            slug: v.slug,
+            label: v.label || v.slug,
+            configured: true,
+            custom: false,
+        }));
+    }
+
+    function selectedFilterVendor() {
+        return vendorsForFilter().find((v) => v.slug === configureVendorFilter) || null;
+    }
+
+    function updateVendorRemoveButton() {
+        const root = ensureBackdrop();
+        const btn = root.querySelector('#admin-buildto-vendor-remove');
+        const vendor = selectedFilterVendor();
+        if (!btn) return;
+        const removable = Boolean(vendor?.custom);
+        btn.disabled = !removable;
+        btn.title = removable
+            ? `Remove ${vendor.label || vendor.slug}`
+            : vendor
+              ? 'Built-in vendors cannot be removed'
+              : 'Remove inactive vendor';
+    }
+
     function populateVendorFilter() {
         const root = ensureBackdrop();
         const select = root.querySelector('#admin-buildto-vendor-filter');
         if (!select) return;
-        const vendors = catalogCache?.vendors || newItemVendors();
+        const vendors = vendorsForFilter();
         if (!configureVendorFilter && vendors.length) {
             configureVendorFilter = vendors[0].slug;
+        } else if (configureVendorFilter && !vendors.some((v) => v.slug === configureVendorFilter)) {
+            configureVendorFilter = vendors[0]?.slug || '';
         }
         select.innerHTML = vendors
-            .map(
-                (v) =>
-                    `<option value="${escapeHtml(v.slug)}" ${v.slug === configureVendorFilter ? 'selected' : ''}>${escapeHtml(v.label || v.slug)}</option>`
-            )
+            .map((v) => {
+                const label = v.configured ? v.label || v.slug : `${v.label || v.slug} (inactive)`;
+                return `<option value="${escapeHtml(v.slug)}" ${v.slug === configureVendorFilter ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+            })
             .join('');
+        updateVendorRemoveButton();
+    }
+
+    async function removeSelectedVendor() {
+        const vendor = selectedFilterVendor();
+        if (!vendor?.custom) return;
+        const label = String(vendor.label || vendor.slug).trim();
+        if (
+            !global.confirm(
+                `Remove vendor "${label}"?\n\nThis deletes the custom vendor catalog and its MMX order entry. Built-in vendors (Americold, Bega, etc.) cannot be removed.`
+            )
+        ) {
+            return;
+        }
+
+        const root = ensureBackdrop();
+        const errEl = root.querySelector('#admin-buildto-error');
+        if (errEl) errEl.textContent = '';
+
+        try {
+            const res = await fetch(`/api/admin/build-to/vendors/${encodeURIComponent(vendor.slug)}`, {
+                method: 'DELETE',
+                credentials: 'same-origin',
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.success === false) {
+                throw new Error(data.error || 'Could not remove vendor.');
+            }
+            configureVendorFilter = '';
+            allVendorsCache = [];
+            await loadCatalog();
+        } catch (error) {
+            if (errEl) errEl.textContent = error.message || 'Could not remove vendor.';
+        }
     }
 
     function renderTable() {

@@ -390,9 +390,13 @@ function formatHourLabel(hour) {
     return `${normalized - 12}:00 PM`;
 }
 
+function normalizeGridHourLabel(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
 /** Reverse of formatHourLabel — e.g. "10:00 AM" → 10, "12:00 PM" → 12. */
 function parseHourLabel(label) {
-    const m = String(label || '').match(/^(\d{1,2}):00\s*(AM|PM)$/i);
+    const m = normalizeGridHourLabel(label).match(/^(\d{1,2}):00\s*(AM|PM)$/i);
     if (!m) return null;
     let h = parseInt(m[1], 10);
     const pm = m[2].toUpperCase() === 'PM';
@@ -400,6 +404,31 @@ function parseHourLabel(label) {
     if (h === 12 && pm) return 12;
     if (!pm) return h;
     return h + 12;
+}
+
+function hourLabelsMatch(a, b) {
+    const left = normalizeGridHourLabel(a);
+    const right = normalizeGridHourLabel(b);
+    if (left && left === right) return true;
+    const ha = parseHourLabel(left);
+    const hb = parseHourLabel(right);
+    return ha != null && hb != null && ha === hb;
+}
+
+function buildGridLabelByHour(labels) {
+    const map = new Map();
+    for (const label of labels || []) {
+        const hour = parseHourLabel(label);
+        if (hour != null && !map.has(hour)) map.set(hour, normalizeGridHourLabel(label));
+    }
+    return map;
+}
+
+function alignSlotLabelsToGrid(slots, labelByHour) {
+    return (slots || []).map((slot) => {
+        const gridLabel = labelByHour.get(Number(slot.hour));
+        return gridLabel ? { ...slot, label: gridLabel } : slot;
+    });
 }
 
 function isWithinTradingHours(hour, openHour, closeHour) {
@@ -441,12 +470,12 @@ async function readAllManagerForecastCells(page) {
 
 /** Trading-hour plan slots plus $0 for every other hour row visible on the MMX grid. */
 async function buildDayFillSlots(page, day, openHour, closeHour) {
-    const open = Number(openHour);
-    const close = Number(closeHour);
-    const trading = normalizeHourlySlots(day.hourly || []).filter((slot) =>
-        isWithinTradingHours(slot.hour, open, close)
-    );
     const gridLabels = await listForecastGridHourLabels(page);
+    const labelByHour = buildGridLabelByHour(gridLabels);
+    // Plan hourly is already scoped to history trading hours — do not re-filter by
+    // storelist hours (can disagree, e.g. 3904 storelist close 14 vs plan close 22).
+    let trading = normalizeHourlySlots(day.hourly || []);
+    trading = alignSlotLabelsToGrid(trading, labelByHour);
     const tradingLabels = new Set(trading.map((s) => s.label));
     const outside = [];
 
@@ -454,7 +483,7 @@ async function buildDayFillSlots(page, day, openHour, closeHour) {
         if (tradingLabels.has(label)) continue;
         const hour = parseHourLabel(label);
         if (hour == null) continue;
-        outside.push({ hour, label, forecast: 0, outsideHours: true });
+        outside.push({ hour, label: normalizeGridHourLabel(label), forecast: 0, outsideHours: true });
     }
 
     return [...trading, ...outside];
@@ -486,25 +515,38 @@ async function ensureForecastGridReadyForHours(page, hourly, options = {}) {
     const slots = normalizeHourlySlots(hourly);
     const minRows = Math.max(1, Math.min(slots.length, Number(options.minRows) || 8));
     const firstLabel = slots[0]?.label || '';
+    const firstHour = slots[0]?.hour ?? null;
     const timeoutMs = Number(options.timeoutMs) || GRID_WAIT_MS;
     const deadline = Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {
         const ready = await page.evaluate(
-            (min, label) => {
+            (min, label, hour) => {
+                const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+                const parse = (text) => {
+                    const m = norm(text).match(/^(\d{1,2}):00\s*(AM|PM)$/i);
+                    if (!m) return null;
+                    let h = parseInt(m[1], 10);
+                    const pm = m[2].toUpperCase() === 'PM';
+                    if (h === 12 && !pm) return 0;
+                    if (h === 12 && pm) return 12;
+                    return pm ? h + 12 : h;
+                };
                 const rows = [...document.querySelectorAll('tr.mx-fg-hour')].filter((tr) =>
                     tr.querySelector('[id*="managerforecast"], td.mx-grid-column-input')
                 );
                 if (rows.length < min) return false;
-                if (!label) return true;
+                if (!label && hour == null) return true;
                 return rows.some((tr) => {
                     const labelSpan = tr.querySelector('[id^="mx-forecast-grid-interval-directive-list-hour-"]');
-                    const rowLabel = (labelSpan?.textContent || '').replace(/\s+/g, ' ').trim();
-                    return rowLabel === label;
+                    const rowLabel = norm(labelSpan?.textContent);
+                    if (label && rowLabel === norm(label)) return true;
+                    return hour != null && parse(rowLabel) === hour;
                 });
             },
             minRows,
-            firstLabel
+            firstLabel,
+            firstHour
         );
         if (ready) return true;
         await page.waitForTimeout(POLL_MS);
@@ -541,7 +583,7 @@ async function waitForOverrideEditorClosed(page, timeoutMs = OVERRIDE_CLOSE_MS) 
 }
 
 /** Poll until inline editor is gone and the manager-forecast cell shows the committed value. */
-async function waitForCellCommitted(page, wantLabel, wanted, timeoutMs = VERIFY_TIMEOUT_MS) {
+async function waitForCellCommitted(page, wantLabel, wanted, timeoutMs = VERIFY_TIMEOUT_MS, wantHour = null) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         const editorClosed = await page.evaluate(() => {
@@ -551,7 +593,7 @@ async function waitForCellCommitted(page, wantLabel, wanted, timeoutMs = VERIFY_
             return r.width <= 0 || r.height <= 0;
         });
         if (editorClosed) {
-            const readText = await readManagerForecastCell(page, wantLabel);
+            const readText = await readManagerForecastCell(page, wantLabel, wantHour);
             if (forecastValuesMatch(readText, wanted)) return true;
         }
         await page.waitForTimeout(POLL_MS);
@@ -642,9 +684,10 @@ function forecastValuesMatch(readText, want) {
 function normalizeHourlySlots(hourly) {
     return (hourly || []).map((slot) => ({
         hour: slot.hour,
-        label: slot.label || formatHourLabel(slot.hour),
+        label: formatHourLabel(slot.hour),
         forecast: Math.round(Number(slot.forecast) || 0),
         ...(slot.outsideHours ? { outsideHours: true } : {}),
+        ...(slot.zeroSales ? { zeroSales: true } : {}),
     }));
 }
 
@@ -657,33 +700,51 @@ function emitSlotProgress(onProgress, payload) {
     }
 }
 
-async function readManagerForecastCell(page, wantLabel) {
-    return page.evaluate((label) => {
-        for (const tr of document.querySelectorAll('tr.mx-fg-hour')) {
-            const labelSpan = tr.querySelector('[id^="mx-forecast-grid-interval-directive-list-hour-"]');
-            const rowLabel = (labelSpan?.textContent || '').replace(/\s+/g, ' ').trim();
-            if (rowLabel !== label) continue;
-            const cell =
-                tr.querySelector('[id*="managerforecast"]') ||
-                tr.querySelector('td.mx-grid-column-input');
-            if (!cell) return null;
-            return (cell.textContent || '').replace(/\s+/g, ' ').trim();
-        }
-        return null;
-    }, wantLabel);
+async function readManagerForecastCell(page, wantLabel, wantHour = null) {
+    return page.evaluate(
+        (label, hour) => {
+            const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+            const parse = (text) => {
+                const m = norm(text).match(/^(\d{1,2}):00\s*(AM|PM)$/i);
+                if (!m) return null;
+                let h = parseInt(m[1], 10);
+                const pm = m[2].toUpperCase() === 'PM';
+                if (h === 12 && !pm) return 0;
+                if (h === 12 && pm) return 12;
+                return pm ? h + 12 : h;
+            };
+            const wantNorm = norm(label);
+            for (const tr of document.querySelectorAll('tr.mx-fg-hour')) {
+                const labelSpan = tr.querySelector('[id^="mx-forecast-grid-interval-directive-list-hour-"]');
+                const rowLabel = norm(labelSpan?.textContent);
+                const rowHour = parse(rowLabel);
+                const labelMatch = rowLabel === wantNorm;
+                const hourMatch = hour != null && rowHour != null && rowHour === hour;
+                if (!labelMatch && !hourMatch) continue;
+                const cell =
+                    tr.querySelector('[id*="managerforecast"]') ||
+                    tr.querySelector('td.mx-grid-column-input');
+                if (!cell) return null;
+                return norm(cell.textContent);
+            }
+            return null;
+        },
+        wantLabel,
+        wantHour != null ? Number(wantHour) : null
+    );
 }
 
-async function waitForManagerForecastValue(page, wantLabel, forecast, timeoutMs = VERIFY_TIMEOUT_MS) {
+async function waitForManagerForecastValue(page, wantLabel, forecast, timeoutMs = VERIFY_TIMEOUT_MS, wantHour = null) {
     const wanted = Math.round(Number(forecast) || 0);
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-        const readText = await readManagerForecastCell(page, wantLabel);
+        const readText = await readManagerForecastCell(page, wantLabel, wantHour);
         if (forecastValuesMatch(readText, wanted)) {
             return { ok: true, read: parseForecastDollar(readText), readText };
         }
         await page.waitForTimeout(VERIFY_POLL_MS);
     }
-    const readText = await readManagerForecastCell(page, wantLabel);
+    const readText = await readManagerForecastCell(page, wantLabel, wantHour);
     return {
         ok: forecastValuesMatch(readText, wanted),
         read: parseForecastDollar(readText),
@@ -725,16 +786,32 @@ async function writeForecastOverrideValue(page, value, options = {}) {
     return Boolean(ok);
 }
 
-async function findForecastHourRowHandle(page, wantLabel) {
-    const handle = await page.evaluateHandle((label) => {
-        for (const tr of document.querySelectorAll('tr.mx-fg-hour')) {
-            const labelSpan = tr.querySelector('[id^="mx-forecast-grid-interval-directive-list-hour-"]');
-            const rowLabel = (labelSpan?.textContent || '').replace(/\s+/g, ' ').trim();
-            if (rowLabel !== label) continue;
-            return tr;
-        }
-        return null;
-    }, wantLabel);
+async function findForecastHourRowHandle(page, wantLabel, wantHour = null) {
+    const handle = await page.evaluateHandle(
+        (label, hour) => {
+            const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+            const parse = (text) => {
+                const m = norm(text).match(/^(\d{1,2}):00\s*(AM|PM)$/i);
+                if (!m) return null;
+                let h = parseInt(m[1], 10);
+                const pm = m[2].toUpperCase() === 'PM';
+                if (h === 12 && !pm) return 0;
+                if (h === 12 && pm) return 12;
+                return pm ? h + 12 : h;
+            };
+            const wantNorm = norm(label);
+            for (const tr of document.querySelectorAll('tr.mx-fg-hour')) {
+                const labelSpan = tr.querySelector('[id^="mx-forecast-grid-interval-directive-list-hour-"]');
+                const rowLabel = norm(labelSpan?.textContent);
+                const rowHour = parse(rowLabel);
+                if (rowLabel !== wantNorm && (hour == null || rowHour !== hour)) continue;
+                return tr;
+            }
+            return null;
+        },
+        wantLabel,
+        wantHour != null ? Number(wantHour) : null
+    );
     const row = handle.asElement();
     if (!row) {
         await handle.dispose();
@@ -768,7 +845,7 @@ async function openForecastHourCell(page, wantLabel, options = {}) {
             else await dismissForecastOverrideEditor(page);
         }
 
-        const row = await findForecastHourRowHandle(page, wantLabel);
+        const row = await findForecastHourRowHandle(page, wantLabel, options.hour);
         if (!row) return false;
 
         await row.evaluate(
@@ -838,7 +915,7 @@ async function fillForecastHourCell(page, wantLabel, forecast, options = {}) {
         if (cellCache && Object.prototype.hasOwnProperty.call(cellCache, wantLabel)) {
             return cellCache[wantLabel];
         }
-        return readManagerForecastCell(page, wantLabel);
+        return readManagerForecastCell(page, wantLabel, options.hour);
     };
 
     if (!force) {
@@ -851,7 +928,10 @@ async function fillForecastHourCell(page, wantLabel, forecast, options = {}) {
     const clicked = await openForecastHourCell(
         page,
         wantLabel,
-        options.continuous ? { quick: true } : {}
+        {
+            ...(options.continuous ? { quick: true } : {}),
+            hour: options.hour,
+        }
     );
     if (!clicked) return false;
 
@@ -861,7 +941,7 @@ async function fillForecastHourCell(page, wantLabel, forecast, options = {}) {
             timeout: options.continuous ? 1500 : 3500,
         });
     } catch {
-        const afterClick = await readManagerForecastCell(page, wantLabel);
+        const afterClick = await readManagerForecastCell(page, wantLabel, options.hour);
         if (forecastValuesMatch(afterClick, wanted)) return 'already';
         return false;
     }
@@ -894,7 +974,8 @@ async function fillForecastHourCell(page, wantLabel, forecast, options = {}) {
         page,
         wantLabel,
         wanted,
-        commitTimeoutForValue(wanted, options)
+        commitTimeoutForValue(wanted, options),
+        options.hour
     );
     await dismissForecastOverrideEditor(page);
     if (committed && cellCache) {
@@ -913,7 +994,7 @@ async function enterAndVerifyForecastSlot(page, slot, onProgress, options = {}) 
     const preRead =
         cellCache && Object.prototype.hasOwnProperty.call(cellCache, slot.label)
             ? cellCache[slot.label]
-            : await readManagerForecastCell(page, slot.label);
+            : await readManagerForecastCell(page, slot.label, slot.hour);
     if (forecastValuesMatch(preRead, slot.forecast)) {
         const read = parseForecastDollar(preRead);
         emitSlotProgress(onProgress, {
@@ -938,6 +1019,7 @@ async function enterAndVerifyForecastSlot(page, slot, onProgress, options = {}) 
 
     const fillOpts = {
         cellCache,
+        hour: slot.hour,
         outsideHours: slot.outsideHours,
         fastZero: slot.outsideHours || slot.forecast === 0,
         continuous: Boolean(options.continuous),
@@ -983,7 +1065,7 @@ async function enterAndVerifyForecastSlot(page, slot, onProgress, options = {}) 
     }
 
     if (filled) {
-        const readText = await readManagerForecastCell(page, slot.label);
+        const readText = await readManagerForecastCell(page, slot.label, slot.hour);
         const read = parseForecastDollar(readText);
         emitSlotProgress(onProgress, {
             type: 'hour-confirmed',
@@ -1027,11 +1109,24 @@ async function fillForecastSlotsBulkInPage(page, updates) {
             return read === wanted;
         };
 
-        const rowForLabel = (label) => {
+        const rowForLabel = (label, hour) => {
+            const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+            const parse = (text) => {
+                const m = norm(text).match(/^(\d{1,2}):00\s*(AM|PM)$/i);
+                if (!m) return null;
+                let h = parseInt(m[1], 10);
+                const pm = m[2].toUpperCase() === 'PM';
+                if (h === 12 && !pm) return 0;
+                if (h === 12 && pm) return 12;
+                return pm ? h + 12 : h;
+            };
+            const wantNorm = norm(label);
             for (const tr of document.querySelectorAll('tr.mx-fg-hour')) {
                 const labelSpan = tr.querySelector('[id^="mx-forecast-grid-interval-directive-list-hour-"]');
-                const rowLabel = (labelSpan?.textContent || '').replace(/\s+/g, ' ').trim();
-                if (rowLabel === label) return tr;
+                const rowLabel = norm(labelSpan?.textContent);
+                const rowHour = parse(rowLabel);
+                if (rowLabel !== wantNorm && (hour == null || rowHour !== hour)) continue;
+                return tr;
             }
             return null;
         };
@@ -1096,8 +1191,9 @@ async function fillForecastSlotsBulkInPage(page, updates) {
 
         for (const row of rows) {
             const label = row.label;
+            const hour = row.hour != null ? Number(row.hour) : null;
             const forecast = Math.round(Number(row.forecast) || 0);
-            const tr = rowForLabel(label);
+            const tr = rowForLabel(label, hour);
             if (!tr) {
                 failed.push({ label, reason: 'no-row' });
                 continue;
@@ -1166,7 +1262,7 @@ async function fillForecastHourlyInputs(page, hourly, options = {}) {
         await dismissForecastOverrideEditor(page).catch(() => {});
         const bulk = await fillForecastSlotsBulkInPage(
             page,
-            pending.map((slot) => ({ label: slot.label, forecast: slot.forecast }))
+            pending.map((slot) => ({ label: slot.label, forecast: slot.forecast, hour: slot.hour }))
         );
 
         Object.assign(cellCache, await readAllManagerForecastCells(page));
@@ -1229,9 +1325,18 @@ async function fillForecastHourlyInputs(page, hourly, options = {}) {
         const slot = slots.find((s) => s.label === label);
         return slot && !slot.outsideHours;
     });
-    if (!tradingSlots.length || tradingMissed.length) {
+    if (!tradingSlots.length) {
+        throw new Error('No trading-hour forecast slots in plan for this day.');
+    }
+    if (tradingMissed.length) {
+        const gridLabels = await listForecastGridHourLabels(page).catch(() => []);
         throw new Error(
-            `No Manager Forecast cells matched (${tradingMissed.join(', ') || out.missed?.join(', ') || 'no slots'}). Check Macromatix grid layout.`
+            `Manager Forecast cells not matched for ${tradingMissed.length}/${tradingSlots.length} trading hours ` +
+                `(${tradingMissed.join(', ')}). ` +
+                (gridLabels.length
+                    ? `Grid shows: ${gridLabels.slice(0, 6).join(', ')}${gridLabels.length > 6 ? '…' : ''}.`
+                    : 'Forecast grid hour labels not found.') +
+                ' Check Macromatix grid layout or store trading hours in .storelist.'
         );
     }
     return out;
@@ -1257,7 +1362,7 @@ async function verifyForecastDay(page, hourly, options = {}) {
         const readText =
             cellCache && Object.prototype.hasOwnProperty.call(cellCache, slot.label)
                 ? cellCache[slot.label]
-                : await readManagerForecastCell(page, slot.label);
+                : await readManagerForecastCell(page, slot.label, slot.hour);
         if (forecastValuesMatch(readText, slot.forecast)) {
             confirmed += 1;
             emitSlotProgress(onProgress, {

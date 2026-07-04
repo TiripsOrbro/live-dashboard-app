@@ -535,6 +535,33 @@ function patchOverrides({ global = null, areas = null, stores = null, settings =
     return writeOverridesDoc(doc);
 }
 
+function purgeItemFromOverrides(itemCode) {
+    const code = normalizeItemCode(itemCode);
+    if (!code) throw new Error('Item code is required.');
+    const doc = readOverridesDoc();
+    let changed = false;
+
+    if (doc.global?.[code]) {
+        delete doc.global[code];
+        changed = true;
+    }
+    for (const areaKey of Object.keys(doc.areas || {})) {
+        if (!doc.areas[areaKey]?.[code]) continue;
+        delete doc.areas[areaKey][code];
+        changed = true;
+        if (!Object.keys(doc.areas[areaKey]).length) delete doc.areas[areaKey];
+    }
+    for (const storeKey of Object.keys(doc.stores || {})) {
+        if (!doc.stores[storeKey]?.[code]) continue;
+        delete doc.stores[storeKey][code];
+        changed = true;
+        if (!Object.keys(doc.stores[storeKey]).length) delete doc.stores[storeKey];
+    }
+
+    if (changed) writeOverridesDoc(doc);
+    return { itemCode: code };
+}
+
 const BUILD_TO_CONFIGURE_KEYS = [
     'mmxCode',
     'vendorCode',
@@ -589,6 +616,7 @@ module.exports = {
     readOverridesDoc,
     writeOverridesDoc,
     patchOverrides,
+    purgeItemFromOverrides,
     stripItemCodeFieldsFromBuildToPatch,
     adminOverridesForStore,
     adminOverridesForScope,

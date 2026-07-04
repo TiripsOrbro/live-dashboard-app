@@ -1212,6 +1212,33 @@ body.admin-buildto-col-resizing {
     vertical-align: middle;
 }
 
+.admin-buildto-col-delete-header {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+}
+
+.admin-buildto-delete-cell {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.admin-buildto-delete-item {
+    margin: 0 auto;
+}
+
+.admin-buildto-delete-item:hover {
+    color: #b42318;
+}
+
+.admin-buildto-icon--sm {
+    width: 1.5rem;
+    height: 1.5rem;
+}
+
 .admin-modal--build-to .admin-accounts-org-nav {
     margin-left: var(--admin-buildto-pad-left);
     margin-right: var(--admin-buildto-pad-right);
@@ -2199,6 +2226,10 @@ html.mic-dark-mode .admin-buildto-header-icon-btn {
 html.mic-dark-mode .admin-buildto-header-icon-btn:hover {
     background: transparent !important;
     color: #c9a8e8;
+}
+
+html.mic-dark-mode .admin-buildto-delete-item:hover {
+    color: #f87171;
 }
 
 html.mic-dark-mode .admin-buildto-copy-mode {

@@ -55,7 +55,7 @@ const {
     stickyKeyForTestMirror,
     testStoreListEntry,
 } = require('./services/testStore');
-const { listConfiguredVendors, getVendorCatalog, appendVendorCatalogItem } = require('./services/vendorCatalog');
+const { listConfiguredVendors, getVendorCatalog, appendVendorCatalogItem, removeVendorCatalogItem, findCatalogItemByCode } = require('./services/vendorCatalog');
 const {
     buildCombinedStockCountCatalog,
     isCombinedStockCountSlug,
@@ -430,7 +430,7 @@ const {
 } = require('../dashboard/src/forecast/forecastUpdateLedger');
 const { buildAdminDfscStatus } = require('../tacaudit/audits/Daily Food Safety Check/dfscAdmin');
 const { buildAdminBuildToCatalog, filterOverridesForActor, readOverridesDoc } = require('../vendors/src/buildToAdminCatalog');
-const { patchOverrides, stripItemCodeFieldsFromBuildToPatch } = require('../vendors/src/buildToAdminOverrides');
+const { patchOverrides, stripItemCodeFieldsFromBuildToPatch, purgeItemFromOverrides } = require('../vendors/src/buildToAdminOverrides');
 const { applyConfigureNameFilePatches } = require('../vendors/src/configureCatalogNames');
 const { copyVendorCatalog } = require('../vendors/src/copyVendorCatalog');
 const {
@@ -5205,6 +5205,51 @@ app.post('/api/admin/build-to/items', (req, res) => {
         res.json({ success: true, itemCode: result.itemCode, line: result.line });
     } catch (err) {
         res.status(400).json({ success: false, error: err.message || 'Could not add item.' });
+    }
+});
+
+app.delete('/api/admin/build-to/items', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    if (!canUserEditGlobalBuildTo(user)) {
+        res.status(403).json({ success: false, error: 'Area Manager or above can delete items.' });
+        return;
+    }
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    try {
+        const itemCode = String(body.itemCode || '').trim();
+        if (!itemCode) throw new Error('Item code is required.');
+
+        const hit = findCatalogItemByCode(itemCode);
+        if (!hit) throw new Error(`Item code ${itemCode} was not found in any vendor catalog.`);
+
+        const vendorSlug = String(body.vendor || hit.vendorSlug || '').trim();
+        if (vendorSlug !== hit.vendorSlug) {
+            throw new Error(`Item ${itemCode} belongs to ${hit.vendorLabel}, not the selected vendor.`);
+        }
+
+        const result = removeVendorCatalogItem(vendorSlug, itemCode);
+        const { upsertDisplayNameEntry } = require('../vendors/src/stockCountDisplayNames');
+        upsertDisplayNameEntry({
+            itemCode: result.itemCode,
+            catalogName: result.name,
+            displayLabel: '',
+        });
+        purgeItemFromOverrides(result.itemCode);
+
+        appendAccountAudit({
+            action: 'delete-build-to-item',
+            updatedBy: user.username,
+            vendor: vendorSlug,
+            itemCode: result.itemCode,
+            name: result.name,
+        });
+        res.json({ success: true, itemCode: result.itemCode });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not delete item.' });
     }
 });
 

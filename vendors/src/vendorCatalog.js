@@ -968,6 +968,52 @@ function updateVendorCatalogItemName(slug, itemCode, newName) {
     return { itemCode: code, name };
 }
 
+/**
+ * Remove an item line from a vendor catalog dotfile.
+ * @param {string} slug vendor slug (e.g. 'americold')
+ * @param {string} itemCode
+ * @returns {{ itemCode: string, name: string }}
+ */
+function removeVendorCatalogItem(slug, itemCode) {
+    const def = getVendorDefinition(slug);
+    if (!def) throw new Error('Unknown vendor.');
+    const livePath = path.join(VENDORS_DIR, def.dotfile);
+    if (!fs.existsSync(livePath)) {
+        throw new Error(`Vendor catalog file ${def.dotfile} not found on this server.`);
+    }
+
+    const code = normalizeItemCode(itemCode);
+    if (!code) throw new Error('Item code is required.');
+
+    const current = fs.readFileSync(livePath, 'utf8');
+    const lines = current.split(/\r?\n/);
+    let found = false;
+    let removedName = '';
+    const nextLines = lines.filter((rawLine) => {
+        const trimmed = rawLine.trim();
+        if (!trimmed || trimmed.startsWith('#')) return true;
+
+        const parts = rawLine.split('|').map((p) => p.trim());
+        const buildToPrefix = parseBuildToPrefix(parts);
+        const lineParts = buildToPrefix ? buildToPrefix.rest : parts;
+        const identity = parseItemIdentity(lineParts);
+        if (!identity || normalizeItemCode(identity.itemCode) !== code) return true;
+
+        found = true;
+        removedName = identity.name || identity.description || code;
+        return false;
+    });
+
+    if (!found) {
+        throw new Error(`Item code ${code} not found in ${def.dotfile}.`);
+    }
+
+    const next = `${nextLines.join('\n').replace(/\n*$/, '\n')}`;
+    fs.writeFileSync(livePath, next, 'utf8');
+    catalogCache.clear();
+    return { itemCode: code, name: removedName };
+}
+
 function aggregateCounts(catalog, locationCounts) {
     const totals = {};
     for (const item of catalog.items) {
@@ -1016,6 +1062,7 @@ module.exports = {
     aggregateCounts,
     appendVendorCatalogItem,
     updateVendorCatalogItemName,
+    removeVendorCatalogItem,
     findCatalogItemByCode,
     normalizeUnitSlots,
     parseCatalogText,

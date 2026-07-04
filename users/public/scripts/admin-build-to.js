@@ -161,15 +161,16 @@
     }
 
     function configureColgroupHtml() {
+        const deleteCol = '<col class="admin-buildto-col-delete" style="width:44px">';
         if (!hasSavedConfigureColWidths()) {
             return `<colgroup>${CONFIGURE_COL_KEYS.map(
                 (key) => `<col data-col-key="${escapeHtml(key)}">`
-            ).join('')}</colgroup>`;
+            ).join('')}${deleteCol}</colgroup>`;
         }
         const widths = loadConfigureColWidths();
         return `<colgroup>${CONFIGURE_COL_KEYS.map(
             (key) => `<col data-col-key="${escapeHtml(key)}" style="width:${widths[key]}px">`
-        ).join('')}</colgroup>`;
+        ).join('')}${deleteCol}</colgroup>`;
     }
 
     function readConfigureColWidths(table) {
@@ -198,6 +199,8 @@
             const col = table.querySelector(`colgroup col[data-col-key="${key}"]`);
             total += parseInt(col?.style.width, 10) || 48;
         });
+        const deleteCol = table.querySelector('colgroup col.admin-buildto-col-delete');
+        total += parseInt(deleteCol?.style.width, 10) || 44;
         table.style.width = `${total}px`;
     }
 
@@ -280,6 +283,10 @@
 
     const BUILD_TO_ADD_SVG = `<svg class="admin-buildto-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+            </svg>`;
+
+    const BUILD_TO_REMOVE_SVG = `<svg class="admin-buildto-icon admin-buildto-icon--sm" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path fill="currentColor" d="M19 13H5v-2h14v2z"/>
             </svg>`;
 
     function escapeHtml(text) {
@@ -996,6 +1003,7 @@
                         <th>Count outer</th>
                         <th>Count inner</th>
                         <th>Count unit</th>
+                        <th class="admin-buildto-col-delete-header" aria-label="Delete"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1021,6 +1029,7 @@
                             <td class="admin-table-check"><input type="checkbox" data-field="enableUnit0" title="Show outer column in stock count" /></td>
                             <td class="admin-table-check"><input type="checkbox" data-field="enableUnit1" title="Show inner column in stock count" /></td>
                             <td class="admin-table-check"><input type="checkbox" data-field="enableUnit2" title="Show unit column in stock count" /></td>
+                            <td class="admin-buildto-delete-cell">${canAddItems ? `<button type="button" class="admin-buildto-delete-item admin-buildto-header-icon-btn" data-delete-item aria-label="Delete item" title="Delete item">${BUILD_TO_REMOVE_SVG}</button>` : ''}</td>
                         </tr>`;
                         })
                         .join('')}
@@ -1028,7 +1037,59 @@
             </table>`;
         const table = body.querySelector('.admin-buildto-table--configure');
         bindConfigureRowControls(itemsByCode);
+        bindConfigureDeleteControls(itemsByCode);
         bindConfigureColumnResize(table);
+    }
+
+    function bindConfigureDeleteControls(itemsByCode) {
+        const root = ensureBackdrop();
+        root.querySelectorAll('[data-delete-item]').forEach((btn) => {
+            if (btn.dataset.bound) return;
+            btn.dataset.bound = '1';
+            btn.addEventListener('click', () => {
+                const row = btn.closest('tr[data-item-code]');
+                if (!row) return;
+                const itemCode = row.getAttribute('data-item-code');
+                const item = itemsByCode?.get(itemCode);
+                const vendorSlug = String(
+                    row.dataset.catalogVendorSlug || item?.catalogVendorSlug || item?.vendorSlug || ''
+                ).trim();
+                const label = item ? itemCommonLabel(item) : itemCode;
+                void deleteConfigureItem(itemCode, vendorSlug, label);
+            });
+        });
+    }
+
+    async function deleteConfigureItem(itemCode, vendorSlug, label) {
+        if (!canAddItems) return;
+        const code = String(itemCode || '').trim();
+        if (!code) return;
+        const name = String(label || code).trim();
+        if (
+            !global.confirm(
+                `Delete "${name}" (${code}) from the catalog?\n\nThis removes the item, its display name, and build-to overrides.`
+            )
+        ) {
+            return;
+        }
+
+        const root = ensureBackdrop();
+        const errEl = root.querySelector('#admin-buildto-error');
+        if (errEl) errEl.textContent = '';
+
+        try {
+            const res = await fetch('/api/admin/build-to/items', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ itemCode: code, vendor: vendorSlug }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) throw new Error(data.error || 'Delete failed.');
+            await loadCatalog();
+        } catch (error) {
+            if (errEl) errEl.textContent = error.message || 'Delete failed.';
+        }
     }
 
     function vendorListForUi() {

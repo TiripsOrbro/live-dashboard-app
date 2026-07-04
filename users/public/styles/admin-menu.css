@@ -4,6 +4,7 @@
 /* Full-page settings — /Admin/Settings */
 html:has(body.admin-settings-page) {
     height: 100%;
+    max-height: 100dvh;
     min-height: 100dvh;
     overflow: hidden;
 }
@@ -23,16 +24,18 @@ html.page-scroll body.admin-settings-page {
 
 /* Beat page-scroll.css generic #app / shell rules so the sidebar fills the viewport. */
 html.page-scroll body.admin-settings-page #app {
-    height: 100%;
+    flex: 1 1 0;
+    height: auto;
     min-height: 0;
-    max-height: 100%;
+    max-height: none;
     overflow: hidden;
 }
 
 html.page-scroll body.admin-settings-page .app-shell-viewport,
 html.page-scroll body.admin-settings-page .app-shell-view {
-    height: 100%;
-    max-height: 100%;
+    flex: 1 1 0;
+    height: auto;
+    max-height: none;
     min-height: 0;
     overflow: hidden;
 }
@@ -41,8 +44,7 @@ body.admin-settings-page {
     margin: 0;
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
-    min-height: 100dvh;
+    min-height: 0;
     height: 100dvh;
     max-height: 100dvh;
     overflow: hidden;
@@ -56,21 +58,40 @@ body.admin-settings-page {
     -webkit-font-smoothing: antialiased;
 }
 
-body.admin-settings-page .app-shell-viewport {
-    flex: 1 1 auto;
+body.admin-settings-page.app-shell-root {
     min-height: 0;
-    height: 100%;
-    max-height: 100dvh;
+}
+
+/* App shell keeps a hidden .popup in normal document flow; it still reserves ~170px
+   at the bottom of flex body. With opacity:0 the page grey shows through as “padding”. */
+body.admin-settings-page > .popup {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20000;
+    pointer-events: none;
+}
+
+body.admin-settings-page > .popup.popup-show {
+    pointer-events: auto;
+}
+
+body.admin-settings-page .app-shell-viewport {
+    flex: 1 1 0;
+    min-height: 0;
+    height: auto;
+    max-height: none;
     overflow: hidden;
     display: flex;
     flex-direction: column;
 }
 
 body.admin-settings-page .app-shell-view {
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-height: 0;
-    height: 100%;
-    max-height: 100%;
+    height: auto;
+    max-height: none;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -101,10 +122,10 @@ html.admin-overview-page body.admin-settings-page .app-shell-view #app,
 body.admin-settings-page #app {
     display: flex;
     flex-direction: column;
-    flex: 1 1 auto;
-    height: 100%;
+    flex: 1 1 0;
+    height: auto;
     min-height: 0;
-    max-height: 100%;
+    max-height: none;
     padding: 0;
     overflow: hidden;
 }
@@ -113,9 +134,9 @@ body.admin-settings-page #app {
     display: flex;
     flex-direction: column;
     width: 100%;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-height: 0;
-    height: 100%;
+    height: auto;
     box-sizing: border-box;
 }
 
@@ -204,7 +225,7 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
 
 .admin-settings-body {
     display: flex;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-height: 0;
     width: 100%;
     position: relative;
@@ -218,8 +239,8 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
     flex-shrink: 0;
     align-self: stretch;
     width: 240px;
-    min-height: 100%;
-    height: 100%;
+    min-height: 0;
+    height: auto;
     box-sizing: border-box;
     border-right: var(--cell-border) color-mix(in srgb, var(--charcoal) 12%, transparent);
     background: var(--white);
@@ -465,7 +486,7 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
 }
 
 .admin-settings-main {
-    flex: 1 1 auto;
+    flex: 1 1 0;
     width: 100%;
     min-width: 0;
     min-height: 0;
@@ -475,11 +496,12 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
     padding: calc(16px * var(--dashboard-scale)) max(1.25rem, env(safe-area-inset-right)) 0
         max(1.25rem, env(safe-area-inset-left));
     overflow: hidden;
+    background: var(--white);
 }
 
 .admin-settings-content {
     width: 100%;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-height: 0;
     box-sizing: border-box;
     display: flex;
@@ -500,7 +522,7 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
 .admin-settings-section-panel:not([hidden]) {
     display: flex;
     flex-direction: column;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
 }
@@ -535,7 +557,7 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
     width: 100%;
     max-width: none;
     max-height: none;
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-height: 0;
     overflow: hidden;
     display: flex;
@@ -581,10 +603,10 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
 
 .app-shell-view:has(.admin-settings-shell) {
     overflow: hidden;
-    min-height: 100vh;
-    min-height: 100dvh;
-    height: 100%;
-    max-height: 100dvh;
+    flex: 1 1 0;
+    min-height: 0;
+    height: auto;
+    max-height: none;
 }
 
 .admin-settings-content .admin-modal--build-to,
@@ -592,7 +614,9 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
 .admin-settings-content .admin-modal--smg-nsf {
     overflow: hidden;
     max-height: none;
-    height: 100%;
+    flex: 1 1 0;
+    min-height: 0;
+    height: auto;
 }
 
 .admin-settings-content .admin-modal-actions,
@@ -866,6 +890,10 @@ html.mic-dark-mode body.admin-settings-page {
     background: #141418;
     color: #f2f2f2;
     color-scheme: dark;
+}
+
+html.mic-dark-mode .admin-settings-main {
+    background: #141418;
 }
 
 html.mic-dark-mode .admin-settings-header {

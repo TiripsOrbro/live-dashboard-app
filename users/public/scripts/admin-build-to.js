@@ -418,7 +418,10 @@
         root.dataset.adminBuildToBound = '1';
         root.querySelector('#admin-buildto-close')?.addEventListener('click', close);
         root.querySelector('#admin-buildto-save')?.addEventListener('click', () => {
-            void saveChanges();
+            void saveChanges().catch((error) => {
+                const errEl = root.querySelector('#admin-buildto-error');
+                if (errEl) errEl.textContent = error.message || 'Save failed.';
+            });
         });
         root.querySelector('#admin-buildto-add')?.addEventListener('click', () => {
             toggleNewItemForm();
@@ -1646,13 +1649,47 @@
 
     async function saveChanges() {
         const root = ensureBackdrop();
-        root.querySelector('#admin-buildto-error').textContent = '';
+        const errEl = root.querySelector('#admin-buildto-error');
+        const saveBtn = root.querySelector('#admin-buildto-save');
+        if (saveBtn?.disabled) return;
 
-        if (viewMode === 'configure') {
-            const area = String(browseScope.area || '').trim();
-            if (!area) throw new Error('Select an area to save configure changes.');
-            const patch = collectConfigurePatchAll();
-            const body = { areas: { [area]: patch } };
+        if (errEl) errEl.textContent = '';
+        const defaultLabel = 'Save changes';
+        const startedAt = Date.now();
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = 'Saving…';
+        }
+
+        try {
+            if (viewMode === 'configure') {
+                const area = String(browseScope.area || '').trim();
+                if (!area) throw new Error('Select an area to save configure changes.');
+                const patch = collectConfigurePatchAll();
+                const body = { areas: { [area]: patch } };
+                const res = await fetch('/api/admin/build-to/overrides', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(body),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok || !data.success) throw new Error(data.error || 'Save failed.');
+                await loadCatalog();
+                return;
+            }
+
+            const patch = collectPatch();
+            const scope = getOverrideScope();
+            if (scope.level === 'none') throw new Error('Select an area or store first.');
+            let body = {};
+            if (scope.level === 'store') {
+                body = { stores: { [scope.store]: patch } };
+            } else if (scope.level === 'area') {
+                body = { areas: { [scope.area]: patch } };
+            } else {
+                throw new Error('Select an area or store first.');
+            }
             const res = await fetch('/api/admin/build-to/overrides', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -1662,29 +1699,14 @@
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.success) throw new Error(data.error || 'Save failed.');
             await loadCatalog();
-            return;
+        } finally {
+            const remainingMs = Math.max(0, 1000 - (Date.now() - startedAt));
+            if (remainingMs) await new Promise((resolve) => setTimeout(resolve, remainingMs));
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = defaultLabel;
+            }
         }
-
-        const patch = collectPatch();
-        const scope = getOverrideScope();
-        if (scope.level === 'none') throw new Error('Select an area or store first.');
-        let body = {};
-        if (scope.level === 'store') {
-            body = { stores: { [scope.store]: patch } };
-        } else if (scope.level === 'area') {
-            body = { areas: { [scope.area]: patch } };
-        } else {
-            throw new Error('Select an area or store first.');
-        }
-        const res = await fetch('/api/admin/build-to/overrides', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify(body),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.success) throw new Error(data.error || 'Save failed.');
-        await loadCatalog();
     }
 
     async function open() {

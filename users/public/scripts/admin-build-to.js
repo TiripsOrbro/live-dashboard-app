@@ -49,11 +49,21 @@
         countInner: 76,
         countUnit: 76,
     };
-    const CONFIGURE_COL_WIDTHS_KEY = 'admin-buildto-configure-col-widths';
+    const CONFIGURE_COL_WIDTHS_KEY_PREFIX = 'admin-buildto-configure-col-widths';
+
+    function configureColWidthsStorageKey() {
+        const username = String(profile?.username || '').trim();
+        if (username) return `${CONFIGURE_COL_WIDTHS_KEY_PREFIX}:${username}`;
+        return CONFIGURE_COL_WIDTHS_KEY_PREFIX;
+    }
 
     function loadConfigureColWidths() {
         try {
-            const raw = localStorage.getItem(CONFIGURE_COL_WIDTHS_KEY);
+            const key = configureColWidthsStorageKey();
+            let raw = localStorage.getItem(key);
+            if (!raw && key !== CONFIGURE_COL_WIDTHS_KEY_PREFIX) {
+                raw = localStorage.getItem(CONFIGURE_COL_WIDTHS_KEY_PREFIX);
+            }
             if (!raw) return { ...CONFIGURE_COL_DEFAULTS };
             const parsed = JSON.parse(raw);
             if (!parsed || typeof parsed !== 'object') return { ...CONFIGURE_COL_DEFAULTS };
@@ -63,17 +73,99 @@
         }
     }
 
-    function saveConfigureColWidth(key, width) {
-        const widths = loadConfigureColWidths();
-        widths[key] = Math.max(48, Math.round(width));
+    function saveConfigureColWidths(widths) {
+        const next = { ...CONFIGURE_COL_DEFAULTS };
+        CONFIGURE_COL_KEYS.forEach((key) => {
+            const value = widths?.[key];
+            next[key] =
+                value != null && Number.isFinite(Number(value))
+                    ? Math.max(48, Math.round(Number(value)))
+                    : next[key];
+        });
         try {
-            localStorage.setItem(CONFIGURE_COL_WIDTHS_KEY, JSON.stringify(widths));
+            localStorage.setItem(configureColWidthsStorageKey(), JSON.stringify(next));
         } catch {
             /* ignore quota errors */
         }
     }
 
+    function hasSavedConfigureColWidths() {
+        try {
+            const key = configureColWidthsStorageKey();
+            if (localStorage.getItem(key)) return true;
+            if (key !== CONFIGURE_COL_WIDTHS_KEY_PREFIX && localStorage.getItem(CONFIGURE_COL_WIDTHS_KEY_PREFIX)) {
+                return true;
+            }
+            return false;
+        } catch {
+            return false;
+        }
+    }
+
+    let configureColMeasureSpan = null;
+
+    function measureConfigureText(text, font) {
+        if (!configureColMeasureSpan) {
+            configureColMeasureSpan = document.createElement('span');
+            configureColMeasureSpan.style.cssText =
+                'position:absolute;left:-9999px;top:-9999px;white-space:nowrap;visibility:hidden;';
+            document.body.appendChild(configureColMeasureSpan);
+        }
+        configureColMeasureSpan.style.font = font;
+        configureColMeasureSpan.textContent = String(text || '');
+        return configureColMeasureSpan.offsetWidth;
+    }
+
+    function measureConfigureHeaderWidth(th) {
+        if (!th) return 48;
+        const label = String(th.textContent || '').replace(/\s+/g, ' ').trim();
+        return measureConfigureText(label, getComputedStyle(th).font) + 22;
+    }
+
+    function measureConfigureCellWidth(cell) {
+        if (!cell) return 48;
+        const checkbox = cell.querySelector('input[type="checkbox"]');
+        if (checkbox) return CONFIGURE_COL_DEFAULTS.countOuter || 76;
+
+        const select = cell.querySelector('select');
+        if (select) {
+            let max = 0;
+            for (const option of select.options) {
+                max = Math.max(max, measureConfigureText(option.text, getComputedStyle(select).font));
+            }
+            return max + 32;
+        }
+
+        const input = cell.querySelector('input');
+        if (input) {
+            const text = input.value || input.placeholder || '';
+            return measureConfigureText(text, getComputedStyle(input).font) + 28;
+        }
+
+        return Math.max(cell.scrollWidth, cell.offsetWidth, 48);
+    }
+
+    function autoFitConfigureColumns(table) {
+        if (!table) return;
+        const rows = table.querySelectorAll('tbody tr[data-item-code]');
+        const widths = CONFIGURE_COL_KEYS.map((key, colIndex) => {
+            const th = table.querySelector(`thead th:nth-child(${colIndex + 1})`);
+            let max = measureConfigureHeaderWidth(th);
+            rows.forEach((row) => {
+                const cell = row.cells[colIndex];
+                if (cell) max = Math.max(max, measureConfigureCellWidth(cell));
+            });
+            return Math.max(48, Math.ceil(max));
+        });
+        applyConfigureColWidths(table, widths);
+    }
+
     function configureColgroupHtml() {
+        if (!hasSavedConfigureColWidths()) {
+            return `<colgroup>${CONFIGURE_COL_KEYS.map(
+                (key) => `<col data-col-key="${escapeHtml(key)}">`
+            ).join('')}</colgroup>`;
+        }
         const widths = loadConfigureColWidths();
         return `<colgroup>${CONFIGURE_COL_KEYS.map(
             (key) => `<col data-col-key="${escapeHtml(key)}" style="width:${widths[key]}px">`
@@ -111,7 +203,11 @@
 
     function bindConfigureColumnResize(table) {
         if (!table) return;
-        applyConfigureColWidths(table, readConfigureColWidths(table));
+        if (hasSavedConfigureColWidths()) {
+            applyConfigureColWidths(table, readConfigureColWidths(table));
+        } else {
+            autoFitConfigureColumns(table);
+        }
 
         CONFIGURE_COL_KEYS.forEach((key, index) => {
             const col = table.querySelector(`colgroup col[data-col-key="${key}"]`);
@@ -144,8 +240,12 @@
                 document.removeEventListener('touchmove', onMove);
                 document.removeEventListener('touchend', onEnd);
                 document.body.classList.remove('admin-buildto-col-resizing');
-                const width = readConfigureColWidths(table)[index];
-                if (Number.isFinite(width)) saveConfigureColWidth(key, width);
+                const widths = readConfigureColWidths(table);
+                const saved = {};
+                CONFIGURE_COL_KEYS.forEach((colKey, colIndex) => {
+                    saved[colKey] = widths[colIndex];
+                });
+                saveConfigureColWidths(saved);
             };
 
             const onStart = (event) => {
@@ -915,8 +1015,8 @@
                 </tbody>
             </table>`;
         const table = body.querySelector('.admin-buildto-table--configure');
-        bindConfigureColumnResize(table);
         bindConfigureRowControls(itemsByCode);
+        bindConfigureColumnResize(table);
     }
 
     function vendorListForUi() {

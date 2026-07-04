@@ -1,0 +1,112 @@
+# Plain English labels for stock count (edit any line — file is in git)
+# Format: item code | label shown on the count screen
+# Backend still uses the real catalog name + code for Macromatix.
+
+# --- Americold ---
+38542 | Bin liners
+507876 | FCB cup
+38088 | Chocettes
+38464 | Filter paper
+40109 | Chips
+100482 | Large gloves
+100481 | Medium gloves
+100483 | X-Large gloves
+14701 | Guacamole
+507877 | FCB lid
+38050 | Napkins
+607826 | Oil
+106191 | Caramel sauce
+100457 | Fire sauce
+504245 | Scourers
+507516 | Straws
+40037 | Cinnamon sugar
+39943A | Chip bag regular
+39944A | Chip bag large
+39942 | Crunchwrap bag
+505253 | Multipurpose bags
+37991 | Takeaway bag large
+37989 | Takeaway bag medium
+38240 | Black beans
+38892 | Big bell box
+40014 | Cantina box
+37876 | Cheese blend
+37911 | Angel hair
+40303 | Crispy chicken
+39009 | Nacho chips
+37597 | Churros
+40062A | Cinnamon twists
+38891 | Cup large
+38890 | Cup regular
+39744 | Dipping cup
+37928 | Flatbread
+40003 | Jalapeños
+38701 | Lava sauce
+39746 | Dipping lid
+38894 | Lid postmix
+39520 | Beef
+39867A | Chicken
+37915 | Rice
+37870 | Mild sauce
+38493 | Chipotle mayo
+38163 | Chocolate sauce
+38722 | Creamy jalapeño sauce
+37909 | Nacho cheese
+37013 | Pico de gallo
+38414 | Zesty ranch
+39054 | Mexican seasoning
+37891 | Tostada
+37923 | Tortilla 10.25"
+37925 | Tortilla 12"
+37927 | Tortilla 6.5"
+39748 | Forks
+37901 | Wrap large
+37921 | Wrap small
+37999 | Wrap waste
+38078 | Toilet paper
+38076 | Paper towel
+505798 | Drink trays
+504372 | Blue cloths
+505796 | Yellow cloths
+
+# --- Bega ---
+8419 | Sour cream
+7759 | Iced coffee
+
+# --- Cut Fresh ---
+SLETT | Lettuce
+DO4 | Onion
+CHOPC | Coriander
+DTOM4 | Tomato
+
+# --- Schweppes ---
+3227 | 7Up bottles
+3939 | 7Up BIB
+10007576 | 7Up cans
+10004425 | Solo lemon cans
+10005562 | Mountain Dew freeze
+4095 | Pepsi freeze
+4091 | Raspberry freeze
+3592 | Apple juice
+10007182 | Apple juice pop top
+10007184 | Orange juice pop top
+10006824 | Lipton lemon tea
+10006826 | Lipton peach tea
+10004815 | Mountain Dew bottles
+10005385 | Mountain Dew BIB
+10007191 | Mountain Dew cans
+3221 | Pepsi bottles
+3912 | Pepsi BIB
+10004724 | Pepsi cans
+3226 | Pepsi Max bottles
+3478 | Pepsi Max BIB
+10004423 | Pepsi Max cans
+10006909 | Red Bull
+10006936 | Red Bull sugar free
+10006942 | Red Bull tropical
+2918 | Solo lemon bottles
+4068 | Solo lemon BIB
+2938 | Sunkist bottles
+4075 | Sunkist BIB
+10006573 | Sunkist cans
+10006282 | Water bottles
+10005242 | Sparkling water

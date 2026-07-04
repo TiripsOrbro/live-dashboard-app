@@ -5141,20 +5141,21 @@ app.put('/api/admin/build-to/overrides', (req, res) => {
         }
     }
 
-    const patchToApply = canUserEditGlobalBuildTo(user)
-        ? applyConfigureNameFilePatches(patch, { canEditCatalogFiles: true })
-        : stripItemCodeFieldsFromBuildToPatch(patch);
-    const overrides = patchOverrides(patchToApply);
-    appendAccountAudit({
-        action: 'update-build-to-overrides',
-        updatedBy: user.username,
-        patch: patchToApply,
-    });
-    res.json({ success: true, overrides: filterOverridesForActor(
-        overrides,
-        getEffectiveStoresForUser(user),
-        canUserEditGlobalBuildTo(user)
-    ) });
+    try {
+        const patchToApply = canUserEditGlobalBuildTo(user)
+            ? applyConfigureNameFilePatches(patch, { canEditCatalogFiles: true })
+            : stripItemCodeFieldsFromBuildToPatch(patch);
+        patchOverrides(patchToApply);
+        appendAccountAudit({
+            action: 'update-build-to-overrides',
+            updatedBy: user.username,
+            patch: patchToApply,
+        });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('[build-to overrides]', err);
+        res.status(400).json({ success: false, error: err.message || 'Could not save build-to changes.' });
+    }
 });
 
 app.post('/api/admin/build-to/items', (req, res) => {

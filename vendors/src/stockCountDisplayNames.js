@@ -96,10 +96,16 @@ function upsertDisplayNameEntry({ itemCode, catalogName, displayLabel }) {
 
     const file = fs.existsSync(DISPLAY_NAMES_PATH) ? DISPLAY_NAMES_PATH : DISPLAY_NAMES_EXAMPLE;
     if (!fs.existsSync(file)) {
+        const header = '# Plain English labels for stock count (edit any line — file is in git)\n# Format: item code | label shown on the count screen\n# Backend still uses the real catalog name + code for Macromatix.\n\n';
+        fs.mkdirSync(path.dirname(DISPLAY_NAMES_PATH), { recursive: true });
+        fs.writeFileSync(DISPLAY_NAMES_PATH, header, 'utf8');
+    }
+    const targetFile = fs.existsSync(DISPLAY_NAMES_PATH) ? DISPLAY_NAMES_PATH : file;
+    if (!fs.existsSync(targetFile)) {
         throw new Error('Display names file not found.');
     }
 
-    const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+    const lines = fs.readFileSync(targetFile, 'utf8').split(/\r?\n/);
     const kept = lines.filter((rawLine) => {
         const trimmed = rawLine.trim();
         if (!trimmed || trimmed.startsWith('#')) return true;
@@ -116,7 +122,7 @@ function upsertDisplayNameEntry({ itemCode, catalogName, displayLabel }) {
         kept.push(`${code} | ${label}`);
     }
 
-    fs.writeFileSync(DISPLAY_NAMES_PATH, `${kept.join('\n').replace(/\n*$/, '\n')}`);
+    fs.writeFileSync(targetFile, `${kept.join('\n').replace(/\n*$/, '\n')}`);
     clearDisplayNamesCache();
     return { itemCode: code, displayLabel: label || null };
 }

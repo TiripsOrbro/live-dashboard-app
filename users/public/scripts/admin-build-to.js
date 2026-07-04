@@ -433,10 +433,7 @@
         root.dataset.adminBuildToBound = '1';
         root.querySelector('#admin-buildto-close')?.addEventListener('click', close);
         root.querySelector('#admin-buildto-save')?.addEventListener('click', () => {
-            void saveChanges().catch((error) => {
-                const errEl = root.querySelector('#admin-buildto-error');
-                if (errEl) errEl.textContent = error.message || 'Save failed.';
-            });
+            void saveChanges();
         });
         root.querySelector('#admin-buildto-add')?.addEventListener('click', () => {
             toggleNewItemForm();
@@ -1717,6 +1714,32 @@
         return patch;
     }
 
+    async function readSaveResponse(res) {
+        const text = await res.text();
+        if (!text) return {};
+        try {
+            return JSON.parse(text);
+        } catch {
+            return {};
+        }
+    }
+
+    async function putBuildToOverrides(body) {
+        const res = await fetch('/api/admin/build-to/overrides', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(body),
+        });
+        const data = await readSaveResponse(res);
+        if (!res.ok) {
+            throw new Error(data.error || `Save failed (${res.status}).`);
+        }
+        if (data.success === false) {
+            throw new Error(data.error || 'Save failed.');
+        }
+    }
+
     async function saveChanges() {
         const root = ensureBackdrop();
         const errEl = root.querySelector('#admin-buildto-error');
@@ -1736,39 +1759,31 @@
                 const area = String(browseScope.area || '').trim();
                 if (!area) throw new Error('Select an area to save configure changes.');
                 const patch = collectConfigurePatchAll();
-                const body = { areas: { [area]: patch } };
-                const res = await fetch('/api/admin/build-to/overrides', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'same-origin',
-                    body: JSON.stringify(body),
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok || !data.success) throw new Error(data.error || 'Save failed.');
-                await loadCatalog();
-                return;
+                await putBuildToOverrides({ areas: { [area]: patch } });
+            } else {
+                const patch = collectPatch();
+                const scope = getOverrideScope();
+                if (scope.level === 'none') throw new Error('Select an area or store first.');
+                if (scope.level === 'store') {
+                    await putBuildToOverrides({ stores: { [scope.store]: patch } });
+                } else if (scope.level === 'area') {
+                    await putBuildToOverrides({ areas: { [scope.area]: patch } });
+                } else {
+                    throw new Error('Select an area or store first.');
+                }
             }
 
-            const patch = collectPatch();
-            const scope = getOverrideScope();
-            if (scope.level === 'none') throw new Error('Select an area or store first.');
-            let body = {};
-            if (scope.level === 'store') {
-                body = { stores: { [scope.store]: patch } };
-            } else if (scope.level === 'area') {
-                body = { areas: { [scope.area]: patch } };
-            } else {
-                throw new Error('Select an area or store first.');
+            try {
+                await loadCatalog();
+                if (errEl) errEl.textContent = '';
+            } catch (reloadError) {
+                if (errEl) {
+                    errEl.textContent =
+                        reloadError.message || 'Changes saved, but the table could not refresh.';
+                }
             }
-            const res = await fetch('/api/admin/build-to/overrides', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify(body),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok || !data.success) throw new Error(data.error || 'Save failed.');
-            await loadCatalog();
+        } catch (error) {
+            if (errEl) errEl.textContent = error.message || 'Save failed.';
         } finally {
             const remainingMs = Math.max(0, 1000 - (Date.now() - startedAt));
             if (remainingMs) await new Promise((resolve) => setTimeout(resolve, remainingMs));

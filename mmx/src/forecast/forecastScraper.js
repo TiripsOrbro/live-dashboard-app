@@ -28,8 +28,12 @@ const DATE_PICKER_SEL = '#mx-forecast-dateselection-dropdown-edit';
 const MANAGER_OVERRIDE_INPUT = '#overrideInput';
 const POLL_MS = 50;
 const VERIFY_POLL_MS = 50;
-const VERIFY_TIMEOUT_MS = 2000;
-const GRID_WAIT_MS = 20000;
+const VERIFY_TIMEOUT_MS = Number(process.env.FORECAST_VERIFY_TIMEOUT_MS) > 0
+    ? Number(process.env.FORECAST_VERIFY_TIMEOUT_MS)
+    : 2000;
+const GRID_WAIT_MS = Number(process.env.FORECAST_GRID_WAIT_MS) > 0
+    ? Number(process.env.FORECAST_GRID_WAIT_MS)
+    : 20000;
 const DATE_CHANGE_MS = 6000;
 const SAVE_SETTLE_MS = 8000;
 const SAVE_APPEAR_MS = 15000;
@@ -452,7 +456,7 @@ async function listForecastGridHourLabels(page) {
 }
 
 async function readAllManagerForecastCells(page) {
-    return page.evaluate(() => {
+    const raw = await page.evaluate(() => {
         const out = {};
         for (const tr of document.querySelectorAll('tr.mx-fg-hour')) {
             const labelSpan = tr.querySelector('[id^="mx-forecast-grid-interval-directive-list-hour-"]');
@@ -466,6 +470,28 @@ async function readAllManagerForecastCells(page) {
         }
         return out;
     });
+    const out = { ...raw };
+    for (const [label, value] of Object.entries(raw)) {
+        const hour = parseHourLabel(label);
+        if (hour != null) out[`__h${hour}`] = value;
+    }
+    return out;
+}
+
+function getCellCacheValue(cellCache, slot) {
+    if (!cellCache || !slot) return undefined;
+    if (Object.prototype.hasOwnProperty.call(cellCache, slot.label)) {
+        return cellCache[slot.label];
+    }
+    const hour = Number(slot.hour);
+    if (Number.isFinite(hour) && Object.prototype.hasOwnProperty.call(cellCache, `__h${hour}`)) {
+        return cellCache[`__h${hour}`];
+    }
+    return undefined;
+}
+
+function slotCacheMatches(cellCache, slot) {
+    return forecastValuesMatch(getCellCacheValue(cellCache, slot), slot.forecast);
 }
 
 /** Trading-hour plan slots plus $0 for every other hour row visible on the MMX grid. */
@@ -912,8 +938,9 @@ async function fillForecastHourCell(page, wantLabel, forecast, options = {}) {
     }
 
     const readExisting = () => {
-        if (cellCache && Object.prototype.hasOwnProperty.call(cellCache, wantLabel)) {
-            return cellCache[wantLabel];
+        if (cellCache) {
+            const cached = getCellCacheValue(cellCache, { label: wantLabel, hour: options.hour });
+            if (cached !== undefined) return cached;
         }
         return readManagerForecastCell(page, wantLabel, options.hour);
     };
@@ -966,7 +993,7 @@ async function fillForecastHourCell(page, wantLabel, forecast, options = {}) {
     if (!wrote) return false;
 
     if (options.continuous) {
-        cacheForecastCellValue(cellCache, wantLabel, wanted);
+        cacheForecastCellValue(cellCache, { label: wantLabel, hour: options.hour }, wanted);
         return true;
     }
 
@@ -979,21 +1006,28 @@ async function fillForecastHourCell(page, wantLabel, forecast, options = {}) {
     );
     await dismissForecastOverrideEditor(page);
     if (committed && cellCache) {
-        cacheForecastCellValue(cellCache, wantLabel, wanted);
+        cacheForecastCellValue(cellCache, { label: wantLabel, hour: options.hour }, wanted);
     }
     return committed ? true : false;
 }
 
-function cacheForecastCellValue(cellCache, wantLabel, wanted) {
+function cacheForecastCellValue(cellCache, slotOrLabel, wanted, hour = null) {
     if (!cellCache) return;
-    cellCache[wantLabel] = wanted === 0 ? '$0.00' : `$${wanted.toLocaleString('en-US')}.00`;
+    const val = wanted === 0 ? '$0.00' : `$${Math.round(Number(wanted) || 0).toLocaleString('en-US')}.00`;
+    if (slotOrLabel && typeof slotOrLabel === 'object') {
+        cellCache[slotOrLabel.label] = val;
+        if (slotOrLabel.hour != null) cellCache[`__h${slotOrLabel.hour}`] = val;
+        return;
+    }
+    cellCache[slotOrLabel] = val;
+    if (hour != null) cellCache[`__h${hour}`] = val;
 }
 
 async function enterAndVerifyForecastSlot(page, slot, onProgress, options = {}) {
     const { retry = false, cellCache = null } = options;
     const preRead =
-        cellCache && Object.prototype.hasOwnProperty.call(cellCache, slot.label)
-            ? cellCache[slot.label]
+        cellCache && getCellCacheValue(cellCache, slot) !== undefined
+            ? getCellCacheValue(cellCache, slot)
             : await readManagerForecastCell(page, slot.label, slot.hour);
     if (forecastValuesMatch(preRead, slot.forecast)) {
         const read = parseForecastDollar(preRead);
@@ -1023,12 +1057,13 @@ async function enterAndVerifyForecastSlot(page, slot, onProgress, options = {}) 
         outsideHours: slot.outsideHours,
         fastZero: slot.outsideHours || slot.forecast === 0,
         continuous: Boolean(options.continuous),
+        force: Boolean(options.force || retry),
     };
     const filled = await fillForecastHourCell(page, slot.label, slot.forecast, fillOpts);
     if (!filled) {
         if (!retry && slot.forecast !== 0 && !slot.outsideHours) {
             await dismissForecastOverrideEditor(page);
-            return enterAndVerifyForecastSlot(page, slot, onProgress, { retry: true, cellCache });
+            return enterAndVerifyForecastSlot(page, slot, onProgress, { retry: true, cellCache, force: true });
         }
         emitSlotProgress(onProgress, {
             type: 'hour-failed',
@@ -1074,7 +1109,7 @@ async function enterAndVerifyForecastSlot(page, slot, onProgress, options = {}) 
             forecast: slot.forecast,
             read: read ?? slot.forecast,
         });
-        if (cellCache) cacheForecastCellValue(cellCache, slot.label, slot.forecast);
+        if (cellCache) cacheForecastCellValue(cellCache, slot, slot.forecast);
         return { ok: true, read: read ?? slot.forecast };
     }
 
@@ -1233,7 +1268,7 @@ async function fillForecastHourlyInputs(page, hourly, options = {}) {
     const missed = [];
     const failed = [];
 
-    const pending = slots.filter((slot) => !forecastValuesMatch(cellCache[slot.label], slot.forecast));
+    const pending = slots.filter((slot) => !slotCacheMatches(cellCache, slot));
     for (const slot of slots) {
         if (!pending.some((row) => row.label === slot.label)) {
             confirmed += 1;
@@ -1242,7 +1277,7 @@ async function fillForecastHourlyInputs(page, hourly, options = {}) {
                 hour: slot.hour,
                 label: slot.label,
                 forecast: slot.forecast,
-                read: parseForecastDollar(cellCache[slot.label]),
+                read: parseForecastDollar(getCellCacheValue(cellCache, slot)),
                 skipped: true,
             });
         }
@@ -1268,17 +1303,19 @@ async function fillForecastHourlyInputs(page, hourly, options = {}) {
         Object.assign(cellCache, await readAllManagerForecastCells(page));
 
         for (const slot of pending) {
-            if (forecastValuesMatch(cellCache[slot.label], slot.forecast)) {
+            if (slotCacheMatches(cellCache, slot)) {
                 confirmed += 1;
                 emitSlotProgress(onProgress, {
                     type: 'hour-confirmed',
                     hour: slot.hour,
                     label: slot.label,
                     forecast: slot.forecast,
-                    read: parseForecastDollar(cellCache[slot.label]),
+                    read: parseForecastDollar(getCellCacheValue(cellCache, slot)),
                 });
             } else {
-                const bulkFail = bulk.failed.find((row) => row.label === slot.label);
+                const bulkFail = bulk.failed.find(
+                    (row) => row.label === slot.label || row.hour === slot.hour
+                );
                 missed.push(slot.label);
                 failed.push({ ...slot, reason: bulkFail?.reason || 'bulk-mismatch' });
             }
@@ -1288,11 +1325,12 @@ async function fillForecastHourlyInputs(page, hourly, options = {}) {
     let changed = pending.length > 0;
 
     for (const slot of slots) {
-        if (!forecastValuesMatch(cellCache[slot.label], slot.forecast)) {
+        if (!slotCacheMatches(cellCache, slot)) {
             await dismissForecastOverrideEditor(page).catch(() => {});
             const result = await enterAndVerifyForecastSlot(page, slot, onProgress, {
                 cellCache,
                 continuous: false,
+                force: !slot.outsideHours,
             });
             if (result.ok) {
                 changed = true;
@@ -1309,11 +1347,11 @@ async function fillForecastHourlyInputs(page, hourly, options = {}) {
         }
     }
 
-    confirmed = slots.filter((slot) => forecastValuesMatch(cellCache[slot.label], slot.forecast)).length;
+    confirmed = slots.filter((slot) => slotCacheMatches(cellCache, slot)).length;
     missed.length = 0;
     failed.length = 0;
     for (const slot of slots) {
-        if (!forecastValuesMatch(cellCache[slot.label], slot.forecast)) {
+        if (!slotCacheMatches(cellCache, slot)) {
             missed.push(slot.label);
             failed.push({ ...slot, reason: 'batch-mismatch' });
         }
@@ -1330,11 +1368,12 @@ async function fillForecastHourlyInputs(page, hourly, options = {}) {
     }
     if (tradingMissed.length) {
         const gridLabels = await listForecastGridHourLabels(page).catch(() => []);
+        const storeHint = options.storeNumber ? ` (store ${options.storeNumber})` : '';
         throw new Error(
-            `Manager Forecast cells not matched for ${tradingMissed.length}/${tradingSlots.length} trading hours ` +
+            `Manager Forecast cells not matched for ${tradingMissed.length}/${tradingSlots.length} trading hours${storeHint} ` +
                 `(${tradingMissed.join(', ')}). ` +
                 (gridLabels.length
-                    ? `Grid shows: ${gridLabels.slice(0, 6).join(', ')}${gridLabels.length > 6 ? '…' : ''}.`
+                    ? `Grid shows: ${gridLabels.slice(0, 8).join(', ')}${gridLabels.length > 8 ? '…' : ''}.`
                     : 'Forecast grid hour labels not found.') +
                 ' Check Macromatix grid layout or store trading hours in .storelist.'
         );
@@ -1360,8 +1399,8 @@ async function verifyForecastDay(page, hourly, options = {}) {
         });
 
         const readText =
-            cellCache && Object.prototype.hasOwnProperty.call(cellCache, slot.label)
-                ? cellCache[slot.label]
+            getCellCacheValue(cellCache, slot) !== undefined
+                ? getCellCacheValue(cellCache, slot)
                 : await readManagerForecastCell(page, slot.label, slot.hour);
         if (forecastValuesMatch(readText, slot.forecast)) {
             confirmed += 1;
@@ -1625,6 +1664,7 @@ async function writeForecastPlanToSpa(page, storeNumber, plan, options = {}) {
         const fillResult = await fillForecastHourlyInputs(page, fillSlots, {
             skipDollarMode: true,
             onProgress: slotProgress,
+            storeNumber: store,
         });
 
         let verifyResult;

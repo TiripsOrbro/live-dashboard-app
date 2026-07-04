@@ -79,6 +79,22 @@ function resolveCatalogPath(def) {
     return null;
 }
 
+/** Live dotfile path for catalog edits; seeds from example when Pi/live file is missing. */
+function ensureLiveCatalogPath(def) {
+    const livePath = path.join(VENDORS_DIR, def.dotfile);
+    if (fs.existsSync(livePath)) return livePath;
+
+    const sourcePath = resolveCatalogPath(def);
+    if (!sourcePath) {
+        throw new Error(`Vendor catalog file ${def.dotfile} not found on this server.`);
+    }
+
+    fs.mkdirSync(VENDORS_DIR, { recursive: true });
+    fs.copyFileSync(sourcePath, livePath);
+    catalogCache.clear();
+    return livePath;
+}
+
 function normalizeCustomVendorEntry(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const label = String(raw.label || '').trim();
@@ -852,10 +868,7 @@ function sanitizeCatalogField(value) {
 function appendVendorCatalogItem(slug, spec = {}) {
     const def = getVendorDefinition(slug);
     if (!def) throw new Error('Unknown vendor.');
-    const livePath = path.join(VENDORS_DIR, def.dotfile);
-    if (!fs.existsSync(livePath)) {
-        throw new Error(`Vendor catalog file ${def.dotfile} not found on this server.`);
-    }
+    const livePath = ensureLiveCatalogPath(def);
 
     const itemCode = sanitizeCatalogField(spec.itemCode);
     const name = sanitizeCatalogField(spec.name);
@@ -928,10 +941,7 @@ function appendVendorCatalogItem(slug, spec = {}) {
 function updateVendorCatalogItemName(slug, itemCode, newName) {
     const def = getVendorDefinition(slug);
     if (!def) throw new Error('Unknown vendor.');
-    const livePath = path.join(VENDORS_DIR, def.dotfile);
-    if (!fs.existsSync(livePath)) {
-        throw new Error(`Vendor catalog file ${def.dotfile} not found on this server.`);
-    }
+    const livePath = ensureLiveCatalogPath(def);
 
     const code = normalizeItemCode(itemCode);
     const name = sanitizeCatalogField(newName);
@@ -977,10 +987,7 @@ function updateVendorCatalogItemName(slug, itemCode, newName) {
 function removeVendorCatalogItem(slug, itemCode) {
     const def = getVendorDefinition(slug);
     if (!def) throw new Error('Unknown vendor.');
-    const livePath = path.join(VENDORS_DIR, def.dotfile);
-    if (!fs.existsSync(livePath)) {
-        throw new Error(`Vendor catalog file ${def.dotfile} not found on this server.`);
-    }
+    const livePath = ensureLiveCatalogPath(def);
 
     const code = normalizeItemCode(itemCode);
     if (!code) throw new Error('Item code is required.');
@@ -1056,6 +1063,7 @@ module.exports = {
     getAllVendorDefinitions,
     registerCustomVendor,
     readCatalogFileSections,
+    ensureLiveCatalogPath,
     invalidateVendorRegistry,
     getVendorCatalog,
     getVendorDefinition,

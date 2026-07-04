@@ -5,6 +5,7 @@ const {
     getVendorDefinition,
     registerCustomVendor,
     readCatalogFileSections,
+    ensureLiveCatalogPath,
     parseCatalogText,
     invalidateVendorRegistry,
 } = require('./vendorCatalog');
@@ -50,11 +51,10 @@ function existingItemCodesForDef(def) {
 }
 
 function writeCatalogFile(def, headerLines, itemLines) {
-    const sections = readCatalogFileSections(def);
-    const filePath = sections.filePath;
-    if (!filePath) throw new Error(`Catalog file for ${def.label} is not available on this server.`);
+    const filePath = ensureLiveCatalogPath(def);
     const body = [...headerLines, '', ...itemLines].join('\n').replace(/\n*$/, '\n');
     fs.writeFileSync(filePath, body, 'utf8');
+    invalidateVendorRegistry();
 }
 
 /**

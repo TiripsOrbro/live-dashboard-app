@@ -1,12 +1,12 @@
 node_modules/
 
-# Vendor catalogs (vendors/catalogs/.Americold, etc.) — tracked for Pi deploys
+# Vendor catalogs — live dotfiles are Pi-only (templates in vendors/examples/)
 !vendors/
 !vendors/**
 !vendors/**/*
 !vendors/**/.*
-# Pi-only vendor catalog (do not overwrite local dev copy or push from laptop)
-vendors/catalogs/.Sands
+vendors/catalogs/.*
+vendors/config/existing-vendors.json
 
 .env
 .env.*

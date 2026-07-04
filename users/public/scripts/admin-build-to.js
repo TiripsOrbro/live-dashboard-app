@@ -103,6 +103,70 @@
     }
 
     let configureColMeasureSpan = null;
+    let buildToConfirmResolve = null;
+
+    function closeBuildToConfirm(result) {
+        const root = ensureBackdrop();
+        const backdrop = root.querySelector('#admin-buildto-confirm-backdrop');
+        if (backdrop) {
+            backdrop.hidden = true;
+            backdrop.setAttribute('aria-hidden', 'true');
+        }
+        if (buildToConfirmResolve) {
+            buildToConfirmResolve(Boolean(result));
+            buildToConfirmResolve = null;
+        }
+    }
+
+    function showBuildToConfirm(options = {}) {
+        const root = ensureBackdrop();
+        const backdrop = root.querySelector('#admin-buildto-confirm-backdrop');
+        const titleEl = root.querySelector('#admin-buildto-confirm-title');
+        const messageEl = root.querySelector('#admin-buildto-confirm-message');
+        const okBtn = root.querySelector('#admin-buildto-confirm-ok');
+        const cancelBtn = root.querySelector('#admin-buildto-confirm-cancel');
+        if (!backdrop || !titleEl || !messageEl || !okBtn || !cancelBtn) {
+            return Promise.resolve(false);
+        }
+
+        titleEl.textContent = String(options.title || 'Confirm').trim();
+        messageEl.textContent = String(options.message || '').trim();
+        okBtn.textContent = String(options.confirmLabel || 'Delete').trim();
+        cancelBtn.textContent = String(options.cancelLabel || 'Cancel').trim();
+        okBtn.classList.toggle('admin-buildto-confirm-ok--danger', options.destructive !== false);
+
+        backdrop.hidden = false;
+        backdrop.setAttribute('aria-hidden', 'false');
+        cancelBtn.focus();
+
+        return new Promise((resolve) => {
+            buildToConfirmResolve = resolve;
+        });
+    }
+
+    function bindBuildToConfirmDialog(root) {
+        const backdrop = root.querySelector('#admin-buildto-confirm-backdrop');
+        if (!backdrop || backdrop.dataset.adminBuildToConfirmBound) return;
+        backdrop.dataset.adminBuildToConfirmBound = '1';
+
+        root.querySelector('#admin-buildto-confirm-ok')?.addEventListener('click', () => {
+            closeBuildToConfirm(true);
+        });
+        root.querySelector('#admin-buildto-confirm-cancel')?.addEventListener('click', () => {
+            closeBuildToConfirm(false);
+        });
+        backdrop.addEventListener('click', (event) => {
+            if (event.target === backdrop) closeBuildToConfirm(false);
+        });
+        root.querySelector('.admin-buildto-confirm')?.addEventListener('click', (event) => {
+            event.stopPropagation();
+        });
+        root.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape' || backdrop.hidden) return;
+            event.preventDefault();
+            closeBuildToConfirm(false);
+        });
+    }
 
     function measureConfigureText(text, font) {
         if (!configureColMeasureSpan) {
@@ -429,6 +493,16 @@
                 <div class="admin-modal-actions admin-buildto-actions">
                     <button type="button" class="admin-buildto-close-btn" id="admin-buildto-close">Close</button>
                 </div>
+                <div class="admin-buildto-confirm-backdrop" id="admin-buildto-confirm-backdrop" hidden aria-hidden="true">
+                    <div class="admin-buildto-confirm" role="alertdialog" aria-modal="true" aria-labelledby="admin-buildto-confirm-title" aria-describedby="admin-buildto-confirm-message">
+                        <h3 id="admin-buildto-confirm-title">Confirm</h3>
+                        <p id="admin-buildto-confirm-message"></p>
+                        <div class="admin-buildto-confirm-actions">
+                            <button type="button" class="admin-buildto-close-btn" id="admin-buildto-confirm-cancel">Cancel</button>
+                            <button type="button" class="mic-settings-btn admin-btn-primary admin-buildto-confirm-ok" id="admin-buildto-confirm-ok">Delete</button>
+                        </div>
+                    </div>
+                </div>
             </div>`;
 
     function bindPanel(root) {
@@ -456,6 +530,7 @@
         root.querySelector('#admin-buildto-vendor-remove')?.addEventListener('click', () => {
             void removeSelectedVendor();
         });
+        bindBuildToConfirmDialog(root);
         root.querySelector('#admin-buildto-search')?.addEventListener('input', () => renderTable());
     }
 
@@ -610,13 +685,12 @@
         const vendor = selectedFilterVendor();
         if (!vendor?.custom) return;
         const label = String(vendor.label || vendor.slug).trim();
-        if (
-            !global.confirm(
-                `Remove vendor "${label}"?\n\nThis deletes the custom vendor catalog and its MMX order entry. Built-in vendors (Americold, Bega, etc.) cannot be removed.`
-            )
-        ) {
-            return;
-        }
+        const ok = await showBuildToConfirm({
+            title: 'Remove vendor?',
+            message: `Remove "${label}"? This deletes the custom vendor catalog and its MMX order entry. Built-in vendors cannot be removed this way.`,
+            confirmLabel: 'Remove vendor',
+        });
+        if (!ok) return;
 
         const root = ensureBackdrop();
         const errEl = root.querySelector('#admin-buildto-error');
@@ -1136,13 +1210,12 @@
         const code = String(itemCode || '').trim();
         if (!code) return;
         const name = String(label || code).trim();
-        if (
-            !global.confirm(
-                `Delete "${name}" (${code}) from the catalog?\n\nThis removes the item, its display name, and build-to overrides.`
-            )
-        ) {
-            return;
-        }
+        const ok = await showBuildToConfirm({
+            title: 'Delete item?',
+            message: `Delete "${name}" (${code}) from the catalog? This removes the item, its display name, and build-to overrides.`,
+            confirmLabel: 'Delete item',
+        });
+        if (!ok) return;
 
         const root = ensureBackdrop();
         const errEl = root.querySelector('#admin-buildto-error');

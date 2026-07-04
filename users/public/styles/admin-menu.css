@@ -969,6 +969,62 @@ html.mic-dark-mode .admin-settings-empty {
     flex-direction: column;
     max-height: min(90vh, 820px);
     border-radius: var(--admin-buildto-radius);
+    position: relative;
+}
+
+.admin-buildto-confirm-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    box-sizing: border-box;
+    background: rgba(18, 18, 22, 0.45);
+}
+
+.admin-buildto-confirm-backdrop[hidden] {
+    display: none !important;
+}
+
+.admin-buildto-confirm {
+    width: min(100%, 420px);
+    padding: 1.25rem 1.35rem;
+    border-radius: var(--admin-buildto-control-radius, 8px);
+    background: #fff;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+    box-sizing: border-box;
+}
+
+.admin-buildto-confirm h3 {
+    margin: 0 0 0.65rem;
+    font-size: 1.05rem;
+    line-height: 1.3;
+}
+
+.admin-buildto-confirm p {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: rgba(0, 0, 0, 0.72);
+}
+
+.admin-buildto-confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1.1rem;
+}
+
+.admin-buildto-confirm-ok--danger {
+    background: #b42318 !important;
+    border-color: #b42318 !important;
+}
+
+.admin-buildto-confirm-ok--danger:hover {
+    background: #912018 !important;
+    border-color: #912018 !important;
 }
 
 html.mic-rounded-corners .admin-modal--build-to {
@@ -2260,6 +2316,19 @@ html.mic-dark-mode .admin-buildto-delete-item:hover {
     color: #f87171;
 }
 
+html.mic-dark-mode .admin-buildto-confirm {
+    background: #1a1a1f;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+html.mic-dark-mode .admin-buildto-confirm h3 {
+    color: rgba(255, 255, 255, 0.92);
+}
+
+html.mic-dark-mode .admin-buildto-confirm p {
+    color: rgba(255, 255, 255, 0.72);
+}
+
 html.mic-dark-mode .admin-buildto-copy-mode {
     border-color: rgba(255, 255, 255, 0.12);
 }
@@ -2998,6 +3067,55 @@ html.mic-dark-mode .admin-forecast-adjust-remove {
     background: #1e1e24;
     border-color: rgba(255, 255, 255, 0.15);
     color: inherit;
+}
+
+.admin-modal--forecast-three-week-confirm {
+    max-width: 28rem;
+}
+
+.admin-forecast-three-week-ranges {
+    list-style: none;
+    margin: 0.75rem 0;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.admin-forecast-three-week-ranges li {
+    display: flex;
+    gap: 0.75rem;
+    align-items: baseline;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    font-size: 0.9rem;
+}
+
+.admin-forecast-three-week-ranges li:last-child {
+    border-bottom: none;
+}
+
+.admin-forecast-three-week-ranges-label {
+    flex: 0 0 auto;
+    min-width: 4.25rem;
+    font-weight: 600;
+    color: rgba(0, 0, 0, 0.72);
+}
+
+.admin-forecast-three-week-confirm-note {
+    margin-top: 0.25rem;
+}
+
+html.mic-dark-mode .admin-forecast-three-week-ranges {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.mic-dark-mode .admin-forecast-three-week-ranges li {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+html.mic-dark-mode .admin-forecast-three-week-ranges-label {
+    color: rgba(255, 255, 255, 0.78);
 }
 
 .admin-modal--forecast-progress {

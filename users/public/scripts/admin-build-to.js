@@ -278,12 +278,20 @@
                 <path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
             </svg>`;
 
+    const BUILD_TO_ADD_SVG = `<svg class="admin-buildto-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+            </svg>`;
+
     function escapeHtml(text) {
         return String(text)
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;');
+    }
+
+    function itemCommonLabel(item) {
+        return String(item?.displayName || item?.name || item?.itemCode || '').trim();
     }
 
     function dropdownRuleType(item) {
@@ -387,6 +395,7 @@
                         </div>
                         <div class="admin-buildto-header-actions">
                             <button type="button" class="mic-settings-btn admin-buildto-mode-toggle admin-buildto-header-icon-btn admin-buildto-mode-toggle--cog" id="admin-buildto-mode-toggle" hidden aria-label="Configure items" title="Configure items">${BUILD_TO_COG_SVG}</button>
+                            <button type="button" class="mic-settings-btn admin-buildto-add admin-buildto-header-icon-btn" id="admin-buildto-add" hidden aria-label="New item" title="New item">${BUILD_TO_ADD_SVG}</button>
                             <button type="button" class="mic-settings-btn admin-buildto-copy-vendor admin-buildto-header-icon-btn" id="admin-buildto-copy-vendor" hidden aria-label="Copy to vendor" title="Copy to vendor">${BUILD_TO_COPY_SVG}</button>
                         </div>
                     </div>
@@ -401,7 +410,6 @@
                     <div class="admin-buildto-search-wrap">
                         <input type="search" id="admin-buildto-search" placeholder="Search items…" aria-label="Search items" />
                     </div>
-                    <button type="button" class="mic-settings-btn admin-buildto-add" id="admin-buildto-add" hidden>+ New item</button>
                     <button type="button" class="mic-settings-btn admin-btn-primary admin-buildto-save" id="admin-buildto-save">Save changes</button>
                 </div>
                 <div class="admin-buildto-new-wrap" id="admin-buildto-new-wrap" hidden></div>
@@ -704,7 +712,8 @@
             if (!q) return true;
             return (
                 String(item.itemCode || '').toLowerCase().includes(q) ||
-                String(item.name || '').toLowerCase().includes(q)
+                String(item.name || '').toLowerCase().includes(q) ||
+                String(item.displayName || '').toLowerCase().includes(q)
             );
         });
         if (!items.length) {
@@ -747,7 +756,7 @@
                             data-default-stock-warning="${escapeHtml(defaultWarn)}"
                             data-initial-stock-warning="${item.stockWarningDays != null ? escapeHtml(item.stockWarningDays) : ''}"
                             data-initial-rule-type="${escapeHtml(ruleType)}">
-                            <td class="admin-buildto-item-cell">${escapeHtml(item.name)}<span class="admin-accounts-meta">${escapeHtml(item.itemCode)}</span></td>
+                            <td class="admin-buildto-item-cell">${escapeHtml(itemCommonLabel(item))}<span class="admin-accounts-meta">${escapeHtml(item.itemCode)}</span></td>
                             <td class="admin-buildto-vendor-cell">${escapeHtml(item.vendorLabel || item.vendorSlug)}</td>
                             <td>
                                 <select data-field="ruleType" class="admin-buildto-type-select">

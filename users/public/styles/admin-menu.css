@@ -1073,7 +1073,15 @@ html.mic-rounded-corners .admin-modal--build-to {
     display: none !important;
 }
 
+.admin-buildto-add {
+    display: none !important;
+}
+
 .admin-buildto-header-actions--configure .admin-buildto-copy-vendor:not([hidden]) {
+    display: flex !important;
+}
+
+.admin-buildto-header-actions--configure .admin-buildto-add:not([hidden]) {
     display: flex !important;
 }
 
@@ -1306,21 +1314,6 @@ body.admin-buildto-col-resizing {
     background: transparent;
     border: none;
     box-shadow: none;
-}
-
-.admin-modal--build-to .admin-buildto-add {
-    width: 100%;
-    box-sizing: border-box;
-    min-height: var(--admin-buildto-toolbar-control-height, 2.75rem);
-    padding: 0.55rem 1.25rem;
-    border-radius: var(--admin-buildto-control-radius);
-    font: inherit;
-    font-weight: 600;
-    line-height: 1.25;
-    text-align: center;
-    display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
 .admin-buildto-new-wrap {

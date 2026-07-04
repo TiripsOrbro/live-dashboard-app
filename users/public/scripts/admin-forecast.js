@@ -28,6 +28,8 @@
     let backfillProgressBackdrop = null;
     let backfillProgressRunning = false;
     let canManageBackfill = false;
+    let threeWeekConfirmBackdrop = null;
+    let threeWeekConfirmResolve = null;
 
     const ADMIN_AREAS = ['VIC-1', 'WA-1', 'QLD-1'];
 
@@ -358,7 +360,7 @@
     }
 
     const FORECAST_MODAL_HTML = `
-            <div class="admin-modal admin-modal--wide" role="dialog" aria-modal="true">
+            <div class="admin-modal admin-modal--wide admin-modal--forecast" role="dialog" aria-modal="true">
                 <h2>Forecast tool</h2>
                 <p class="admin-accounts-meta">Uses 5 weeks of stored hourly sales (trimmed weekday averages + hourly shape), then writes to Macromatix and LifeLenz when configured. Choose this week, next week, the week after, a custom week starting date, or a single day before preview/submit.</p>
                 <div class="admin-settings-segmented-tabs admin-accounts-browse-scope admin-accounts-org-nav admin-forecast-area-nav">
@@ -4424,6 +4426,61 @@
         });
     }
 
+    function closeThreeWeekConfirm(result) {
+        if (!threeWeekConfirmBackdrop) return;
+        threeWeekConfirmBackdrop.hidden = true;
+        const resolve = threeWeekConfirmResolve;
+        threeWeekConfirmResolve = null;
+        if (resolve) resolve(Boolean(result));
+    }
+
+    function ensureThreeWeekConfirmBackdrop() {
+        if (threeWeekConfirmBackdrop) return threeWeekConfirmBackdrop;
+        threeWeekConfirmBackdrop = document.createElement('div');
+        threeWeekConfirmBackdrop.className = 'admin-modal-backdrop admin-modal-backdrop--stacked';
+        threeWeekConfirmBackdrop.hidden = true;
+        threeWeekConfirmBackdrop.innerHTML = `
+            <div class="admin-modal admin-modal--forecast-three-week-confirm" role="dialog" aria-modal="true" aria-labelledby="admin-forecast-three-week-confirm-title">
+                <h2 id="admin-forecast-three-week-confirm-title">Update next 3 weeks</h2>
+                <p class="admin-accounts-meta" id="admin-forecast-three-week-confirm-scope"></p>
+                <ul class="admin-forecast-three-week-ranges" id="admin-forecast-three-week-confirm-ranges"></ul>
+                <p class="admin-accounts-meta admin-forecast-three-week-confirm-note">Each week runs a full Macromatix + LifeLenz submit.</p>
+                <div class="admin-modal-actions">
+                    <button type="button" id="admin-forecast-three-week-confirm-cancel">Cancel</button>
+                    <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-three-week-confirm-go">Update 3 weeks</button>
+                </div>
+            </div>`;
+        document.body.appendChild(threeWeekConfirmBackdrop);
+        threeWeekConfirmBackdrop.addEventListener('click', (event) => {
+            if (event.target === threeWeekConfirmBackdrop) closeThreeWeekConfirm(false);
+        });
+        threeWeekConfirmBackdrop
+            .querySelector('#admin-forecast-three-week-confirm-cancel')
+            ?.addEventListener('click', () => closeThreeWeekConfirm(false));
+        threeWeekConfirmBackdrop
+            .querySelector('#admin-forecast-three-week-confirm-go')
+            ?.addEventListener('click', () => closeThreeWeekConfirm(true));
+        return threeWeekConfirmBackdrop;
+    }
+
+    function confirmNextThreeWeeks({ storeLabel, targets }) {
+        return new Promise((resolve) => {
+            threeWeekConfirmResolve = resolve;
+            const root = ensureThreeWeekConfirmBackdrop();
+            root.querySelector('#admin-forecast-three-week-confirm-scope').textContent =
+                `Update the next 3 weeks for ${storeLabel}?`;
+            const rangesEl = root.querySelector('#admin-forecast-three-week-confirm-ranges');
+            rangesEl.innerHTML = (targets || [])
+                .map(
+                    (target, idx) =>
+                        `<li><span class="admin-forecast-three-week-ranges-label">Week ${idx + 1}</span> ${escapeHtml(target.label)}</li>`
+                )
+                .join('');
+            root.hidden = false;
+            root.querySelector('#admin-forecast-three-week-confirm-go')?.focus();
+        });
+    }
+
     async function runNextThreeWeeksForArea() {
         const root = ensureBackdrop();
         root.querySelector('#admin-forecast-error').textContent = '';
@@ -4463,10 +4520,7 @@
         }
 
         const storeLabel = stores.length === 1 ? `store ${stores[0]}` : `${stores.length} stores`;
-        const rangesText = targets.map((t, idx) => `Week ${idx + 1}: ${t.label}`).join('\n');
-        const confirmed = window.confirm(
-            `Update the next 3 weeks for ${storeLabel}?\n\n${rangesText}\n\nEach week runs a full Macromatix + LifeLenz submit.`
-        );
+        const confirmed = await confirmNextThreeWeeks({ storeLabel, targets });
         if (!confirmed) return;
 
         threeWeekBatchRunning = true;

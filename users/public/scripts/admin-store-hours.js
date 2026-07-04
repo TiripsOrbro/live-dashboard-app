@@ -308,16 +308,18 @@
                         <nav class="admin-accounts-scope-row admin-accounts-scope-row--equal admin-store-hours-area-tabs" id="admin-store-hours-area-tabs" role="tablist" aria-label="Select area"></nav>
                     </div>
                 </div>
-                <div id="admin-store-hours-store-table"></div>
-                <section id="admin-store-hours-editor" class="admin-store-hours-editor" hidden>
-                    <h3 id="admin-store-hours-editor-title" class="admin-store-hours-editor-title"></h3>
-                    <p id="admin-store-hours-editor-meta" class="admin-accounts-meta"></p>
-                    <div id="admin-store-hours-schedule"></div>
-                    <div id="admin-store-hours-fields"></div>
-                    <div class="admin-store-hours-actions">
-                        <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-store-hours-save" hidden>Save changes</button>
-                    </div>
-                </section>
+                <div class="admin-settings-scroll-body">
+                    <div id="admin-store-hours-store-table"></div>
+                    <section id="admin-store-hours-editor" class="admin-store-hours-editor" hidden>
+                        <h3 id="admin-store-hours-editor-title" class="admin-store-hours-editor-title"></h3>
+                        <p id="admin-store-hours-editor-meta" class="admin-accounts-meta"></p>
+                        <div id="admin-store-hours-schedule"></div>
+                        <div id="admin-store-hours-fields"></div>
+                        <div class="admin-store-hours-actions">
+                            <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-store-hours-save" hidden>Save changes</button>
+                        </div>
+                    </section>
+                </div>
                 <p id="admin-store-hours-error" class="admin-modal-error" role="alert"></p>
             </div>`;
         bindShell();

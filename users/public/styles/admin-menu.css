@@ -610,8 +610,13 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
 }
 
 .admin-settings-content .admin-modal--build-to,
-.admin-settings-content .admin-modal--store-logins,
-.admin-settings-content .admin-modal--smg-nsf {
+.admin-settings-content .admin-modal--forecast,
+.admin-settings-content .admin-modal--smg-nsf,
+.admin-settings-content .admin-accounts-view,
+.admin-settings-content .admin-store-logins-view,
+.admin-settings-content .admin-store-hours,
+.admin-settings-content .admin-five-am-reports,
+.admin-settings-content .admin-report-subscriptions {
     overflow: hidden;
     max-height: none;
     flex: 1 1 0;
@@ -628,12 +633,34 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
     display: none;
 }
 
-.admin-settings-content .admin-buildto-table-wrap {
+.admin-settings-content .admin-settings-scroll-body,
+.admin-settings-content .admin-buildto-table-wrap,
+.admin-settings-content #admin-forecast-body,
+.admin-settings-content #admin-accounts-body,
+.admin-settings-content #admin-accounts-create,
+.admin-settings-content #admin-smg-nsf-body,
+.admin-settings-content #admin-five-am-body,
+.admin-settings-content #admin-report-sub-matrix {
     flex: 1 1 auto;
     min-height: 0;
     max-height: none;
     overflow: auto;
+    -webkit-overflow-scrolling: touch;
     margin-bottom: 0;
+}
+
+.admin-settings-content .admin-modal > .admin-section-header,
+.admin-settings-content .admin-modal > h2,
+.admin-settings-content .admin-modal > .admin-accounts-meta,
+.admin-settings-content .admin-modal > .admin-accounts-browse-scope,
+.admin-settings-content .admin-modal > .admin-accounts-org-nav,
+.admin-settings-content .admin-modal > .admin-settings-segmented-tabs,
+.admin-settings-content .admin-modal > .admin-forecast-area-nav,
+.admin-settings-content .admin-modal > .admin-forecast-toolbar,
+.admin-settings-content .admin-modal > .admin-modal-toolbar,
+.admin-settings-content .admin-modal > .admin-store-logins-status,
+.admin-settings-content .admin-modal > .admin-modal-error {
+    flex-shrink: 0;
 }
 
 .admin-settings-content .admin-buildto-actions {
@@ -744,7 +771,6 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
     padding: 0;
     background: transparent;
     color: inherit;
-    overflow: visible;
 }
 
 html.mic-dark-mode .admin-store-logins-view .admin-store-logins-entry {

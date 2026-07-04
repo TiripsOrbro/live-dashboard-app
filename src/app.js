@@ -5023,19 +5023,16 @@ app.get('/api/admin/build-to/catalog', (req, res) => {
         const configure = String(req.query.configure || '').trim() === '1';
 
         if (configure) {
-            const areaName = area || String(req.query.areaName || '').trim();
-            if (!areaName) {
-                res.status(400).json({ success: false, error: 'Area is required for configure mode.' });
-                return;
-            }
-            const allowedAreas = new Set((getAccessibleAreasForUser(user) || []).map(String));
-            if (!canUserEditGlobalBuildTo(user) && !allowedAreas.has(areaName)) {
-                res.status(403).json({ success: false, error: 'Area is outside your scope.' });
+            if (!canUserEditGlobalBuildTo(user)) {
+                res.status(403).json({
+                    success: false,
+                    error: 'Area Manager or above is required to configure items.',
+                });
                 return;
             }
             res.json({
                 success: true,
-                ...buildAdminBuildToCatalog({ areaName, level: 'area', configure: true }),
+                ...buildAdminBuildToCatalog({ level: 'global', configure: true }),
             });
             return;
         }

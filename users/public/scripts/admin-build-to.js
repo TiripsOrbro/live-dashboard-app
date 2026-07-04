@@ -493,14 +493,14 @@
         if (title) title.textContent = isConfigure ? 'Configure items' : 'Build to adjustments';
         if (subtitle) {
             subtitle.textContent = isConfigure
-                ? 'Set vendor routing, item codes, count units, and stock-count columns by area.'
+                ? 'Set vendor routing, item codes, count units, and stock-count columns (global for all stores).'
                 : 'Set build-to rules and low-stock thresholds by area or store.';
         }
         if (headerActions) {
             headerActions.classList.toggle('admin-buildto-header-actions--configure', isConfigure);
         }
         if (modeToggle) {
-            modeToggle.hidden = !canConfigure;
+            modeToggle.hidden = !canAddItems;
             modeToggle.classList.toggle('admin-buildto-mode-toggle--back', isConfigure);
             modeToggle.classList.toggle('admin-buildto-mode-toggle--cog', !isConfigure);
             if (isConfigure) {
@@ -513,16 +513,23 @@
                 modeToggle.title = 'Configure items';
             }
         }
-        if (browseScopeHost) browseScopeHost.hidden = false;
+        if (browseScopeHost) browseScopeHost.hidden = isConfigure;
         if (vendorFilterWrap) vendorFilterWrap.hidden = !isConfigure;
         if (copyBtn) copyBtn.hidden = !(isConfigure && canCopyVendor);
         if (addBtn) addBtn.hidden = !isConfigure || !canAddItems;
     }
 
     function enterConfigureMode() {
+        if (!canAddItems) {
+            const root = ensureBackdrop();
+            const errEl = root.querySelector('#admin-buildto-error');
+            if (errEl) {
+                errEl.textContent = 'Area Manager or above is required to configure items.';
+            }
+            return;
+        }
         viewMode = 'configure';
         applyViewModeUi();
-        renderScopeNavigator();
         populateVendorFilter();
         void loadCatalog().catch((error) => {
             const root = ensureBackdrop();
@@ -586,11 +593,9 @@
 
     function scopeCatalogParams() {
         if (viewMode === 'configure') {
-            const area = String(browseScope.area || '').trim();
             const params = new URLSearchParams();
             params.set('configure', '1');
-            if (area) params.set('area', area);
-            return { scope: { level: area ? 'area' : 'none', area }, params };
+            return { scope: { level: 'global' }, params };
         }
         const scope = getOverrideScope();
         const params = new URLSearchParams();
@@ -671,11 +676,7 @@
         const body = root.querySelector('#admin-buildto-body');
         const { scope, params } = scopeCatalogParams();
         if (viewMode === 'configure') {
-            if (scope.level === 'none') {
-                catalogCache = null;
-                body.innerHTML = '<p>Select an area to configure items.</p>';
-                return;
-            }
+            // Global item configuration — no area/store scope required.
         } else if (scope.level === 'none') {
             catalogCache = null;
             body.innerHTML = '<p>Select an area or store to view build-to adjustments.</p>';
@@ -1017,7 +1018,7 @@
                             <td><select data-field="vendorSlug" class="admin-buildto-type-select">${vendorOptionsHtml(vendors, effectiveVendor)}</select></td>
                             <td><input type="text" data-field="mmxCode" class="admin-buildto-code-input" autocomplete="off" /></td>
                             <td><input type="text" data-field="vendorCode" class="admin-buildto-code-input" autocomplete="off" /></td>
-                            <td><input type="text" data-field="fallbackCodes" class="admin-buildto-fallback-input" autocomplete="off" /></td>
+                            <td><input type="text" data-field="fallbackCodes" class="admin-buildto-fallback-input" autocomplete="off" placeholder="Comma-separated" title="Extra item codes for the same product, tried in order" /></td>
                             <td><select data-field="unit0" class="admin-buildto-type-select admin-buildto-unit-select">${unitOptionsHtml('Boxes')}</select></td>
                             <td><select data-field="unit1" class="admin-buildto-type-select admin-buildto-unit-select">${unitOptionsHtml('N/a')}</select></td>
                             <td><select data-field="unit2" class="admin-buildto-type-select admin-buildto-unit-select">${unitOptionsHtml('N/a')}</select></td>
@@ -1756,10 +1757,8 @@
 
         try {
             if (viewMode === 'configure') {
-                const area = String(browseScope.area || '').trim();
-                if (!area) throw new Error('Select an area to save configure changes.');
                 const patch = collectConfigurePatchAll();
-                await putBuildToOverrides({ areas: { [area]: patch } });
+                await putBuildToOverrides({ global: patch });
             } else {
                 const patch = collectPatch();
                 const scope = getOverrideScope();
@@ -1802,12 +1801,12 @@
         canConfigure =
             Boolean(me.canEditGlobalBuildTo) ||
             (Array.isArray(me.accessibleAreas) && me.accessibleAreas.length > 0);
-        canEditItemCodes = canConfigure;
+        canEditItemCodes = Boolean(me.canEditGlobalBuildTo);
         canAddItems = Boolean(me.canEditGlobalBuildTo);
         canCopyVendor = Boolean(me.canEditGlobalBuildTo);
         const addBtn = root.querySelector('#admin-buildto-add');
         const modeToggle = root.querySelector('#admin-buildto-mode-toggle');
-        if (modeToggle) modeToggle.hidden = !canConfigure;
+        if (modeToggle) modeToggle.hidden = !canAddItems;
         viewMode = 'rules';
         applyViewModeUi();
         storeList = await loadStores();

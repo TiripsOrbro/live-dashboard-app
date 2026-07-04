@@ -209,10 +209,12 @@ function buildAdminBuildToCatalog(options = {}) {
     const store = String(options.storeNumber || options.store || '').trim();
     const area = String(options.areaName || options.area || '').trim();
     const configure = Boolean(options.configure);
-    const level =
-        options.level ||
-        (configure && area ? 'area' : store ? 'store' : area ? 'area' : 'global');
-    const scope = { level, store: configure ? '' : store, area: area || (store ? areaForStoreNumber(store) : '') };
+    const level = configure
+        ? 'global'
+        : options.level || (store ? 'store' : area ? 'area' : 'global');
+    const scope = configure
+        ? { level: 'global', store: '', area: '' }
+        : { level, store, area: area || (store ? areaForStoreNumber(store) : '') };
     const vendors = [];
     for (const vendor of listConfiguredVendors()) {
         const catalog = getVendorCatalog(vendor.slug);

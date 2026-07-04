@@ -1337,12 +1337,44 @@ async function writeForecastDay(page, isoDate, planDay, options = {}) {
     const dayParts = aggregateDayPartsFromHourlyPlan(planDay);
     const runOptions = { ...options, activeDate: isoDate };
 
+    await runTimedPhase(options, 'set-date', () => setForecastDate(page, isoDate, options), { date: isoDate });
+
+    const preCheck = await runTimedPhase(
+        options,
+        'verify-dayparts',
+        () => verifyDayPartValues(page, dayParts, options),
+        { date: isoDate, phase: 'pre-check' }
+    );
+    if (preCheck.ok) {
+        for (const part of dayParts) {
+            emitProgress(options, {
+                type: 'daypart-confirmed',
+                date: isoDate,
+                label: part.label,
+                key: part.key,
+                value: part.adjusted,
+                read: part.adjusted,
+                skipped: true,
+            });
+        }
+        emitProgress(options, {
+            type: 'day-complete',
+            date: isoDate,
+            verified: true,
+            skipped: true,
+            adjustedTotal: dayParts.reduce((sum, row) => sum + row.adjusted, 0),
+        });
+        return { date: isoDate, dayParts, verified: true, skipped: true };
+    }
+
     let verification = null;
     for (let attempt = 1; attempt <= WRITE_DAY_MAX_ATTEMPTS; attempt += 1) {
-        await runTimedPhase(options, 'set-date', () => setForecastDate(page, isoDate, options), {
-            date: isoDate,
-            attempt,
-        });
+        if (attempt > 1) {
+            await runTimedPhase(options, 'set-date', () => setForecastDate(page, isoDate, options), {
+                date: isoDate,
+                attempt,
+            });
+        }
         await runTimedPhase(options, 'fill-dayparts', () => fillDayPartsWithOvernightQuirk(page, dayParts, runOptions), {
             date: isoDate,
             attempt,

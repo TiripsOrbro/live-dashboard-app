@@ -21,8 +21,9 @@ function resolveLifeLenzHeadlessOption(options = {}) {
     return resolveLifeLenzHeadless(options);
 }
 
+/** Ledger resume skips whole days without reading the site — unsafe if a manager edited forecasts. */
 function shouldResumeForecast(options = {}) {
-    return options.skipResume !== true && options.force !== true;
+    return options.resumeFromLedger === true && options.skipResume !== true;
 }
 
 function splitPlanForResume(storeNumber, plan, weekStart, platform, options = {}) {

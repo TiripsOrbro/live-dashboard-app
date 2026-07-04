@@ -855,7 +855,7 @@
         const el = progressBackdrop?.querySelector('#admin-forecast-progress-error');
         if (!el) return;
         delete el.dataset.stallWarning;
-        el.textContent = `Connection lost — resuming from the last saved day (attempt ${attempt + 1}/${maxAttempts}) in ${Math.round(delayMs / 1000)}s…`;
+        el.textContent = `Connection lost — retrying forecast run (attempt ${attempt + 1}/${maxAttempts}) in ${Math.round(delayMs / 1000)}s…`;
     }
 
     async function runStoresWithProgress(storeNumbers, onEvent, runOptions = {}) {

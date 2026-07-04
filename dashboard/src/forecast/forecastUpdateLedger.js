@@ -96,7 +96,7 @@ function isForecastDayCompleteForPlatform(storeNumber, weekStart, date, platform
     return plat === 'lifelenz' ? Boolean(row.lifelenz) : Boolean(row.mmx);
 }
 
-/** Drop days already written for this platform (used when resuming after a disconnect). */
+/** Drop days marked complete in the ledger (opt-in via resumeFromLedger only). */
 function filterPlanForPlatformResume(storeNumber, plan, weekStart, platform) {
     const store = String(storeNumber || '').trim();
     const week = String(weekStart || '').trim();

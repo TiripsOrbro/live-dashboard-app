@@ -1,4 +1,4 @@
-# Pi SSH helpers — deploy code, restart PM2, stream logs.
+# Pi SSH helpers - deploy code, restart PM2, stream logs.
 # Usage:  .\scripts\pi.ps1 <command>
 #         npm run pi:deploy
 #
@@ -11,7 +11,7 @@ param(
     [string]$Command = 'help'
 )
 
-$PiHost = 'pi'   # SSH config alias (see README "Dev machine SSH")
+$PiHost = 'pi'
 $PiAppDir = '~/live-dashboard-app'
 $RepoRoot = Split-Path $PSScriptRoot -Parent
 
@@ -41,15 +41,15 @@ function Invoke-Pi {
 function Copy-SshKey {
     $pub = Join-Path $env:USERPROFILE '.ssh\id_ed25519.pub'
     if (-not (Test-Path $pub)) {
-        Write-Error "No public key at $pub — run: ssh-keygen -t ed25519 -f `"$env:USERPROFILE\.ssh\id_ed25519`""
+        Write-Error "No public key at $pub - run: ssh-keygen -t ed25519"
         exit 1
     }
     Write-Host "Copying SSH key to $PiHost (enter Pi password when prompted)..." -ForegroundColor Cyan
-    Get-Content $pub -Raw | ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no $PiHost `
-        'mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo Key installed OK'
+    $remoteKeyCmd = 'mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && echo Key installed OK'
+    Get-Content $pub -Raw | ssh -o PreferredAuthentications=password -o PubkeyAuthentication=no $PiHost $remoteKeyCmd
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host "Testing key login..." -ForegroundColor Cyan
-    ssh -o BatchMode=yes $PiHost "echo SSH key auth works."
+    ssh -o BatchMode=yes $PiHost 'echo SSH key auth works.'
 }
 
 function Sync-Deploy {
@@ -81,13 +81,14 @@ function Sync-Deploy {
         )
         $excludeArgs = $excludes | ForEach-Object { "--exclude=$_" }
 
-        Write-Host "Syncing $RepoRoot -> $PiHost`:$PiAppDir ..." -ForegroundColor Cyan
-        # tar on Windows 10+ pipes cleanly over SSH for a fast direct push.
-        & tar -czf - @excludeArgs -C $RepoRoot . | ssh $PiHost 'mkdir -p ~/live-dashboard-app && cd ~/live-dashboard-app && tar -xzf -'
+        Write-Host "Syncing $RepoRoot -> ${PiHost}:${PiAppDir} ..." -ForegroundColor Cyan
+        $remoteTarCmd = 'mkdir -p ~/live-dashboard-app && cd ~/live-dashboard-app && tar -xzf -'
+        & tar -czf - @excludeArgs -C $RepoRoot . | ssh $PiHost $remoteTarCmd
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
         Write-Host "Installing deps and restarting PM2..." -ForegroundColor Cyan
-        Invoke-Pi 'cd ~/live-dashboard-app && npm install --omit=dev && pm2 restart dashboard report-download-scheduler forecast-scheduler'
+        $remoteInstallCmd = 'cd ~/live-dashboard-app && npm install --omit=dev && pm2 restart dashboard report-download-scheduler forecast-scheduler'
+        Invoke-Pi $remoteInstallCmd
         Write-Host "Deploy complete." -ForegroundColor Green
     }
     finally {
@@ -95,20 +96,19 @@ function Sync-Deploy {
     }
 }
 
+$RemoteGitDeploy = 'cd ~/live-dashboard-app && git pull && npm install --omit=dev && pm2 restart dashboard report-download-scheduler forecast-scheduler'
+$RemoteRestart = 'cd ~/live-dashboard-app && pm2 restart dashboard report-download-scheduler forecast-scheduler'
+
 switch ($Command) {
     'setup-key' { Copy-SshKey }
     'ssh'       { & ssh $PiHost }
     'deploy'    { Sync-Deploy }
-    'deploy-git' {
-        Invoke-Pi 'cd ~/live-dashboard-app && git pull && npm install --omit=dev && pm2 restart dashboard report-download-scheduler forecast-scheduler'
-    }
-    'restart' {
-        Invoke-Pi 'cd ~/live-dashboard-app && pm2 restart dashboard report-download-scheduler forecast-scheduler'
-    }
-    'status'  { Invoke-Pi 'pm2 status' }
-    'logs'    { Invoke-Pi 'pm2 logs dashboard --lines 100' }
+    'deploy-git' { Invoke-Pi $RemoteGitDeploy }
+    'restart'   { Invoke-Pi $RemoteRestart }
+    'status'    { Invoke-Pi 'pm2 status' }
+    'logs'      { Invoke-Pi 'pm2 logs dashboard --lines 100' }
     'logs-scheduler' { Invoke-Pi 'pm2 logs report-download-scheduler --lines 100' }
     'logs-forecast'  { Invoke-Pi 'pm2 logs forecast-scheduler --lines 100' }
-    'tail'    { Invoke-Pi 'pm2 logs dashboard --lines 80 --nostream' }
-    default   { Show-Help }
+    'tail'      { Invoke-Pi 'pm2 logs dashboard --lines 80 --nostream' }
+    default     { Show-Help }
 }

@@ -1081,8 +1081,7 @@ html.mic-rounded-corners .admin-modal--build-to {
 
 .admin-buildto-table--configure {
     table-layout: fixed;
-    width: max-content;
-    min-width: 100%;
+    width: 0;
 }
 
 .admin-buildto-table--configure thead th {

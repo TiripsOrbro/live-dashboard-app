@@ -80,8 +80,39 @@
         ).join('')}</colgroup>`;
     }
 
+    function readConfigureColWidths(table) {
+        const saved = loadConfigureColWidths();
+        return CONFIGURE_COL_KEYS.map((key) => {
+            const col = table?.querySelector(`colgroup col[data-col-key="${key}"]`);
+            const inline = parseInt(col?.style.width, 10);
+            if (Number.isFinite(inline)) return inline;
+            return saved[key] || CONFIGURE_COL_DEFAULTS[key] || 48;
+        });
+    }
+
+    function applyConfigureColWidths(table, widths) {
+        if (!table || !Array.isArray(widths)) return;
+        CONFIGURE_COL_KEYS.forEach((key, index) => {
+            const col = table.querySelector(`colgroup col[data-col-key="${key}"]`);
+            if (col) col.style.width = `${Math.max(48, widths[index])}px`;
+        });
+        syncConfigureTableWidth(table);
+    }
+
+    function syncConfigureTableWidth(table) {
+        if (!table) return;
+        let total = 0;
+        CONFIGURE_COL_KEYS.forEach((key) => {
+            const col = table.querySelector(`colgroup col[data-col-key="${key}"]`);
+            total += parseInt(col?.style.width, 10) || 48;
+        });
+        table.style.width = `${total}px`;
+    }
+
     function bindConfigureColumnResize(table) {
         if (!table) return;
+        applyConfigureColWidths(table, readConfigureColWidths(table));
+
         CONFIGURE_COL_KEYS.forEach((key, index) => {
             const col = table.querySelector(`colgroup col[data-col-key="${key}"]`);
             const th = table.querySelector(`thead th:nth-child(${index + 1})`);
@@ -97,11 +128,14 @@
 
             let startX = 0;
             let startWidth = 0;
+            let peerWidths = [];
 
             const onMove = (event) => {
                 const clientX = event.touches ? event.touches[0].clientX : event.clientX;
                 const next = Math.max(48, startWidth + (clientX - startX));
-                col.style.width = `${next}px`;
+                const widths = peerWidths.slice();
+                widths[index] = next;
+                applyConfigureColWidths(table, widths);
             };
 
             const onEnd = () => {
@@ -110,7 +144,7 @@
                 document.removeEventListener('touchmove', onMove);
                 document.removeEventListener('touchend', onEnd);
                 document.body.classList.remove('admin-buildto-col-resizing');
-                const width = parseInt(col.style.width, 10);
+                const width = readConfigureColWidths(table)[index];
                 if (Number.isFinite(width)) saveConfigureColWidth(key, width);
             };
 
@@ -118,7 +152,8 @@
                 event.preventDefault();
                 event.stopPropagation();
                 startX = event.touches ? event.touches[0].clientX : event.clientX;
-                startWidth = th.getBoundingClientRect().width;
+                peerWidths = readConfigureColWidths(table);
+                startWidth = peerWidths[index];
                 document.body.classList.add('admin-buildto-col-resizing');
                 document.addEventListener('mousemove', onMove);
                 document.addEventListener('mouseup', onEnd);

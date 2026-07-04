@@ -653,13 +653,8 @@
         const btn = root.querySelector('#admin-buildto-vendor-remove');
         const vendor = selectedFilterVendor();
         if (!btn) return;
-        const removable = Boolean(vendor?.custom);
-        btn.disabled = !removable;
-        btn.title = removable
-            ? `Remove ${vendor.label || vendor.slug}`
-            : vendor
-              ? 'Built-in vendors cannot be removed'
-              : 'Remove inactive vendor';
+        btn.disabled = !vendor;
+        btn.title = vendor ? `Remove ${vendor.label || vendor.slug}` : 'Remove vendor';
     }
 
     function populateVendorFilter() {
@@ -683,11 +678,11 @@
 
     async function removeSelectedVendor() {
         const vendor = selectedFilterVendor();
-        if (!vendor?.custom) return;
+        if (!vendor) return;
         const label = String(vendor.label || vendor.slug).trim();
         const ok = await showBuildToConfirm({
             title: 'Remove vendor?',
-            message: `Remove "${label}"? This deletes the custom vendor catalog and its MMX order entry. Built-in vendors cannot be removed this way.`,
+            message: `Remove "${label}"? This deletes the vendor catalog from this server and removes its MMX order entries.`,
             confirmLabel: 'Remove vendor',
         });
         if (!ok) return;

@@ -72,6 +72,7 @@ function normalizeUnitSlots(item) {
 }
 
 function resolveCatalogPath(def) {
+    if (isVendorDisabled(def.slug)) return null;
     const live = path.join(VENDORS_DIR, def.dotfile);
     if (fs.existsSync(live)) return live;
     const example = path.join(VENDOR_EXAMPLES_DIR, def.example);
@@ -104,14 +105,46 @@ function normalizeCustomVendorEntry(raw) {
     return { slug, label, dotfile, custom: true };
 }
 
+function readCustomVendorsDoc() {
+    try {
+        if (!fs.existsSync(CUSTOM_VENDORS_PATH)) return { vendors: [], disabledSlugs: [] };
+        const raw = JSON.parse(fs.readFileSync(CUSTOM_VENDORS_PATH, 'utf8'));
+        return {
+            vendors: Array.isArray(raw.vendors) ? raw.vendors : [],
+            disabledSlugs: Array.isArray(raw.disabledSlugs)
+                ? raw.disabledSlugs.map(slugifyKey).filter(Boolean)
+                : [],
+        };
+    } catch {
+        return { vendors: [], disabledSlugs: [] };
+    }
+}
+
+function writeCustomVendorsDoc(doc) {
+    const payload = {
+        vendors: Array.isArray(doc.vendors) ? doc.vendors : [],
+        disabledSlugs: [...new Set((doc.disabledSlugs || []).map(slugifyKey).filter(Boolean))],
+    };
+    fs.mkdirSync(path.dirname(CUSTOM_VENDORS_PATH), { recursive: true });
+    fs.writeFileSync(CUSTOM_VENDORS_PATH, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    invalidateVendorRegistry();
+}
+
+function readDisabledVendorSlugs() {
+    return new Set(readCustomVendorsDoc().disabledSlugs);
+}
+
+function isVendorDisabled(slug) {
+    return readDisabledVendorSlugs().has(slugifyKey(slug));
+}
+
 function readCustomVendorDefinitions() {
     try {
         if (!fs.existsSync(CUSTOM_VENDORS_PATH)) return [];
         const stat = fs.statSync(CUSTOM_VENDORS_PATH);
         if (customVendorCache && stat.mtimeMs === customVendorMtime) return customVendorCache;
-        const raw = JSON.parse(fs.readFileSync(CUSTOM_VENDORS_PATH, 'utf8'));
-        const list = Array.isArray(raw.vendors) ? raw.vendors : [];
-        customVendorCache = list.map(normalizeCustomVendorEntry).filter(Boolean);
+        const doc = readCustomVendorsDoc();
+        customVendorCache = doc.vendors.map(normalizeCustomVendorEntry).filter(Boolean);
         customVendorMtime = stat.mtimeMs;
         return customVendorCache;
     } catch {
@@ -126,10 +159,11 @@ function invalidateVendorRegistry() {
 }
 
 function getAllVendorDefinitions() {
+    const disabled = readDisabledVendorSlugs();
     const seen = new Set();
     const out = [];
     for (const def of VENDOR_DEFINITIONS) {
-        if (seen.has(def.slug)) continue;
+        if (seen.has(def.slug) || disabled.has(def.slug)) continue;
         seen.add(def.slug);
         out.push(def);
     }
@@ -149,6 +183,7 @@ function listAllVendorDefinitions() {
             label: def.label,
             configured: Boolean(catalog?.items?.length),
             custom: Boolean(def.custom),
+            builtIn: Boolean(VENDOR_DEFINITIONS.some((row) => row.slug === def.slug)),
         };
     });
 }
@@ -162,7 +197,7 @@ function registerCustomVendor({ label, slug: slugInput }) {
     const builtIn = VENDOR_DEFINITIONS.find((d) => d.slug === slug);
     const custom = readCustomVendorDefinitions();
     const existingCustom = custom.find((d) => d.slug === slug);
-    if (builtIn && !existingCustom) {
+    if (builtIn && !existingCustom && !isVendorDisabled(slug)) {
         throw new Error(`Vendor "${builtIn.label}" already exists. Choose a different name.`);
     }
 
@@ -170,22 +205,14 @@ function registerCustomVendor({ label, slug: slugInput }) {
         existingCustom?.dotfile || `.${labelText.replace(/[^A-Za-z0-9]+/g, '')}` || `.${slug}`;
     const entry = { slug, label: labelText, dotfile };
 
-    let doc = { vendors: [] };
-    if (fs.existsSync(CUSTOM_VENDORS_PATH)) {
-        try {
-            doc = JSON.parse(fs.readFileSync(CUSTOM_VENDORS_PATH, 'utf8'));
-        } catch {
-            doc = { vendors: [] };
-        }
-    }
+    let doc = readCustomVendorsDoc();
     doc.vendors = Array.isArray(doc.vendors) ? doc.vendors : [];
     const idx = doc.vendors.findIndex((v) => String(v.slug || '').trim().toLowerCase() === slug);
     if (idx >= 0) doc.vendors[idx] = entry;
     else doc.vendors.push(entry);
+    doc.disabledSlugs = (doc.disabledSlugs || []).filter((s) => slugifyKey(s) !== slug);
 
-    fs.mkdirSync(path.dirname(CUSTOM_VENDORS_PATH), { recursive: true });
-    fs.writeFileSync(CUSTOM_VENDORS_PATH, `${JSON.stringify(doc, null, 2)}\n`, 'utf8');
-    invalidateVendorRegistry();
+    writeCustomVendorsDoc(doc);
 
     const livePath = path.join(VENDORS_DIR, dotfile);
     if (!fs.existsSync(livePath)) {
@@ -198,32 +225,22 @@ function registerCustomVendor({ label, slug: slugInput }) {
 function removeCustomVendor(slug) {
     const normalized = slugifyKey(slug);
     if (!normalized) throw new Error('Vendor slug is required.');
-    if (VENDOR_DEFINITIONS.some((def) => def.slug === normalized)) {
-        throw new Error('Built-in vendors cannot be removed.');
-    }
 
-    const def = getVendorDefinition(normalized);
+    const def =
+        getVendorDefinition(normalized) ||
+        VENDOR_DEFINITIONS.find((row) => row.slug === normalized) ||
+        readCustomVendorDefinitions().find((row) => row.slug === normalized);
     if (!def) throw new Error('Unknown vendor.');
 
-    if (!fs.existsSync(CUSTOM_VENDORS_PATH)) {
-        throw new Error('Only custom vendors can be removed.');
+    const isBuiltIn = VENDOR_DEFINITIONS.some((row) => row.slug === normalized);
+    let doc = readCustomVendorsDoc();
+    doc.vendors = (doc.vendors || []).filter((v) => slugifyKey(v.slug) !== normalized);
+    if (isBuiltIn) {
+        const disabled = new Set(doc.disabledSlugs || []);
+        disabled.add(normalized);
+        doc.disabledSlugs = [...disabled];
     }
-
-    let doc = { vendors: [] };
-    try {
-        doc = JSON.parse(fs.readFileSync(CUSTOM_VENDORS_PATH, 'utf8'));
-    } catch {
-        throw new Error('Could not read custom vendor registry.');
-    }
-    doc.vendors = Array.isArray(doc.vendors) ? doc.vendors : [];
-    const next = doc.vendors.filter((v) => slugifyKey(v.slug) !== normalized);
-    if (next.length === doc.vendors.length) {
-        throw new Error('Only custom vendors can be removed.');
-    }
-
-    doc.vendors = next;
-    fs.mkdirSync(path.dirname(CUSTOM_VENDORS_PATH), { recursive: true });
-    fs.writeFileSync(CUSTOM_VENDORS_PATH, `${JSON.stringify(doc, null, 2)}\n`, 'utf8');
+    writeCustomVendorsDoc(doc);
 
     const livePath = path.join(VENDORS_DIR, def.dotfile);
     if (fs.existsSync(livePath)) {
@@ -237,8 +254,7 @@ function removeCustomVendor(slug) {
         console.warn('[vendorCatalog] Could not update vendor-orders after vendor removal:', err.message);
     }
 
-    invalidateVendorRegistry();
-    return { slug: normalized, label: def.label };
+    return { slug: normalized, label: def.label, builtIn: isBuiltIn };
 }
 
 function readCatalogFileSections(def) {

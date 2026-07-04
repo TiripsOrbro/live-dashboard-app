@@ -5264,10 +5264,11 @@ app.delete('/api/admin/build-to/vendors/:slug', (req, res) => {
     try {
         const result = removeCustomVendor(String(req.params.slug || '').trim());
         appendAccountAudit({
-            action: 'remove-custom-vendor',
+            action: 'remove-vendor',
             updatedBy: user.username,
             vendor: result.slug,
             label: result.label,
+            builtIn: Boolean(result.builtIn),
         });
         res.json({ success: true, ...result });
     } catch (err) {

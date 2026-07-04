@@ -193,11 +193,7 @@ async function selectBusinessOnExplorerPage(page) {
         }, selector);
 
         try {
-            await page.waitForFunction(
-                () => Boolean(document.querySelector('[data-testid="lz-dropdown-trigger-analytics"]')),
-                { timeout: NAV_WAIT_MS, polling: 500 }
-            );
-            await page.waitForTimeout(1500);
+            await waitForLifeLenzShell(page);
             return true;
         } catch {
             /* try next selector */
@@ -264,10 +260,14 @@ async function selectTacoBellColBusiness(page) {
 
 async function waitForLifeLenzShell(page) {
     await page.waitForFunction(
-        () => Boolean(document.querySelector('[data-testid="lz-dropdown-trigger-analytics"]')),
-        { timeout: NAV_WAIT_MS, polling: 500 }
+        () => {
+            const el = document.querySelector('[data-testid="lz-dropdown-trigger-analytics"]');
+            if (!el) return false;
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+        },
+        { timeout: NAV_WAIT_MS, polling: 100 }
     );
-    await page.waitForTimeout(800);
 }
 
 async function readStoreLabelsFromBodyText(page) {
@@ -291,6 +291,30 @@ async function readVisibleStoreOptionLabels(page) {
     });
 }
 
+async function pollAuthUntil(checkFn, { timeoutMs = 5000, pollMs = 100, label = 'condition' } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        try {
+            const result = await checkFn();
+            if (result) return result;
+        } catch {
+            /* transient evaluate errors during SPA updates */
+        }
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+    return null;
+}
+
+async function waitForVisibleStoreDropdownOptions(page, timeoutMs = 5000) {
+    return pollAuthUntil(
+        async () => {
+            const labels = await readVisibleStoreOptionLabels(page);
+            return labels.length > 0 ? labels : null;
+        },
+        { timeoutMs, pollMs: 100, label: 'store dropdown options' }
+    );
+}
+
 async function collectStoreLabelsFromOpenDropdown(page) {
     const labels = new Set();
 
@@ -306,6 +330,7 @@ async function collectStoreLabelsFromOpenDropdown(page) {
     await addLabels();
 
     for (let pass = 0; pass < 24; pass += 1) {
+        const beforeCount = labels.size;
         const atEnd = await page.evaluate(() => {
             const container =
                 document.querySelector('[role="listbox"]') ||
@@ -320,8 +345,10 @@ async function collectStoreLabelsFromOpenDropdown(page) {
                 container.scrollTop + container.clientHeight >= container.scrollHeight - 2
             );
         });
-        await page.waitForTimeout(120);
-        await addLabels();
+        await pollAuthUntil(async () => {
+            await addLabels();
+            return labels.size > beforeCount ? true : null;
+        }, { timeoutMs: 1500, pollMs: 80, label: 'dropdown scroll labels' }).catch(() => null);
         if (atEnd) break;
     }
 
@@ -361,11 +388,22 @@ async function openStoreDropdown(page) {
 
     for (const selector of triggers) {
         await page.keyboard.press('Escape').catch(() => null);
-        await page.waitForTimeout(200);
+        await pollAuthUntil(
+            () =>
+                page.evaluate(() => {
+                    const open = document.querySelector(
+                        '[role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]'
+                    );
+                    if (!open) return true;
+                    const r = open.getBoundingClientRect();
+                    return r.width <= 0 || r.height <= 0;
+                }),
+            { timeoutMs: 1500, pollMs: 80, label: 'dropdown closed' }
+        ).catch(() => null);
         const el = await page.$(selector);
         if (!el) continue;
         await el.click().catch(() => null);
-        await page.waitForTimeout(600);
+        await waitForVisibleStoreDropdownOptions(page, 5000);
         const labels = await collectStoreLabelsFromOpenDropdown(page);
         // Stop at the first trigger that opens a real store list — do not
         // iterate all selectors (that visibly opens the picker 4–5 times).
@@ -379,7 +417,18 @@ async function listAccessibleStores(page) {
     await waitForLifeLenzShell(page);
     const dropdownLabels = await openStoreDropdown(page);
     await page.keyboard.press('Escape').catch(() => null);
-    await page.waitForTimeout(200);
+    await pollAuthUntil(
+        () =>
+            page.evaluate(() => {
+                const open = document.querySelector(
+                    '[role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]'
+                );
+                if (!open) return true;
+                const r = open.getBoundingClientRect();
+                return r.width <= 0 || r.height <= 0;
+            }),
+        { timeoutMs: 1500, pollMs: 80, label: 'dropdown closed' }
+    ).catch(() => null);
 
     const fromDropdown = dedupeStores(dropdownLabels.map(parseStoreLabel).filter(Boolean));
     const fromPage = await extractStoreLabelsFromPage(page);

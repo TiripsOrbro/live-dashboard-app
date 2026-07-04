@@ -625,6 +625,172 @@ function previewForecastForStores(storeNumbers, options = {}) {
     return results;
 }
 
+function wrapMultiWeekForecastProgress(options = {}, storeNumber, weekStartByDate) {
+    const completedBy = options.completedBy || null;
+    const userOnProgress = options.onProgress;
+    if (typeof userOnProgress !== 'function') return undefined;
+
+    return (payload) => {
+        const type = String(payload?.type || '').trim();
+        if ((type === 'day-done' || type === 'day-complete') && payload.date && storeNumber) {
+            const weekStart = weekStartByDate.get(payload.date);
+            if (weekStart) {
+                try {
+                    recordForecastDayUpdate(weekStart, storeNumber, payload.date, 'mmx', {
+                        updatedBy: completedBy,
+                    });
+                } catch (err) {
+                    console.warn(
+                        `[Forecast] Could not record day update for ${storeNumber} ${payload.date}:`,
+                        err.message
+                    );
+                }
+            }
+        }
+        userOnProgress(payload);
+    };
+}
+
+function weekTargetRunOptions(target, options = {}) {
+    return {
+        targetScope: target.targetScope,
+        ...(target.weekStart ? { weekStart: target.weekStart } : {}),
+        fromDate: options.fromDate,
+    };
+}
+
+async function runForecastWeeksForStore(storeNumber, weekTargets, options = {}) {
+    const { writeForecastPlanToMmx } = require('../../../mmx/src/forecast/forecastScraper');
+    const store = String(storeNumber || '').trim();
+    if (!store) throw new Error('Store number is required.');
+    if (!Array.isArray(weekTargets) || !weekTargets.length) {
+        throw new Error('At least one week target is required.');
+    }
+
+    const readiness = assessHistoryReadiness(store);
+    if (!readiness.ready && !options.force) {
+        throw new Error(historyNotReadyMessage(store, readiness));
+    }
+
+    const cfg = getStoreConfig(store) || {};
+    const dailyRows = loadDailyRowsForStore(store);
+    const weekStartByDate = new Map();
+    const weekMeta = [];
+    let mergedPlan = [];
+    let allSkippedDates = [];
+    const allTargetWeeks = [];
+
+    for (const target of weekTargets) {
+        const runTarget = weekTargetRunOptions(target, options);
+        const { targetWeeks, plan } = buildForecastPlanForStore(store, { ...options, ...runTarget });
+        if (!plan.length) {
+            throw new Error(`Could not build hourly forecast plan for store ${store} (${target.label || target.targetScope}).`);
+        }
+        const adjustmentWeek = targetWeeks[0];
+        allTargetWeeks.push(adjustmentWeek);
+        const { plan: activePlan, skippedDates } = splitPlanForResume(store, plan, adjustmentWeek, 'mmx', options);
+        allSkippedDates = allSkippedDates.concat(skippedDates);
+        for (const day of activePlan) {
+            weekStartByDate.set(day.date, adjustmentWeek);
+        }
+        mergedPlan = mergedPlan.concat(activePlan);
+        weekMeta.push({
+            label: target.label,
+            targetScope: target.targetScope,
+            targetWeeks,
+            forecastDays: plan.length,
+            activeDays: activePlan.length,
+            skippedDates,
+        });
+    }
+
+    mergedPlan.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+    if (typeof options.onProgress === 'function') {
+        options.onProgress({
+            type: 'store-start',
+            storeNumber: store,
+            storeName: cfg.storeName || store,
+            dayCount: mergedPlan.length,
+            skippedDays: allSkippedDates.length,
+            targetWeeks: allTargetWeeks,
+            weekCount: weekTargets.length,
+        });
+        emitResumedDaySkips(options.onProgress, store, 'mmx', allSkippedDates);
+    }
+
+    if (!mergedPlan.length) {
+        if (options.markPlatformComplete !== false) {
+            for (const weekStart of allTargetWeeks) {
+                markStoreWeekPlatformComplete(weekStart, store, 'mmx', {
+                    completedBy: options.completedBy || null,
+                });
+            }
+        }
+        return {
+            storeNumber: store,
+            storeName: cfg.storeName || store,
+            daysSampled: dailyRows.length,
+            forecastDays: weekMeta.reduce((sum, row) => sum + row.forecastDays, 0),
+            targetWeeks: allTargetWeeks,
+            history: readiness,
+            resumed: allSkippedDates.length > 0,
+            skippedDays: allSkippedDates,
+            weekMeta,
+            mmx: { ok: true, resumed: true, dayTouched: 0, days: [] },
+        };
+    }
+
+    const writeResult = await writeForecastPlanToMmx(store, mergedPlan, {
+        ...options,
+        onProgress: wrapMultiWeekForecastProgress(options, store, weekStartByDate),
+    });
+
+    return {
+        storeNumber: store,
+        storeName: cfg.storeName || store,
+        daysSampled: dailyRows.length,
+        forecastDays: weekMeta.reduce((sum, row) => sum + row.forecastDays, 0),
+        targetWeeks: allTargetWeeks,
+        history: readiness,
+        skippedDays: allSkippedDates,
+        resumed: allSkippedDates.length > 0,
+        weekMeta,
+        ...writeResult,
+    };
+}
+
+async function runForecastWeeksForStores(storeNumbers, weekTargets, options = {}) {
+    const results = [];
+    for (const storeNumber of storeNumbers || []) {
+        if (options.shouldAbort?.()) {
+            results.push({ storeNumber, ok: false, error: 'Cancelled before this store was submitted.' });
+            continue;
+        }
+        try {
+            const result = await runForecastWeeksForStore(storeNumber, weekTargets, options);
+            results.push({ storeNumber, ok: true, ...result });
+            if (options.markPlatformComplete !== false) {
+                for (const weekStart of result.targetWeeks || []) {
+                    markStoreWeekPlatformComplete(weekStart, storeNumber, 'mmx', {
+                        completedBy: options.completedBy || null,
+                    });
+                }
+            }
+            if (typeof options.onProgress === 'function') {
+                options.onProgress({ platform: 'mmx', type: 'store-complete', storeNumber, ok: true, ...result });
+            }
+        } catch (err) {
+            const error = err.message || String(err);
+            results.push({ storeNumber, ok: false, error });
+            if (typeof options.onProgress === 'function') {
+                options.onProgress({ platform: 'mmx', type: 'store-error', storeNumber, error });
+            }
+        }
+    }
+    return results;
+}
+
 async function runForecastForStore(storeNumber, options = {}) {
     const { writeForecastPlanToMmx } = require('../../../mmx/src/forecast/forecastScraper');
     const store = String(storeNumber || '').trim();
@@ -1031,6 +1197,8 @@ module.exports = {
     previewForecastForStores,
     runForecastForStore,
     runForecastForStores,
+    runForecastWeeksForStore,
+    runForecastWeeksForStores,
     runLifeLenzForecastForStores,
     runCombinedForecastForStores,
     resolveLifelenzCredentialsForRun,

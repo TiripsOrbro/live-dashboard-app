@@ -194,6 +194,9 @@ async function main() {
     try {
         console.log(`[probe-forecast-date] Store ${storeNumber} - opening headed browser…`);
         ({ browser, page } = await openMacromatixBrowser({
+            storeNumber,
+            mmxUsername: credentials.username,
+            mmxPassword: credentials.password,
             browserOptions: { headless: false, skipSlowMo: false },
         }));
 

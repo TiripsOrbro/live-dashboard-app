@@ -256,6 +256,29 @@ function emitProgress(options, payload) {
     }
 }
 
+async function runTimedPhase(options, phase, fn, extra = {}) {
+    const start = Date.now();
+    try {
+        return await fn();
+    } finally {
+        emitProgress(options, { type: 'phase-timing', phase, ms: Date.now() - start, ...extra });
+    }
+}
+
+async function isOnForecastPage(page) {
+    return page.evaluate((dayPartSelector) => {
+        const visible = (selector) =>
+            [...document.querySelectorAll(selector)].some((el) => {
+                const r = el.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
+            });
+        const hasDateToolbar = visible('.display-date, a.display-date, [aria-label="Open calendar picker"]');
+        const hasDayWeekTabs = visible('a.calendar-unit-link.day, a.calendar-unit-link.week');
+        const hasDayPartInputs = visible(dayPartSelector);
+        return hasDateToolbar && hasDayWeekTabs && hasDayPartInputs;
+    }, DAY_PART_INPUT_SELECTOR);
+}
+
 async function clickByText(page, selectors, textPattern, options = {}) {
     const pattern = textPattern instanceof RegExp ? textPattern : new RegExp(String(textPattern), 'i');
     for (const selector of selectors) {
@@ -469,7 +492,7 @@ async function switchToDayView(page, options = {}) {
     const timeoutMs = resolveDayViewSwitchTimeoutMs(options);
     const deadline = Date.now() + timeoutMs;
     let lastClickAt = 0;
-    const clickEveryMs = 2000;
+    const clickEveryMs = 800;
     const pollMs = resolvePollMs(options);
 
     await page
@@ -480,11 +503,19 @@ async function switchToDayView(page, options = {}) {
         .catch(() => null);
 
     while (Date.now() < deadline) {
-        if (await waitForDayPartInputsStable(page, options, clickEveryMs)) {
+        if (await waitForDayPartInputsStable(page, options, pollMs * 3)) {
             return;
         }
 
-        if (Date.now() - lastClickAt >= clickEveryMs) {
+        const inDayView = await isForecastDayViewActive(page);
+        if (inDayView) {
+            const count = await countVisibleDayPartInputs(page).catch(() => 0);
+            if (count >= DAY_PART_INPUT_COUNT && (await waitForDayPartInputsStable(page, options, pollMs * 4))) {
+                return;
+            }
+        }
+
+        if (!inDayView && Date.now() - lastClickAt >= clickEveryMs) {
             await clickDayViewTab(page);
             lastClickAt = Date.now();
             if (await waitForDayPartInputsStable(page, options, clickEveryMs)) {
@@ -929,10 +960,15 @@ async function ensureForecastDayViewReady(page, options = {}) {
         if (lastCount >= DAY_PART_INPUT_COUNT && (await waitForDayPartInputsStable(page, options, pollMs * 4))) {
             return;
         }
-        if (Date.now() - lastRetryClickAt >= 3000) {
-            await clickDayViewTab(page);
-            lastRetryClickAt = Date.now();
-            if (await waitForDayPartInputsStable(page, options, 4000)) return;
+        if (Date.now() - lastRetryClickAt >= 1500) {
+            const inDayView = await isForecastDayViewActive(page).catch(() => false);
+            if (!inDayView) {
+                await clickDayViewTab(page);
+                lastRetryClickAt = Date.now();
+                if (await waitForDayPartInputsStable(page, options, 3000)) return;
+            } else {
+                lastRetryClickAt = Date.now();
+            }
         }
         await new Promise((resolve) => setTimeout(resolve, pollMs));
     }
@@ -1009,6 +1045,22 @@ async function setForecastDate(page, isoDate, options = {}) {
         const dayOffset = Math.round(
             (Date.parse(`${target}T12:00:00Z`) - Date.parse(`${currentIso}T12:00:00Z`)) / 86400000
         );
+        if (dayOffset !== 0 && Math.abs(dayOffset) > 2) {
+            const display = isoToLifeLenzDisplay(target);
+            if (
+                (await setForecastDateViaUrl(page, target, options)) &&
+                (await finishForecastDateNavigation(page, target, options))
+            ) {
+                return;
+            }
+            if (
+                display &&
+                (await pickForecastDateFromCalendar(page, target, display, options)) &&
+                (await finishForecastDateNavigation(page, target, options))
+            ) {
+                return;
+            }
+        }
         if (dayOffset > 0 && dayOffset <= 14) {
             if (
                 (await advanceForecastDateByDays(page, dayOffset, options)) &&
@@ -1275,7 +1327,9 @@ async function fillDayPartsWithOvernightQuirk(page, dayParts, options = {}) {
         emitDayPart('daypart-confirmed', dayParts[0], { read: firstOvernightValue });
     }
 
-    await waitForDayPartSaveSettle(page, options);
+    await runTimedPhase(options, 'save-settle', () => waitForDayPartSaveSettle(page, options), {
+        date: progressDate,
+    });
 }
 
 async function writeForecastDay(page, isoDate, planDay, options = {}) {
@@ -1285,10 +1339,21 @@ async function writeForecastDay(page, isoDate, planDay, options = {}) {
 
     let verification = null;
     for (let attempt = 1; attempt <= WRITE_DAY_MAX_ATTEMPTS; attempt += 1) {
-        await setForecastDate(page, isoDate, options);
-        await fillDayPartsWithOvernightQuirk(page, dayParts, runOptions);
+        await runTimedPhase(options, 'set-date', () => setForecastDate(page, isoDate, options), {
+            date: isoDate,
+            attempt,
+        });
+        await runTimedPhase(options, 'fill-dayparts', () => fillDayPartsWithOvernightQuirk(page, dayParts, runOptions), {
+            date: isoDate,
+            attempt,
+        });
 
-        verification = await verifyDayPartValues(page, dayParts, options);
+        verification = await runTimedPhase(
+            options,
+            'verify-dayparts',
+            () => verifyDayPartValues(page, dayParts, options),
+            { date: isoDate, attempt }
+        );
         if (verification.ok) break;
 
         const detail = (verification.mismatches || [])
@@ -1320,9 +1385,34 @@ async function writeForecastPlanOnPage(page, storeNumber, plan, accessibleStores
         throw new Error(`Store ${store} is not in this LifeLenz account (accessible: ${[...allowed].join(', ')}).`);
     }
 
-    await selectStoreInLifeLenz(page, store, options);
-    await navigateToForecast(page, options);
-    await ensureForecastDayViewReady(page, options);
+    await runTimedPhase(options, 'select-store', () => selectStoreInLifeLenz(page, store, options), { store });
+    const onForecast = await isOnForecastPage(page);
+    if (onForecast) {
+        emitProgress(options, { type: 'phase-timing', phase: 'navigate-forecast', ms: 0, store, skipped: true });
+        await runTimedPhase(
+            options,
+            'store-switch-settle',
+            async () => {
+                const labelNeedle = `${store} -`;
+                const ok = await pollUntil(
+                    async () => {
+                        const current = await readCurrentStoreTriggerLabel(page).catch(() => '');
+                        if (!current.startsWith(labelNeedle)) return null;
+                        if (await waitForDayPartInputsStable(page, options, 3000)) return true;
+                        return null;
+                    },
+                    { timeoutMs: 20000, pollMs: resolvePollMs(options), label: 'store forecast reload' }
+                );
+                if (!ok) {
+                    throw new Error(`Store ${store} forecast inputs did not reload after store switch.`);
+                }
+            },
+            { store }
+        );
+    } else {
+        await runTimedPhase(options, 'navigate-forecast', () => navigateToForecast(page, options), { store });
+    }
+    await runTimedPhase(options, 'day-view-ready', () => ensureForecastDayViewReady(page, options), { store });
 
     const applied = [];
     let previousDate = null;
@@ -1333,7 +1423,12 @@ async function writeForecastPlanOnPage(page, storeNumber, plan, accessibleStores
             sequentialFromIso: previousDate,
         };
         try {
-            const result = await writeForecastDay(page, day.date, day, dayOptions);
+            const result = await runTimedPhase(
+                options,
+                'write-day',
+                () => writeForecastDay(page, day.date, day, dayOptions),
+                { store, date: day.date }
+            );
             applied.push(result);
             previousDate = day.date;
         } catch (err) {
@@ -1389,6 +1484,7 @@ module.exports = {
     navigateToForecast,
     switchToDayView,
     setForecastDate,
+    isOnForecastPage,
     getDayPartAdjustmentInputs,
     ensureForecastDayViewReady,
     finishForecastDateNavigation,

@@ -465,25 +465,50 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
 }
 
 .admin-settings-main {
-    flex: 1;
+    flex: 1 1 auto;
     width: 100%;
     min-width: 0;
     min-height: 0;
     box-sizing: border-box;
-    padding: calc(16px * var(--dashboard-scale)) max(1.25rem, env(safe-area-inset-right))
-        max(calc(16px * var(--dashboard-scale)), env(safe-area-inset-bottom))
+    display: flex;
+    flex-direction: column;
+    padding: calc(16px * var(--dashboard-scale)) max(1.25rem, env(safe-area-inset-right)) 0
         max(1.25rem, env(safe-area-inset-left));
-    overflow: auto;
+    overflow: hidden;
 }
 
 .admin-settings-content {
     width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .admin-settings-section-panel {
     width: 100%;
     box-sizing: border-box;
+    min-height: 0;
+}
+
+.admin-settings-section-panel[hidden] {
+    display: none !important;
+}
+
+.admin-settings-section-panel:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.admin-settings-section-panel:not([hidden]):not(:has(> .admin-modal)) {
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
 }
 
 .admin-settings-user-panel {
@@ -506,19 +531,15 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
     color: color-mix(in srgb, var(--charcoal) 55%, transparent);
 }
 
-.admin-settings-section-panel[hidden] {
-    display: none !important;
-}
-
-.admin-settings-section-panel:not([hidden]) {
-    display: block;
-}
-
 .admin-settings-content .admin-modal {
     width: 100%;
     max-width: none;
     max-height: none;
-    overflow: visible;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
     box-shadow: none;
     border-radius: 0;
     padding: 0;
@@ -569,8 +590,9 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
 .admin-settings-content .admin-modal--build-to,
 .admin-settings-content .admin-modal--store-logins,
 .admin-settings-content .admin-modal--smg-nsf {
-    overflow: visible;
+    overflow: hidden;
     max-height: none;
+    height: 100%;
 }
 
 .admin-settings-content .admin-modal-actions,
@@ -583,7 +605,24 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
 }
 
 .admin-settings-content .admin-buildto-table-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
     max-height: none;
+    overflow: auto;
+    margin-bottom: 0;
+}
+
+.admin-settings-content .admin-buildto-actions {
+    flex-shrink: 0;
+    padding-bottom: 0;
+}
+
+.admin-settings-content .admin-modal--build-to .admin-buildto-header,
+.admin-settings-content .admin-modal--build-to .admin-accounts-org-nav,
+.admin-settings-content .admin-modal--build-to .admin-buildto-toolbar,
+.admin-settings-content .admin-modal--build-to .admin-buildto-new-wrap,
+.admin-settings-content .admin-modal--build-to .admin-modal-error {
+    flex-shrink: 0;
 }
 
 .admin-settings-content .admin-modal--build-to .admin-accounts-org-nav {
@@ -757,7 +796,7 @@ html.mic-dark-mode .admin-accounts-org-nav {
     }
 
     .admin-settings-main {
-        padding: 1rem;
+        padding: 1rem 1rem 0;
     }
 }
 

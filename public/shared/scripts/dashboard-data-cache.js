@@ -63,6 +63,18 @@
         return sumHourly(sales.rawActual) > 0 || sumHourly(sales.rawForecast) > 0;
     }
 
+    function hasMeaningfulAdminOverview(data) {
+        if (!data || data.success === false || data.placeholder) return false;
+        for (const area of data.areas || []) {
+            const sales = area.salesToday || {};
+            if (Number(sales.actual) > 0 || Number(sales.forecast) > 0) return true;
+            for (const store of area.storeSales || []) {
+                if (Number(store.actual) > 0 || Number(store.forecast) > 0) return true;
+            }
+        }
+        return false;
+    }
+
     function staleAgeSeconds(entry) {
         if (!entry?.savedAt) return 0;
         return Math.round((Date.now() - entry.savedAt) / 1000);
@@ -77,8 +89,13 @@
         writeOverview: (store, data) => {
             if (hasMeaningfulMicOverview(data)) write('overview', store, data);
         },
+        readAdminOverview: (scopeKey) => read('overview-admin', scopeKey),
+        writeAdminOverview: (scopeKey, data) => {
+            if (hasMeaningfulAdminOverview(data)) write('overview-admin', scopeKey, data);
+        },
         hasMeaningfulSalesSlice,
         hasMeaningfulMicOverview,
+        hasMeaningfulAdminOverview,
         staleAgeSeconds,
     };
 })(typeof window !== 'undefined' ? window : globalThis);

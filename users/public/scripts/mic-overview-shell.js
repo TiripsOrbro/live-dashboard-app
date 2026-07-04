@@ -205,8 +205,16 @@
             </header>
             <nav class="mic-overview-tabs" id="mic-overview-tabs" role="tablist" aria-label="MIC overview sections" hidden></nav>
             <div class="mic-grid mic-grid--admin" id="mic-grid"></div>
-        </div>
-        ${global.MicSettings?.renderCog?.() || ''}`;
+        </div>`;
+    }
+
+    function mountShell(appEl, { subtitle = 'Overview', promoBannerHtml = '' } = {}) {
+        if (!appEl) return;
+        mountPageClasses();
+        appEl.classList.remove('app-boot-loading');
+        appEl.removeAttribute('aria-busy');
+        appEl.innerHTML = renderShellHtml({ subtitle, promoBannerHtml });
+        global.MicSettings?.ensurePersistentSettingsCog?.();
     }
 
     function mountPageClasses() {
@@ -233,15 +241,6 @@
         );
         micOverviewTabsBound = false;
         lastMicMobileLayout = null;
-    }
-
-    function mountShell(appEl, { subtitle = 'Overview', promoBannerHtml = '' } = {}) {
-        if (!appEl) return;
-        mountPageClasses();
-        appEl.classList.remove('app-boot-loading');
-        appEl.removeAttribute('aria-busy');
-        appEl.innerHTML = renderShellHtml({ subtitle, promoBannerHtml });
-        global.MicSettings?.bind?.({});
     }
 
     function getActiveTab() {

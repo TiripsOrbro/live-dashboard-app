@@ -542,6 +542,36 @@
         section?.activate?.();
     }
 
+    const PREFERENCES_BOOT_SECTIONS = new Set(['preferences', 'general']);
+
+    async function ensureDeferredScriptsForSection(sectionId) {
+        if (PREFERENCES_BOOT_SECTIONS.has(sectionId)) return;
+        await global.AppShell?.ensureAdminDeferredScripts?.();
+    }
+
+    async function activateSection(section, data) {
+        if (section.external) {
+            global.location.href = section.external;
+            return;
+        }
+
+        await ensureDeferredScriptsForSection(section.id);
+        if (!sectionPanels.get(section.id)?.mounted) {
+            await ensureSectionMounted(section);
+        }
+
+        contentHost()?.querySelector('.admin-settings-loading-panel')?.remove();
+
+        activeSection = section.id;
+        if (global.location.hash !== `#${section.id}`) {
+            global.history.replaceState(null, '', `#${section.id}`);
+        }
+        setActiveNav(section.id, { expandForSection: true });
+        revealSection(section.id);
+        if (isDrawerMode()) closeNavDrawer();
+        void preloadAllSections(data);
+    }
+
     async function showSection(sectionId) {
         const data = await fetchProfile();
         const opts = mountOptions();
@@ -555,24 +585,7 @@
             return;
         }
 
-        if (section.external) {
-            global.location.href = section.external;
-            return;
-        }
-
-        await preloadAllSections(data);
-
-        if (!sectionPanels.get(section.id)?.mounted) {
-            await ensureSectionMounted(section);
-        }
-
-        activeSection = section.id;
-        if (global.location.hash !== `#${section.id}`) {
-            global.history.replaceState(null, '', `#${section.id}`);
-        }
-        setActiveNav(section.id, { expandForSection: true });
-        revealSection(section.id);
-        if (isDrawerMode()) closeNavDrawer();
+        await activateSection(section, data);
     }
 
     function renderNav(data) {
@@ -613,16 +626,17 @@
             wireSidebarFooter();
 
             const host = contentHost();
-            if (host) {
+            if (host && !host.querySelector('.admin-settings-loading-panel')) {
                 host.innerHTML =
                     '<div class="admin-settings-loading-panel" aria-live="polite"><p class="admin-settings-loading">Loading settings…</p></div>';
             }
 
             const requested = sectionFromLocation() || defaultSectionId(data);
-            await preloadAllSections(data);
-            host?.querySelector('.admin-settings-loading-panel')?.remove();
-
-            await showSection(requested);
+            const allowed = visibleSections(data, mountOptions());
+            const section = allowed.find((row) => row.id === requested) || allowed[0];
+            if (section) {
+                await activateSection(section, data);
+            }
         } catch {
             global.location.href = '/login';
         }

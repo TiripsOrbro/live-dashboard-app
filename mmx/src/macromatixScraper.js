@@ -250,9 +250,21 @@ function isScheduledOrdersCompleteToday(storeNumber, dateKey) {
     return scheduledOrdersCompleteByStore.get(storeStateKey(storeNumber)) === dateKey;
 }
 
-function recordScheduledOrdersResult(storeNumber, dateKey, vendors) {
+function recordScheduledOrdersResult(storeNumber, dateKey, vendors, options = {}) {
     const key = storeStateKey(storeNumber);
     lastKnownPendingVendorsByStore.set(key, { dateKey, values: vendors });
+
+    const cacheLabels = uniqueSortedRawLabels(
+        options.allVendorLabels && options.allVendorLabels.length ? options.allVendorLabels : vendors
+    );
+    if (cacheLabels.length) {
+        try {
+            const { recordExistingVendorLabels } = require('../../vendors/src/existingVendorsCache');
+            recordExistingVendorLabels(cacheLabels, storeNumber);
+        } catch (err) {
+            console.warn('[Macromatix] Could not cache existing vendor labels:', err.message);
+        }
+    }
 
     if (vendors.length > 0) {
         scheduledOrdersEmptyCheckByStore.set(key, { dateKey, count: 0 });
@@ -1670,6 +1682,17 @@ function uniqueSortedLabels(rawVendors) {
     return [...labels].sort((a, b) => a.localeCompare(b));
 }
 
+function uniqueSortedRawLabels(rawVendors) {
+    const labels = new Set();
+    for (const raw of rawVendors) {
+        const label = String(raw || '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        if (label) labels.add(label);
+    }
+    return [...labels].sort((a, b) => a.localeCompare(b));
+}
+
 function rethrowIfSalesScrapeAborted(err) {
     if (err?.aborted) throw err;
     if (isSalesScrapeAbortRequested()) {
@@ -1794,6 +1817,7 @@ async function scrapePendingVendors(page, opts = {}) {
         };
 
         let best = [];
+        let bestAll = [];
         let bestDataRowCount = 0;
         let matchedTableCount = 0;
         const tables = Array.from(document.querySelectorAll('table'));
@@ -1840,24 +1864,28 @@ async function scrapePendingVendors(page, opts = {}) {
 
             const maxIdx = Math.max(statusIdx, vendorIdx, orderIdx);
             const found = [];
+            const allInTable = [];
             for (const tr of dataRows) {
                 const cells = Array.from(tr.querySelectorAll('td'));
                 if (cells.length <= maxIdx) continue;
                 const statusText = cells[statusIdx]?.textContent;
                 const vendorRaw = norm(cells[vendorIdx]?.textContent);
                 const orderText = norm(cells[orderIdx]?.textContent);
+                if (vendorRaw) allInTable.push(vendorRaw);
                 if (!vendorRaw) continue;
                 if (!rowNeedsOrderPlaced(statusText, orderText)) continue;
                 found.push(vendorRaw);
             }
             if (found.length > best.length || (found.length === best.length && dataRows.length > bestDataRowCount)) {
                 best = found;
+                bestAll = allInTable;
                 bestDataRowCount = dataRows.length;
             }
         }
 
         return {
             rawVendors: best,
+            allVendorLabels: bestAll,
             matchedTableCount,
             dataRowCount: bestDataRowCount,
         };
@@ -1870,6 +1898,7 @@ async function scrapePendingVendors(page, opts = {}) {
 
     return {
         vendors: uniqueSortedLabels(parsed.rawVendors),
+        allVendorLabels: uniqueSortedRawLabels(parsed.allVendorLabels || parsed.rawVendors),
         dataRowCount: parsed.dataRowCount,
         matchedTableCount: parsed.matchedTableCount,
     };
@@ -1969,7 +1998,9 @@ async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
         pendingVendors = pendingResult.vendors;
         console.log(`[Macromatix] Store ${label} pending vendors:`, pendingVendors.join(', ') || '(none)');
         if (!skipScheduledPersistence) {
-            recordScheduledOrdersResult(storeNumber, todayKey, pendingVendors);
+            recordScheduledOrdersResult(storeNumber, todayKey, pendingVendors, {
+                allVendorLabels: pendingResult.allVendorLabels,
+            });
         }
     } catch (vendorErr) {
         rethrowIfSalesScrapeAborted(vendorErr);

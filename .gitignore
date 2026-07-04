@@ -5,6 +5,8 @@ node_modules/
 !vendors/**
 !vendors/**/*
 !vendors/**/.*
+# Pi-only vendor catalog (do not overwrite local dev copy or push from laptop)
+vendors/catalogs/.Sands
 
 .env
 .env.*

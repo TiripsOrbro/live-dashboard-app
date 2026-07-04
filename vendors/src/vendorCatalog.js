@@ -16,7 +16,12 @@ const VENDOR_DEFINITIONS = [
     { slug: 'schweppes', label: 'Schweppes', dotfile: '.Schweppes', example: '.Schweppes.example' },
 ];
 
+const CUSTOM_VENDORS_PATH =
+    process.env.CUSTOM_VENDORS_PATH || path.join(paths.vendors.config, 'custom-vendors.json');
+
 const catalogCache = new Map();
+let customVendorCache = null;
+let customVendorMtime = 0;
 
 /** Fixed unit columns per item line, before per-item location segments. */
 const UNIT_SLOTS = 3;
@@ -70,8 +75,123 @@ function resolveCatalogPath(def) {
     const live = path.join(VENDORS_DIR, def.dotfile);
     if (fs.existsSync(live)) return live;
     const example = path.join(VENDOR_EXAMPLES_DIR, def.example);
-    if (fs.existsSync(example)) return example;
+    if (def.example && fs.existsSync(example)) return example;
     return null;
+}
+
+function normalizeCustomVendorEntry(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const label = String(raw.label || '').trim();
+    const slug = String(raw.slug || slugifyKey(label)).trim();
+    if (!slug || !label) return null;
+    const dotfile = String(raw.dotfile || `.${label.replace(/[^A-Za-z0-9]+/g, '')}`).trim();
+    return { slug, label, dotfile, custom: true };
+}
+
+function readCustomVendorDefinitions() {
+    try {
+        if (!fs.existsSync(CUSTOM_VENDORS_PATH)) return [];
+        const stat = fs.statSync(CUSTOM_VENDORS_PATH);
+        if (customVendorCache && stat.mtimeMs === customVendorMtime) return customVendorCache;
+        const raw = JSON.parse(fs.readFileSync(CUSTOM_VENDORS_PATH, 'utf8'));
+        const list = Array.isArray(raw.vendors) ? raw.vendors : [];
+        customVendorCache = list.map(normalizeCustomVendorEntry).filter(Boolean);
+        customVendorMtime = stat.mtimeMs;
+        return customVendorCache;
+    } catch {
+        return [];
+    }
+}
+
+function invalidateVendorRegistry() {
+    customVendorCache = null;
+    customVendorMtime = 0;
+    catalogCache.clear();
+}
+
+function getAllVendorDefinitions() {
+    const seen = new Set();
+    const out = [];
+    for (const def of VENDOR_DEFINITIONS) {
+        if (seen.has(def.slug)) continue;
+        seen.add(def.slug);
+        out.push(def);
+    }
+    for (const def of readCustomVendorDefinitions()) {
+        if (seen.has(def.slug)) continue;
+        seen.add(def.slug);
+        out.push(def);
+    }
+    return out;
+}
+
+function listAllVendorDefinitions() {
+    return getAllVendorDefinitions().map((def) => {
+        const catalog = readCatalogForDefinition(def);
+        return {
+            slug: def.slug,
+            label: def.label,
+            configured: Boolean(catalog?.items?.length),
+            custom: Boolean(def.custom),
+        };
+    });
+}
+
+function registerCustomVendor({ label, slug: slugInput }) {
+    const labelText = String(label || '').trim();
+    if (!labelText) throw new Error('Vendor label is required.');
+    const slug = String(slugInput || slugifyKey(labelText)).trim();
+    if (!slug) throw new Error('Could not derive vendor slug.');
+
+    const builtIn = VENDOR_DEFINITIONS.find((d) => d.slug === slug);
+    const custom = readCustomVendorDefinitions();
+    const existingCustom = custom.find((d) => d.slug === slug);
+    if (builtIn && !existingCustom) {
+        throw new Error(`Vendor "${builtIn.label}" already exists. Choose a different name.`);
+    }
+
+    const dotfile =
+        existingCustom?.dotfile || `.${labelText.replace(/[^A-Za-z0-9]+/g, '')}` || `.${slug}`;
+    const entry = { slug, label: labelText, dotfile };
+
+    let doc = { vendors: [] };
+    if (fs.existsSync(CUSTOM_VENDORS_PATH)) {
+        try {
+            doc = JSON.parse(fs.readFileSync(CUSTOM_VENDORS_PATH, 'utf8'));
+        } catch {
+            doc = { vendors: [] };
+        }
+    }
+    doc.vendors = Array.isArray(doc.vendors) ? doc.vendors : [];
+    const idx = doc.vendors.findIndex((v) => String(v.slug || '').trim().toLowerCase() === slug);
+    if (idx >= 0) doc.vendors[idx] = entry;
+    else doc.vendors.push(entry);
+
+    fs.mkdirSync(path.dirname(CUSTOM_VENDORS_PATH), { recursive: true });
+    fs.writeFileSync(CUSTOM_VENDORS_PATH, `${JSON.stringify(doc, null, 2)}\n`, 'utf8');
+    invalidateVendorRegistry();
+
+    const livePath = path.join(VENDORS_DIR, dotfile);
+    if (!fs.existsSync(livePath)) {
+        fs.writeFileSync(livePath, `# vendor: ${labelText}\n\n`, 'utf8');
+    }
+
+    return { ...entry, custom: true };
+}
+
+function readCatalogFileSections(def) {
+    const filePath = resolveCatalogPath(def);
+    if (!filePath) return { header: [], itemLines: [], filePath: null };
+    const lines = fs.readFileSync(filePath, 'utf8').split(/\r?\n/);
+    const header = [];
+    const itemLines = [];
+    for (const line of lines) {
+        const trimmed = String(line || '').trim();
+        if (!trimmed) continue;
+        if (trimmed.startsWith('#')) header.push(line);
+        else itemLines.push(line);
+    }
+    return { header, itemLines, filePath };
 }
 
 function looksLikeUnitLabel(value) {
@@ -539,35 +659,37 @@ function readCatalogForDefinition(def) {
 
 function getVendorDefinition(slug) {
     const normalized = slugifyKey(slug);
-    return VENDOR_DEFINITIONS.find((d) => d.slug === normalized) || null;
+    return getAllVendorDefinitions().find((d) => d.slug === normalized) || null;
 }
 
 function vendorLabelToSlug(label) {
     const value = String(label || '').trim();
     if (!value) return null;
-    for (const def of VENDOR_DEFINITIONS) {
+    for (const def of getAllVendorDefinitions()) {
         if (def.label.toLowerCase() === value.toLowerCase()) return def.slug;
     }
     const collapsed = value.replace(/\s+/g, '').toLowerCase();
-    for (const def of VENDOR_DEFINITIONS) {
+    for (const def of getAllVendorDefinitions()) {
         if (def.slug === collapsed || def.label.replace(/\s+/g, '').toLowerCase() === collapsed) {
             return def.slug;
         }
     }
-    return null;
+    return slugifyKey(value) || null;
 }
 
 function listConfiguredVendors() {
-    return VENDOR_DEFINITIONS.map((def) => {
-        const catalog = readCatalogForDefinition(def);
-        return {
-            slug: def.slug,
-            label: def.label,
-            configured: Boolean(catalog && catalog.items.length),
-            locationCount: catalog?.locations?.length || 0,
-            itemCount: catalog?.items?.length || 0,
-        };
-    }).filter((v) => v.configured);
+    return getAllVendorDefinitions()
+        .map((def) => {
+            const catalog = readCatalogForDefinition(def);
+            return {
+                slug: def.slug,
+                label: def.label,
+                configured: Boolean(catalog && catalog.items.length),
+                locationCount: catalog?.locations?.length || 0,
+                itemCount: catalog?.items?.length || 0,
+            };
+        })
+        .filter((v) => v.configured);
 }
 
 function getVendorCatalog(slug, options = {}) {
@@ -579,7 +701,15 @@ function getVendorCatalog(slug, options = {}) {
     let sourceItems = catalog.items;
     if (options.storeNumber) {
         const { applyAdminCatalogOverrides } = require('./buildToAdminOverrides');
-        sourceItems = applyAdminCatalogOverrides(catalog, options.storeNumber).items;
+        if (options.forStockCount || options.forDailyCount) {
+            const { buildRoutedStockCountItems, buildRoutedDailyCountItems } = require('./vendorCatalogRouting');
+            sourceItems =
+                options.forDailyCount
+                    ? buildRoutedDailyCountItems(slug, options.storeNumber)
+                    : buildRoutedStockCountItems(slug, options.storeNumber);
+        } else {
+            sourceItems = applyAdminCatalogOverrides(catalog, options.storeNumber, slug).items;
+        }
     }
 
     const normalizeItems = (items) =>
@@ -650,7 +780,7 @@ function registerCatalogBuildToKeys(byCode, itemCode, rule) {
 
 function buildCatalogBuildToIndex() {
     const byCode = new Map();
-    for (const def of VENDOR_DEFINITIONS) {
+    for (const def of getAllVendorDefinitions()) {
         const catalog = readCatalogForDefinition(def);
         if (!catalog) continue;
         for (const item of catalog.items) {
@@ -665,7 +795,7 @@ function buildCatalogBuildToIndex() {
 function findCatalogItemByCode(itemCode) {
     const code = normalizeItemCode(itemCode);
     if (!code) return null;
-    for (const def of VENDOR_DEFINITIONS) {
+    for (const def of getAllVendorDefinitions()) {
         const catalog = readCatalogForDefinition(def);
         if (!catalog) continue;
         for (const item of catalog.items) {
@@ -792,6 +922,52 @@ function appendVendorCatalogItem(slug, spec = {}) {
     return { line, itemCode: parsedItem.itemCode };
 }
 
+/**
+ * Update the catalog/MMX name on an existing vendor line (item code unchanged).
+ */
+function updateVendorCatalogItemName(slug, itemCode, newName) {
+    const def = getVendorDefinition(slug);
+    if (!def) throw new Error('Unknown vendor.');
+    const livePath = path.join(VENDORS_DIR, def.dotfile);
+    if (!fs.existsSync(livePath)) {
+        throw new Error(`Vendor catalog file ${def.dotfile} not found on this server.`);
+    }
+
+    const code = normalizeItemCode(itemCode);
+    const name = sanitizeCatalogField(newName);
+    if (!code) throw new Error('Item code is required.');
+    if (!name) throw new Error('Item name is required.');
+
+    const current = fs.readFileSync(livePath, 'utf8');
+    const lines = current.split(/\r?\n/);
+    let found = false;
+    const nextLines = lines.map((rawLine) => {
+        const trimmed = rawLine.trim();
+        if (!trimmed || trimmed.startsWith('#')) return rawLine;
+
+        const parts = rawLine.split('|').map((p) => p.trim());
+        const buildToPrefix = parseBuildToPrefix(parts);
+        const lineParts = buildToPrefix ? buildToPrefix.rest : parts;
+        const identity = parseItemIdentity(lineParts);
+        if (!identity || normalizeItemCode(identity.itemCode) !== code) return rawLine;
+
+        found = true;
+        const updatedLineParts = [...lineParts];
+        updatedLineParts[1] = name;
+        const rebuilt = buildToPrefix ? [parts[0], ...updatedLineParts] : updatedLineParts;
+        return rebuilt.join(' | ');
+    });
+
+    if (!found) {
+        throw new Error(`Item code ${code} not found in ${def.dotfile}.`);
+    }
+
+    const next = `${nextLines.join('\n').replace(/\n*$/, '\n')}`;
+    fs.writeFileSync(livePath, next, 'utf8');
+    catalogCache.clear();
+    return { itemCode: code, name };
+}
+
 function aggregateCounts(catalog, locationCounts) {
     const totals = {};
     for (const item of catalog.items) {
@@ -830,15 +1006,36 @@ module.exports = {
     slugifyKey,
     vendorLabelToSlug,
     listConfiguredVendors,
+    listAllVendorDefinitions,
+    getAllVendorDefinitions,
+    registerCustomVendor,
+    readCatalogFileSections,
+    invalidateVendorRegistry,
     getVendorCatalog,
     getVendorDefinition,
     aggregateCounts,
     appendVendorCatalogItem,
+    updateVendorCatalogItemName,
     findCatalogItemByCode,
     normalizeUnitSlots,
+    parseCatalogText,
     buildCatalogBuildToIndex,
     catalogItemBuildToRule,
     parseBuildToPrefix,
     parseStoreBuildToHint,
     UNIT_SLOTS,
+    UNIT_LABEL_OPTIONS: [
+        'Boxes',
+        'Cartons',
+        'Crates',
+        'Bags',
+        'Packs',
+        'Rolls',
+        'KGs',
+        'Each',
+        'Bottles',
+        'Cans',
+        'Tubs',
+    ],
+    readCatalogForDefinitionInternal: readCatalogForDefinition,
 };

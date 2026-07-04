@@ -3,6 +3,7 @@ const path = require('path');
 const { normalizeItemCode } = require('./reportReader');
 const { lookupKeysForMmx, mmxCodeForOrderCode } = require('./itemCodes');
 const { mergeBuildToRules } = require('./buildToStoreOverrides');
+const { inferPackSizing, effectiveUnitLabel } = require('./packSizing');
 
 const paths = require('../../src/paths');
 const OVERRIDES_PATH =
@@ -10,6 +11,98 @@ const OVERRIDES_PATH =
     path.join(paths.vendors.config, 'build-to-admin-overrides.json');
 
 const DEFAULT_STOCK_WARNING_DAYS = 5;
+
+const UNIT_LABEL_RE =
+    /^(boxes|bags|kgs|packs|rolls|bottles|cans|tubs|cartons|each|ea|units?|crates?|n\/a)$/i;
+
+const VALID_VENDOR_SLUGS = new Set(['americold', 'bega', 'cutfresh', 'schweppes']);
+
+function getValidVendorSlugs() {
+    try {
+        const { getAllVendorDefinitions } = require('./vendorCatalog');
+        return new Set(getAllVendorDefinitions().map((d) => d.slug));
+    } catch {
+        return VALID_VENDOR_SLUGS;
+    }
+}
+
+function isNaUnitLabel(label) {
+    return /^n\s*\/\s*a$/i.test(String(label || '').trim());
+}
+
+function normalizeUnitLabel(label) {
+    const text = String(label || '').trim();
+    if (!text || isNaUnitLabel(text)) return 'N/a';
+    if (/^ea$/i.test(text)) return 'Each';
+    if (/^units?$/i.test(text)) return 'Units';
+    if (/^cartons?$/i.test(text)) return text.match(/^cartons?$/i) ? 'Cartons' : text;
+    const lower = text.toLowerCase();
+    if (lower === 'boxes') return 'Boxes';
+    if (lower === 'bags') return 'Bags';
+    if (lower === 'kgs') return 'KGs';
+    if (lower === 'packs') return 'Packs';
+    if (lower === 'rolls') return 'Rolls';
+    if (lower === 'bottles') return 'Bottles';
+    if (lower === 'cans') return 'Cans';
+    if (lower === 'tubs') return 'Tubs';
+    if (lower === 'each') return 'Each';
+    if (lower === 'crates' || lower === 'crate') return 'Crates';
+    return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function normalizeUnitsArray(raw) {
+    if (!Array.isArray(raw)) return null;
+    const out = [];
+    for (let i = 0; i < 3; i++) {
+        const part = raw[i];
+        if (part == null || part === '') {
+            out.push('N/a');
+            continue;
+        }
+        const label = normalizeUnitLabel(part);
+        if (!isNaUnitLabel(label) && !UNIT_LABEL_RE.test(label)) return null;
+        out.push(label);
+    }
+    return out.length === 3 ? out : null;
+}
+
+function catalogUnitsFromItem(item) {
+    if (Array.isArray(item?.unitSlots) && item.unitSlots.length === 3) {
+        return item.unitSlots.map((slot) => (slot.na ? 'N/a' : slot.label));
+    }
+    const { normalizeUnitSlots } = require('./vendorCatalog');
+    return normalizeUnitSlots(item).map((slot) => (slot.na ? 'N/a' : slot.label));
+}
+
+function unitsToSlotsAndColumns(units) {
+    const { slugifyKey } = require('./vendorCatalog');
+    const unitSlots = (units || []).slice(0, 3).map((label) => {
+        const na = isNaUnitLabel(label);
+        const text = na ? 'N/a' : normalizeUnitLabel(label);
+        return {
+            key: na ? null : slugifyKey(text),
+            label: text,
+            na,
+        };
+    });
+    while (unitSlots.length < 3) unitSlots.push({ key: null, label: 'N/a', na: true });
+    const columns = unitSlots.filter((slot) => !slot.na).map((slot) => ({ key: slot.key, label: slot.label }));
+    return { unitSlots: unitSlots.slice(0, 3), columns };
+}
+
+function applyUnitsToItem(item, units, innerPerCarton) {
+    const { unitSlots, columns } = unitsToSlotsAndColumns(units);
+    const inner =
+        innerPerCarton != null && Number.isFinite(Number(innerPerCarton)) && Number(innerPerCarton) > 0
+            ? Number(innerPerCarton)
+            : null;
+    return {
+        ...item,
+        unitSlots,
+        columns,
+        innerPerCarton: inner,
+    };
+}
 
 let cache = null;
 let cacheMtime = 0;
@@ -110,7 +203,96 @@ function normalizeRule(raw) {
     if (Array.isArray(raw.fallbackCodes)) {
         rule.fallbackCodes = normalizeCodeList(raw.fallbackCodes);
     }
+    if (raw.vendorSlug != null && String(raw.vendorSlug).trim() !== '') {
+        const slug = String(raw.vendorSlug).trim().toLowerCase();
+        if (getValidVendorSlugs().has(slug)) rule.vendorSlug = slug;
+    }
+    if (Array.isArray(raw.units)) {
+        const units = normalizeUnitsArray(raw.units);
+        if (units) rule.units = units;
+    }
+    if (raw.innerPerCarton != null && Number.isFinite(Number(raw.innerPerCarton))) {
+        rule.innerPerCarton = Number(raw.innerPerCarton);
+    }
+    if (raw.unitsPerPack != null && Number.isFinite(Number(raw.unitsPerPack))) {
+        rule.unitsPerPack = Number(raw.unitsPerPack);
+    }
     return Object.keys(rule).length ? rule : null;
+}
+
+function resolveAdminRuleForFields(item, options = {}) {
+    const code = normalizeItemCode(item?.itemCode);
+    if (!code) return null;
+    const store = String(options.storeNumber || options.store || '').trim();
+    const area = String(options.area || '').trim();
+    if (store) return adminOverridesForStore(store).get(code) || null;
+    if (area) return adminOverridesForScope({ level: 'area', area }).get(code) || null;
+    if (options.level === 'global') return adminOverridesForScope({ level: 'global' }).get(code) || null;
+    return null;
+}
+
+function effectiveCatalogItemFields(item, options = {}) {
+    const catalogVendorSlug = String(options.catalogVendorSlug || options.vendorSlug || '').trim().toLowerCase();
+    const adminRule = resolveAdminRuleForFields(item, options);
+    const fileUnits = catalogUnitsFromItem(item);
+    let effectiveVendorSlug = catalogVendorSlug;
+    if (adminRule?.vendorSlug && getValidVendorSlugs().has(adminRule.vendorSlug)) {
+        effectiveVendorSlug = adminRule.vendorSlug;
+    }
+    let units = fileUnits;
+    if (Array.isArray(adminRule?.units) && adminRule.units.length === 3) {
+        units = adminRule.units;
+    }
+    let innerPerCarton =
+        item.innerPerCarton != null && Number.isFinite(Number(item.innerPerCarton))
+            ? Number(item.innerPerCarton)
+            : null;
+    if (adminRule && Object.prototype.hasOwnProperty.call(adminRule, 'innerPerCarton')) {
+        innerPerCarton =
+            adminRule.innerPerCarton != null && Number.isFinite(Number(adminRule.innerPerCarton))
+                ? Number(adminRule.innerPerCarton)
+                : null;
+    }
+    const inferred = inferPackSizing(
+        item.name || item.description,
+        effectiveUnitLabel(units),
+        item.innerPerCarton
+    );
+    if (innerPerCarton == null && inferred.packsPerBox != null) {
+        innerPerCarton = inferred.packsPerBox;
+    }
+    let unitsPerPack = inferred.unitsPerPack;
+    if (adminRule && Object.prototype.hasOwnProperty.call(adminRule, 'unitsPerPack')) {
+        unitsPerPack =
+            adminRule.unitsPerPack != null && Number.isFinite(Number(adminRule.unitsPerPack))
+                ? Number(adminRule.unitsPerPack)
+                : null;
+    }
+    const merged = applyUnitsToItem(item, units, innerPerCarton);
+    const fileInferred = inferPackSizing(
+        item.name || item.description,
+        effectiveUnitLabel(fileUnits),
+        item.innerPerCarton
+    );
+    return {
+        catalogVendorSlug,
+        effectiveVendorSlug,
+        units,
+        fileUnits,
+        innerPerCarton: merged.innerPerCarton,
+        unitsPerPack,
+        fileInnerPerCarton:
+            item.innerPerCarton != null && Number.isFinite(Number(item.innerPerCarton))
+                ? Number(item.innerPerCarton)
+                : null,
+        fileUnitsPerPack: fileInferred.unitsPerPack,
+        unitSlots: merged.unitSlots,
+        columns: merged.columns,
+        scopeVendorSlug: adminRule?.vendorSlug ?? null,
+        scopeUnits: adminRule?.units ?? null,
+        scopeInnerPerCarton: adminRule?.innerPerCarton ?? null,
+        scopeUnitsPerPack: adminRule?.unitsPerPack ?? null,
+    };
 }
 
 function effectiveSkipStockCount(catalogItem, storeNumber) {
@@ -150,17 +332,28 @@ function applySkipKeyItemCountOverridesToCatalog(catalog, storeNumber) {
     return applyAdminCatalogOverrides(catalog, storeNumber);
 }
 
-function applyAdminCatalogOverrides(catalog, storeNumber) {
+function applyAdminCatalogOverrides(catalog, storeNumber, catalogVendorSlug) {
     if (!catalog?.items?.length) return catalog;
     const store = String(storeNumber || '').trim();
+    const vendorSlug = String(catalogVendorSlug || '').trim().toLowerCase();
     if (!store) return catalog;
     return {
         ...catalog,
-        items: (catalog.items || []).map((item) => ({
-            ...item,
-            skipStockCount: effectiveSkipStockCount(item, store),
-            skipKeyItemCount: effectiveSkipKeyItemCount(item, store),
-        })),
+        items: (catalog.items || []).map((item) => {
+            const fields = effectiveCatalogItemFields(item, { storeNumber: store, catalogVendorSlug: vendorSlug });
+            return {
+                ...item,
+                skipStockCount: effectiveSkipStockCount(item, store),
+                skipKeyItemCount: effectiveSkipKeyItemCount(item, store),
+                includeDaily: effectiveIncludeDaily(item, store),
+                unitSlots: fields.unitSlots,
+                columns: fields.columns,
+                innerPerCarton: fields.innerPerCarton,
+                unitsPerPack: fields.unitsPerPack,
+                effectiveVendorSlug: fields.effectiveVendorSlug,
+                catalogVendorSlug: fields.catalogVendorSlug,
+            };
+        }),
     };
 }
 
@@ -180,6 +373,10 @@ function mergeItemOverridePatch(existing, itemPatch) {
         'mmxCode',
         'vendorCode',
         'fallbackCodes',
+        'vendorSlug',
+        'units',
+        'innerPerCarton',
+        'unitsPerPack',
     ];
     for (const key of clearKeys) {
         if (itemPatch?.[key] === null) delete merged[key];
@@ -338,9 +535,19 @@ function patchOverrides({ global = null, areas = null, stores = null, settings =
     return writeOverridesDoc(doc);
 }
 
-const BUILD_TO_ITEM_CODE_KEYS = ['mmxCode', 'vendorCode', 'fallbackCodes'];
+const BUILD_TO_CONFIGURE_KEYS = [
+    'mmxCode',
+    'vendorCode',
+    'fallbackCodes',
+    'vendorSlug',
+    'units',
+    'innerPerCarton',
+    'unitsPerPack',
+    'catalogName',
+    'displayName',
+];
 
-function stripItemCodeFieldsFromScopePatch(scopePatch) {
+function stripConfigureFieldsFromScopePatch(scopePatch) {
     if (!scopePatch || typeof scopePatch !== 'object') return scopePatch;
     const out = {};
     for (const [itemCode, rule] of Object.entries(scopePatch)) {
@@ -350,27 +557,27 @@ function stripItemCodeFieldsFromScopePatch(scopePatch) {
         }
         if (typeof rule !== 'object') continue;
         const next = { ...rule };
-        for (const key of BUILD_TO_ITEM_CODE_KEYS) delete next[key];
+        for (const key of BUILD_TO_CONFIGURE_KEYS) delete next[key];
         if (Object.keys(next).length) out[itemCode] = next;
     }
     return out;
 }
 
-/** Remove item-code overrides from a build-to patch (store managers may not edit codes). */
+/** Remove configure-field overrides from a build-to patch (store managers may not edit codes/units). */
 function stripItemCodeFieldsFromBuildToPatch(patch) {
     if (!patch || typeof patch !== 'object') return patch;
     const out = { ...patch };
-    if (out.global) out.global = stripItemCodeFieldsFromScopePatch(out.global);
+    if (out.global) out.global = stripConfigureFieldsFromScopePatch(out.global);
     if (out.areas) {
         out.areas = {};
         for (const [area, areaPatch] of Object.entries(patch.areas)) {
-            out.areas[area] = stripItemCodeFieldsFromScopePatch(areaPatch);
+            out.areas[area] = stripConfigureFieldsFromScopePatch(areaPatch);
         }
     }
     if (out.stores) {
         out.stores = {};
         for (const [store, storePatch] of Object.entries(patch.stores)) {
-            out.stores[store] = stripItemCodeFieldsFromScopePatch(storePatch);
+            out.stores[store] = stripConfigureFieldsFromScopePatch(storePatch);
         }
     }
     return out;
@@ -392,4 +599,10 @@ module.exports = {
     effectiveIncludeDaily,
     applySkipKeyItemCountOverridesToCatalog,
     applyAdminCatalogOverrides,
+    effectiveCatalogItemFields,
+    normalizeUnitsArray,
+    catalogUnitsFromItem,
+    unitsToSlotsAndColumns,
+    BUILD_TO_CONFIGURE_KEYS,
+    VALID_VENDOR_SLUGS,
 };

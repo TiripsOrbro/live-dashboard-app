@@ -8,7 +8,9 @@
       "vendorMatch": "americold",
       "orderClass": "DRY",
       "catalogSlug": "americold",
-      "orderClasses": ["DRY"],
+      "orderClasses": [
+        "DRY"
+      ],
       "orderFromCount": true
     },
     {
@@ -17,7 +19,9 @@
       "vendorMatch": "americold",
       "orderClass": "FRG",
       "catalogSlug": "americold",
-      "orderClasses": ["FRG"],
+      "orderClasses": [
+        "FRG"
+      ],
       "orderFromCount": true
     },
     {
@@ -26,7 +30,9 @@
       "vendorMatch": "americold",
       "orderClass": "FRZ",
       "catalogSlug": "americold",
-      "orderClasses": ["FRZ"],
+      "orderClasses": [
+        "FRZ"
+      ],
       "orderFromCount": true
     },
     {
@@ -35,8 +41,8 @@
       "vendorMatch": "bega",
       "catalogSlug": "bega",
       "orderRoundToByItemCode": {
-        "38239": 6,
-        "7759": 6
+        "7759": 6,
+        "38239": 6
       }
     },
     {
@@ -57,6 +63,12 @@
     "clearQuantitiesButtonText": "Clear Quantities",
     "clearQuantitiesConfirmIncludes": "set to zero",
     "updateButtonText": "Update",
-    "forbiddenSubmitTexts": ["Submit", "Place Order", "Send", "Confirm", "Save"]
+    "forbiddenSubmitTexts": [
+      "Submit",
+      "Place Order",
+      "Send",
+      "Confirm",
+      "Save"
+    ]
   }
 }

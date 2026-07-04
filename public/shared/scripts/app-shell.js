@@ -139,27 +139,29 @@
             '/scripts/store-snap-row.js',
             '/scripts/mic-mini-dashboard.js',
             '/scripts/core-countdown.js',
+            '/scripts/admin-menu.js',
+            '/scripts/audit-preferences.js',
         ]);
+        await loadScript('/scripts/mic-overview-shell.js');
+        await loadScript('/scripts/mic-overview-tiles.js');
+        await loadScript('/scripts/mic-overview-multi.js');
+        await loadScript('/scripts/mic-dashboard.js');
+    }
+
+    async function loadOverviewScriptsDeferred() {
         await loadScriptBatch([
             '/scripts/account-modal.js',
-            '/scripts/admin-menu.js',
             '/scripts/create-account-form.js',
             '/scripts/admin-accounts.js',
             '/scripts/admin-forecast.js',
             '/scripts/admin-build-to.js',
             '/scripts/admin-store-logins.js',
             '/scripts/admin-smg-nsf.js',
-            '/scripts/audit-preferences.js',
-            '/scripts/mic-settings.js',
             '/scripts/admin-store-picker.js',
             '/scripts/admin-scope-picker.js',
             '/scripts/admin-store-view.js',
             '/scripts/mmx-user-login-prompt.js',
         ]);
-        await loadScript('/scripts/mic-overview-shell.js');
-        await loadScript('/scripts/mic-overview-tiles.js');
-        await loadScript('/scripts/mic-overview-multi.js');
-        await loadScript('/scripts/mic-dashboard.js');
     }
 
     const SHARED_OVERVIEW_SCRIPTS = [
@@ -223,6 +225,10 @@
         '/scripts/admin-store-view.js',
         '/scripts/mic-settings.js',
         '/scripts/create-account-form.js',
+        '/scripts/admin-page.js',
+    ];
+
+    const ADMIN_SETTINGS_DEFERRED_SCRIPTS = [
         '/scripts/admin-accounts.js',
         '/scripts/admin-forecast.js',
         '/scripts/admin-build-to.js',
@@ -233,8 +239,87 @@
         '/scripts/admin-smg-nsf.js',
         '/scripts/requests.js',
         '/scripts/bug-reports.js',
-        '/scripts/admin-page.js',
     ];
+
+    function paintAdminSettingsBootShell(app) {
+        document.body.classList.add('admin-settings-page', 'admin-page');
+        document.body.classList.remove(
+            'mic-overview-page',
+            'admin-overview-page',
+            'mic-overview--mobile',
+            'stock-count-page',
+            'tacaudit-page',
+            'dfsc-page'
+        );
+        document.documentElement.classList.remove('mic-overview-page', 'admin-overview-page', 'dfsc-page');
+        if (document.getElementById('admin-settings-content')) {
+            app.classList.remove('app-boot-loading');
+            app.removeAttribute('aria-busy');
+            return;
+        }
+        app.classList.remove('app-boot-loading');
+        app.removeAttribute('aria-busy');
+        app.innerHTML = `
+            <div class="admin-settings-shell">
+                <header class="admin-settings-header">
+                    <div id="nav-back-host" class="admin-settings-header__back"></div>
+                    <h1 class="admin-settings-title">Settings</h1>
+                    <button type="button" id="admin-settings-nav-toggle" class="admin-settings-nav-toggle admin-settings-header__menu" aria-expanded="false" aria-controls="admin-settings-nav">Menu</button>
+                </header>
+                <div class="admin-settings-body">
+                    <div id="admin-settings-nav-backdrop" class="admin-settings-nav-backdrop" hidden aria-hidden="true"></div>
+                    <div class="admin-settings-sidebar-wrap">
+                        <nav id="admin-settings-nav" class="admin-settings-sidebar" role="navigation" aria-label="Settings sections"></nav>
+                        <div class="admin-settings-sidebar-footer">
+                            <button type="button" id="admin-settings-sign-out" class="admin-settings-sign-out">Sign out</button>
+                        </div>
+                    </div>
+                    <main class="admin-settings-main">
+                        <div id="admin-settings-content" class="admin-settings-content" role="main">
+                            <div class="admin-settings-loading-panel" aria-live="polite">
+                                <p class="admin-settings-loading">Loading settings…</p>
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            </div>`;
+    }
+
+    let adminDeferredScriptsPromise = null;
+
+    function ensureAdminDeferredScripts() {
+        if (!adminDeferredScriptsPromise) {
+            adminDeferredScriptsPromise = loadScriptBatch(ADMIN_SETTINGS_DEFERRED_SCRIPTS).catch((err) => {
+                adminDeferredScriptsPromise = null;
+                throw err;
+            });
+        }
+        return adminDeferredScriptsPromise;
+    }
+
+    async function mountAdminSettings() {
+        const app = getAppEl();
+        paintAdminSettingsBootShell(app);
+        try {
+            await loadScriptBatch(SHARED_ADMIN_SCRIPTS);
+            void ensureAdminDeferredScripts().catch((err) => {
+                console.warn('[AppShell] deferred admin settings scripts failed:', err);
+            });
+            if (global.AdminSettingsView?.mount) {
+                await global.AdminSettingsView.mount(app);
+                return;
+            }
+            app.textContent = 'Admin settings failed to load.';
+        } catch (err) {
+            console.error('[AppShell] Admin settings mount failed:', err);
+            const host = document.getElementById('admin-settings-content');
+            if (host) {
+                host.innerHTML = `<p class="admin-modal-error" role="alert">${err?.message || 'Admin settings failed to load.'}</p>`;
+            } else {
+                app.textContent = err?.message || 'Admin settings failed to load.';
+            }
+        }
+    }
 
     const SHARED_TACAUDIT_SCRIPTS = [
         '/scripts/page-transition.js',
@@ -304,6 +389,9 @@
 
     async function mountOverview() {
         await loadOverviewScripts();
+        void loadOverviewScriptsDeferred().then(() => {
+            global.AdminAccounts?.maybeOpenFromQuery?.();
+        });
         if (global.MicOverviewView?.mount) {
             await global.MicOverviewView.mount(getAppEl());
             return;
@@ -367,16 +455,8 @@
         getAppEl().textContent = 'Dashboard failed to load.';
     }
 
-    async function mountAdminSettings() {
-        await loadScriptChain(SHARED_ADMIN_SCRIPTS);
-        if (global.AdminSettingsView?.mount) {
-            await global.AdminSettingsView.mount(getAppEl());
-            return;
-        }
-        getAppEl().textContent = 'Admin settings failed to load.';
-    }
 
-    function ensureStockCountStyles() {
+    async function ensureStockCountStyles() {
         if (document.getElementById('shell-stock-count-css')) return;
         const link = document.createElement('link');
         link.id = 'shell-stock-count-css';
@@ -487,52 +567,65 @@
 
     async function mountView(route) {
         const app = getAppEl();
-        app.className = 'app-boot-loading';
-        app.setAttribute('aria-busy', 'true');
-        app.innerHTML = bootLoadingHtml();
+        if (route.id === 'overview' || route.id === 'sales-dashboard') {
+            global.MicSettings?.ensurePersistentSettingsCog?.();
+        } else {
+            global.MicSettings?.hidePersistentSettingsCog?.();
+        }
+        const skipBootLoading = route.id === 'admin-settings' || route.id === 'requests';
+        if (!skipBootLoading) {
+            app.className = 'app-boot-loading';
+            app.setAttribute('aria-busy', 'true');
+            app.innerHTML = bootLoadingHtml();
+        }
         document.body.classList.remove('stock-count-page', 'tacaudit-page', 'dfsc-page', 'admin-page');
         document.documentElement.classList.remove('dfsc-page');
 
-        switch (route.id) {
-            case 'overview':
-                await mountOverview();
-                break;
-            case 'sales-dashboard':
-                await mountSalesDashboard();
-                break;
-            case 'admin-settings':
-                document.body.classList.remove('mic-overview-page', 'admin-overview-page', 'mic-overview--mobile');
-                document.documentElement.classList.remove('mic-overview-page', 'admin-overview-page');
-                await mountAdminSettings();
-                break;
-            case 'stock-count':
-            case 'daily-stock-count':
-                if (route.id === 'daily-stock-count') await mountDailyStockCount();
-                else await mountStockCount();
-                break;
-            case 'tacaudit-summary':
-            case 'tacaudit-store':
-                await mountTacauditSummary();
-                break;
-            case 'tacaudit-audit':
-                await mountLegacyPage(`${shellPathname()}${shellSearch()}${global.location.hash || ''}`);
-                return;
-            case 'changelog':
-                await mountLegacyPage('/changelog');
-                return;
-            case 'requests':
-                document.body.classList.remove('mic-overview-page', 'admin-overview-page', 'mic-overview--mobile');
-                document.documentElement.classList.remove('mic-overview-page', 'admin-overview-page');
-                global.history.replaceState(null, '', '/Admin/Settings#feature-requests');
-                setShellRoute('/Admin/Settings', '', '#feature-requests');
-                document.title = 'Admin Settings';
-                await mountAdminSettings();
-                return;
-            default:
-                await mountOverview();
+        try {
+            switch (route.id) {
+                case 'overview':
+                    await mountOverview();
+                    break;
+                case 'sales-dashboard':
+                    await mountSalesDashboard();
+                    break;
+                case 'admin-settings':
+                    document.body.classList.remove('mic-overview-page', 'admin-overview-page', 'mic-overview--mobile');
+                    document.documentElement.classList.remove('mic-overview-page', 'admin-overview-page');
+                    await mountAdminSettings();
+                    break;
+                case 'stock-count':
+                case 'daily-stock-count':
+                    if (route.id === 'daily-stock-count') await mountDailyStockCount();
+                    else await mountStockCount();
+                    break;
+                case 'tacaudit-summary':
+                case 'tacaudit-store':
+                    await mountTacauditSummary();
+                    break;
+                case 'tacaudit-audit':
+                    await mountLegacyPage(`${shellPathname()}${shellSearch()}${global.location.hash || ''}`);
+                    return;
+                case 'changelog':
+                    await mountLegacyPage('/changelog');
+                    return;
+                case 'requests':
+                    document.body.classList.remove('mic-overview-page', 'admin-overview-page', 'mic-overview--mobile');
+                    document.documentElement.classList.remove('mic-overview-page', 'admin-overview-page');
+                    global.history.replaceState(null, '', '/Admin/Settings#feature-requests');
+                    setShellRoute('/Admin/Settings', '', '#feature-requests');
+                    document.title = 'Admin Settings';
+                    await mountAdminSettings();
+                    break;
+                default:
+                    await mountOverview();
+            }
+        } finally {
+            if (!skipBootLoading || !document.getElementById('admin-settings-content')) {
+                app.classList.remove('app-boot-loading');
+                app.removeAttribute('aria-busy');
+            }
         }
-        app.classList.remove('app-boot-loading');
-        app.removeAttribute('aria-busy');
     }
 
     function runTransition(nextMount) {
@@ -744,9 +837,7 @@
         setShellRoute(target.pathname, target.search, target.hash);
         const route = matchRoute(target.pathname);
         document.title = titleForRoute(route);
-        await mountView(route);
-        activeView = route.id;
-        activeUnmount = unmountHandlerFor(route.id);
+        await navigate(target.pathname, { replace: true, search: target.search, hash: target.hash });
         const view = document.getElementById(VIEW_ID);
         view?.classList.add('app-shell-view--visible');
     }
@@ -754,6 +845,7 @@
     global.AppShell = {
         navigate,
         boot,
+        ensureAdminDeferredScripts,
         shellPathname,
         shellSearch,
         setShellRoute,

@@ -83,10 +83,49 @@ function clearDisplayNamesCache() {
     cache = null;
 }
 
+/**
+ * Set or remove a stock-count display label. Prefers item-code lines for stability.
+ */
+function upsertDisplayNameEntry({ itemCode, catalogName, displayLabel }) {
+    const code = normalizeItemCode(itemCode);
+    const label = String(displayLabel || '')
+        .replace(/\|/g, '/')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const nameKey = normalizeNameKey(catalogName);
+
+    const file = fs.existsSync(DISPLAY_NAMES_PATH) ? DISPLAY_NAMES_PATH : DISPLAY_NAMES_EXAMPLE;
+    if (!fs.existsSync(file)) {
+        throw new Error('Display names file not found.');
+    }
+
+    const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+    const kept = lines.filter((rawLine) => {
+        const trimmed = rawLine.trim();
+        if (!trimmed || trimmed.startsWith('#')) return true;
+        const parts = trimmed.split('|').map((p) => p.trim());
+        if (parts.length < 2) return true;
+        const ref = parts[0];
+        const refCode = normalizeItemCode(ref);
+        if (code && refCode === code) return false;
+        if (nameKey && normalizeNameKey(ref) === nameKey) return false;
+        return true;
+    });
+
+    if (label && code) {
+        kept.push(`${code} | ${label}`);
+    }
+
+    fs.writeFileSync(DISPLAY_NAMES_PATH, `${kept.join('\n').replace(/\n*$/, '\n')}`);
+    clearDisplayNamesCache();
+    return { itemCode: code, displayLabel: label || null };
+}
+
 module.exports = {
     loadDisplayNames,
     stockCountDisplayName,
     clearDisplayNamesCache,
+    upsertDisplayNameEntry,
     DISPLAY_NAMES_PATH,
     parseDisplayNamesText,
 };

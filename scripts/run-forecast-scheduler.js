@@ -12,9 +12,10 @@
  *
  * Also enable in Admin → Forecast → "Daily auto-submit" (Area Manager+).
  */
-const path = require('path');
 require('../src/loadEnv').loadEnv();
 require('../dashboard/src/forecastMmxAbort');
+
+const path = require('path');
 
 const { getStoreList } = require('../stores/src/storeList');
 const { storeHasMmxCredentials } = require('../mmx/src/macromatixScraper');
@@ -36,6 +37,7 @@ const {
     appendScheduleLog,
 } = require('../dashboard/src/forecast/forecastSchedule');
 const { runWithPriority, PRIORITY } = require('../src/services/mmxTaskQueue');
+const { notifyScheduledJobFailures } = require('../src/services/alertNotifier');
 
 function sleep(ms) {
     return new Promise((r) => setTimeout(r, ms));
@@ -100,6 +102,17 @@ async function runScheduledForecastJob() {
         return !mmxOk || !llOk;
     };
 
+    const describeStoreFailure = (row) => {
+        const parts = [];
+        for (const r of row.mmxResults || []) {
+            if (!r.ok) parts.push(`MMX: ${r.error || 'failed'}`);
+        }
+        for (const r of row.lifelenzResults || []) {
+            if (!r.ok) parts.push(`LifeLenz: ${r.error || 'failed'}`);
+        }
+        return parts.join('; ') || 'MMX or LifeLenz forecast submit failed';
+    };
+
     const runStore = async (storeNumber) =>
         runCombinedForecastForStores([storeNumber], {
             completedBy: 'auto',
@@ -149,6 +162,14 @@ async function runScheduledForecastJob() {
 
     if (deferred || !results) {
         console.warn('[ForecastScheduler] Deferred - MMX queue busy during schedule window.');
+        await notifyScheduledJobFailures('forecast-scheduler', [
+            {
+                label: 'Auto forecast scheduler',
+                error: 'Deferred — MMX queue busy during the schedule window (stores may not have been submitted)',
+            },
+        ], { title: '7 AM forecast auto-submit failures', dateKey: runDateKey }).catch((err) =>
+            console.warn('[ForecastScheduler] Failure alert failed:', err.message)
+        );
         return { deferred: true, weekStart };
     }
 
@@ -161,12 +182,31 @@ async function runScheduledForecastJob() {
     appendScheduleLog(runDateKey, { action: 'run', weekStart, storeNumbers, failedStores, results });
     if (failedStores.length) {
         console.warn(`[ForecastScheduler] Completed with failures for store(s): ${failedStores.join(', ')}`);
+        const failures = results
+            .filter(storeRunFailed)
+            .map((row) => ({
+                label: `Store ${row.storeNumber}`,
+                error: describeStoreFailure(row),
+            }));
+        await notifyScheduledJobFailures('forecast-scheduler', failures, {
+            title: '7 AM forecast auto-submit failures',
+            dateKey: runDateKey,
+        }).catch((err) => console.warn('[ForecastScheduler] Failure alert failed:', err.message));
     }
     console.log('[ForecastScheduler] Done:', JSON.stringify({ weekStart, storeNumbers, failedStores }, null, 2));
     return { weekStart, storeNumbers, failedStores, results };
 }
 
 async function main() {
+    if (/^(1|true|yes|on)$/i.test(String(process.env.DAILY_REPORTS_ORCHESTRATOR_ENABLED ?? '1').trim())) {
+        console.log(
+            '[ForecastScheduler] Idle — daily forecast runs are handled by the dashboard daily reports orchestrator.'
+        );
+        for (;;) {
+            await sleep(60 * 60 * 1000);
+        }
+    }
+
     const hour = scheduleHour();
     const windowMin = scheduleWindowMinutes();
     console.log(
@@ -190,6 +230,9 @@ async function main() {
             } catch (err) {
                 console.error('[ForecastScheduler] Run failed:', err.message);
                 appendScheduleLog(melbourneDateKey(), { action: 'error', error: err.message });
+                await notifyScheduledJobFailures('forecast-scheduler', [
+                    { label: 'Auto forecast scheduler', error: err.message || String(err) },
+                ], { title: '7 AM forecast auto-submit failures' }).catch(() => {});
             }
             await sleep(Math.max(msUntilNextScheduleRun(now), 60000));
             continue;

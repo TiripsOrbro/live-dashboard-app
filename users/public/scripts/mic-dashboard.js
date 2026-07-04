@@ -336,14 +336,37 @@ function renderMultiplierBlock(data) {
 }
 */
 
+function salesShellForMiniGrid(sales = {}) {
+    if (!salesPlaceholderState(sales)?.show) return sales;
+    const resolved = window.MicMiniDashboard?.resolveHourly?.(sales);
+    if (resolved?.actuals?.length || resolved?.forecasts?.length) return sales;
+    const openHour = Number.isFinite(sales.openHour) ? sales.openHour : 10;
+    const closeHour = Number.isFinite(sales.closeHour) ? sales.closeHour : 22;
+    const hourCount = Math.max(0, closeHour - openHour);
+    if (!hourCount) return sales;
+    const zeros = Array(hourCount).fill(0);
+    return {
+        ...sales,
+        openHour,
+        closeHour,
+        hours: hourCount,
+        actualHourly:
+            Array.isArray(sales.actualHourly) && sales.actualHourly.length ? sales.actualHourly : zeros,
+        forecastHourly:
+            Array.isArray(sales.forecastHourly) && sales.forecastHourly.length ? sales.forecastHourly : zeros,
+    };
+}
+
 function renderMiniDashboard(sales) {
-    if (salesPlaceholderState(sales)?.show) {
-        return `<div class="mic-mini-dashboard mic-mini-dashboard--loading">${renderSalesTileLoadingBody()}</div>`;
-    }
+    const shellSales = salesShellForMiniGrid(sales);
     const mobile = isMicMobileView();
     if (mobile) {
-        const totalsHtml = window.MicMiniDashboard?.renderMobileMealTotals?.(sales) || '';
-        const hourlyHtml = window.MicMiniDashboard?.renderMobileHourlyWindow?.(sales, { allHours: true }) || '';
+        const totalsHtml = window.MicMiniDashboard?.renderMobileMealTotals?.(shellSales) || '';
+        const hourlyHtml =
+            window.MicMiniDashboard?.renderMobileHourlyWindow?.(shellSales, { allHours: true }) || '';
+        if (!totalsHtml && !hourlyHtml && salesPlaceholderState(sales)?.show) {
+            return `<div class="mic-mini-dashboard mic-mini-dashboard--loading">${renderSalesTileLoadingBody()}</div>`;
+        }
         return `
             <div class="mic-mini-dashboard mic-mini-dashboard--mobile">
                 ${totalsHtml}
@@ -352,8 +375,11 @@ function renderMiniDashboard(sales) {
             </div>
         `;
     }
-    const gridHtml = window.MicMiniDashboard?.renderPortraitGrid?.(sales) || '';
-    const hourCount = window.MicMiniDashboard?.getTradingHourCount?.(sales) ?? 12;
+    const gridHtml = window.MicMiniDashboard?.renderPortraitGrid?.(shellSales) || '';
+    if ((!gridHtml || gridHtml.includes('mic-mini-dashboard-empty')) && salesPlaceholderState(sales)?.show) {
+        return `<div class="mic-mini-dashboard mic-mini-dashboard--loading">${renderSalesTileLoadingBody()}</div>`;
+    }
+    const hourCount = window.MicMiniDashboard?.getTradingHourCount?.(shellSales) ?? 12;
     return `
         <div class="mic-mini-dashboard">
             <div
@@ -1100,11 +1126,24 @@ async function enrichMicSalesHourly(data) {
 }
 
 function buildPlaceholderMicData() {
+    const openHour = 10;
+    const closeHour = 22;
+    const hourCount = closeHour - openHour;
+    const zeros = Array(hourCount).fill(0);
     return {
         success: true,
         storeNumber: STORE_NUMBER,
         storeName: micData?.storeName || '',
-        salesToday: { actual: 0, forecast: 0, hours: 0, pending: true },
+        salesToday: {
+            actual: 0,
+            forecast: 0,
+            hours: hourCount,
+            openHour,
+            closeHour,
+            actualHourly: zeros,
+            forecastHourly: zeros,
+            pending: true,
+        },
         voc: { placeholder: true, ...VOC_PLACEHOLDER },
         stockCount: {
             active: false,
@@ -1132,6 +1171,22 @@ function renderPlaceholderTiles() {
     if (grid) grid.classList.remove('mic-grid--loading');
     renderTiles(micData);
     syncSalesWaitPolling();
+}
+
+function bindMicStoreSettings(me) {
+    window.MicSettings?.bind?.({
+        getViewAccountsOptions: () => ({ storeNumber: STORE_NUMBER }),
+        storeNumber: STORE_NUMBER || '',
+        resolveAdminMenuVisibility: false,
+        onReportEmailSaved: (email) => {
+            if (micData) micData.reportEmail = email;
+        },
+    });
+    window.AdminMenu?.bind?.({
+        getViewAccountsOptions: () => ({ storeNumber: STORE_NUMBER }),
+    });
+    window.AdminAccounts?.maybeOpenFromQuery?.();
+    window.MicSettings?.initPreferences?.();
 }
 
 function persistMicOverview(data) {
@@ -1338,6 +1393,7 @@ async function initStoreOverview(me, { skipShell = false } = {}) {
     if (!skipShell) {
         renderShell();
         signalLoginPreloadReady('shell');
+        bindMicStoreSettings(me);
         const hadCachedOverview = restoreCachedMicOverview();
         if (!hadCachedOverview) renderPlaceholderTiles();
     }
@@ -1347,19 +1403,9 @@ async function initStoreOverview(me, { skipShell = false } = {}) {
         micCanViewAdminAuditSummary = Boolean(profile?.canViewCrossStoreAccounts);
         me = profile;
     }
-    window.MicSettings?.bind?.({
-        getViewAccountsOptions: () => ({ storeNumber: STORE_NUMBER }),
-        storeNumber: STORE_NUMBER || '',
-        resolveAdminMenuVisibility: false,
-        onReportEmailSaved: (email) => {
-            if (micData) micData.reportEmail = email;
-        },
-    });
-    window.AdminMenu?.bind?.({
-        getViewAccountsOptions: () => ({ storeNumber: STORE_NUMBER }),
-    });
-    window.AdminAccounts?.maybeOpenFromQuery?.();
-    window.MicSettings?.initPreferences?.();
+    if (skipShell) {
+        bindMicStoreSettings(me);
+    }
     window.AdminStoreView?.afterShellRendered?.(me);
     if (!skipShell || !micDataLoadPromise) {
         loadMicData();
@@ -1423,7 +1469,7 @@ async function init() {
             if (!window.MicOverviewMulti?.start) {
                 throw new Error('Overview scripts failed to load. Hard refresh the page (Ctrl+Shift+R).');
             }
-            window.MicOverviewMulti.start(me, app, renderPromoBanner());
+            void window.MicOverviewMulti.start(me, app, renderPromoBanner());
             window.AdminStoreView?.afterShellRendered?.(me);
             return;
         }

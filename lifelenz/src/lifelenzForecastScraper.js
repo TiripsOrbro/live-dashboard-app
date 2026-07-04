@@ -1421,30 +1421,15 @@ async function writeForecastPlanOnPage(page, storeNumber, plan, accessibleStores
     const onForecast = await isOnForecastPage(page);
     if (onForecast) {
         emitProgress(options, { type: 'phase-timing', phase: 'navigate-forecast', ms: 0, store, skipped: true });
-        await runTimedPhase(
-            options,
-            'store-switch-settle',
-            async () => {
-                const labelNeedle = `${store} -`;
-                const ok = await pollUntil(
-                    async () => {
-                        const current = await readCurrentStoreTriggerLabel(page).catch(() => '');
-                        if (!current.startsWith(labelNeedle)) return null;
-                        if (await waitForDayPartInputsStable(page, options, 3000)) return true;
-                        return null;
-                    },
-                    { timeoutMs: 20000, pollMs: resolvePollMs(options), label: 'store forecast reload' }
-                );
-                if (!ok) {
-                    throw new Error(`Store ${store} forecast inputs did not reload after store switch.`);
-                }
-            },
-            { store }
-        );
     } else {
         await runTimedPhase(options, 'navigate-forecast', () => navigateToForecast(page, options), { store });
     }
-    await runTimedPhase(options, 'day-view-ready', () => ensureForecastDayViewReady(page, options), { store });
+    await runTimedPhase(
+        options,
+        onForecast ? 'store-switch-settle' : 'day-view-ready',
+        () => ensureForecastDayViewReady(page, options),
+        { store }
+    );
 
     const applied = [];
     let previousDate = null;

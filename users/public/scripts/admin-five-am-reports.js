@@ -151,9 +151,17 @@
         return data;
     }
 
-    function formatDay(dateKey) {
-        if (!dateKey) return '-';
-        return escapeHtml(String(dateKey));
+    function formatShortDateTimeNoYear(iso) {
+        if (!iso) return '-';
+        const dateKeyMatch = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        const d = dateKeyMatch
+            ? new Date(`${dateKeyMatch[1]}-${dateKeyMatch[2]}-${dateKeyMatch[3]}T12:00:00`)
+            : new Date(iso);
+        if (Number.isNaN(d.getTime())) return escapeHtml(String(iso));
+        const date = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short' }).format(d);
+        if (dateKeyMatch) return escapeHtml(date);
+        const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        return escapeHtml(`${date} ${time}`);
     }
 
     function renderJobToggle(job, store, enabled) {
@@ -167,7 +175,9 @@
     }
 
     function renderRows() {
+        const lastRunAt = stockPayload?.lastRunAt || {};
         const lastRun = stockPayload?.lastRun || {};
+        const lastForecastUpdate = forecastPayload?.lastForecastUpdate || {};
         const rows = storesInActiveArea();
         if (!rows.length) {
             return `<p class="admin-accounts-meta">No stores in ${escapeHtml(areaChipLabel(activeArea) || 'this area')}.</p>`;
@@ -183,11 +193,16 @@
                     const enabled = job.readEnabled(store, state);
                     return `<td class="admin-five-am-col-job">${renderJobToggle(job, store, enabled)}</td>`;
                 }).join('');
-                const lastRunLabel = pullingStores.has(store) ? 'Pulling now…' : formatDay(lastRun[store]);
+                const stockRunAt = lastRunAt[store] || lastRun[store];
+                const stockRunLabel = pullingStores.has(store)
+                    ? 'Pulling now…'
+                    : formatShortDateTimeNoYear(stockRunAt);
+                const forecastUpdateLabel = formatShortDateTimeNoYear(lastForecastUpdate[store]);
                 return `<tr>
                     <td class="admin-five-am-col-store">${escapeHtml(store)}<span class="admin-accounts-meta">${escapeHtml(s.storeName || '')}</span></td>
                     ${jobCells}
-                    <td class="admin-five-am-col-last-run"><span class="admin-accounts-meta">${lastRunLabel}</span></td>
+                    <td class="admin-five-am-col-last-forecast"><span class="admin-accounts-meta">${forecastUpdateLabel}</span></td>
+                    <td class="admin-five-am-col-last-stock"><span class="admin-accounts-meta">${stockRunLabel}</span></td>
                 </tr>`;
             })
             .join('');
@@ -196,13 +211,15 @@
                 <colgroup>
                     <col class="admin-five-am-col-store" />
                     ${DAILY_REPORT_JOBS.map(() => '<col class="admin-five-am-col-job" />').join('')}
-                    <col class="admin-five-am-col-last-run" />
+                    <col class="admin-five-am-col-last-forecast" />
+                    <col class="admin-five-am-col-last-stock" />
                 </colgroup>
                 <thead>
                     <tr>
                         <th scope="col" class="admin-five-am-col-store">Store</th>
                         ${jobHeaders}
-                        <th scope="col" class="admin-five-am-col-last-run">Last stock run</th>
+                        <th scope="col" class="admin-five-am-col-last-forecast">Last forecast update</th>
+                        <th scope="col" class="admin-five-am-col-last-stock">Last stock run</th>
                     </tr>
                 </thead>
                 <tbody>${body}</tbody>
@@ -244,9 +261,6 @@
         if (!root) return;
         const hour = Number(stockPayload?.scheduleHour ?? forecastPayload?.scheduleHour);
         const hourLabel = Number.isFinite(hour) ? `${hour}:00` : '7:00';
-        const forecastLastRun = forecastPayload?.lastScheduledRun
-            ? formatDay(forecastPayload.lastScheduledRun)
-            : '-';
         const areaCount = Math.max(orderedAreas().length, 1);
         root.innerHTML = `
             <div class="admin-modal admin-modal--inline admin-five-am-reports">
@@ -255,7 +269,6 @@
                     Once-per-day automated jobs for enabled stores, typically around ${escapeHtml(hourLabel)} in each store's timezone.
                     Stock results appear on the store's Stock levels tile; forecast auto-submit uses the Forecast tool settings.
                 </p>
-                <p class="admin-accounts-meta">Forecast scheduler last ran: ${forecastLastRun}</p>
                 <p class="admin-modal-error" id="admin-five-am-error" role="alert"></p>
                 <div class="admin-settings-segmented-tabs admin-accounts-browse-scope admin-accounts-org-nav admin-report-sub-area-nav">
                     <div class="admin-accounts-scope-row-wrap">

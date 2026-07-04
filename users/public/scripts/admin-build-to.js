@@ -2,13 +2,32 @@
     let backdrop = null;
     let pageHost = null;
     let profile = null;
-    let activeTab = 'global';
     let catalogCache = null;
     let storeList = [];
     let scopeTree = null;
     let scopeNavigator = null;
     let browseScope = { market: '', area: '', storeNumber: '' };
     let canEditItemCodes = false;
+    let canConfigure = false;
+    let canAddItems = false;
+    let canCopyVendor = false;
+    let allVendorsCache = [];
+    let existingVendorsCache = [];
+    let viewMode = 'rules';
+    let configureVendorFilter = '';
+    let unitLabelOptions = [];
+
+    const BUILD_TO_COG_SVG = `<svg class="admin-buildto-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96c-.5-.38-1.05-.7-1.65-.94l-.36-2.54a.5.5 0 0 0-.49-.42h-3.84a.5.5 0 0 0-.49.42l-.36 2.54c-.6.24-1.15.56-1.65.94l-2.39-.96a.5.5 0 0 0-.6.22l-1.92 3.32a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.38 1.05.7 1.65.94l.36 2.54a.5.5 0 0 0 .49.42h3.84a.5.5 0 0 0 .49-.42l.36-2.54c.6-.24 1.15-.56 1.65-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7Z"/>
+            </svg>`;
+
+    const BUILD_TO_BACK_SVG = `<svg class="admin-buildto-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+            </svg>`;
+
+    const BUILD_TO_COPY_SVG = `<svg class="admin-buildto-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+            </svg>`;
 
     function escapeHtml(text) {
         return String(text)
@@ -101,20 +120,6 @@
         }
     }
 
-    function bindRowControls(itemsByCode) {
-        const root = ensureBackdrop();
-        root.querySelectorAll('tbody tr[data-item-code]').forEach((row) => {
-            const item = itemsByCode?.get(row.getAttribute('data-item-code'));
-            if (item) applyItemCodeFields(row, item);
-            applyRuleTypeRow(row);
-            const select = row.querySelector('[data-field="ruleType"]');
-            if (select && !select.dataset.bound) {
-                select.dataset.bound = '1';
-                select.addEventListener('change', () => applyRuleTypeRow(row));
-            }
-        });
-    }
-
     function getRoot() {
         return pageHost || backdrop;
     }
@@ -126,20 +131,24 @@
     const BUILD_TO_MODAL_HTML = `
             <div class="admin-modal admin-modal--wide admin-modal--build-to" role="dialog" aria-modal="true">
                 <div class="admin-buildto-header">
-                    <h2>Build to adjustments</h2>
-                    <p class="admin-buildto-subtitle">Set build-to rules, item codes (MMX / vendor / fallbacks), and low-stock thresholds. Global, area, or per-store.</p>
-                </div>
-                <div id="admin-buildto-scope-tabs-wrap" class="admin-settings-segmented-tabs admin-accounts-org-nav">
-                    <div class="admin-accounts-scope-row-wrap">
-                        <span class="admin-accounts-scope-row-label">Scope</span>
-                        <div class="admin-accounts-scope-row admin-accounts-scope-row--equal" id="admin-buildto-tabs" role="tablist" style="--scope-cols: 2">
-                            <button type="button" class="admin-accounts-scope-chip" data-tab="global" id="admin-buildto-global-tab" hidden role="tab">Global</button>
-                            <button type="button" class="admin-accounts-scope-chip" data-tab="store" role="tab">Stores</button>
+                    <div class="admin-buildto-header-main">
+                        <div class="admin-buildto-header-text">
+                            <h2 id="admin-buildto-title">Build to adjustments</h2>
+                            <p class="admin-buildto-subtitle" id="admin-buildto-subtitle">Set build-to rules and low-stock thresholds by area or store.</p>
+                        </div>
+                        <div class="admin-buildto-header-actions">
+                            <button type="button" class="mic-settings-btn admin-buildto-mode-toggle admin-buildto-header-icon-btn admin-buildto-mode-toggle--cog" id="admin-buildto-mode-toggle" hidden aria-label="Configure items" title="Configure items">${BUILD_TO_COG_SVG}</button>
+                            <button type="button" class="mic-settings-btn admin-buildto-copy-vendor admin-buildto-header-icon-btn" id="admin-buildto-copy-vendor" hidden aria-label="Copy to vendor" title="Copy to vendor">${BUILD_TO_COPY_SVG}</button>
                         </div>
                     </div>
                 </div>
                 <div id="admin-buildto-browse-scope" class="admin-accounts-browse-scope admin-accounts-org-nav"></div>
                 <div class="admin-modal-toolbar admin-buildto-toolbar">
+                    <div class="admin-buildto-vendor-filter-wrap" id="admin-buildto-vendor-filter-wrap" hidden>
+                        <label class="admin-buildto-vendor-filter-label">Vendor
+                            <select id="admin-buildto-vendor-filter" class="admin-buildto-type-select" aria-label="Filter by vendor"></select>
+                        </label>
+                    </div>
                     <div class="admin-buildto-search-wrap">
                         <input type="search" id="admin-buildto-search" placeholder="Search items…" aria-label="Search items" />
                     </div>
@@ -147,6 +156,7 @@
                     <button type="button" class="mic-settings-btn admin-btn-primary admin-buildto-save" id="admin-buildto-save">Save changes</button>
                 </div>
                 <div class="admin-buildto-new-wrap" id="admin-buildto-new-wrap" hidden></div>
+                <div class="admin-buildto-new-wrap" id="admin-buildto-copy-wrap" hidden></div>
                 <div class="admin-buildto-table-wrap" id="admin-buildto-body"></div>
                 <p id="admin-buildto-error" class="admin-modal-error" role="alert"></p>
                 <div class="admin-modal-actions admin-buildto-actions">
@@ -164,15 +174,18 @@
         root.querySelector('#admin-buildto-add')?.addEventListener('click', () => {
             toggleNewItemForm();
         });
-        root.querySelector('#admin-buildto-search')?.addEventListener('input', () => renderRows());
-        root.querySelectorAll('[data-tab]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                activeTab = btn.dataset.tab;
-                applyTabUi();
-                if (activeTab === 'store') renderScopeNavigator();
-                void loadCatalog();
-            });
+        root.querySelector('#admin-buildto-mode-toggle')?.addEventListener('click', () => {
+            if (viewMode === 'configure') exitConfigureMode();
+            else enterConfigureMode();
         });
+        root.querySelector('#admin-buildto-copy-vendor')?.addEventListener('click', () => {
+            toggleCopyVendorForm();
+        });
+        root.querySelector('#admin-buildto-vendor-filter')?.addEventListener('change', (event) => {
+            configureVendorFilter = event.target.value || '';
+            renderTable();
+        });
+        root.querySelector('#admin-buildto-search')?.addEventListener('input', () => renderTable());
     }
 
     function ensureBackdrop() {
@@ -201,23 +214,90 @@
         if (backdrop) backdrop.hidden = true;
     }
 
-    function applyTabUi() {
+    function applyViewModeUi() {
         const root = ensureBackdrop();
-        const row = root.querySelector('#admin-buildto-tabs');
-        let visibleCount = 0;
-        root.querySelectorAll('#admin-buildto-tabs [data-tab]').forEach((tab) => {
-            if (tab.hidden) return;
-            visibleCount += 1;
-            tab.classList.toggle('is-active', tab.dataset.tab === activeTab);
-        });
-        if (row) row.style.setProperty('--scope-cols', String(Math.max(visibleCount, 1)));
-
-        const globalTab = root.querySelector('#admin-buildto-global-tab');
-        const scopeTabsWrap = root.querySelector('#admin-buildto-scope-tabs-wrap');
-        if (scopeTabsWrap) scopeTabsWrap.hidden = Boolean(globalTab?.hidden);
-
+        const isConfigure = viewMode === 'configure';
+        const title = root.querySelector('#admin-buildto-title');
+        const subtitle = root.querySelector('#admin-buildto-subtitle');
+        const modeToggle = root.querySelector('#admin-buildto-mode-toggle');
+        const headerActions = root.querySelector('.admin-buildto-header-actions');
         const browseScopeHost = root.querySelector('#admin-buildto-browse-scope');
-        if (browseScopeHost) browseScopeHost.hidden = activeTab === 'global';
+        const vendorFilterWrap = root.querySelector('#admin-buildto-vendor-filter-wrap');
+        const copyBtn = root.querySelector('#admin-buildto-copy-vendor');
+        const addBtn = root.querySelector('#admin-buildto-add');
+
+        if (title) title.textContent = isConfigure ? 'Configure items' : 'Build to adjustments';
+        if (subtitle) {
+            subtitle.textContent = isConfigure
+                ? 'Set vendor routing, item codes, count units, and stock-count columns by area.'
+                : 'Set build-to rules and low-stock thresholds by area or store.';
+        }
+        if (headerActions) {
+            headerActions.classList.toggle('admin-buildto-header-actions--configure', isConfigure);
+        }
+        if (modeToggle) {
+            modeToggle.hidden = !canConfigure;
+            modeToggle.classList.toggle('admin-buildto-mode-toggle--back', isConfigure);
+            modeToggle.classList.toggle('admin-buildto-mode-toggle--cog', !isConfigure);
+            if (isConfigure) {
+                modeToggle.innerHTML = BUILD_TO_BACK_SVG;
+                modeToggle.setAttribute('aria-label', 'Back to build-to');
+                modeToggle.title = 'Back to build-to';
+            } else {
+                modeToggle.innerHTML = BUILD_TO_COG_SVG;
+                modeToggle.setAttribute('aria-label', 'Configure items');
+                modeToggle.title = 'Configure items';
+            }
+        }
+        if (browseScopeHost) browseScopeHost.hidden = false;
+        if (vendorFilterWrap) vendorFilterWrap.hidden = !isConfigure;
+        if (copyBtn) copyBtn.hidden = !(isConfigure && canCopyVendor);
+        if (addBtn) addBtn.hidden = !isConfigure || !canAddItems;
+    }
+
+    function enterConfigureMode() {
+        viewMode = 'configure';
+        applyViewModeUi();
+        renderScopeNavigator();
+        populateVendorFilter();
+        void loadCatalog().catch((error) => {
+            const root = ensureBackdrop();
+            root.querySelector('#admin-buildto-error').textContent = error.message || 'Could not load catalog.';
+        });
+    }
+
+    function exitConfigureMode() {
+        viewMode = 'rules';
+        const root = ensureBackdrop();
+        const wrap = root.querySelector('#admin-buildto-new-wrap');
+        const copyWrap = root.querySelector('#admin-buildto-copy-wrap');
+        if (wrap) wrap.hidden = true;
+        if (copyWrap) copyWrap.hidden = true;
+        applyViewModeUi();
+        void loadCatalog().catch((error) => {
+            root.querySelector('#admin-buildto-error').textContent = error.message || 'Could not load catalog.';
+        });
+    }
+
+    function populateVendorFilter() {
+        const root = ensureBackdrop();
+        const select = root.querySelector('#admin-buildto-vendor-filter');
+        if (!select) return;
+        const vendors = catalogCache?.vendors || newItemVendors();
+        if (!configureVendorFilter && vendors.length) {
+            configureVendorFilter = vendors[0].slug;
+        }
+        select.innerHTML = vendors
+            .map(
+                (v) =>
+                    `<option value="${escapeHtml(v.slug)}" ${v.slug === configureVendorFilter ? 'selected' : ''}>${escapeHtml(v.label || v.slug)}</option>`
+            )
+            .join('');
+    }
+
+    function renderTable() {
+        if (viewMode === 'configure') renderConfigureRows();
+        else renderRows();
     }
 
     function formatFallbackCodes(codes) {
@@ -233,7 +313,6 @@
     }
 
     function getOverrideScope() {
-        if (activeTab === 'global') return { level: 'global' };
         const area = String(browseScope.area || '').trim();
         const store = String(browseScope.storeNumber || '').trim();
         if (store) return { level: 'store', store, area };
@@ -242,6 +321,13 @@
     }
 
     function scopeCatalogParams() {
+        if (viewMode === 'configure') {
+            const area = String(browseScope.area || '').trim();
+            const params = new URLSearchParams();
+            params.set('configure', '1');
+            if (area) params.set('area', area);
+            return { scope: { level: area ? 'area' : 'none', area }, params };
+        }
         const scope = getOverrideScope();
         const params = new URLSearchParams();
         if (scope.level === 'store' && scope.store) params.set('store', scope.store);
@@ -320,7 +406,13 @@
         const root = ensureBackdrop();
         const body = root.querySelector('#admin-buildto-body');
         const { scope, params } = scopeCatalogParams();
-        if (activeTab === 'store' && scope.level === 'none') {
+        if (viewMode === 'configure') {
+            if (scope.level === 'none') {
+                catalogCache = null;
+                body.innerHTML = '<p>Select an area to configure items.</p>';
+                return;
+            }
+        } else if (scope.level === 'none') {
             catalogCache = null;
             body.innerHTML = '<p>Select an area or store to view build-to adjustments.</p>';
             return;
@@ -329,8 +421,12 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) throw new Error(data.error || 'Could not load build-to catalog.');
         catalogCache = data;
+        unitLabelOptions = Array.isArray(data.unitLabelOptions) ? data.unitLabelOptions : [];
+        if (Array.isArray(data.allVendors)) allVendorsCache = data.allVendors;
+        if (Array.isArray(data.existingVendors)) existingVendorsCache = data.existingVendors;
+        if (viewMode === 'configure') populateVendorFilter();
         try {
-            renderRows();
+            renderTable();
         } catch (error) {
             throw new Error(error.message || 'Could not render build-to catalog.');
         }
@@ -370,9 +466,6 @@
                     <tr>
                         <th>Item</th>
                         <th>Vendor</th>
-                        <th>MMX code</th>
-                        <th>Vendor code</th>
-                        <th>Fallback codes</th>
                         <th>Type</th>
                         <th>Count</th>
                         <th>Daily</th>
@@ -389,28 +482,21 @@
                             const fixedValue = fixedDisplayValue(item);
                             const defaultWarn = item.defaultStockWarningDays ?? 5;
                             const warnValue = warnDisplayValue(item);
-                            const scopeFallbacks = formatFallbackCodes(item.scopeFallbackCodes);
                             return `
                         <tr data-item-code="${escapeHtml(item.itemCode)}"
                             data-catalog-needs-count="${item.catalogNeedsCount ? '1' : '0'}"
                             data-catalog-include-daily="${item.catalogIncludeDaily ? '1' : '0'}"
                             data-store-skip-override="${item.storeSkipStockCountOverride != null ? '1' : '0'}"
-                            data-global-skip-override="${item.globalSkipStockCountOverride != null ? '1' : '0'}"
+                            data-area-skip-override="${item.areaSkipStockCountOverride != null ? '1' : '0'}"
                             data-store-skip-key-override="${item.storeSkipKeyItemCountOverride != null ? '1' : '0'}"
-                            data-global-skip-key-override="${item.globalSkipKeyItemCountOverride != null ? '1' : '0'}"
+                            data-area-skip-key-override="${item.areaSkipKeyItemCountOverride != null ? '1' : '0'}"
                             data-store-include-daily-override="${item.storeIncludeDailyOverride != null ? '1' : '0'}"
-                            data-global-include-daily-override="${item.globalIncludeDailyOverride != null ? '1' : '0'}"
+                            data-area-include-daily-override="${item.areaIncludeDailyOverride != null ? '1' : '0'}"
                             data-default-stock-warning="${escapeHtml(defaultWarn)}"
                             data-initial-stock-warning="${item.stockWarningDays != null ? escapeHtml(item.stockWarningDays) : ''}"
-                            data-initial-rule-type="${escapeHtml(ruleType)}"
-                            data-initial-mmx="${item.scopeMmxCode != null ? escapeHtml(item.scopeMmxCode) : ''}"
-                            data-initial-vendor="${item.scopeVendorCode != null ? escapeHtml(item.scopeVendorCode) : ''}"
-                            data-initial-fallbacks="${escapeHtml(scopeFallbacks)}">
+                            data-initial-rule-type="${escapeHtml(ruleType)}">
                             <td class="admin-buildto-item-cell">${escapeHtml(item.name)}<span class="admin-accounts-meta">${escapeHtml(item.itemCode)}</span></td>
                             <td class="admin-buildto-vendor-cell">${escapeHtml(item.vendorLabel || item.vendorSlug)}</td>
-                            <td><input type="text" data-field="mmxCode" class="admin-buildto-code-input" autocomplete="off" title="MMX / Key Item Count code" /></td>
-                            <td><input type="text" data-field="vendorCode" class="admin-buildto-code-input" autocomplete="off" title="Vendor order code" /></td>
-                            <td><input type="text" data-field="fallbackCodes" class="admin-buildto-fallback-input" autocomplete="off" title="Extra ISE/SOH codes, tried in order (comma-separated)" /></td>
                             <td>
                                 <select data-field="ruleType" class="admin-buildto-type-select">
                                     <option value="days" ${ruleType === 'days' ? 'selected' : ''}>Days</option>
@@ -429,7 +515,452 @@
                         .join('')}
                 </tbody>
             </table>`;
-        bindRowControls(itemsByCode);
+        bindRuleRowControls(itemsByCode);
+    }
+
+    function unitOptionsHtml(selected) {
+        const sel = String(selected || '').trim();
+        const options = unitLabelOptions.length
+            ? unitLabelOptions
+            : ['Boxes', 'Cartons', 'Bags', 'Packs', 'Rolls', 'KGs', 'Each', 'Bottles', 'Cans', 'Tubs'];
+        return options
+            .map((label) => {
+                const value = escapeHtml(label);
+                return `<option value="${value}" ${label === sel ? 'selected' : ''}>${value}</option>`;
+            })
+            .join('');
+    }
+
+    function vendorOptionsHtml(vendors, selected) {
+        const sel = String(selected || '').trim();
+        return vendors
+            .map(
+                (v) =>
+                    `<option value="${escapeHtml(v.slug)}" ${v.slug === sel ? 'selected' : ''}>${escapeHtml(v.label || v.slug)}</option>`
+            )
+            .join('');
+    }
+
+    function bindRuleRowControls(itemsByCode) {
+        const root = ensureBackdrop();
+        root.querySelectorAll('tbody tr[data-item-code]').forEach((row) => {
+            applyRuleTypeRow(row);
+            const select = row.querySelector('[data-field="ruleType"]');
+            if (select && !select.dataset.bound) {
+                select.dataset.bound = '1';
+                select.addEventListener('change', () => applyRuleTypeRow(row));
+            }
+        });
+    }
+
+    function bindConfigureRowControls(itemsByCode) {
+        const root = ensureBackdrop();
+        const vendors = vendorListForUi();
+        root.querySelectorAll('tbody tr[data-item-code]').forEach((row) => {
+            const item = itemsByCode?.get(row.getAttribute('data-item-code'));
+            if (item) applyConfigureFields(row, item, vendors);
+            for (let i = 0; i < 3; i++) {
+                const enable = row.querySelector(`[data-field="enableUnit${i}"]`);
+                const unitSelect = row.querySelector(`[data-field="unit${i}"]`);
+                if (enable && unitSelect && !enable.dataset.bound) {
+                    enable.dataset.bound = '1';
+                    enable.addEventListener('change', () => {
+                        unitSelect.disabled = !enable.checked;
+                        unitSelect.classList.toggle('admin-buildto-unit-select--off', !enable.checked);
+                    });
+                }
+            }
+        });
+    }
+
+    function applyConfigureFields(row, item, vendors) {
+        const mmx = displayMmxCode(item);
+        const vendorCode = displayVendorCode(item);
+        const fallbacks = displayFallbackCodes(item);
+        const catalogMmx = String(item.catalogMmxCode || item.itemCode || '').trim();
+        const catalogVendor = String(item.catalogVendorSlug || item.vendorSlug || '').trim();
+        const effectiveVendor = String(item.effectiveVendorSlug || catalogVendor).trim();
+        const units = Array.isArray(item.units) ? item.units : Array.isArray(item.fileUnits) ? item.fileUnits : ['N/a', 'N/a', 'N/a'];
+        const fileUnits = Array.isArray(item.fileUnits) ? item.fileUnits : units;
+        const innerPerCarton = item.innerPerCarton != null ? item.innerPerCarton : '';
+        const unitsPerPack = item.unitsPerPack != null ? item.unitsPerPack : '';
+        const fileInner = item.fileInnerPerCarton != null ? item.fileInnerPerCarton : '';
+        const fileUnitsPerPack = item.fileUnitsPerPack != null ? item.fileUnitsPerPack : '';
+        const fileCatalogName = String(item.fileCatalogName || item.name || '').trim();
+        const fileDisplayName = String(item.fileDisplayName || item.displayName || '').trim();
+
+        row.dataset.catalogMmx = catalogMmx;
+        row.dataset.catalogVendorSlug = catalogVendor;
+        row.dataset.loadedMmx = mmx;
+        row.dataset.loadedVendor = vendorCode;
+        row.dataset.loadedFallbacks = fallbacks;
+        row.dataset.loadedVendorSlug = effectiveVendor;
+        row.dataset.loadedUnits = JSON.stringify(units);
+        row.dataset.fileUnits = JSON.stringify(fileUnits);
+        row.dataset.fileInnerPerCarton = fileInner !== '' ? String(fileInner) : '';
+        row.dataset.fileUnitsPerPack = fileUnitsPerPack !== '' ? String(fileUnitsPerPack) : '';
+        row.dataset.initialVendorSlug = item.scopeVendorSlug != null ? String(item.scopeVendorSlug) : '';
+        row.dataset.initialUnits = item.scopeUnits ? JSON.stringify(item.scopeUnits) : '';
+        row.dataset.initialInnerPerCarton =
+            item.scopeInnerPerCarton != null ? String(item.scopeInnerPerCarton) : '';
+        row.dataset.initialUnitsPerPack =
+            item.scopeUnitsPerPack != null ? String(item.scopeUnitsPerPack) : '';
+        row.dataset.loadedInnerPerCarton = innerPerCarton !== '' ? String(innerPerCarton) : '';
+        row.dataset.loadedUnitsPerPack = unitsPerPack !== '' ? String(unitsPerPack) : '';
+        row.dataset.fileCatalogName = fileCatalogName;
+        row.dataset.fileDisplayName = fileDisplayName;
+        row.dataset.loadedCatalogName = fileCatalogName;
+        row.dataset.loadedDisplayName = fileDisplayName;
+
+        const vendorSelect = row.querySelector('[data-field="vendorSlug"]');
+        if (vendorSelect) vendorSelect.innerHTML = vendorOptionsHtml(vendors, effectiveVendor);
+
+        const mmxInput = row.querySelector('[data-field="mmxCode"]');
+        const vendorInput = row.querySelector('[data-field="vendorCode"]');
+        const fallbackInput = row.querySelector('[data-field="fallbackCodes"]');
+        const innerInput = row.querySelector('[data-field="innerPerCarton"]');
+        const unitsPerPackInput = row.querySelector('[data-field="unitsPerPack"]');
+        const catalogNameInput = row.querySelector('[data-field="catalogName"]');
+        const displayNameInput = row.querySelector('[data-field="displayName"]');
+        const codeLocked = !canEditItemCodes;
+        const nameLocked = !canAddItems;
+        const lockedTitle = 'Area Manager or above can change item configuration';
+        const nameLockedTitle = 'Area Manager or above can change item names';
+        if (catalogNameInput) {
+            catalogNameInput.value = fileCatalogName;
+            catalogNameInput.readOnly = nameLocked;
+            catalogNameInput.classList.toggle('admin-buildto-code-input--locked', nameLocked);
+            catalogNameInput.title = nameLocked ? nameLockedTitle : 'Catalog / MMX item name';
+        }
+        if (displayNameInput) {
+            displayNameInput.value = fileDisplayName;
+            displayNameInput.readOnly = nameLocked;
+            displayNameInput.classList.toggle('admin-buildto-code-input--locked', nameLocked);
+            displayNameInput.title = nameLocked ? nameLockedTitle : 'Plain name shown in stock count';
+        }
+        if (mmxInput) {
+            mmxInput.value = mmx;
+            mmxInput.readOnly = codeLocked;
+            mmxInput.classList.toggle('admin-buildto-code-input--locked', codeLocked);
+        }
+        if (vendorInput) {
+            vendorInput.value = vendorCode;
+            vendorInput.readOnly = codeLocked;
+            vendorInput.classList.toggle('admin-buildto-code-input--locked', codeLocked);
+        }
+        if (fallbackInput) {
+            fallbackInput.value = fallbacks;
+            fallbackInput.placeholder = fallbacks ? '' : '-';
+            fallbackInput.readOnly = codeLocked;
+            fallbackInput.classList.toggle('admin-buildto-code-input--locked', codeLocked);
+        }
+        if (innerInput) {
+            innerInput.value = innerPerCarton !== '' ? innerPerCarton : '';
+            innerInput.readOnly = codeLocked;
+            innerInput.classList.toggle('admin-buildto-code-input--locked', codeLocked);
+        }
+        if (unitsPerPackInput) {
+            unitsPerPackInput.value = unitsPerPack !== '' ? unitsPerPack : '';
+            unitsPerPackInput.readOnly = codeLocked;
+            unitsPerPackInput.classList.toggle('admin-buildto-code-input--locked', codeLocked);
+        }
+        if (vendorSelect) {
+            vendorSelect.disabled = codeLocked;
+            vendorSelect.classList.toggle('admin-buildto-code-input--locked', codeLocked);
+            vendorSelect.title = codeLocked ? lockedTitle : 'Stock count vendor tab';
+        }
+
+        for (let i = 0; i < 3; i++) {
+            const label = units[i] || 'N/a';
+            const enabled = !/^n\s*\/\s*a$/i.test(String(label).trim());
+            const enableBox = row.querySelector(`[data-field="enableUnit${i}"]`);
+            const unitSelect = row.querySelector(`[data-field="unit${i}"]`);
+            if (enableBox) {
+                enableBox.checked = enabled;
+                enableBox.disabled = codeLocked;
+            }
+            if (unitSelect) {
+                unitSelect.innerHTML = unitOptionsHtml(enabled ? label : fileUnits[i] || 'Boxes');
+                unitSelect.value = enabled ? label : unitSelect.options[0]?.value || 'Boxes';
+                unitSelect.disabled = codeLocked || !enabled;
+                unitSelect.classList.toggle('admin-buildto-unit-select--off', !enabled);
+            }
+        }
+    }
+
+    function configureItems() {
+        const vendorSlug = String(configureVendorFilter || '').trim();
+        return allItems().filter((item) => {
+            const catalogVendor = String(item.catalogVendorSlug || item.vendorSlug || '').trim();
+            return !vendorSlug || catalogVendor === vendorSlug;
+        });
+    }
+
+    function renderConfigureRows() {
+        const root = ensureBackdrop();
+        const body = root.querySelector('#admin-buildto-body');
+        const q = String(root.querySelector('#admin-buildto-search')?.value || '')
+            .trim()
+            .toLowerCase();
+        const items = configureItems().filter((item) => {
+            if (!q) return true;
+            return (
+                String(item.itemCode || '').toLowerCase().includes(q) ||
+                String(item.name || '').toLowerCase().includes(q) ||
+                String(item.displayName || '').toLowerCase().includes(q)
+            );
+        });
+        if (!items.length) {
+            body.innerHTML = '<p>No items match.</p>';
+            return;
+        }
+        const vendors = vendorListForUi();
+        const itemsByCode = new Map(items.map((item) => [String(item.itemCode), item]));
+        body.innerHTML = `
+            <table class="admin-table admin-buildto-table admin-buildto-table--configure">
+                <thead>
+                    <tr>
+                        <th>MMX name</th>
+                        <th>Common name</th>
+                        <th>Vendor</th>
+                        <th>MMX code</th>
+                        <th>Vendor code</th>
+                        <th>Fallback codes</th>
+                        <th>Outer</th>
+                        <th>Inner</th>
+                        <th>Unit</th>
+                        <th>Each/Kgs per pack</th>
+                        <th>Packs per box</th>
+                        <th>Count outer</th>
+                        <th>Count inner</th>
+                        <th>Count unit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${items
+                        .map((item) => {
+                            const effectiveVendor = String(
+                                item.effectiveVendorSlug || item.catalogVendorSlug || item.vendorSlug || ''
+                            ).trim();
+                            return `
+                        <tr data-item-code="${escapeHtml(item.itemCode)}"
+                            data-catalog-vendor-slug="${escapeHtml(item.catalogVendorSlug || item.vendorSlug || '')}">
+                            <td><input type="text" data-field="catalogName" class="admin-buildto-code-input admin-buildto-name-input" autocomplete="off" title="Catalog / MMX item name" /></td>
+                            <td><input type="text" data-field="displayName" class="admin-buildto-code-input admin-buildto-name-input" autocomplete="off" placeholder="Optional" title="Plain name shown in stock count" /></td>
+                            <td><select data-field="vendorSlug" class="admin-buildto-type-select">${vendorOptionsHtml(vendors, effectiveVendor)}</select></td>
+                            <td><input type="text" data-field="mmxCode" class="admin-buildto-code-input" autocomplete="off" /></td>
+                            <td><input type="text" data-field="vendorCode" class="admin-buildto-code-input" autocomplete="off" /></td>
+                            <td><input type="text" data-field="fallbackCodes" class="admin-buildto-fallback-input" autocomplete="off" /></td>
+                            <td><select data-field="unit0" class="admin-buildto-type-select admin-buildto-unit-select">${unitOptionsHtml('Boxes')}</select></td>
+                            <td><select data-field="unit1" class="admin-buildto-type-select admin-buildto-unit-select">${unitOptionsHtml('N/a')}</select></td>
+                            <td><select data-field="unit2" class="admin-buildto-type-select admin-buildto-unit-select">${unitOptionsHtml('N/a')}</select></td>
+                            <td><input type="number" min="0" step="any" data-field="unitsPerPack" class="admin-buildto-num-input" placeholder="-" title="Each or KGs in one inner pack" /></td>
+                            <td><input type="number" min="0" step="any" data-field="innerPerCarton" class="admin-buildto-num-input" placeholder="-" title="Inner packs per outer box" /></td>
+                            <td class="admin-table-check"><input type="checkbox" data-field="enableUnit0" title="Show outer column in stock count" /></td>
+                            <td class="admin-table-check"><input type="checkbox" data-field="enableUnit1" title="Show inner column in stock count" /></td>
+                            <td class="admin-table-check"><input type="checkbox" data-field="enableUnit2" title="Show unit column in stock count" /></td>
+                        </tr>`;
+                        })
+                        .join('')}
+                </tbody>
+            </table>`;
+        bindConfigureRowControls(itemsByCode);
+    }
+
+    function vendorListForUi() {
+        if (allVendorsCache.length) return allVendorsCache;
+        return (catalogCache?.vendors || newItemVendors()).map((v) => ({
+            slug: v.slug,
+            label: v.label || v.slug,
+            configured: true,
+        }));
+    }
+
+    function existingVendorsForCopyUi() {
+        if (existingVendorsCache.length) return existingVendorsCache;
+        return vendorListForUi().map((v) => ({
+            label: v.label || v.slug,
+            catalogSlug: v.slug,
+            mmxLabel: v.label || v.slug,
+        }));
+    }
+
+    function renderCopyVendorForm() {
+        const root = ensureBackdrop();
+        const wrap = root.querySelector('#admin-buildto-copy-wrap');
+        if (!wrap) return;
+        const vendors = vendorListForUi();
+        const sourceSlug = String(configureVendorFilter || vendors[0]?.slug || '').trim();
+        const existingVendors = existingVendorsForCopyUi();
+        wrap.innerHTML = `
+            <div class="admin-buildto-new admin-buildto-copy" id="admin-buildto-copy">
+                <h3>Copy to vendor</h3>
+                <div class="admin-buildto-new-grid">
+                    <label>Source vendor
+                        <select data-copy-vendor="sourceSelect" class="admin-buildto-type-select" aria-label="Source vendor">
+                            ${vendors
+                                .map(
+                                    (v) =>
+                                        `<option value="${escapeHtml(v.slug)}" ${v.slug === sourceSlug ? 'selected' : ''}>${escapeHtml(v.label || v.slug)}</option>`
+                                )
+                                .join('')}
+                        </select>
+                    </label>
+                    <div data-copy-vendor="newPanel" class="admin-buildto-copy-panel">
+                        <label>Vendor name
+                            <input type="text" data-copy-vendor="newName" class="admin-buildto-code-input" placeholder="e.g. Sands" />
+                        </label>
+                        <label>MMX scheduled order label
+                            <input type="text" data-copy-vendor="mmxLabel" class="admin-buildto-code-input" placeholder="e.g. Sands WA" />
+                        </label>
+                    </div>
+                    <div data-copy-vendor="existingPanel" class="admin-buildto-copy-panel" hidden>
+                        <label>Existing vendor
+                            <select data-copy-vendor="existingSelect" class="admin-buildto-type-select">
+                                ${existingVendors.length
+                                    ? existingVendors
+                                          .map(
+                                              (v) =>
+                                                  `<option value="${escapeHtml(v.label)}">${escapeHtml(v.label)}</option>`
+                                          )
+                                          .join('')
+                                    : '<option value="">No existing vendors yet</option>'}
+                            </select>
+                        </label>
+                        <fieldset data-copy-vendor="modeWrap" class="admin-buildto-copy-mode">
+                            <legend>If target already has items</legend>
+                            <label class="admin-buildto-copy-mode-option">
+                                <input type="radio" name="admin-buildto-copy-mode" data-copy-vendor="mode" value="append" checked />
+                                Append missing items only
+                            </label>
+                            <label class="admin-buildto-copy-mode-option">
+                                <input type="radio" name="admin-buildto-copy-mode" data-copy-vendor="mode" value="replace" />
+                                Replace entire catalog
+                            </label>
+                        </fieldset>
+                    </div>
+                </div>
+                <p class="admin-modal-error admin-buildto-new-error" data-copy-vendor="error" role="alert"></p>
+                <div class="admin-buildto-new-actions admin-buildto-copy-actions">
+                    <button type="button" class="mic-settings-btn admin-btn-primary" data-copy-vendor="submit">Copy items</button>
+                    <button type="button" class="mic-settings-btn admin-buildto-copy-mode-switch" data-copy-vendor="modeSwitch">Copy to existing vendor</button>
+                    <button type="button" class="admin-buildto-close-btn" data-copy-vendor="cancel">Cancel</button>
+                </div>
+            </div>`;
+
+        const form = wrap.querySelector('#admin-buildto-copy');
+        const newPanel = form.querySelector('[data-copy-vendor="newPanel"]');
+        const existingPanel = form.querySelector('[data-copy-vendor="existingPanel"]');
+        const modeSwitch = form.querySelector('[data-copy-vendor="modeSwitch"]');
+        const newNameInput = form.querySelector('[data-copy-vendor="newName"]');
+        const mmxInput = form.querySelector('[data-copy-vendor="mmxLabel"]');
+        let copyTargetMode = 'new';
+
+        function syncCopyFormUi() {
+            const isExisting = copyTargetMode === 'existing';
+            if (newPanel) newPanel.hidden = isExisting;
+            if (existingPanel) existingPanel.hidden = !isExisting;
+            if (modeSwitch) {
+                modeSwitch.textContent = isExisting ? 'Copy to new vendor' : 'Copy to existing vendor';
+            }
+        }
+
+        newNameInput?.addEventListener('input', () => {
+            if (mmxInput && !mmxInput.dataset.touched) {
+                mmxInput.value = String(newNameInput.value || '').trim();
+            }
+        });
+        mmxInput?.addEventListener('input', () => {
+            mmxInput.dataset.touched = '1';
+        });
+        modeSwitch?.addEventListener('click', () => {
+            copyTargetMode = copyTargetMode === 'existing' ? 'new' : 'existing';
+            if (mmxInput) delete mmxInput.dataset.touched;
+            syncCopyFormUi();
+        });
+        syncCopyFormUi();
+
+        form.querySelector('[data-copy-vendor="cancel"]')?.addEventListener('click', () => {
+            wrap.hidden = true;
+        });
+        form.querySelector('[data-copy-vendor="submit"]')?.addEventListener('click', () => {
+            void submitCopyVendor(form, copyTargetMode);
+        });
+    }
+
+    function toggleCopyVendorForm() {
+        const root = ensureBackdrop();
+        const wrap = root.querySelector('#admin-buildto-copy-wrap');
+        const newWrap = root.querySelector('#admin-buildto-new-wrap');
+        if (!wrap) return;
+        if (wrap.hidden) {
+            if (newWrap) newWrap.hidden = true;
+            renderCopyVendorForm();
+            wrap.hidden = false;
+        } else {
+            wrap.hidden = true;
+        }
+    }
+
+    async function submitCopyVendor(form, copyTargetMode = 'new') {
+        const errorEl = form.querySelector('[data-copy-vendor="error"]');
+        if (errorEl) errorEl.textContent = '';
+
+        const newName = String(form.querySelector('[data-copy-vendor="newName"]')?.value || '').trim();
+        const mmxLabel = String(form.querySelector('[data-copy-vendor="mmxLabel"]')?.value || '').trim();
+        const mode =
+            form.querySelector('[data-copy-vendor="mode"]:checked')?.value === 'replace' ? 'replace' : 'append';
+        const existingLabel = String(form.querySelector('[data-copy-vendor="existingSelect"]')?.value || '').trim();
+        const sourceSlug = String(form.querySelector('[data-copy-vendor="sourceSelect"]')?.value || '').trim();
+        if (!sourceSlug) {
+            if (errorEl) errorEl.textContent = 'Select a source vendor.';
+            return;
+        }
+
+        const body = { sourceSlug, mode, mmxOrderLabel: mmxLabel };
+        if (copyTargetMode === 'existing') {
+            if (!existingLabel) {
+                if (errorEl) errorEl.textContent = 'Select an existing vendor.';
+                return;
+            }
+            body.targetExistingLabel = existingLabel;
+            body.mmxOrderLabel = existingLabel;
+        } else {
+            if (!newName) {
+                if (errorEl) errorEl.textContent = 'Enter a name for the new vendor.';
+                return;
+            }
+            if (!mmxLabel) {
+                if (errorEl) errorEl.textContent = 'MMX scheduled order label is required.';
+                return;
+            }
+            body.targetLabel = newName;
+        }
+
+        const submitBtn = form.querySelector('[data-copy-vendor="submit"]');
+        submitBtn.disabled = true;
+        try {
+            const res = await fetch('/api/admin/build-to/vendors/copy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) throw new Error(data.error || 'Copy failed.');
+            const root = ensureBackdrop();
+            const wrap = root.querySelector('#admin-buildto-copy-wrap');
+            if (wrap) wrap.hidden = true;
+            configureVendorFilter = data.targetSlug || configureVendorFilter;
+            root.querySelector('#admin-buildto-error').textContent =
+                `Copied ${data.copied} item(s) to ${data.targetLabel || data.targetSlug}` +
+                (data.skipped ? ` (${data.skipped} skipped as duplicates).` : '.');
+            await loadCatalog();
+        } catch (error) {
+            if (errorEl) errorEl.textContent = error.message || 'Copy failed.';
+        } finally {
+            submitBtn.disabled = false;
+        }
     }
 
     function newItemVendors() {
@@ -641,41 +1172,131 @@
         return left.every((code, i) => code === right[i]);
     }
 
-    function collectCodePatch(row, rule) {
+    function readUnitsFromRow(row) {
+        const units = ['N/a', 'N/a', 'N/a'];
+        for (let i = 0; i < 3; i++) {
+            const enabled = Boolean(row.querySelector(`[data-field="enableUnit${i}"]`)?.checked);
+            if (enabled) {
+                units[i] = String(row.querySelector(`[data-field="unit${i}"]`)?.value || 'N/a').trim() || 'N/a';
+            }
+        }
+        return units;
+    }
+
+    function sameUnits(a, b) {
+        const left = Array.isArray(a) ? a : JSON.parse(a || '[]');
+        const right = Array.isArray(b) ? b : JSON.parse(b || '[]');
+        if (left.length !== 3 || right.length !== 3) return false;
+        return left.every((val, i) => String(val).trim().toLowerCase() === String(right[i]).trim().toLowerCase());
+    }
+
+    function collectConfigurePatch(row, rule) {
         if (!canEditItemCodes) return;
         const mmx = String(row.querySelector('[data-field="mmxCode"]')?.value || '').trim();
-        const vendor = String(row.querySelector('[data-field="vendorCode"]')?.value || '').trim();
+        const vendorCode = String(row.querySelector('[data-field="vendorCode"]')?.value || '').trim();
         const fallbacks = String(row.querySelector('[data-field="fallbackCodes"]')?.value || '').trim();
+        const vendorSlug = String(row.querySelector('[data-field="vendorSlug"]')?.value || '').trim();
+        const innerRaw = row.querySelector('[data-field="innerPerCarton"]')?.value;
+        const unitsPerPackRaw = row.querySelector('[data-field="unitsPerPack"]')?.value;
+        const catalogName = String(row.querySelector('[data-field="catalogName"]')?.value || '').trim();
+        const displayName = String(row.querySelector('[data-field="displayName"]')?.value || '').trim();
+        const units = readUnitsFromRow(row);
+
         const catalogMmx = row.dataset.catalogMmx || '';
+        const catalogVendor = row.dataset.catalogVendorSlug || '';
         const loadedMmx = row.dataset.loadedMmx || '';
-        const initialMmx = row.dataset.initialMmx || '';
         const loadedVendor = row.dataset.loadedVendor || '';
-        const initialVendor = row.dataset.initialVendor || '';
         const loadedFallbacks = row.dataset.loadedFallbacks || '';
-        const initialFallbacks = row.dataset.initialFallbacks || '';
+        const loadedVendorSlug = row.dataset.loadedVendorSlug || '';
+        const loadedUnits = JSON.parse(row.dataset.loadedUnits || '["N/a","N/a","N/a"]');
+        const fileUnits = JSON.parse(row.dataset.fileUnits || '["N/a","N/a","N/a"]');
+        const fileInner = row.dataset.fileInnerPerCarton || '';
+        const fileUnitsPerPack = row.dataset.fileUnitsPerPack || '';
+        const initialVendorSlug = row.dataset.initialVendorSlug || '';
+        const initialUnits = row.dataset.initialUnits || '';
+        const initialInner = row.dataset.initialInnerPerCarton || '';
+        const initialUnitsPerPack = row.dataset.initialUnitsPerPack || '';
+        const fileCatalogName = row.dataset.fileCatalogName || '';
+        const fileDisplayName = row.dataset.fileDisplayName || '';
+        const loadedCatalogName = row.dataset.loadedCatalogName || '';
+        const loadedDisplayName = row.dataset.loadedDisplayName || '';
+
+        if (catalogName && catalogName !== loadedCatalogName) {
+            rule.catalogName = catalogName;
+        }
+
+        if (displayName !== loadedDisplayName) {
+            rule.displayName = displayName || null;
+        }
 
         if (mmx !== loadedMmx) {
             rule.mmxCode = mmx && mmx !== catalogMmx ? mmx : null;
-        } else if (initialMmx && mmx === catalogMmx) {
-            rule.mmxCode = null;
         }
 
-        if (vendor !== loadedVendor) {
-            rule.vendorCode = vendor && vendor !== catalogMmx ? vendor : null;
-        } else if (initialVendor && vendor === catalogMmx) {
-            rule.vendorCode = null;
+        if (vendorCode !== loadedVendor) {
+            rule.vendorCode = vendorCode && vendorCode !== catalogMmx ? vendorCode : null;
         }
 
         if (!sameCodeList(fallbacks, loadedFallbacks)) {
             const list = parseFallbackInput(fallbacks);
             rule.fallbackCodes = list.length ? list : null;
-        } else if (initialFallbacks && !fallbacks) {
-            rule.fallbackCodes = null;
+        }
+
+        if (vendorSlug !== loadedVendorSlug) {
+            rule.vendorSlug = vendorSlug && vendorSlug !== catalogVendor ? vendorSlug : null;
+        } else if (initialVendorSlug && vendorSlug === catalogVendor) {
+            rule.vendorSlug = null;
+        }
+
+        if (!sameUnits(units, loadedUnits)) {
+            rule.units = sameUnits(units, fileUnits) ? null : units;
+        } else if (initialUnits && sameUnits(units, fileUnits)) {
+            rule.units = null;
+        }
+
+        const innerValue = innerRaw !== '' && innerRaw != null ? String(innerRaw).trim() : '';
+        const loadedInnerStr = row.dataset.loadedInnerPerCarton || '';
+        const fileInnerNum = fileInner !== '' ? Number(fileInner) : null;
+        const effectiveInner = innerValue !== '' ? Number(innerValue) : null;
+
+        if (innerValue !== loadedInnerStr) {
+            if (effectiveInner != null && Number.isFinite(effectiveInner)) {
+                rule.innerPerCarton =
+                    fileInnerNum != null && effectiveInner === fileInnerNum ? null : effectiveInner;
+            } else if (fileInnerNum != null) {
+                rule.innerPerCarton = null;
+            }
+        } else if (initialInner && innerValue === (fileInner !== '' ? fileInner : '')) {
+            rule.innerPerCarton = null;
+        }
+
+        const unitsPerPackValue =
+            unitsPerPackRaw !== '' && unitsPerPackRaw != null ? String(unitsPerPackRaw).trim() : '';
+        const loadedUnitsPerPackStr = row.dataset.loadedUnitsPerPack || '';
+        const fileUnitsPerPackNum = fileUnitsPerPack !== '' ? Number(fileUnitsPerPack) : null;
+        const effectiveUnitsPerPack = unitsPerPackValue !== '' ? Number(unitsPerPackValue) : null;
+
+        if (unitsPerPackValue !== loadedUnitsPerPackStr) {
+            if (effectiveUnitsPerPack != null && Number.isFinite(effectiveUnitsPerPack)) {
+                rule.unitsPerPack =
+                    fileUnitsPerPackNum != null && effectiveUnitsPerPack === fileUnitsPerPackNum
+                        ? null
+                        : effectiveUnitsPerPack;
+            } else if (fileUnitsPerPackNum != null) {
+                rule.unitsPerPack = null;
+            }
+        } else if (
+            initialUnitsPerPack &&
+            unitsPerPackValue === (fileUnitsPerPack !== '' ? fileUnitsPerPack : '')
+        ) {
+            rule.unitsPerPack = null;
         }
     }
 
     function collectPatch() {
         const root = ensureBackdrop();
+        const scope = getOverrideScope();
+        const useAreaLayer = scope.level === 'area';
         const patch = {};
         root.querySelectorAll('tbody tr[data-item-code]').forEach((row) => {
             const code = row.getAttribute('data-item-code');
@@ -690,18 +1311,15 @@
             const initialWarn = row.dataset.initialStockWarning || '';
             const catalogNeedsCount = row.dataset.catalogNeedsCount === '1';
             const catalogIncludeDaily = row.dataset.catalogIncludeDaily === '1';
-            const hadSkipOverride =
-                activeTab === 'global'
-                    ? row.dataset.globalSkipOverride === '1'
-                    : row.dataset.storeSkipOverride === '1';
-            const hadSkipKeyOverride =
-                activeTab === 'global'
-                    ? row.dataset.globalSkipKeyOverride === '1'
-                    : row.dataset.storeSkipKeyOverride === '1';
-            const hadIncludeDailyOverride =
-                activeTab === 'global'
-                    ? row.dataset.globalIncludeDailyOverride === '1'
-                    : row.dataset.storeIncludeDailyOverride === '1';
+            const hadSkipOverride = useAreaLayer
+                ? row.dataset.areaSkipOverride === '1'
+                : row.dataset.storeSkipOverride === '1';
+            const hadSkipKeyOverride = useAreaLayer
+                ? row.dataset.areaSkipKeyOverride === '1'
+                : row.dataset.storeSkipKeyOverride === '1';
+            const hadIncludeDailyOverride = useAreaLayer
+                ? row.dataset.areaIncludeDailyOverride === '1'
+                : row.dataset.storeIncludeDailyOverride === '1';
             const initialRuleType = row.dataset.initialRuleType || 'days';
 
             if (ruleType === 'days') {
@@ -757,8 +1375,18 @@
                 rule.stockWarningDays = Number(effectiveWarn);
             }
 
-            collectCodePatch(row, rule);
+            if (Object.keys(rule).length) patch[code] = rule;
+        });
+        return patch;
+    }
 
+    function collectConfigurePatchAll() {
+        const root = ensureBackdrop();
+        const patch = {};
+        root.querySelectorAll('tbody tr[data-item-code]').forEach((row) => {
+            const code = row.getAttribute('data-item-code');
+            const rule = {};
+            collectConfigurePatch(row, rule);
             if (Object.keys(rule).length) patch[code] = rule;
         });
         return patch;
@@ -767,13 +1395,29 @@
     async function saveChanges() {
         const root = ensureBackdrop();
         root.querySelector('#admin-buildto-error').textContent = '';
+
+        if (viewMode === 'configure') {
+            const area = String(browseScope.area || '').trim();
+            if (!area) throw new Error('Select an area to save configure changes.');
+            const patch = collectConfigurePatchAll();
+            const body = { areas: { [area]: patch } };
+            const res = await fetch('/api/admin/build-to/overrides', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || !data.success) throw new Error(data.error || 'Save failed.');
+            await loadCatalog();
+            return;
+        }
+
         const patch = collectPatch();
         const scope = getOverrideScope();
-        if (activeTab === 'store' && scope.level === 'none') throw new Error('Select an area or store first.');
+        if (scope.level === 'none') throw new Error('Select an area or store first.');
         let body = {};
-        if (activeTab === 'global') {
-            body = { global: patch };
-        } else if (scope.level === 'store') {
+        if (scope.level === 'store') {
             body = { stores: { [scope.store]: patch } };
         } else if (scope.level === 'area') {
             body = { areas: { [scope.area]: patch } };
@@ -796,18 +1440,17 @@
         if (!isInline()) root.hidden = false;
         root.querySelector('#admin-buildto-error').textContent = '';
         const me = await fetchProfile();
-        canEditItemCodes = Boolean(me.canEditGlobalBuildTo);
+        canConfigure =
+            Boolean(me.canEditGlobalBuildTo) ||
+            (Array.isArray(me.accessibleAreas) && me.accessibleAreas.length > 0);
+        canEditItemCodes = canConfigure;
+        canAddItems = Boolean(me.canEditGlobalBuildTo);
+        canCopyVendor = Boolean(me.canEditGlobalBuildTo);
         const addBtn = root.querySelector('#admin-buildto-add');
-        if (addBtn) addBtn.hidden = !canEditItemCodes;
-        const globalTab = root.querySelector('#admin-buildto-global-tab');
-        if (me.canEditGlobalBuildTo) {
-            globalTab.hidden = false;
-            activeTab = 'global';
-        } else {
-            globalTab.hidden = true;
-            activeTab = 'store';
-        }
-        applyTabUi();
+        const modeToggle = root.querySelector('#admin-buildto-mode-toggle');
+        if (modeToggle) modeToggle.hidden = !canConfigure;
+        viewMode = 'rules';
+        applyViewModeUi();
         storeList = await loadStores();
         await loadScopeTree();
         renderScopeNavigator();

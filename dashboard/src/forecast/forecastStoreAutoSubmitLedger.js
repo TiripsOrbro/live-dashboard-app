@@ -5,6 +5,8 @@ const paths = require('../../../src/paths');
 const { getStoreList } = require('../../../stores/src/storeList');
 const { readAutoSubmitSettings } = require('./forecastAutoSubmitLedger');
 const { scheduleHour, TIME_ZONE } = require('./forecastSchedule');
+const { readForecastUpdates, summarizeForecastUpdates } = require('./forecastUpdateLedger');
+const { getTargetForecastWeekStarts } = require('./forecastStatusLedger');
 
 const SETTINGS_FILE = path.join(paths.dashboard.data, 'forecast-store-auto-submit.json');
 let migrationDone = false;
@@ -108,11 +110,29 @@ function buildStoreAutoSubmitMap(storeNumbers) {
     return out;
 }
 
+function buildLastForecastUpdateMap(storeNumbers) {
+    const weekStarts = getTargetForecastWeekStarts();
+    const out = {};
+    for (const storeNumber of storeNumbers || []) {
+        const store = String(storeNumber || '').trim();
+        if (!store) continue;
+        let latest = null;
+        for (const weekStart of weekStarts) {
+            const summary = summarizeForecastUpdates(readForecastUpdates(store, weekStart));
+            const at = summary.lastUpdatedAt;
+            if (at && (!latest || at > latest)) latest = at;
+        }
+        out[store] = latest;
+    }
+    return out;
+}
+
 function buildStoreAutoSubmitStatus(storeNumbers) {
     migrateFromLegacyGlobalIfNeeded();
     const doc = readSettingsDoc();
     return {
         stores: buildStoreAutoSubmitMap(storeNumbers),
+        lastForecastUpdate: buildLastForecastUpdateMap(storeNumbers),
         defaults: { enabled: Boolean(doc.defaults?.enabled) },
         scheduleHour: doc.scheduleHour ?? scheduleHour(),
         timeZone: doc.timeZone || TIME_ZONE,

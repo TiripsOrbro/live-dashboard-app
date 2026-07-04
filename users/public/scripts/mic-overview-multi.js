@@ -90,6 +90,83 @@
         return true;
     }
 
+    function normalizeAreaKey(value) {
+        return String(value || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)/g, '');
+    }
+
+    function adminOverviewCacheKey(profile) {
+        const scope = String(profile?.overviewScope || 'admin').toLowerCase();
+        const areas = (profile?.accessibleAreas || [])
+            .map((name) => String(name || '').trim().toLowerCase())
+            .filter(Boolean)
+            .sort()
+            .join('|');
+        return `${scope}:${areas || 'default'}`;
+    }
+
+    function buildPlaceholderAdminOverview(profile) {
+        const areaNames = global.MicAreaPicker?.resolveInitialAreaNames?.(profile, null) || [];
+        const names = areaNames.length ? areaNames : [DEFAULT_AREA];
+        const areas = names.map((name) => {
+            const trimmed = String(name || '').trim();
+            return {
+                name: trimmed,
+                areaKey: normalizeAreaKey(trimmed),
+                salesToday: { actual: 0, forecast: 0 },
+                storeSales: [],
+                auditTileSummaries: [],
+                dailyStockCount: { configured: false },
+            };
+        });
+        const vocByArea = areas.map((a) => ({
+            name: a.name,
+            areaKey: a.areaKey,
+            ...VOC_PLACEHOLDER,
+            placeholder: true,
+        }));
+        return {
+            success: true,
+            placeholder: true,
+            areas,
+            vocByArea,
+            storesNeedingOrders: [],
+        };
+    }
+
+    function restoreCachedAdminOverview() {
+        if (!meProfile) return null;
+        const entry = global.DashboardDataCache?.readAdminOverview?.(adminOverviewCacheKey(meProfile));
+        if (!entry?.data || !global.DashboardDataCache?.hasMeaningfulAdminOverview?.(entry.data)) {
+            return null;
+        }
+        return entry.data;
+    }
+
+    function persistAdminOverview(data) {
+        if (!meProfile || !data?.success || data.placeholder) return;
+        global.DashboardDataCache?.writeAdminOverview?.(adminOverviewCacheKey(meProfile), data);
+    }
+
+    function bindMicNavigationSettings() {
+        global.MicSettings?.bind?.({
+            getViewAccountsOptions: () => ({
+                isAdmin: Boolean(meProfile?.canViewCrossStoreAccounts),
+            }),
+            resolveAdminMenuVisibility: !meProfile?.canAccessAdminMenu,
+        });
+        global.AdminMenu?.bind?.({
+            getViewAccountsOptions: () => ({
+                isAdmin: Boolean(meProfile?.canViewCrossStoreAccounts),
+            }),
+        });
+        global.AdminAccounts?.maybeOpenFromQuery?.();
+        global.MicSettings?.initPreferences?.();
+    }
+
     function renderLoadingMarkHtml() {
         return global.LoadingDots?.html?.({ label: 'Loading sales data', size: 'lg' }) || '';
     }
@@ -995,28 +1072,12 @@
 
     function renderTiles() {
         const grid = document.getElementById('mic-grid');
-        if (!grid) return;
+        if (!grid || !overviewData) return;
         const mobile = syncMicLayoutMode();
         syncMicOverviewTabs(mobile);
         grid.classList.toggle('mic-grid--tabbed', mobile);
-
-        if (!overviewData) {
-            grid.classList.add('mic-grid--loading');
-            if (!mobile) {
-                grid.style.setProperty('--mic-content-rows', '3');
-            } else {
-                grid.style.removeProperty('--mic-content-rows');
-            }
-            grid.innerHTML = mobile ? renderLoadingMobileTiles() : renderLoadingDesktopTiles();
-            grid.setAttribute('aria-busy', 'true');
-            global.CoreCountdown?.refreshTiles?.();
-            global.CoreCountdown?.startTick?.();
-            bindTacauditTileLinks();
-            return;
-        }
-
-        grid.setAttribute('aria-busy', 'false');
         grid.classList.remove('mic-grid--loading');
+        grid.setAttribute('aria-busy', overviewData.placeholder ? 'true' : 'false');
         const auditTiles = auditTilesForDisplay();
         if (!mobile) {
             grid.style.setProperty('--mic-content-rows', String(countAdminContentRows(auditTiles)));
@@ -1040,20 +1101,7 @@
             subtitle: subtitleForScope(),
             promoBannerHtml: promoBannerHtml || '',
         });
-
-        global.MicSettings?.bind?.({
-            getViewAccountsOptions: () => ({
-                isAdmin: Boolean(meProfile?.canViewCrossStoreAccounts),
-            }),
-            resolveAdminMenuVisibility: !meProfile?.canAccessAdminMenu,
-        });
-        global.AdminMenu?.bind?.({
-            getViewAccountsOptions: () => ({
-                isAdmin: Boolean(meProfile?.canViewCrossStoreAccounts),
-            }),
-        });
-        global.AdminAccounts?.maybeOpenFromQuery?.();
-        global.MicSettings?.initPreferences?.();
+        bindMicNavigationSettings();
         renderTiles();
     }
 
@@ -1075,7 +1123,6 @@
         if (!canMaintainMicOverview()) return;
         if (overviewLoadInFlight) return;
         overviewLoadInFlight = true;
-        if (!overviewData) renderTiles();
         try {
             const res = await fetch('/api/overview', { credentials: 'same-origin' });
             const data = await res.json();
@@ -1086,6 +1133,7 @@
             if (data.salesUpdatedAt) lastSalesUpdatedAt = data.salesUpdatedAt;
             updateSalesScrapeHint(data.salesScrapeStatus || { salesUpdatedAt: data.salesUpdatedAt });
             overviewData = data;
+            persistAdminOverview(data);
             const areas = data.areas || [];
             const isFirstLoad = !document.getElementById('mic-grid');
             if (!document.getElementById('mic-grid')) renderShell(MOS()?.renderPromoBanner?.());
@@ -1146,6 +1194,10 @@
         clearIntervals();
         pendingAreaName =
             global.MicAreaPicker?.isPickerPending?.() ? '' : global.MicAreaPicker?.getStoredArea?.() || '';
+        overviewData = restoreCachedAdminOverview() || buildPlaceholderAdminOverview(profile);
+        if (!overviewData.placeholder) {
+            global.DashboardPreloadBridge?.signalReady?.('content');
+        }
         MOS()?.setOnMobileLayoutChange?.(() => {
             if (overviewData) renderTiles();
         });
@@ -1170,8 +1222,8 @@
             });
         }
 
-        await global.CoreCountdown?.init?.();
-        await loadOverview();
+        void global.CoreCountdown?.init?.();
+        void loadOverview();
 
         intervals.push(
             global.setInterval(() => {

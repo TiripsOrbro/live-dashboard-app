@@ -112,10 +112,14 @@ function parseWeightFromLabel(label) {
     return n;
 }
 
-function countedItemCodesByVendor() {
+function countedItemCodesByVendor(storeNumber = '') {
     const out = new Map();
+    const store = String(storeNumber || '').trim();
     for (const vendor of listConfiguredVendors()) {
-        const catalog = getVendorCatalog(vendor.slug);
+        const catalog = getVendorCatalog(
+            vendor.slug,
+            store ? { storeNumber: store, forStockCount: true } : {}
+        );
         if (!catalog) continue;
         const codes = new Set();
         for (const item of catalog.items) {
@@ -216,7 +220,7 @@ function finalizeManualParOrderQty(value, options = {}) {
 
 async function loadManualCountsForStore(storeNumber, dateKey = melbourneDateKey()) {
     const manual = new Map();
-    const byVendor = countedItemCodesByVendor();
+    const byVendor = countedItemCodesByVendor(storeNumber);
 
     for (const [slug, { catalog }] of byVendor.entries()) {
         const summary = await getSummary(storeNumber, slug, dateKey);
@@ -286,10 +290,11 @@ function resolveOnOrderCartons(onOrderReport, itemCode, iseUnit, isePack, storeN
     };
 }
 
-function allBuildToCatalogItems() {
+function allBuildToCatalogItems(storeNumber = '') {
     const items = [];
+    const store = String(storeNumber || '').trim();
     for (const vendor of listConfiguredVendors()) {
-        const catalog = getVendorCatalog(vendor.slug);
+        const catalog = getVendorCatalog(vendor.slug, store ? { storeNumber: store } : {});
         if (!catalog) continue;
         for (const item of catalog.items || []) {
             if (item.buildToManual && !item.buildToOrderManual) continue;
@@ -402,7 +407,7 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
     }
     const manualCounts = await loadManualCountsForStore(storeNumber, dateKey);
     let manualCountItems = 0;
-    const catalogItems = allBuildToCatalogItems();
+    const catalogItems = allBuildToCatalogItems(storeNumber);
 
     const lines = [];
     const usedIseCodes = new Set();

@@ -17,17 +17,7 @@ const { getVendorCatalog } = require('./vendorCatalog');
 const { normalizeItemCode } = require('./reportReader');
 const { buildBuildToEntriesForVendor, catalogLineCodeMatch } = require('./orderItemNameMatch');
 
-const paths = require('../../src/paths');
-const CONFIG_PATH = path.join(paths.vendors.config, 'vendor-orders.json');
-const EXAMPLE_PATH = path.join(paths.vendors.config, 'vendor-orders.json.example');
-
-function loadVendorOrdersConfig() {
-    const file = fs.existsSync(CONFIG_PATH) ? CONFIG_PATH : EXAMPLE_PATH;
-    if (!fs.existsSync(file)) {
-        throw new Error('Missing config/vendor-orders.json - copy from config/vendor-orders.json.example');
-    }
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-}
+const { loadVendorOrdersConfig } = require('./vendorOrdersConfig');
 
 function itemMatchesVendorConfig(catalogItem, vendorCfg) {
     if (

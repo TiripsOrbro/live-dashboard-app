@@ -24,7 +24,7 @@ process.env.SCRAPER_HEADLESS = 'true';
 })();
 
 const scrapeData = require('./services/scraper');
-const { notifyScrapeFailure } = require('./services/alertNotifier');
+const { notifyScrapeFailure, alertsEnabled, sendAlertEmail, postAlertWebhook, shouldSendScheduledAlert } = require('./services/alertNotifier');
 const { isMmxResourceBusy } = require('./services/mmxResourceGate');
 const {
     runWithPriority,
@@ -401,6 +401,7 @@ const {
     purgeOldResults: purgeFiveAmReportsResults,
     purgeOldReportFiles: purgeFiveAmReportsReportFiles,
 } = require('../dashboard/src/fiveAmReports/fiveAmReportsResults');
+const { maybeRunDailyReportsOrchestrator } = require('../dashboard/src/dailyReports/dailyReportsOrchestrator');
 const {
     listSubscriptions: listReportSubscriptions,
     getSubscription: getReportSubscription,
@@ -430,6 +431,8 @@ const {
 const { buildAdminDfscStatus } = require('../tacaudit/audits/Daily Food Safety Check/dfscAdmin');
 const { buildAdminBuildToCatalog, filterOverridesForActor, readOverridesDoc } = require('../vendors/src/buildToAdminCatalog');
 const { patchOverrides, stripItemCodeFieldsFromBuildToPatch } = require('../vendors/src/buildToAdminOverrides');
+const { applyConfigureNameFilePatches } = require('../vendors/src/configureCatalogNames');
+const { copyVendorCatalog } = require('../vendors/src/copyVendorCatalog');
 const {
     getContext: getPestWalkContext,
     createSession: createPestWalkSession,
@@ -4445,7 +4448,8 @@ app.put('/api/admin/five-am-reports/stores', (req, res) => {
         const enabled = !(req.body?.enabled === false || req.body?.enabled === 0 || req.body?.enabled === '0');
         setFiveAmReportsStoreEnabled(store, enabled, user.username);
         const todayYmd = ymdInTimeZone(new Date(), fiveAmReportsTimeZoneForStore(store));
-        const hasTodayData = getFiveAmReportsLastRun(store) === todayYmd;
+        const hasTodayData =
+            getFiveAmReportsLastRun(store, fiveAmReportsTimeZoneForStore(store)) === todayYmd;
         const pulling = Boolean(enabled) && !hasTodayData;
         res.json({ success: true, store, enabled: Boolean(enabled), pulling });
         // When enabling a store that has no data for today yet, pull it now rather than
@@ -5016,6 +5020,25 @@ app.get('/api/admin/build-to/catalog', (req, res) => {
         const store = String(req.query.store || '').trim();
         const area = String(req.query.area || '').trim();
         const scope = String(req.query.scope || '').trim().toLowerCase();
+        const configure = String(req.query.configure || '').trim() === '1';
+
+        if (configure) {
+            const areaName = area || String(req.query.areaName || '').trim();
+            if (!areaName) {
+                res.status(400).json({ success: false, error: 'Area is required for configure mode.' });
+                return;
+            }
+            const allowedAreas = new Set((getAccessibleAreasForUser(user) || []).map(String));
+            if (!canUserEditGlobalBuildTo(user) && !allowedAreas.has(areaName)) {
+                res.status(403).json({ success: false, error: 'Area is outside your scope.' });
+                return;
+            }
+            res.json({
+                success: true,
+                ...buildAdminBuildToCatalog({ areaName, level: 'area', configure: true }),
+            });
+            return;
+        }
 
         if (store) {
             if (!assertStoreAccess(req, res, store)) return;
@@ -5119,7 +5142,7 @@ app.put('/api/admin/build-to/overrides', (req, res) => {
     }
 
     const patchToApply = canUserEditGlobalBuildTo(user)
-        ? patch
+        ? applyConfigureNameFilePatches(patch, { canEditCatalogFiles: true })
         : stripItemCodeFieldsFromBuildToPatch(patch);
     const overrides = patchOverrides(patchToApply);
     appendAccountAudit({
@@ -5182,6 +5205,50 @@ app.post('/api/admin/build-to/items', (req, res) => {
         res.json({ success: true, itemCode: result.itemCode, line: result.line });
     } catch (err) {
         res.status(400).json({ success: false, error: err.message || 'Could not add item.' });
+    }
+});
+
+app.post('/api/admin/build-to/vendors/copy', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    if (!canUserEditGlobalBuildTo(user)) {
+        res.status(403).json({ success: false, error: 'Area Manager or above can copy vendor catalogs.' });
+        return;
+    }
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    try {
+        const targetExistingLabel = String(body.targetExistingLabel || '').trim();
+        let targetSlug = String(body.targetSlug || '').trim();
+        let targetLabel = String(body.targetLabel || '').trim();
+        let mmxOrderLabel = String(body.mmxOrderLabel || '').trim();
+
+        if (targetExistingLabel) {
+            const { resolveExistingVendorCopyTarget } = require('../vendors/src/existingVendorsCache');
+            const resolved = resolveExistingVendorCopyTarget(targetExistingLabel);
+            if (!resolved) throw new Error('Unknown existing vendor.');
+            if (resolved.catalogSlug) targetSlug = resolved.catalogSlug;
+            else targetLabel = resolved.label;
+            if (!mmxOrderLabel) mmxOrderLabel = resolved.mmxLabel || resolved.label;
+        }
+
+        const result = copyVendorCatalog({
+            sourceSlug: String(body.sourceSlug || '').trim(),
+            targetSlug,
+            targetLabel,
+            mode: String(body.mode || 'append').trim().toLowerCase(),
+            mmxOrderLabel,
+        });
+        appendAccountAudit({
+            action: 'copy-vendor-catalog',
+            updatedBy: user.username,
+            ...result,
+        });
+        res.json({ success: true, ...result });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not copy vendor catalog.' });
     }
 });
 
@@ -8762,8 +8829,11 @@ const FIVE_AM_REPORTS_HOUR = (() => {
     return Number.isFinite(h) && h >= 0 && h <= 23 ? Math.floor(h) : 7;
 })();
 const FIVE_AM_REPORTS_CHECK_MS = 15 * 60 * 1000;
-let fiveAmReportsRunning = false;
-const fiveAmReportsInFlight = new Set();
+const DAILY_REPORTS_ORCHESTRATOR_ENABLED = /^(1|true|yes|on)$/i.test(
+    String(process.env.DAILY_REPORTS_ORCHESTRATOR_ENABLED ?? '1').trim()
+);
+let dailyReportsOrchestratorRunning = false;
+let fiveAmReportsInFlight = new Set();
 
 function serializeStockSummaryForFiveAm(summary) {
     if (!summary) return null;
@@ -8791,11 +8861,12 @@ function fiveAmReportsTimeZoneForStore(storeNumber) {
 async function runFiveAmReportsForStore(storeNumber, { force = false } = {}) {
     const store = String(storeNumber || '').trim();
     if (!store || isTestStore(store)) return null;
+    if (dailyReportsOrchestratorRunning) return null;
     if (fiveAmReportsInFlight.has(store)) return null;
 
     const timeZone = fiveAmReportsTimeZoneForStore(store);
     const todayYmd = ymdInTimeZone(new Date(), timeZone);
-    if (!force && getFiveAmReportsLastRun(store) === todayYmd) return null;
+    if (!force && getFiveAmReportsLastRun(store, timeZone) === todayYmd) return null;
 
     fiveAmReportsInFlight.add(store);
     try {
@@ -8806,7 +8877,7 @@ async function runFiveAmReportsForStore(storeNumber, { force = false } = {}) {
             withOnOrder: serializeStockSummaryForFiveAm(withOnOrder),
             onHandOnly: serializeStockSummaryForFiveAm(onHandOnly),
         });
-        setFiveAmReportsLastRun(store, todayYmd);
+        setFiveAmReportsLastRun(store, new Date());
         console.info(
             `[5AMReports] Stock levels computed for store ${store} (on-hand ${onHandOnly.count}, on-hand+on-order ${withOnOrder.count})`
         );
@@ -8821,85 +8892,53 @@ async function runFiveAmReportsForStore(storeNumber, { force = false } = {}) {
     }
 }
 
-async function maybeRunFiveAmReports() {
-    if (!FIVE_AM_REPORTS_ENABLED || fiveAmReportsRunning) return;
-    fiveAmReportsRunning = true;
-    try {
-        const now = new Date();
-        const enabled = new Set(listFiveAmReportsEnabledStores().map(String));
-        if (!enabled.size) return;
-        const stores = getStoreList().filter((s) => enabled.has(String(s.storeNumber)));
-        const defaultTz = String(process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne').trim();
-        let didRun = false;
-        for (const row of stores) {
-            const storeNumber = String(row.storeNumber || '').trim();
-            if (!storeNumber || isTestStore(storeNumber)) continue;
-            const timeZone = fiveAmReportsTimeZoneForStore(storeNumber);
-            if (localHourInTimeZone(now, timeZone) < FIVE_AM_REPORTS_HOUR) continue;
-            if (getFiveAmReportsLastRun(storeNumber) === ymdInTimeZone(now, timeZone)) continue;
-            try {
-                const result = await runFiveAmReportsForStore(storeNumber);
-                if (result) didRun = true;
-            } catch (err) {
-                console.warn(`[5AMReports] Store ${storeNumber} failed:`, err.message);
-            }
-        }
-        if (didRun) {
-            try {
-                purgeFiveAmReportsResults(ymdInTimeZone(now, defaultTz));
-            } catch (err) {
-                console.warn('[5AMReports] Results cleanup failed:', err.message);
-            }
-        }
-    } catch (err) {
-        console.warn('[5AMReports] Run failed:', err.message);
-    } finally {
-        fiveAmReportsRunning = false;
+async function maybeRunDailyReports() {
+    if (!DAILY_REPORTS_ORCHESTRATOR_ENABLED) return;
+    await maybeRunDailyReportsOrchestrator({
+        isEnabled: () => DAILY_REPORTS_ORCHESTRATOR_ENABLED,
+        isRunning: () => dailyReportsOrchestratorRunning,
+        setRunning: (value) => {
+            dailyReportsOrchestratorRunning = Boolean(value);
+        },
+        isTestStore,
+        getStoreConfig,
+        checkStockLevelsForStore,
+        getLowStockSummary,
+        purgeStockResults: purgeFiveAmReportsResults,
+        stockSchedulerEnabled: () => FIVE_AM_REPORTS_ENABLED,
+        subscriptionsEnabled: () => isReportSubscriptionsEnabled(),
+        shouldSendFailureEmail: (dateKey) => shouldSendScheduledAlert('failed-automated-reports', dateKey),
+        alertsEnabled,
+        sendAlertEmail,
+        postAlertWebhook,
+    }).catch((err) => console.warn('[DailyReports] Orchestrator failed:', err.message));
+}
+
+function startDailyReportsScheduler() {
+    if (!DAILY_REPORTS_ORCHESTRATOR_ENABLED) {
+        console.warn('[DailyReports] Orchestrator disabled (DAILY_REPORTS_ORCHESTRATOR_ENABLED=0).');
+        return;
     }
+    setTimeout(() => void maybeRunDailyReports(), 90_000);
+    setInterval(() => void maybeRunDailyReports(), FIVE_AM_REPORTS_CHECK_MS);
+}
+
+// Legacy scheduler hooks removed — daily stock + forecast + subscriptions run sequentially
+// via maybeRunDailyReports() once per Melbourne calendar day.
+async function maybeRunFiveAmReports() {
+    return maybeRunDailyReports();
 }
 
 function startFiveAmReportsScheduler() {
-    if (!FIVE_AM_REPORTS_ENABLED) return;
-    setTimeout(() => void maybeRunFiveAmReports(), 90_000);
-    setInterval(() => void maybeRunFiveAmReports(), FIVE_AM_REPORTS_CHECK_MS);
+    startDailyReportsScheduler();
 }
 
-const REPORT_SUBSCRIPTIONS_CHECK_MS = 15 * 60 * 1000;
-let reportSubscriptionsRunning = false;
-
 async function maybeRunReportSubscriptions() {
-    if (!isReportSubscriptionsEnabled() || reportSubscriptionsRunning) return;
-    reportSubscriptionsRunning = true;
-    try {
-        const due = listEnabledSubscriptionsDue(new Date());
-        if (!due.length) return;
-        for (const sub of due) {
-            try {
-                const result = await sendSubscriptionReport(sub, { backfill: true });
-                if (result.email?.sent) {
-                    console.log(
-                        `[ReportSubscriptions] Sent ${reportTypeLabel(sub.reportType)} to ${sub.recipients.join(', ')}`
-                    );
-                } else if (result.email?.reason) {
-                    console.warn(
-                        `[ReportSubscriptions] Skipped ${sub.id}: ${result.email.reason}`
-                    );
-                }
-            } catch (err) {
-                console.warn(`[ReportSubscriptions] Subscription ${sub.id} failed:`, err.message);
-            }
-        }
-    } catch (err) {
-        console.warn('[ReportSubscriptions] Scheduler run failed:', err.message);
-    } finally {
-        reportSubscriptionsRunning = false;
-    }
+    return maybeRunDailyReports();
 }
 
 function startReportSubscriptionsScheduler() {
-    if (!isReportSubscriptionsEnabled()) return;
-    setTimeout(() => void maybeRunReportSubscriptions(), 120_000);
-    setInterval(() => void maybeRunReportSubscriptions(), REPORT_SUBSCRIPTIONS_CHECK_MS);
+    /* handled by startDailyReportsScheduler */
 }
 
 function startMemoryDiagnostics() {
@@ -8939,8 +8978,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
         console.warn('[TacAudit] Compliance week snapshot check failed:', err.message);
     }
     startActionsDigestScheduler();
-    startFiveAmReportsScheduler();
-    startReportSubscriptionsScheduler();
+    startDailyReportsScheduler();
     startMemoryDiagnostics();
 });
 

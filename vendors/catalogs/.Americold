@@ -7,14 +7,14 @@
 # --- Freezer (13 items) ---
 12        | 40109  | FRIES SUPERCRISP 6X2KG                         | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use |
 10        | 37597  | TB CHURROS MINI 72EA                           | Boxes | N/a     | Each | Freezer | N/a     | N/a  | In Use |
-13        | 39520  | TB MEAT BEEF COOKED                            | Boxes | Bags    | KGs  | Freezer | Fridge  | Carryover | In Use | Key | Daily
-10        | 39867A | TB MEAT CHICKEN COOKED 10X900G                 | Boxes | Bags    | KGs  | Freezer | Carryover | N/a  | In Use | Key | Daily
-10        | 40303  | TB CHICKEN CRISPY 5X1EA                        | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use | 6
+13        | 39520  | TB MEAT BEEF COOKED 8X1.85KG                   | Boxes | Bags    | KGs  | Freezer | Fridge  | Carryover | In Use | Key | Daily | 8
+10        | 39867A | TB MEAT CHICKEN COOKED 10X600G                 | Boxes | Bags    | KGs  | Freezer | Carryover | N/a  | In Use | Key | Daily | 10
+10        | 40303  | TB CHICKEN CRISPY 6X41EA                        | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use | 6
 13        | 37925  | TB TORTILLA FLOUR 12INCH 12x12EA               | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
 13        | 37923  | TB TORTILLA FLOUR 10.25INCH 12x12EA            | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
 13        | 37927  | TB TORTILLA FLOUR 6.5INCH 24x12EA              | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
 13        | 37928  | TB FLATBREAD 12x12EA                           | Boxes | Bags    | Each | Freezer | N/a     | N/a  | In Use |
-13        | 37891  | TB TORTILLA CORN 6 INCH                        | Boxes | Bags    | Each | Freezer | Fridge  | N/a  | In Use | 
+13        | 37891  | TB TORTILLA CORN 6 INCH 12X36EA                | Boxes | Bags    | Each | Freezer | Fridge  | N/a  | In Use | 12
 10        | 38240  | TB BEANS BLACK COOKED 12X1KG                   | Boxes | Bags    | KGs  | Freezer | N/a     | N/a  | In Use | Key | Daily
 10        | 14701  | GUACAMOLE 6x1.5KG                              | Boxes | Bags    | KGs  | Freezer | Fridge  | N/a  | In Use | Key | Daily
 13        | 39009  | TB CHIP NACHO 4.5KG                            | Boxes | N/a     | KGs  | Freezer | Fridge  | N/a  | In Use |
@@ -46,11 +46,11 @@ order=8   | 607826 | OIL FRYING LIQUID 15KG                         | Boxes | N/
 
 # oh:10 — not on Key Item Count; build-to = ISE avg × 10; order from SOH + SOO
 oh:10     | 38890  | TB CUP POSTMIX REGULAR 1000EA NEW              | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
-oh:10     | 38891  | TB CUP POSTMIX LARGE 1000EA NEW                | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
-oh:10     | 38894  | TB LID POSTMIX 1000EA                          | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
-oh:10     | 507876 | CUP 590ML FCB 1000PK                           | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
-oh:10     | 507877 | LID FCB DOME 590 ML                            | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
-oh:10     | 507516 | STRAW PAPER KFC 4000EA                         | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
+oh:10     | 38891  | TB CUP POSTMIX LARGE 20X50EA NEW               | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    | 20
+oh:10     | 38894  | TB LID POSTMIX 20X50EA                         | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    | 20
+oh:10     | 507876 | CUP 590ML FCB 20X50PK                          | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    | 20
+oh:10     | 507877 | LID FCB DOME 590 ML 40X25EA                    | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    | 40
+oh:10     | 507516 | STRAW PAPER KFC 16X250EA                       | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    | 16
 oh:10     | 37989  | TB BAG TAKEAWAY BROWN MEDIUM 1000EA            | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 37991  | TB BAG TAKEAWAY BROWN LARGE 250EA              | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |
 oh:10     | 39943A | TB BAG CHIP REGULAR 3000EA                     | Boxes | N/a     | Each | N/a     | N/a     | Dry  | N/a    |

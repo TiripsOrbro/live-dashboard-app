@@ -1,4 +1,5 @@
-const { listConfiguredVendors, getVendorCatalog, catalogItemBuildToRule } = require('./vendorCatalog');
+const { listConfiguredVendors, getVendorCatalog, catalogItemBuildToRule, UNIT_LABEL_OPTIONS, listAllVendorDefinitions } = require('./vendorCatalog');
+const { listExistingVendorsForCopy } = require('./existingVendorsCache');
 const { buildToOverridesForStore, mergeBuildToRules } = require('./buildToStoreOverrides');
 const {
     adminOverridesForStore,
@@ -8,9 +9,12 @@ const {
     effectiveSkipKeyItemCount,
     effectiveSkipStockCount,
     effectiveIncludeDaily,
+    effectiveCatalogItemFields,
+    catalogUnitsFromItem,
 } = require('./buildToAdminOverrides');
 const { codeFieldsFromLayers, areaForStoreNumber } = require('./itemCodeOverrides');
 const { normalizeItemCode } = require('./reportReader');
+const { stockCountDisplayName } = require('./stockCountDisplayNames');
 const {
     DEFAULT_BUILD_TO_DAYS,
     EXTENDED_BUILD_TO_DAYS,
@@ -91,11 +95,25 @@ function effectiveRuleForCatalogItem(item, vendorSlug, storeNumber, scope = {}) 
     const areaRule = area ? doc.areas?.[area]?.[code] : null;
     const globalRule = doc.global?.[code] || null;
     const codeFields = codeFieldsFromLayers(code, { store: storeKey, area });
+    const fieldOpts = {
+        storeNumber: store,
+        area,
+        catalogVendorSlug: vendorSlug,
+        level: scope.level,
+    };
+    const catalogFields = effectiveCatalogItemFields(item, fieldOpts);
+    const fileCatalogName = item.name || item.description || code;
+    const fileDisplayName = stockCountDisplayName(code, fileCatalogName) || '';
 
     return {
         itemCode: code,
-        name: item.name || item.description || code,
+        name: fileCatalogName,
+        fileCatalogName,
+        displayName: fileDisplayName,
+        fileDisplayName,
         vendorSlug,
+        catalogVendorSlug: vendorSlug,
+        effectiveVendorSlug: catalogFields.effectiveVendorSlug,
         ruleType,
         needsCount: !skipStockCount,
         catalogNeedsCount: !Boolean(item.skipStockCount),
@@ -173,14 +191,28 @@ function effectiveRuleForCatalogItem(item, vendorSlug, storeNumber, scope = {}) 
         catalogRule,
         storeOverride: storeMap.get(code) || null,
         adminOverride: adminMap.get(code) || null,
+        unitSlots: catalogFields.unitSlots,
+        units: catalogFields.units,
+        fileUnits: catalogFields.fileUnits,
+        innerPerCarton: catalogFields.innerPerCarton,
+        fileInnerPerCarton: catalogFields.fileInnerPerCarton,
+        unitsPerPack: catalogFields.unitsPerPack,
+        fileUnitsPerPack: catalogFields.fileUnitsPerPack,
+        scopeVendorSlug: catalogFields.scopeVendorSlug,
+        scopeUnits: catalogFields.scopeUnits,
+        scopeInnerPerCarton: catalogFields.scopeInnerPerCarton,
+        scopeUnitsPerPack: catalogFields.scopeUnitsPerPack,
     };
 }
 
 function buildAdminBuildToCatalog(options = {}) {
     const store = String(options.storeNumber || options.store || '').trim();
     const area = String(options.areaName || options.area || '').trim();
-    const level = options.level || (store ? 'store' : area ? 'area' : 'global');
-    const scope = { level, store, area: area || (store ? areaForStoreNumber(store) : '') };
+    const configure = Boolean(options.configure);
+    const level =
+        options.level ||
+        (configure && area ? 'area' : store ? 'store' : area ? 'area' : 'global');
+    const scope = { level, store: configure ? '' : store, area: area || (store ? areaForStoreNumber(store) : '') };
     const vendors = [];
     for (const vendor of listConfiguredVendors()) {
         const catalog = getVendorCatalog(vendor.slug);
@@ -189,7 +221,7 @@ function buildAdminBuildToCatalog(options = {}) {
         for (const item of catalog.items) {
             const code = String(item.itemCode || '').trim();
             if (!code || (item.skipStockCount && !isOnHandBuildToCatalogItem(item))) continue;
-            items.push(effectiveRuleForCatalogItem(item, vendor.slug, store, scope));
+            items.push(effectiveRuleForCatalogItem(item, vendor.slug, configure ? '' : store, scope));
         }
         if (items.length) {
             vendors.push({
@@ -201,9 +233,13 @@ function buildAdminBuildToCatalog(options = {}) {
         }
     }
     return {
-        storeNumber: store,
+        storeNumber: configure ? '' : store,
         areaName: scope.area,
         scopeLevel: level,
+        configure,
+        unitLabelOptions: UNIT_LABEL_OPTIONS,
+        allVendors: configure ? listAllVendorDefinitions() : undefined,
+        existingVendors: configure ? listExistingVendorsForCopy() : undefined,
         vendors,
         settings: readOverridesDoc().settings || {},
     };
@@ -233,4 +269,6 @@ module.exports = {
     filterOverridesForActor,
     isOnHandBuildToCatalogItem,
     readOverridesDoc,
+    UNIT_LABEL_OPTIONS,
+    catalogUnitsFromItem,
 };

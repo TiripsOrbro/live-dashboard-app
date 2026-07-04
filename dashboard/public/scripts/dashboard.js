@@ -2531,7 +2531,8 @@ function bindDashboardSettings() {
 
 function renderDashboardSettingsChrome() {
     if (!shouldShowDashboardSettings() || !window.MicSettings) return '';
-    return window.MicSettings.renderCog();
+    window.MicSettings.ensurePersistentSettingsCog?.();
+    return '';
 }
 
 function buildAuditsAsideHtml() {

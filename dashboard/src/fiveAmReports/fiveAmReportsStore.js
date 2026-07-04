@@ -68,18 +68,54 @@ function listEnabledStores() {
     return Object.keys(doc.stores).filter((store) => Boolean(doc.stores[store]?.enabled));
 }
 
-function getLastRun(storeNumber) {
+function isDateKey(value) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
+}
+
+function getLastRunRaw(storeNumber) {
     const store = String(storeNumber || '').trim();
     if (!store) return null;
     const doc = readSettingsDoc();
-    return doc.lastRunByStore[store] || null;
+    const raw = doc.lastRunByStore[store];
+    return raw ? String(raw).trim() : null;
 }
 
-function setLastRun(storeNumber, dateKey) {
+function dateKeyInTimeZone(date, timeZone) {
+    const tz = String(timeZone || TIME_ZONE).trim() || TIME_ZONE;
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(date);
+}
+
+/** Last run calendar day (YYYY-MM-DD) in the given timezone. */
+function getLastRun(storeNumber, timeZone = TIME_ZONE) {
+    const raw = getLastRunRaw(storeNumber);
+    if (!raw) return null;
+    if (isDateKey(raw)) return raw;
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) return null;
+    return dateKeyInTimeZone(date, timeZone);
+}
+
+/** ISO timestamp of the last stock run, when available. */
+function getLastRunAt(storeNumber) {
+    const raw = getLastRunRaw(storeNumber);
+    if (!raw) return null;
+    if (isDateKey(raw)) return null;
+    const date = new Date(raw);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function setLastRun(storeNumber, at) {
     const store = String(storeNumber || '').trim();
     if (!store) return;
     const doc = readSettingsDoc();
-    doc.lastRunByStore[store] = String(dateKey || '').trim();
+    const value =
+        at instanceof Date
+            ? at.toISOString()
+            : isDateKey(at)
+              ? String(at).trim()
+              : String(at || '').trim();
+    if (!value) return;
+    doc.lastRunByStore[store] = value;
     writeSettingsDoc(doc);
 }
 
@@ -87,15 +123,18 @@ function buildStatus(storeNumbers) {
     const doc = readSettingsDoc();
     const stores = {};
     const lastRun = {};
+    const lastRunAt = {};
     for (const storeNumber of storeNumbers || []) {
         const store = String(storeNumber || '').trim();
         if (!store) continue;
         stores[store] = isStoreEnabled(store);
-        lastRun[store] = doc.lastRunByStore[store] || null;
+        lastRun[store] = getLastRun(store);
+        lastRunAt[store] = getLastRunAt(store);
     }
     return {
         stores,
         lastRun,
+        lastRunAt,
         defaults: { enabled: Boolean(doc.defaults?.enabled) },
         timeZone: doc.timeZone || TIME_ZONE,
     };
@@ -107,6 +146,7 @@ module.exports = {
     setStoreEnabled,
     listEnabledStores,
     getLastRun,
+    getLastRunAt,
     setLastRun,
     buildStatus,
 };

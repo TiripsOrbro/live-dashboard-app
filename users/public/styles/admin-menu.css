@@ -592,7 +592,8 @@ body.admin-settings-page .admin-settings-header .nav-back-host {
 }
 
 .admin-settings-content .admin-modal--build-to > .admin-modal-toolbar,
-.admin-settings-content .admin-modal--build-to > .admin-buildto-table-wrap {
+.admin-settings-content .admin-modal--build-to > .admin-buildto-table-wrap,
+.admin-settings-content .admin-modal--build-to > .admin-buildto-new-wrap {
     padding-left: 0;
     padding-right: 0;
 }
@@ -914,6 +915,18 @@ html.mic-rounded-corners .admin-modal--build-to {
     border-bottom: 1px solid rgba(122, 62, 177, 0.12);
 }
 
+.admin-buildto-header-main {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.admin-buildto-header-text {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
 .admin-buildto-header h2 {
     margin: 0;
     padding-left: 0.35rem;
@@ -931,13 +944,158 @@ html.mic-rounded-corners .admin-modal--build-to {
     line-height: 1.4;
 }
 
+.admin-buildto-header-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+    flex: 0 0 auto;
+    align-self: center;
+}
+
+.admin-buildto-header-actions--configure {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.admin-buildto-header-icon-btn {
+    width: auto;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    padding: 0.15rem;
+    align-self: center;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: rgba(42, 42, 50, 0.72);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.admin-buildto-header-icon-btn:hover {
+    background: transparent !important;
+    border: none !important;
+    color: #7a3eb1;
+}
+
+.admin-buildto-header-icon-btn:focus-visible {
+    outline: 2px solid rgba(122, 62, 177, 0.45);
+    outline-offset: 3px;
+}
+
+.admin-buildto-icon {
+    width: 2rem;
+    height: 2rem;
+    display: block;
+}
+
+.admin-buildto-mode-toggle {
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    border-radius: var(--admin-buildto-control-radius);
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.admin-buildto-copy-vendor {
+    display: none !important;
+}
+
+.admin-buildto-header-actions--configure .admin-buildto-copy-vendor:not([hidden]) {
+    display: flex !important;
+}
+
+.admin-buildto-copy-mode {
+    grid-column: 1 / -1;
+    margin: 0;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: var(--admin-buildto-control-radius);
+}
+
+.admin-buildto-copy-mode legend {
+    padding: 0 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #5a5a66;
+}
+
+.admin-buildto-copy-mode-option {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.875rem;
+    margin-top: 0.35rem;
+}
+
+.admin-buildto-copy-new-name[hidden] {
+    display: none;
+}
+
+.admin-buildto-copy-panel {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 0.75rem;
+}
+
+.admin-buildto-copy-panel[hidden] {
+    display: none;
+}
+
+.admin-buildto-copy .admin-buildto-new-grid {
+    grid-template-columns: 1fr;
+}
+
+.admin-buildto-copy-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+}
+
+.admin-buildto-copy-actions > .mic-settings-btn,
+.admin-buildto-copy-actions > .admin-buildto-close-btn {
+    width: 100%;
+    box-sizing: border-box;
+    min-height: var(--admin-buildto-toolbar-control-height, 2.75rem);
+    justify-content: center;
+    text-align: center;
+}
+
+.admin-buildto-vendor-filter-wrap {
+    flex: 0 0 auto;
+}
+
+.admin-buildto-vendor-filter-label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #5a5a66;
+}
+
+.admin-buildto-table--configure thead th {
+    white-space: nowrap;
+}
+
+.admin-buildto-unit-select--off {
+    opacity: 0.45;
+}
+
+.admin-buildto-table--configure .admin-table-check {
+    text-align: center;
+    vertical-align: middle;
+}
+
 .admin-modal--build-to .admin-accounts-org-nav {
     margin-left: var(--admin-buildto-pad-left);
     margin-right: var(--admin-buildto-pad-right);
-}
-
-.admin-modal--build-to .admin-settings-segmented-tabs.admin-accounts-org-nav {
-    margin-bottom: 0.75rem;
+    margin-top: 0.75rem;
 }
 
 .admin-modal--build-to > .admin-modal-toolbar,
@@ -1032,6 +1190,12 @@ html.mic-rounded-corners .admin-modal--build-to {
     border-radius: var(--admin-buildto-control-radius);
 }
 
+.admin-modal--build-to .mic-settings-btn.admin-buildto-header-icon-btn {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+}
+
 .admin-modal--build-to .admin-buildto-add {
     width: 100%;
     box-sizing: border-box;
@@ -1051,9 +1215,13 @@ html.mic-rounded-corners .admin-modal--build-to {
     padding-left: var(--admin-buildto-pad-left);
     padding-right: var(--admin-buildto-pad-right);
     margin-bottom: 0.75rem;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .admin-buildto-new {
+    width: 100%;
+    box-sizing: border-box;
     border: 1px solid rgba(122, 62, 177, 0.35);
     border-radius: var(--admin-buildto-control-radius);
     background: rgba(122, 62, 177, 0.04);
@@ -1281,6 +1449,20 @@ html.mic-rounded-corners .admin-modal--build-to {
     color: #1a1a1a;
     font: inherit;
     font-size: 0.82rem;
+}
+
+.admin-buildto-name-input {
+    width: 100%;
+    min-width: 8rem;
+    box-sizing: border-box;
+}
+
+.admin-buildto-table--configure td:first-child .admin-buildto-name-input {
+    min-width: 14rem;
+}
+
+.admin-buildto-table--configure td:nth-child(2) .admin-buildto-name-input {
+    min-width: 7rem;
 }
 
 .admin-buildto-code-input:focus,
@@ -1905,6 +2087,29 @@ html.mic-dark-mode .admin-buildto-header h2 {
 
 html.mic-dark-mode .admin-buildto-subtitle {
     color: rgba(255, 255, 255, 0.55);
+}
+
+html.mic-dark-mode .admin-buildto-vendor-filter-label {
+    color: rgba(255, 255, 255, 0.65);
+}
+
+html.mic-dark-mode .admin-buildto-header-icon-btn {
+    background: transparent !important;
+    border: none !important;
+    color: rgba(255, 255, 255, 0.78);
+}
+
+html.mic-dark-mode .admin-buildto-header-icon-btn:hover {
+    background: transparent !important;
+    color: #c9a8e8;
+}
+
+html.mic-dark-mode .admin-buildto-copy-mode {
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+html.mic-dark-mode .admin-buildto-copy-mode legend {
+    color: rgba(255, 255, 255, 0.65);
 }
 
 html.mic-dark-mode .admin-buildto-toolbar {
@@ -4159,17 +4364,18 @@ html.mic-dark-mode .admin-forecast-override-unit {
 }
 
 .admin-five-am-table .admin-five-am-col-store {
-    width: 40%;
+    width: 28%;
 }
 
 .admin-five-am-table .admin-five-am-col-job {
-    width: 12%;
+    width: 11%;
     text-align: center;
     vertical-align: middle;
 }
 
-.admin-five-am-table .admin-five-am-col-last-run {
-    width: 36%;
+.admin-five-am-table .admin-five-am-col-last-forecast,
+.admin-five-am-table .admin-five-am-col-last-stock {
+    width: 25%;
 }
 
 .admin-five-am-table td.admin-five-am-col-store {

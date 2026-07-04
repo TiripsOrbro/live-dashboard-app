@@ -38,6 +38,34 @@
         </button>`;
     }
 
+    function shouldShowPersistentSettingsCog() {
+        const path = String(global.location.pathname || '').replace(/\/+$/, '') || '/';
+        if (/^\/overview$/i.test(path)) return true;
+        if (/^\/MIC\/(teststore|\d{3,6})$/i.test(path)) return true;
+        if (/^\/Admin\/(qld-1|vic-1|wa-1|teststore|\d{3,6})$/i.test(path)) return true;
+        if (/^\/Admin\/A\d+$/i.test(path)) return true;
+        return false;
+    }
+
+    function ensurePersistentSettingsCog() {
+        if (!shouldShowPersistentSettingsCog()) return false;
+        if (document.getElementById('mic-settings-btn')) {
+            bind({});
+            return true;
+        }
+        const root = document.createElement('div');
+        root.id = 'mic-settings-cog-root';
+        root.innerHTML = renderCog();
+        document.body.appendChild(root);
+        bind({});
+        return true;
+    }
+
+    function hidePersistentSettingsCog() {
+        document.getElementById('mic-settings-cog-root')?.remove();
+    }
+
+
     function escapeAttr(value) {
         return String(value ?? '')
             .replace(/&/g, '&amp;')
@@ -356,10 +384,7 @@
         const q = { ...query };
         if (store) q.store = store;
         delete q.storeNumber;
-        let targetSection = section;
-        if (!targetSection) {
-            targetSection = await resolveDefaultSettingsSection();
-        }
+        const targetSection = section || 'preferences';
         const url = buildSettingsUrl(targetSection, q);
         const parsed = new URL(url, global.location.origin);
 
@@ -369,7 +394,7 @@
             if (nextUrl !== currentUrl) {
                 global.history.pushState(null, '', nextUrl);
             }
-            await global.AdminSettingsPage.showSection(targetSection);
+            void global.AdminSettingsPage.showSection(targetSection);
             return;
         }
 
@@ -685,7 +710,18 @@
         navigateToSettingsPage,
         mountPageSection,
         buildSettingsUrl,
+        ensurePersistentSettingsCog,
+        hidePersistentSettingsCog,
+        shouldShowPersistentSettingsCog,
     };
+
+    if (shouldShowPersistentSettingsCog()) {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => ensurePersistentSettingsCog());
+        } else {
+            ensurePersistentSettingsCog();
+        }
+    }
 
     global.MicOverviewScale = {
         apply: applyMicOverviewScale,

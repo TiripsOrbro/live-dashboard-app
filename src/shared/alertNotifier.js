@@ -3,9 +3,12 @@
  * Configure in `.env` - all vars optional; alerts are rate-limited.
  */
 const ALERT_COOLDOWN_MS = Number(process.env.DASHBOARD_ALERT_COOLDOWN_MS || 30 * 60 * 1000);
+const TIME_ZONE = String(process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne').trim();
 
 let lastAlertAt = 0;
 let lastAlertMessage = '';
+/** @type {Map<string, string>} category+date → sent */
+const lastScheduledAlertByKey = new Map();
 
 function alertsEnabled() {
     return Boolean(
@@ -40,7 +43,27 @@ async function postWebhook(message) {
     }
 }
 
-async function sendEmail(message) {
+function melbourneDateKey(now = new Date()) {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(
+        now instanceof Date ? now : new Date(now)
+    );
+}
+
+function shouldSendScheduledAlert(category, dateKey) {
+    if (!alertsEnabled()) return false;
+    const key = `${String(category || 'scheduled').trim()}:${dateKey}`;
+    if (lastScheduledAlertByKey.get(key)) return false;
+    lastScheduledAlertByKey.set(key, dateKey);
+    if (lastScheduledAlertByKey.size > 64) {
+        const keep = [...lastScheduledAlertByKey.keys()].slice(-32);
+        for (const oldKey of lastScheduledAlertByKey.keys()) {
+            if (!keep.includes(oldKey)) lastScheduledAlertByKey.delete(oldKey);
+        }
+    }
+    return true;
+}
+
+async function sendEmail(message, subject = 'TBA Dashboard - scrape failure') {
     const to = String(process.env.DASHBOARD_ALERT_EMAIL || '').trim();
     const host = String(process.env.DASHBOARD_SMTP_HOST || '').trim();
     if (!to || !host) return;
@@ -68,7 +91,7 @@ async function sendEmail(message) {
     await transporter.sendMail({
         from,
         to,
-        subject: 'TBA Dashboard - scrape failure',
+        subject: String(subject || 'TBA Dashboard alert').trim(),
         text: message,
     });
 }
@@ -88,7 +111,40 @@ async function notifyScrapeFailure(error, context = 'background refresh') {
     await Promise.all(tasks);
 }
 
+/**
+ * Email/webhook digest when a scheduled 7 AM job fails (report subscriptions, daily stock reports, etc.).
+ * @param {string} category - e.g. report-subscriptions, daily-stock-reports
+ * @param {Array<{label: string, error: string}>} failures
+ * @param {{ title?: string, dateKey?: string }} [options]
+ */
+async function notifyScheduledJobFailures(category, failures, options = {}) {
+    const rows = (failures || []).filter((row) => row?.label && row?.error);
+    if (!rows.length) return;
+
+    const dateKey = options.dateKey || melbourneDateKey();
+    if (!shouldSendScheduledAlert(category, dateKey)) return;
+
+    const title = options.title || `Scheduled job failures (${category})`;
+    const lines = rows.map((row) => `- ${row.label}: ${row.error}`).join('\n');
+    const message = `[TBA Dashboard] ${title}\nDate: ${dateKey}\n\n${lines}`;
+    const subject = `TBA Dashboard — ${title} (${dateKey})`;
+
+    console.warn(`[Alert] Sending ${rows.length} scheduled failure(s) for ${category}`);
+    const tasks = [];
+    if (process.env.DASHBOARD_ALERT_WEBHOOK_URL) {
+        tasks.push(postWebhook(message).catch((e) => console.warn('[Alert] Webhook failed:', e.message)));
+    }
+    if (process.env.DASHBOARD_ALERT_EMAIL && process.env.DASHBOARD_SMTP_HOST) {
+        tasks.push(sendEmail(message, subject).catch((e) => console.warn('[Alert] Email failed:', e.message)));
+    }
+    await Promise.all(tasks);
+}
+
 module.exports = {
     alertsEnabled,
     notifyScrapeFailure,
+    notifyScheduledJobFailures,
+    shouldSendScheduledAlert,
+    sendAlertEmail: sendEmail,
+    postAlertWebhook: postWebhook,
 };

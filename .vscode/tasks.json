@@ -1,0 +1,55 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Pi: setup SSH key",
+            "type": "shell",
+            "command": "powershell -ExecutionPolicy Bypass -File scripts/pi.ps1 setup-key",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
+            "label": "Pi: deploy (sync + restart)",
+            "type": "shell",
+            "command": "powershell -ExecutionPolicy Bypass -File scripts/pi.ps1 deploy",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
+            "label": "Pi: deploy (git pull)",
+            "type": "shell",
+            "command": "powershell -ExecutionPolicy Bypass -File scripts/pi.ps1 deploy-git",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
+            "label": "Pi: logs (dashboard)",
+            "type": "shell",
+            "command": "powershell -ExecutionPolicy Bypass -File scripts/pi.ps1 logs",
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
+            "label": "Pi: SSH shell",
+            "type": "shell",
+            "command": "powershell -ExecutionPolicy Bypass -File scripts/pi.ps1 ssh",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "dedicated" }
+        },
+        {
+            "label": "Pi: status",
+            "type": "shell",
+            "command": "powershell -ExecutionPolicy Bypass -File scripts/pi.ps1 status",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "Pi: restart",
+            "type": "shell",
+            "command": "powershell -ExecutionPolicy Bypass -File scripts/pi.ps1 restart",
+            "problemMatcher": [],
+            "presentation": { "reveal": "always", "panel": "shared" }
+        }
+    ]
+}

@@ -115,13 +115,17 @@ function filterPlanForPlatformResume(storeNumber, plan, weekStart, platform) {
 
 function summarizeForecastUpdates(doc) {
     const days = doc?.days || {};
-    const keys = Object.keys(days).sort();
-    const last = keys.length ? days[keys[keys.length - 1]] : null;
+    const entries = Object.values(days);
+    const latest = entries.reduce((best, row) => {
+        if (!row?.updatedAt) return best;
+        if (!best?.updatedAt || row.updatedAt > best.updatedAt) return row;
+        return best;
+    }, null);
     return {
-        daysUpdated: keys.length,
-        lastUpdatedAt: last?.updatedAt || doc?.lastRunAt || null,
-        lastUpdatedBy: last?.updatedBy || doc?.lastRunBy || null,
-        lastSource: last?.source || sourceFromUpdatedBy(doc?.lastRunBy),
+        daysUpdated: entries.length,
+        lastUpdatedAt: latest?.updatedAt || doc?.lastRunAt || null,
+        lastUpdatedBy: latest?.updatedBy || doc?.lastRunBy || null,
+        lastSource: latest?.source || sourceFromUpdatedBy(doc?.lastRunBy),
     };
 }
 

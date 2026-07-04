@@ -1048,6 +1048,7 @@
                 return {
                     storeNumber: String(storeNumber),
                     storeName: preview?.storeName || String(storeNumber),
+                    weekStart: preview?.weekStart || preview?.targetWeeks?.[0] || '',
                     status: 'pending',
                     mmxStatus: 'pending',
                     lifelenzStatus: 'pending',
@@ -1135,6 +1136,73 @@
         }
     }
 
+    function patchStatusForecastDayUpdate(storeNumber, weekStart, date, dayUpdate) {
+        if (!statusPayload || !dayUpdate?.updatedAt || !weekStart || !date) return;
+        statusPayload.forecastUpdatesByWeek = statusPayload.forecastUpdatesByWeek || {};
+        const storeKey = String(storeNumber);
+        const weekBucket = statusPayload.forecastUpdatesByWeek[weekStart] || {};
+        const storeDoc = weekBucket[storeKey] || {
+            storeNumber: storeKey,
+            weekStart,
+            days: {},
+            lastRunAt: null,
+            lastRunBy: null,
+        };
+        storeDoc.days = storeDoc.days || {};
+        storeDoc.days[date] = { ...storeDoc.days[date], ...dayUpdate };
+        storeDoc.lastRunAt = dayUpdate.updatedAt;
+        storeDoc.lastRunBy = dayUpdate.updatedBy;
+        weekBucket[storeKey] = storeDoc;
+        statusPayload.forecastUpdatesByWeek[weekStart] = weekBucket;
+        if (statusPayload.forecastUpdates?.[storeKey]) {
+            statusPayload.forecastUpdates[storeKey] = storeDoc;
+        }
+        statusPayload.updatesSummaryByWeek = statusPayload.updatesSummaryByWeek || {};
+        const entries = Object.values(storeDoc.days);
+        const latest = entries.reduce((best, row) => {
+            if (!row?.updatedAt) return best;
+            if (!best?.updatedAt || row.updatedAt > best.updatedAt) return row;
+            return best;
+        }, null);
+        statusPayload.updatesSummaryByWeek[weekStart] = statusPayload.updatesSummaryByWeek[weekStart] || {};
+        statusPayload.updatesSummaryByWeek[weekStart][storeKey] = {
+            daysUpdated: entries.length,
+            lastUpdatedAt: latest?.updatedAt || storeDoc.lastRunAt,
+            lastUpdatedBy: latest?.updatedBy || storeDoc.lastRunBy,
+            lastSource: latest?.source || (latest?.updatedBy === 'auto' ? 'auto' : 'user'),
+        };
+    }
+
+    function applyProgressDayUpdateRecord(store, payload) {
+        if (!payload?.dayUpdate?.updatedAt) return;
+        const weekStart = payload.weekStart || store?.weekStart;
+        if (!weekStart) return;
+        patchStatusForecastDayUpdate(payload.storeNumber, weekStart, payload.date, payload.dayUpdate);
+    }
+
+    function applyProgressDayDoneMeta(day, payload) {
+        if (!day || !payload) return;
+        if (payload.dayUpdate) {
+            day.updatedAt = payload.dayUpdate.updatedAt;
+            day.updatedBy = payload.dayUpdate.updatedBy;
+            day.source = payload.dayUpdate.source;
+        }
+        day.matched =
+            payload.skipped === true ||
+            payload.savedAs === 'unchanged' ||
+            payload.fill?.changed === false;
+    }
+
+    function progressDayDoneSummary(day, { context = '' } = {}) {
+        const verb = day.matched ? 'Verified' : 'Saved';
+        const ctx = context ? ` in ${context}` : '';
+        const amount = formatMoney(day.forecastTotal);
+        if (day.updatedAt) {
+            return `${verb}${ctx} · ${amount} · ${formatShortDateTime(day.updatedAt)}`;
+        }
+        return `${verb}${ctx} · ${amount}`;
+    }
+
     function applyProgressEvent(state, payload) {
         if (!state || !payload?.type) return;
 
@@ -1206,6 +1274,8 @@
                 if (day) {
                     day.status = 'done';
                     if (payload.type === 'day-complete') {
+                        applyProgressDayDoneMeta(day, payload);
+                        applyProgressDayUpdateRecord(store, payload);
                         for (const part of day.dayParts || []) {
                             if (part.status !== 'failed') {
                                 part.status = 'confirmed';
@@ -1215,7 +1285,9 @@
                     }
                 }
                 if (payload.type === 'day-complete') {
-                    state.lifelenzLiveLabel = `Saved ${formatShortDate(payload.date)} in LifeLenz`;
+                    state.lifelenzLiveLabel = day?.matched
+                        ? `Verified ${formatShortDate(payload.date)} in LifeLenz`
+                        : `Saved ${formatShortDate(payload.date)} in LifeLenz`;
                 }
                 if (state.activeLifelenzDate === payload.date) {
                     state.activeLifelenzDate = null;
@@ -1304,6 +1376,8 @@
                 if (payload.type === 'day-done') {
                     day.fill = payload.fill;
                     day.savedAs = payload.savedAs;
+                    applyProgressDayDoneMeta(day, payload);
+                    applyProgressDayUpdateRecord(store, payload);
                 }
             }
             if (state.activeDate === payload.date) {
@@ -1628,7 +1702,7 @@
 
     function mmxDayColumnSummary(day) {
         if (!day) return '-';
-        if (day.status === 'done') return `Saved · ${formatMoney(day.forecastTotal)}`;
+        if (day.status === 'done') return progressDayDoneSummary(day);
         if (day.status === 'error') return day.error || 'Failed';
         if (day.hourly?.length) {
             const confirmed = day.hourly.filter((slot) => slot.status === 'confirmed').length;
@@ -1644,7 +1718,7 @@
     function lifelenzDayColumnSummary(day, { isActive, liveLabel } = {}) {
         if (!day) return '-';
         if (day.status === 'error') return day.error || 'Failed';
-        if (day.status === 'done') return `Saved · ${formatMoney(day.forecastTotal)}`;
+        if (day.status === 'done') return progressDayDoneSummary(day);
         if (day.dayParts?.length && day.status === 'filling') {
             const confirmed = day.dayParts.filter((part) => part.status === 'confirmed').length;
             const active = day.dayParts.some(
@@ -1675,7 +1749,7 @@
                 ? `Overnight quirk · confirming ${active.label}…`
                 : `Entering ${active.label}…`;
         }
-        if (day.status === 'done') return `Saved in LifeLenz · ${formatMoney(day.forecastTotal)}`;
+        if (day.status === 'done') return progressDayDoneSummary(day, { context: 'LifeLenz' });
         const confirmed = day.dayParts.filter((part) => part.status === 'confirmed').length;
         if (confirmed) return `${confirmed} of ${day.dayParts.length} day parts confirmed`;
         return lifelenzDayDetailMessage(day, liveLabel);
@@ -1767,7 +1841,7 @@
 
     function lifelenzDayDetailMessage(day, liveLabel) {
         if (!day) return 'Waiting for LifeLenz…';
-        if (day.status === 'done') return `Saved in LifeLenz · ${formatMoney(day.forecastTotal)}`;
+        if (day.status === 'done') return progressDayDoneSummary(day, { context: 'LifeLenz' });
         if (day.status === 'error') return day.error || 'LifeLenz entry failed';
         if (day.status === 'filling' && liveLabel) return liveLabel;
         if (day.status === 'pending') {

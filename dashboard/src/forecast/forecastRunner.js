@@ -49,15 +49,21 @@ function wrapForecastProgress(options = {}, context = {}) {
 
     return (payload) => {
         const type = String(payload?.type || '').trim();
+        let enriched = payload;
         if ((type === 'day-done' || type === 'day-complete') && payload.date && storeNumber) {
-            const platform = String(payload.platform || 'mmx').trim().toLowerCase();
+            const platform = String(payload.platform || context.platform || 'mmx').trim().toLowerCase();
             try {
-                recordForecastDayUpdate(weekStart, storeNumber, payload.date, platform, { updatedBy: completedBy });
+                const dayUpdate = recordForecastDayUpdate(weekStart, storeNumber, payload.date, platform, {
+                    updatedBy: completedBy,
+                });
+                if (dayUpdate) {
+                    enriched = { ...payload, weekStart, dayUpdate };
+                }
             } catch (err) {
                 console.warn(`[Forecast] Could not record day update for ${storeNumber} ${payload.date}:`, err.message);
             }
         }
-        userOnProgress(payload);
+        userOnProgress(enriched);
     };
 }
 
@@ -633,13 +639,17 @@ function wrapMultiWeekForecastProgress(options = {}, storeNumber, weekStartByDat
 
     return (payload) => {
         const type = String(payload?.type || '').trim();
+        let enriched = payload;
         if ((type === 'day-done' || type === 'day-complete') && payload.date && storeNumber) {
             const weekStart = weekStartByDate.get(payload.date);
             if (weekStart) {
                 try {
-                    recordForecastDayUpdate(weekStart, storeNumber, payload.date, 'mmx', {
+                    const dayUpdate = recordForecastDayUpdate(weekStart, storeNumber, payload.date, 'mmx', {
                         updatedBy: completedBy,
                     });
+                    if (dayUpdate) {
+                        enriched = { ...payload, weekStart, dayUpdate };
+                    }
                 } catch (err) {
                     console.warn(
                         `[Forecast] Could not record day update for ${storeNumber} ${payload.date}:`,
@@ -648,7 +658,7 @@ function wrapMultiWeekForecastProgress(options = {}, storeNumber, weekStartByDat
                 }
             }
         }
-        userOnProgress(payload);
+        userOnProgress(enriched);
     };
 }
 
@@ -1043,6 +1053,7 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
                             weekStart: preview.weekStart || preview.targetWeeks?.[0],
                             storeNumber: store,
                             completedBy: options.completedBy,
+                            platform: 'lifelenz',
                         }
                     ),
                 });

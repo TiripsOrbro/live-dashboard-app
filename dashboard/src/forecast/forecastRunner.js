@@ -9,6 +9,10 @@ const { saveManualEntryPacksForRun } = require('./forecastManualPack');
 const { loadAdjustmentRules } = require('./forecastAdjustmentsLedger');
 const { LIFELENZ_DAY_PARTS } = require('../../../lifelenz/src/lifelenzDayParts');
 const { recordForecastDayUpdate, filterPlanForPlatformResume } = require('./forecastUpdateLedger');
+const {
+    filterPlanForProtectedDates,
+    getProtectedDatesForStore,
+} = require('./forecastProtectedDatesLedger');
 const { getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../../../stores/src/storeList');
 const { closeAllTrackedBrowsers } = require('../../../mmx/src/browserLifecycle');
 const { acquireMmxResource, releaseMmxResource } = require('../../../mmx/src/mmxResourceGate');
@@ -26,16 +30,37 @@ function shouldResumeForecast(options = {}) {
     return options.resumeFromLedger === true && options.skipResume !== true;
 }
 
-function splitPlanForResume(storeNumber, plan, weekStart, platform, options = {}) {
-    if (!shouldResumeForecast(options)) {
-        return { plan: plan || [], skippedDates: [] };
+function splitPlanForSubmit(storeNumber, plan, weekStart, platform, options = {}) {
+    let current = plan || [];
+    const skippedDates = [];
+    let protectedDates = [];
+
+    const protectedFilter = filterPlanForProtectedDates(storeNumber, current);
+    current = protectedFilter.plan;
+    protectedDates = protectedFilter.skippedDates;
+    skippedDates.push(...protectedFilter.skippedDates);
+
+    if (shouldResumeForecast(options)) {
+        const resumeFilter = filterPlanForPlatformResume(storeNumber, current, weekStart, platform);
+        current = resumeFilter.plan;
+        skippedDates.push(...resumeFilter.skippedDates);
     }
-    return filterPlanForPlatformResume(storeNumber, plan, weekStart, platform);
+
+    return { plan: current, skippedDates, protectedDates };
 }
 
-function emitResumedDaySkips(onProgress, storeNumber, platform, skippedDates) {
+function emitProtectedDaySkips(onProgress, storeNumber, platform, protectedDates) {
+    if (!protectedDates?.length || typeof onProgress !== 'function') return;
+    for (const date of protectedDates) {
+        onProgress({ platform, storeNumber, type: 'day-skipped', date, protected: true, ph: true });
+    }
+}
+
+function emitResumedDaySkips(onProgress, storeNumber, platform, skippedDates, protectedDates = []) {
     if (!skippedDates?.length || typeof onProgress !== 'function') return;
+    const protectedSet = new Set(protectedDates || []);
     for (const date of skippedDates) {
+        if (protectedSet.has(date)) continue;
         onProgress({ platform, storeNumber, type: 'day-skipped', date, resumed: true });
     }
 }
@@ -598,6 +623,7 @@ function previewForecastForStore(storeNumber, options = {}) {
     const grid = buildForecastPreviewGrid(plan);
     const baseWeekTotal = baseGrid.weekTotal;
     const adjustedWeekTotal = grid.weekTotal;
+    const protectedDates = getProtectedDatesForStore(store);
 
     return {
         storeNumber: store,
@@ -608,6 +634,7 @@ function previewForecastForStore(storeNumber, options = {}) {
         targetScope: scope,
         weekStart,
         targetDates: dates,
+        protectedDates,
         history: readiness,
         basePlan,
         plan,
@@ -689,6 +716,7 @@ async function runForecastWeeksForStore(storeNumber, weekTargets, options = {}) 
     const weekMeta = [];
     let mergedPlan = [];
     let allSkippedDates = [];
+    let allProtectedDates = [];
     const allTargetWeeks = [];
 
     for (const target of weekTargets) {
@@ -699,8 +727,15 @@ async function runForecastWeeksForStore(storeNumber, weekTargets, options = {}) 
         }
         const adjustmentWeek = targetWeeks[0];
         allTargetWeeks.push(adjustmentWeek);
-        const { plan: activePlan, skippedDates } = splitPlanForResume(store, plan, adjustmentWeek, 'mmx', options);
+        const { plan: activePlan, skippedDates, protectedDates } = splitPlanForSubmit(
+            store,
+            plan,
+            adjustmentWeek,
+            'mmx',
+            options
+        );
         allSkippedDates = allSkippedDates.concat(skippedDates);
+        allProtectedDates = allProtectedDates.concat(protectedDates);
         for (const day of activePlan) {
             weekStartByDate.set(day.date, adjustmentWeek);
         }
@@ -727,7 +762,8 @@ async function runForecastWeeksForStore(storeNumber, weekTargets, options = {}) 
             targetWeeks: allTargetWeeks,
             weekCount: weekTargets.length,
         });
-        emitResumedDaySkips(options.onProgress, store, 'mmx', allSkippedDates);
+        emitProtectedDaySkips(options.onProgress, store, 'mmx', allProtectedDates);
+        emitResumedDaySkips(options.onProgress, store, 'mmx', allSkippedDates, allProtectedDates);
     }
 
     if (!mergedPlan.length) {
@@ -821,7 +857,13 @@ async function runForecastForStore(storeNumber, options = {}) {
     }
 
     const adjustmentWeek = targetWeeks[0];
-    const { plan: activePlan, skippedDates } = splitPlanForResume(store, plan, adjustmentWeek, 'mmx', options);
+    const { plan: activePlan, skippedDates, protectedDates } = splitPlanForSubmit(
+        store,
+        plan,
+        adjustmentWeek,
+        'mmx',
+        options
+    );
 
     if (typeof options.onProgress === 'function') {
         options.onProgress({
@@ -832,7 +874,8 @@ async function runForecastForStore(storeNumber, options = {}) {
             skippedDays: skippedDates.length,
             targetWeeks,
         });
-        emitResumedDaySkips(options.onProgress, store, 'mmx', skippedDates);
+        emitProtectedDaySkips(options.onProgress, store, 'mmx', protectedDates);
+        emitResumedDaySkips(options.onProgress, store, 'mmx', skippedDates, protectedDates);
     }
 
     if (!activePlan.length) {
@@ -986,7 +1029,7 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
             try {
                 const preview = previewForecastForStore(store, { ...options, ...runTarget });
                 const weekStart = preview.weekStart || preview.targetWeeks?.[0];
-                const { plan: activePlan, skippedDates } = splitPlanForResume(
+                const { plan: activePlan, skippedDates, protectedDates } = splitPlanForSubmit(
                     store,
                     preview.plan,
                     weekStart,
@@ -1002,12 +1045,10 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
                         dayCount: activePlan.length,
                         skippedDays: skippedDates.length,
                     });
-                    emitResumedDaySkips(
-                        (payload) => options.onProgress?.({ platform: 'lifelenz', storeNumber: store, ...payload }),
-                        store,
-                        'lifelenz',
-                        skippedDates
-                    );
+                    const lifelenzProgress = (payload) =>
+                        options.onProgress?.({ platform: 'lifelenz', storeNumber: store, ...payload });
+                    emitProtectedDaySkips(lifelenzProgress, store, 'lifelenz', protectedDates);
+                    emitResumedDaySkips(lifelenzProgress, store, 'lifelenz', skippedDates, protectedDates);
                 }
                 if (!activePlan.length) {
                     if (options.markPlatformComplete !== false) {

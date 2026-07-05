@@ -382,6 +382,12 @@ const {
     buildAutoSubmitStatus,
 } = require('../dashboard/src/forecast/forecastAutoSubmitLedger');
 const {
+    readProtectedDatesSettings,
+    ensureProtectedDatesInitialized,
+    writeProtectedDatesSettings,
+    normalizeProtectedEntry,
+} = require('../dashboard/src/forecast/forecastProtectedDatesLedger');
+const {
     writeStoreAutoSubmit,
     buildStoreAutoSubmitStatus,
     buildStoreAutoSubmitMap,
@@ -3921,7 +3927,9 @@ app.get('/api/admin/forecast/status', (req, res) => {
         updatesSummaryByWeek,
         autoSubmit,
         storeAutoSubmit,
+        protectedDates: ensureProtectedDatesInitialized(),
         canManageAutoSubmit: canUserEditGlobalBuildTo(user),
+        canManageProtectedDates: canUserEditGlobalBuildTo(user),
         canManageBackfill: canUserEditGlobalBuildTo(user),
     });
 });
@@ -3994,6 +4002,52 @@ app.put('/api/admin/forecast/store-auto-submit', (req, res) => {
         res.json({ success: true, store, enabled: Boolean(enabled) });
     } catch (err) {
         res.status(400).json({ success: false, error: err.message || 'Could not save store auto-submit setting.' });
+    }
+});
+
+app.get('/api/admin/forecast/protected-dates', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    res.json({
+        success: true,
+        ...ensureProtectedDatesInitialized(),
+        canManage: canUserEditGlobalBuildTo(user),
+    });
+});
+
+app.put('/api/admin/forecast/protected-dates', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    if (!canUserEditGlobalBuildTo(user)) {
+        res.status(403).json({ success: false, error: 'Area Manager access or above required.' });
+        return;
+    }
+    const area = String(req.body?.area || '').trim();
+    const entries = Array.isArray(req.body?.entries) ? req.body.entries : null;
+    const dates = Array.isArray(req.body?.dates) ? req.body.dates : null;
+    if (!area || (!entries && !dates)) {
+        res.status(400).json({ success: false, error: 'area and entries[] (or dates[]) are required.' });
+        return;
+    }
+    const rows = entries || dates;
+    for (const raw of rows) {
+        if (!normalizeProtectedEntry(raw)) {
+            res.status(400).json({ success: false, error: 'Each entry needs a valid date (YYYY-MM-DD).' });
+            return;
+        }
+    }
+    try {
+        const patch = entries ? { area, entries } : { area, dates };
+        const doc = writeProtectedDatesSettings(patch, user.username);
+        res.json({ success: true, ...doc, canManage: true });
+    } catch (err) {
+        res.status(400).json({ success: false, error: err.message || 'Could not save protected dates.' });
     }
 });
 

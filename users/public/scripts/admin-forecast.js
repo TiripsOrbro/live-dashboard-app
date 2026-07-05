@@ -29,6 +29,9 @@
     let backfillProgressRunning = false;
     let canManageBackfill = false;
     let threeWeekConfirmBackdrop = null;
+    let phSettingsBackdrop = null;
+    let protectedDatesSettings = null;
+    let canManageProtectedDates = false;
     let threeWeekConfirmResolve = null;
 
     const ADMIN_AREAS = ['VIC-1', 'WA-1', 'QLD-1'];
@@ -391,6 +394,7 @@
                         <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-update-three-weeks">Update All store Next 3 weeks</button>
                     </div>
                     <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-submit-all">submit all stores</button>
+                    <button type="button" class="mic-settings-btn" id="admin-forecast-ph-settings">PH settings</button>
                     <button type="button" class="mic-settings-btn" id="admin-forecast-setup-lifelenz">Setup LifeLenz</button>
                     <span class="admin-forecast-lifelenz-status" id="admin-forecast-lifelenz-status">LifeLenz: checking…</span>
                     <span id="admin-forecast-busy" hidden>MMX busy…</span>
@@ -414,6 +418,9 @@
         });
         root.querySelector('#admin-forecast-setup-lifelenz')?.addEventListener('click', () => {
             void openLifeLenzSetup();
+        });
+        root.querySelector('#admin-forecast-ph-settings')?.addEventListener('click', () => {
+            void openPhSettings();
         });
         root.querySelector('#admin-forecast-target-scope')?.addEventListener('change', (event) => {
             syncForecastTargetFields(getRoot(), event.target.value);
@@ -526,6 +533,7 @@
         closeHistory();
         closePreview();
         closeLifeLenzSetup();
+        closePhSettings();
         closeProgress(false);
     }
 
@@ -718,6 +726,287 @@
         await refreshLifeLenzStatus(ensureBackdrop());
         root.querySelector('#admin-forecast-lifelenz-remove').hidden = true;
         closeLifeLenzSetup();
+    }
+
+    function protectedEntriesForArea(areaId) {
+        const area = String(areaId || '').trim();
+        const entries = protectedDatesSettings?.byArea?.[area];
+        if (!Array.isArray(entries)) return [];
+        return entries
+            .map((row) => {
+                if (typeof row === 'string') return { date: row, label: null };
+                const date = String(row?.date || '').trim();
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+                const label = String(row?.label || '').trim();
+                return { date, label: label || null };
+            })
+            .filter(Boolean)
+            .sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    function protectedDatesForArea(areaId) {
+        return protectedEntriesForArea(areaId).map((row) => row.date);
+    }
+
+    function collectPhEntryFromRow(rowEl) {
+        if (!rowEl) return null;
+        const date = String(rowEl.querySelector('.admin-forecast-ph-date-input')?.value || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+        const label = String(rowEl.querySelector('.admin-forecast-ph-label-input')?.value || '').trim();
+        return { date, label: label || null };
+    }
+
+    function collectPhAddEntry(root) {
+        const date = String(root.querySelector('#admin-forecast-ph-add-date')?.value || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+        const label = String(root.querySelector('#admin-forecast-ph-add-label')?.value || '').trim();
+        return { date, label: label || null };
+    }
+
+    function ensurePhSettingsBackdrop() {
+        if (phSettingsBackdrop) return phSettingsBackdrop;
+        phSettingsBackdrop = document.createElement('div');
+        phSettingsBackdrop.className = 'admin-modal-backdrop admin-modal-backdrop--stacked';
+        phSettingsBackdrop.hidden = true;
+        phSettingsBackdrop.innerHTML = `
+            <div class="admin-modal admin-modal--forecast-ph" role="dialog" aria-modal="true" aria-labelledby="admin-forecast-ph-title">
+                <div class="admin-modal-header">
+                    <h2 id="admin-forecast-ph-title">PH settings</h2>
+                    <button type="button" class="admin-modal-close" id="admin-forecast-ph-close" aria-label="Close">×</button>
+                </div>
+                <p class="admin-accounts-meta admin-forecast-ph-intro">
+                    2026 public holidays are pre-loaded for each state. Protected dates are skipped on submit — Macromatix and LifeLenz forecasts for those days are not overwritten. Edit labels or dates, remove holidays you do not observe, or add extra protected days.
+                </p>
+                <div class="admin-settings-segmented-tabs admin-accounts-browse-scope admin-accounts-org-nav admin-forecast-ph-area-nav">
+                    <div class="admin-accounts-scope-row-wrap">
+                        <span class="admin-accounts-scope-row-label">Area</span>
+                        <nav class="admin-accounts-scope-row admin-accounts-scope-row--equal admin-forecast-ph-area-tabs" id="admin-forecast-ph-area-tabs" role="tablist" aria-label="Select area"></nav>
+                    </div>
+                </div>
+                <div class="admin-forecast-ph-add" id="admin-forecast-ph-add-wrap" hidden>
+                    <label class="admin-forecast-ph-add-label">
+                        Label
+                        <input type="text" id="admin-forecast-ph-add-label" placeholder="e.g. Store closure" />
+                    </label>
+                    <label class="admin-forecast-ph-add-label">
+                        Date
+                        <input type="date" id="admin-forecast-ph-add-date" />
+                    </label>
+                    <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-ph-add-btn">Add date</button>
+                </div>
+                <ul class="admin-forecast-ph-date-list" id="admin-forecast-ph-date-list"></ul>
+                <p id="admin-forecast-ph-empty" class="admin-accounts-meta" hidden>No protected dates for this area.</p>
+                <p id="admin-forecast-ph-error" class="admin-modal-error" role="alert"></p>
+                <div class="admin-modal-actions">
+                    <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-ph-done">Done</button>
+                </div>
+            </div>`;
+        document.body.appendChild(phSettingsBackdrop);
+        phSettingsBackdrop.addEventListener('click', (event) => {
+            if (event.target === phSettingsBackdrop) closePhSettings();
+        });
+        phSettingsBackdrop.querySelector('#admin-forecast-ph-close')?.addEventListener('click', closePhSettings);
+        phSettingsBackdrop.querySelector('#admin-forecast-ph-done')?.addEventListener('click', closePhSettings);
+        phSettingsBackdrop.querySelector('#admin-forecast-ph-area-tabs')?.addEventListener('click', (event) => {
+            const tab = event.target.closest('[data-ph-area]');
+            if (!tab) return;
+            renderPhSettingsArea(tab.getAttribute('data-ph-area') || activeArea);
+        });
+        phSettingsBackdrop.querySelector('#admin-forecast-ph-add-btn')?.addEventListener('click', () => {
+            void addProtectedDateForActiveArea();
+        });
+        phSettingsBackdrop.querySelector('#admin-forecast-ph-date-list')?.addEventListener('click', (event) => {
+            const saveBtn = event.target.closest('[data-ph-save-date]');
+            const removeBtn = event.target.closest('[data-ph-remove-date]');
+            const root = ensurePhSettingsBackdrop();
+            const area = root.dataset.phArea || activeArea || ADMIN_AREAS[0];
+            if (saveBtn) {
+                void saveProtectedEntryRow(area, saveBtn.closest('.admin-forecast-ph-date-item'));
+            } else if (removeBtn) {
+                void removeProtectedDateForArea(area, removeBtn.getAttribute('data-ph-remove-date'));
+            }
+        });
+        return phSettingsBackdrop;
+    }
+
+    function renderPhSettingsAreaTabs(root, selectedArea) {
+        const nav = root.querySelector('#admin-forecast-ph-area-tabs');
+        if (!nav) return;
+        nav.innerHTML = ADMIN_AREAS.map((area) => {
+            const isActive = area === selectedArea;
+            return `<button type="button" class="admin-accounts-scope-chip${isActive ? ' is-active' : ''}" role="tab" aria-selected="${isActive ? 'true' : 'false'}" data-ph-area="${escapeHtml(area)}">${escapeHtml(areaLabel(area))}</button>`;
+        }).join('');
+    }
+
+    function renderPhSettingsArea(areaId) {
+        const root = ensurePhSettingsBackdrop();
+        const area = String(areaId || activeArea || ADMIN_AREAS[0]).trim();
+        renderPhSettingsAreaTabs(root, area);
+        root.dataset.phArea = area;
+        const entries = protectedEntriesForArea(area);
+        const listEl = root.querySelector('#admin-forecast-ph-date-list');
+        const emptyEl = root.querySelector('#admin-forecast-ph-empty');
+        const addWrap = root.querySelector('#admin-forecast-ph-add-wrap');
+        const canEdit = canManageProtectedDates;
+        if (addWrap) addWrap.hidden = !canEdit;
+        if (!entries.length) {
+            if (listEl) listEl.innerHTML = '';
+            if (emptyEl) {
+                emptyEl.hidden = false;
+                emptyEl.textContent = canEdit
+                    ? 'No protected dates for this area. Add a date above.'
+                    : 'No protected dates for this area.';
+            }
+            return;
+        }
+        if (emptyEl) emptyEl.hidden = true;
+        if (!listEl) return;
+        listEl.innerHTML = entries
+            .map((entry) => {
+                const labelValue = entry.label ? escapeHtml(entry.label) : '';
+                if (!canEdit) {
+                    return `<li class="admin-forecast-ph-date-item admin-forecast-ph-date-item--readonly">
+                        <span class="admin-forecast-ph-date-label">${escapeHtml(entry.label || formatShortDate(entry.date))}</span>
+                        <span class="admin-accounts-meta">${escapeHtml(formatShortDate(entry.date))} · ${escapeHtml(entry.date)}</span>
+                    </li>`;
+                }
+                return `<li class="admin-forecast-ph-date-item" data-ph-original-date="${escapeHtml(entry.date)}">
+                    <label class="admin-forecast-ph-field">
+                        <span class="admin-accounts-meta">Label</span>
+                        <input type="text" class="admin-forecast-ph-label-input" value="${labelValue}" placeholder="Public holiday name" />
+                    </label>
+                    <label class="admin-forecast-ph-field">
+                        <span class="admin-accounts-meta">Date</span>
+                        <input type="date" class="admin-forecast-ph-date-input" value="${escapeHtml(entry.date)}" />
+                    </label>
+                    <div class="admin-forecast-ph-row-actions">
+                        <button type="button" class="mic-settings-btn admin-btn-primary" data-ph-save-date="${escapeHtml(entry.date)}">Save</button>
+                        <button type="button" class="mic-settings-btn admin-forecast-ph-remove-btn" data-ph-remove-date="${escapeHtml(entry.date)}">Remove</button>
+                    </div>
+                </li>`;
+            })
+            .join('');
+    }
+
+    async function saveProtectedEntriesForArea(areaId, entries) {
+        const root = ensurePhSettingsBackdrop();
+        root.querySelector('#admin-forecast-ph-error').textContent = '';
+        const res = await fetch('/api/admin/forecast/protected-dates', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ area: areaId, entries }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Could not save protected dates.');
+        }
+        protectedDatesSettings = {
+            byArea: data.byArea || {},
+            updatedAt: data.updatedAt || null,
+            updatedBy: data.updatedBy || null,
+            seededFrom: data.seededFrom || null,
+        };
+        if (statusPayload) {
+            statusPayload.protectedDates = protectedDatesSettings;
+        }
+    }
+
+    async function saveProtectedEntryRow(areaId, rowEl) {
+        const root = ensurePhSettingsBackdrop();
+        const area = String(areaId || '').trim();
+        const originalDate = String(rowEl?.getAttribute('data-ph-original-date') || '').trim();
+        const updated = collectPhEntryFromRow(rowEl);
+        root.querySelector('#admin-forecast-ph-error').textContent = '';
+        if (!updated) {
+            root.querySelector('#admin-forecast-ph-error').textContent = 'Enter a valid date (YYYY-MM-DD).';
+            return;
+        }
+        const entries = protectedEntriesForArea(area);
+        const withoutOriginal = entries.filter((row) => row.date !== originalDate);
+        if (withoutOriginal.some((row) => row.date === updated.date)) {
+            root.querySelector('#admin-forecast-ph-error').textContent = 'That date is already protected for this area.';
+            return;
+        }
+        try {
+            await saveProtectedEntriesForArea(area, [...withoutOriginal, updated].sort((a, b) => a.date.localeCompare(b.date)));
+            renderPhSettingsArea(area);
+        } catch (error) {
+            root.querySelector('#admin-forecast-ph-error').textContent = error.message;
+        }
+    }
+
+    async function addProtectedDateForActiveArea() {
+        const root = ensurePhSettingsBackdrop();
+        const area = root.dataset.phArea || activeArea || ADMIN_AREAS[0];
+        const entry = collectPhAddEntry(root);
+        root.querySelector('#admin-forecast-ph-error').textContent = '';
+        if (!entry) {
+            root.querySelector('#admin-forecast-ph-error').textContent = 'Choose a valid date to protect.';
+            return;
+        }
+        const entries = protectedEntriesForArea(area);
+        if (entries.some((row) => row.date === entry.date)) {
+            root.querySelector('#admin-forecast-ph-error').textContent = 'That date is already protected.';
+            return;
+        }
+        try {
+            await saveProtectedEntriesForArea(
+                area,
+                [...entries, entry].sort((a, b) => a.date.localeCompare(b.date))
+            );
+            root.querySelector('#admin-forecast-ph-add-date').value = '';
+            root.querySelector('#admin-forecast-ph-add-label').value = '';
+            renderPhSettingsArea(area);
+        } catch (error) {
+            root.querySelector('#admin-forecast-ph-error').textContent = error.message;
+        }
+    }
+
+    async function removeProtectedDateForArea(areaId, dateKey) {
+        const root = ensurePhSettingsBackdrop();
+        const area = String(areaId || '').trim();
+        const date = String(dateKey || '').trim();
+        root.querySelector('#admin-forecast-ph-error').textContent = '';
+        try {
+            await saveProtectedEntriesForArea(
+                area,
+                protectedEntriesForArea(area).filter((row) => row.date !== date)
+            );
+            renderPhSettingsArea(area);
+        } catch (error) {
+            root.querySelector('#admin-forecast-ph-error').textContent = error.message;
+        }
+    }
+
+    function closePhSettings() {
+        if (phSettingsBackdrop) {
+            phSettingsBackdrop.hidden = true;
+            phSettingsBackdrop.querySelector('#admin-forecast-ph-error').textContent = '';
+        }
+    }
+
+    async function openPhSettings() {
+        const root = ensurePhSettingsBackdrop();
+        root.hidden = false;
+        root.querySelector('#admin-forecast-ph-error').textContent = '';
+        if (!protectedDatesSettings) {
+            try {
+                const res = await fetch('/api/admin/forecast/protected-dates', { credentials: 'same-origin' });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.success) {
+                    protectedDatesSettings = {
+                        byArea: data.byArea || {},
+                        updatedAt: data.updatedAt || null,
+                        updatedBy: data.updatedBy || null,
+                    };
+                    canManageProtectedDates = Boolean(data.canManage);
+                }
+            } catch {
+                /* use status payload if fetch fails */
+            }
+        }
+        renderPhSettingsArea(activeArea || ADMIN_AREAS[0]);
     }
 
     function hasLifeLenzForSubmit() {
@@ -1037,12 +1326,14 @@
                 const preview = (source?.previews || []).find(
                     (row) => row.ok && String(row.storeNumber) === String(storeNumber)
                 );
+                const protectedSet = new Set(preview?.protectedDates || []);
                 const dayTemplate = (preview?.plan || []).map((day) => ({
                     date: day.date,
                     weekday: day.weekday,
                     forecastTotal: day.forecastTotal,
                     dayParts: aggregateDayPartsFromHourly(day.hourly),
-                    status: 'pending',
+                    status: protectedSet.has(day.date) ? 'done' : 'pending',
+                    skippedPh: protectedSet.has(day.date),
                     error: null,
                 }));
                 return {
@@ -1067,7 +1358,8 @@
                             readValue: null,
                             error: null,
                         })),
-                        status: 'pending',
+                        status: protectedSet.has(day.date) ? 'done' : 'pending',
+                        skippedPh: protectedSet.has(day.date),
                         error: null,
                     })),
                     lifelenzDays: dayTemplate.map((day) => ({
@@ -1194,6 +1486,7 @@
     }
 
     function progressDayDoneSummary(day, { context = '' } = {}) {
+        if (day.skippedPh) return 'Skipped · PH protected';
         const verb = day.matched ? 'Verified' : 'Saved';
         const ctx = context ? ` in ${context}` : '';
         const amount = formatMoney(day.forecastTotal);
@@ -1273,6 +1566,10 @@
                 const day = findProgressLifelenzDay(store, payload.date);
                 if (day) {
                     day.status = 'done';
+                    if (payload.type === 'day-skipped') {
+                        day.skippedPh = Boolean(payload.ph || payload.protected);
+                        day.matched = true;
+                    }
                     if (payload.type === 'day-complete') {
                         applyProgressDayDoneMeta(day, payload);
                         applyProgressDayUpdateRecord(store, payload);
@@ -1373,6 +1670,10 @@
             const day = findProgressDay(store, payload.date);
             if (day) {
                 day.status = 'done';
+                if (payload.type === 'day-skipped') {
+                    day.skippedPh = Boolean(payload.ph || payload.protected);
+                    day.matched = true;
+                }
                 if (payload.type === 'day-done') {
                     day.fill = payload.fill;
                     day.savedAs = payload.savedAs;
@@ -2586,6 +2887,11 @@
         return `${date} ${time}`;
     }
 
+    function formatPhProtectedBadge(isProtected) {
+        if (!isProtected) return '';
+        return '<span class="admin-forecast-update-badge admin-forecast-update-badge--ph">PH protected · not submitted</span>';
+    }
+
     function formatUpdateBadge(day) {
         if (!day?.updatedAt) return '';
         const source = day.source === 'auto' ? 'Auto' : 'User';
@@ -2708,13 +3014,15 @@
             container.innerHTML = `<p>${escapeHtml(options.emptyMessage || 'No forecast data.')}</p>`;
             return;
         }
-        const { forecastDayUpdates = {}, adjustments = [], onOverride } = options;
+        const { forecastDayUpdates = {}, adjustments = [], protectedDates = [], onOverride } = options;
+        const protectedSet = new Set(protectedDates || []);
         const hourHead = (transposed.hourColumns || [])
             .map((col) => `<th class="admin-history-hour-col">${escapeHtml(col.label)}</th>`)
             .join('');
         const rows = transposed.rows
             .map((row) => {
                 const updateBadge = row.date ? formatUpdateBadge(forecastDayUpdates[row.date]) : '';
+                const phBadge = row.date ? formatPhProtectedBadge(protectedSet.has(row.date)) : '';
                 const cells = (transposed.hourColumns || [])
                     .map((col, idx) => {
                         const val = row.values[idx];
@@ -2735,6 +3043,7 @@
                     <th scope="row" class="admin-history-day-label">
                         <span class="admin-history-col-label">${escapeHtml(row.weekdayLabel || '')}</span>
                         <span class="admin-accounts-meta">${escapeHtml(formatShortDate(row.date))}</span>
+                        ${phBadge}
                         ${updateBadge}
                     </th>
                     ${cells}
@@ -3093,6 +3402,7 @@
             baseWeekTotal: preview.baseWeekTotal,
             adjustmentDelta: preview.adjustmentDelta,
             forecastDayUpdates,
+            protectedDates: preview.protectedDates || [],
             adjustments: preview.adjustments || [],
             onOverride: (target) => openOverridePopover(target, storeNumber),
         });
@@ -4451,6 +4761,10 @@
         await fetchStores();
         statusPayload = await fetchStatus();
         canManageBackfill = Boolean(statusPayload?.canManageBackfill);
+        canManageProtectedDates = Boolean(statusPayload?.canManageProtectedDates);
+        if (statusPayload?.protectedDates) {
+            protectedDatesSettings = statusPayload.protectedDates;
+        }
         await refreshLifeLenzStatus(root);
         const allStores = Object.keys(statusPayload.stores || {});
         if (!activeArea || !ADMIN_AREAS.includes(activeArea)) {

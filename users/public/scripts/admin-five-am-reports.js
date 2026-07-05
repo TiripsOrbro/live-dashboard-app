@@ -23,7 +23,7 @@
         {
             id: 'forecast-auto-submit',
             label: 'Forecast',
-            title: 'Auto-submit weekly forecasts for this store',
+            title: 'Auto-submit the next 3 weeks of forecasts for this store',
             dataAttr: 'data-daily-forecast-store',
             readEnabled: (store, state) => Boolean(state.forecastPayload?.stores?.[store]),
             writeEnabled: async (store, enabled) => {

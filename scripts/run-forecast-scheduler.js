@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * Daily 7 AM (Melbourne) - auto-submit forecasts for eligible stores when admin toggle is on.
+ * Submits the next 3 weeks (same ranges as Admin → Forecast → "Update next 3 weeks").
  *
  * Usage:
  *   npm run forecast-scheduler
@@ -21,8 +22,8 @@ const { getStoreList } = require('../stores/src/storeList');
 const { storeHasMmxCredentials } = require('../mmx/src/macromatixScraper');
 const { listCredentialCandidates } = require('../stores/src/storeCredentials');
 const { assessHistoryReadiness } = require('../dashboard/src/forecast/forecastHistoryLedger');
-const { getTargetForecastWeekStarts, resolveForecastTarget } = require('../dashboard/src/forecast/forecastStatusLedger');
-const { runCombinedForecastForStores } = require('../dashboard/src/forecast/forecastRunner');
+const { resolveNextThreeWeekTargets } = require('../dashboard/src/forecast/forecastStatusLedger');
+const { runCombinedForecastNextThreeWeeksForStores } = require('../dashboard/src/forecast/forecastRunner');
 const { isStoreAutoSubmitEnabled } = require('../dashboard/src/forecast/forecastStoreAutoSubmitLedger');
 const {
     TIME_ZONE,
@@ -44,8 +45,8 @@ function sleep(ms) {
 }
 
 async function listEligibleStores() {
-    const { weekStart } = resolveForecastTarget({ targetScope: 'week-after' });
-    const targetWeeks = [weekStart];
+    const targets = resolveNextThreeWeekTargets();
+    const targetWeeks = targets.flatMap((target) => target.targetWeeks || []);
     const eligible = [];
 
     for (const cfg of getStoreList()) {
@@ -66,7 +67,7 @@ async function listEligibleStores() {
 
         eligible.push({ storeNumber: store, lifelenzByStore });
     }
-    return { weekStart, eligible };
+    return { targetWeeks, targets, eligible };
 }
 
 async function runScheduledForecastJob() {
@@ -77,12 +78,12 @@ async function runScheduledForecastJob() {
         return { skipped: true, reason: 'already-ran' };
     }
 
-    const { weekStart, eligible } = await listEligibleStores();
+    const { targetWeeks, targets, eligible } = await listEligibleStores();
 
     if (!eligible.length) {
         console.log('[ForecastScheduler] No eligible stores - skipping.');
-        appendScheduleLog(runDateKey, { action: 'skip', reason: 'no eligible stores', weekStart });
-        return { skipped: true, weekStart, stores: [] };
+        appendScheduleLog(runDateKey, { action: 'skip', reason: 'no eligible stores', targetWeeks });
+        return { skipped: true, targetWeeks, stores: [] };
     }
 
     const storeNumbers = eligible.map((row) => row.storeNumber);
@@ -90,12 +91,18 @@ async function runScheduledForecastJob() {
     const lifelenzCredentials =
         Object.keys(lifelenzByStore).length > 0 ? { byStore: lifelenzByStore } : null;
 
-    console.log(`[ForecastScheduler] Running ${storeNumbers.length} store(s) for week ${weekStart}…`);
+    const rangeLabel = targets.map((target) => target.label).join('; ');
+    console.log(`[ForecastScheduler] Running ${storeNumbers.length} store(s) for next 3 weeks (${rangeLabel})…`);
 
     const windowEndMs = Date.now() + scheduleWindowMinutes() * 60 * 1000;
     let deferred = false;
 
     const storeRunFailed = (row) => {
+        if (row?.weekResults) {
+            const last = row.weekResults[row.weekResults.length - 1]?.combined;
+            if (!last) return true;
+            row = last;
+        }
         const mmxOk = (row.mmxResults || []).length > 0 && (row.mmxResults || []).every((r) => r.ok);
         const llResults = row.lifelenzResults || [];
         const llOk = row.lifelenzSkipped === true || (llResults.length > 0 && llResults.every((r) => r.ok));
@@ -103,26 +110,41 @@ async function runScheduledForecastJob() {
     };
 
     const describeStoreFailure = (row) => {
+        const weekLabel = row?.weekResults?.[row.weekResults.length - 1]?.target?.label;
+        const combined = row?.weekResults?.[row.weekResults.length - 1]?.combined || row;
         const parts = [];
-        for (const r of row.mmxResults || []) {
+        if (weekLabel) parts.push(`Week: ${weekLabel}`);
+        for (const r of combined.mmxResults || []) {
             if (!r.ok) parts.push(`MMX: ${r.error || 'failed'}`);
         }
-        for (const r of row.lifelenzResults || []) {
+        for (const r of combined.lifelenzResults || []) {
             if (!r.ok) parts.push(`LifeLenz: ${r.error || 'failed'}`);
         }
         return parts.join('; ') || 'MMX or LifeLenz forecast submit failed';
     };
 
-    const runStore = async (storeNumber) =>
-        runCombinedForecastForStores([storeNumber], {
-            completedBy: 'auto',
-            headless: true,
-            lifelenzHeadless: true,
-            lifelenzCredentials,
-            onProgress: (payload) => {
-                console.log(`[ForecastScheduler] [${storeNumber}]`, JSON.stringify(payload));
-            },
-        });
+    const runStore = async (storeNumber) => {
+        try {
+            return await runCombinedForecastNextThreeWeeksForStores([storeNumber], {
+                completedBy: 'auto',
+                headless: true,
+                lifelenzHeadless: true,
+                lifelenzCredentials,
+                onProgress: (payload) => {
+                    console.log(`[ForecastScheduler] [${storeNumber}]`, JSON.stringify(payload));
+                },
+            });
+        } catch (err) {
+            const combined = err.combined || {};
+            return {
+                error: err.message,
+                weekResults: err.partialResults,
+                mmxResults: combined.mmxResults || [],
+                lifelenzResults: combined.lifelenzResults || [],
+                lifelenzSkipped: combined.lifelenzSkipped,
+            };
+        }
+    };
 
     const results = await runWithPriority(PRIORITY.ADMIN, {
         type: 'forecast-scheduler',
@@ -144,7 +166,7 @@ async function runScheduledForecastJob() {
             for (const storeNumber of retryTargets) {
                 if (!isWithinScheduleWindow() && Date.now() > windowEndMs) break;
                 console.warn(`[ForecastScheduler] Retrying failed store ${storeNumber}…`);
-                appendScheduleLog(runDateKey, { action: 'retry', storeNumber, weekStart });
+                appendScheduleLog(runDateKey, { action: 'retry', storeNumber, targetWeeks });
                 const row = await runStore(storeNumber);
                 const idx = out.findIndex((r) => r.storeNumber === storeNumber);
                 out[idx] = { storeNumber, ...row, retried: true };
@@ -154,7 +176,7 @@ async function runScheduledForecastJob() {
     }).catch((err) => {
         if (String(err?.name || '') === 'MmxTaskQueueTimeoutError') {
             deferred = true;
-            appendScheduleLog(runDateKey, { action: 'defer', reason: 'queue timeout', weekStart });
+            appendScheduleLog(runDateKey, { action: 'defer', reason: 'queue timeout', targetWeeks });
             return null;
         }
         throw err;
@@ -170,16 +192,18 @@ async function runScheduledForecastJob() {
         ], { title: '7 AM forecast auto-submit failures', dateKey: runDateKey }).catch((err) =>
             console.warn('[ForecastScheduler] Failure alert failed:', err.message)
         );
-        return { deferred: true, weekStart };
+        return { deferred: true, targetWeeks };
     }
 
     const failedStores = results.filter(storeRunFailed).map((row) => row.storeNumber);
-    markScheduledRun(runDateKey, weekStart, {
+    markScheduledRun(runDateKey, targetWeeks[0] || null, {
         storeCount: storeNumbers.length,
         failedStores,
         allSucceeded: failedStores.length === 0,
+        targetScope: 'next-three-weeks',
+        weekStarts: targetWeeks,
     });
-    appendScheduleLog(runDateKey, { action: 'run', weekStart, storeNumbers, failedStores, results });
+    appendScheduleLog(runDateKey, { action: 'run', targetWeeks, storeNumbers, failedStores, results });
     if (failedStores.length) {
         console.warn(`[ForecastScheduler] Completed with failures for store(s): ${failedStores.join(', ')}`);
         const failures = results
@@ -193,8 +217,8 @@ async function runScheduledForecastJob() {
             dateKey: runDateKey,
         }).catch((err) => console.warn('[ForecastScheduler] Failure alert failed:', err.message));
     }
-    console.log('[ForecastScheduler] Done:', JSON.stringify({ weekStart, storeNumbers, failedStores }, null, 2));
-    return { weekStart, storeNumbers, failedStores, results };
+    console.log('[ForecastScheduler] Done:', JSON.stringify({ targetWeeks, storeNumbers, failedStores }, null, 2));
+    return { targetWeeks, storeNumbers, failedStores, results };
 }
 
 async function main() {
@@ -210,7 +234,7 @@ async function main() {
     const hour = scheduleHour();
     const windowMin = scheduleWindowMinutes();
     console.log(
-        `[ForecastScheduler] Started - ${TIME_ZONE}, daily ~${hour}:00 (window ${windowMin} min), week target +14d`
+        `[ForecastScheduler] Started - ${TIME_ZONE}, daily ~${hour}:00 (window ${windowMin} min), next 3 weeks`
     );
 
     if (!isScheduleEnabled()) {

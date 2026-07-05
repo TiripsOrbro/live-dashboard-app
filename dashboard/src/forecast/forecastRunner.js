@@ -2,6 +2,7 @@ const { assessHistoryReadiness, dailyRowsFromHistory, sumHourly, formatHourLabel
 const {
     getTargetForecastWeekStarts,
     resolveForecastTarget,
+    resolveNextThreeWeekTargets,
     addDaysToIso,
     markStoreWeekPlatformComplete,
 } = require('./forecastStatusLedger');
@@ -1234,6 +1235,54 @@ async function runCombinedForecastForStores(storeNumbers, options = {}) {
         manualSaved,
     };
 }
+
+function combinedForecastRunFailed(combined) {
+    const mmxOk = (combined.mmxResults || []).length > 0 && (combined.mmxResults || []).every((r) => r.ok);
+    const llResults = combined.lifelenzResults || [];
+    const llOk = combined.lifelenzSkipped === true || (llResults.length > 0 && llResults.every((r) => r.ok));
+    return !mmxOk || !llOk;
+}
+
+/** Same week ranges as Admin → Forecast → "Update next 3 weeks". Stops on first failed week. */
+async function runCombinedForecastNextThreeWeeksForStores(storeNumbers, options = {}) {
+    const targets = resolveNextThreeWeekTargets(options.fromDate);
+    const weekResults = [];
+
+    for (let idx = 0; idx < targets.length; idx += 1) {
+        const target = targets[idx];
+        const combined = await runCombinedForecastForStores(storeNumbers, {
+            ...options,
+            targetScope: target.targetScope,
+            ...(target.weekStart ? { weekStart: target.weekStart } : {}),
+            fromDate: options.fromDate,
+            onProgress: (payload) =>
+                options.onProgress?.({
+                    ...payload,
+                    weekIndex: idx + 1,
+                    weekTotal: targets.length,
+                    weekLabel: target.label,
+                }),
+        });
+        weekResults.push({ target, combined });
+
+        if (combinedForecastRunFailed(combined)) {
+            const err = new Error(`Week ${idx + 1} of 3 (${target.label}) failed`);
+            err.weekIndex = idx + 1;
+            err.weekLabel = target.label;
+            err.combined = combined;
+            err.partialResults = weekResults;
+            throw err;
+        }
+    }
+
+    return {
+        targets,
+        weekResults,
+        targetWeeks: weekResults.flatMap((row) => row.combined.targetWeeks || []),
+        targetScope: 'next-three-weeks',
+    };
+}
+
 module.exports = {
     computeTrimmedWeekdayAverages,
     computeTrimmedWeekdayHourlyMix,
@@ -1254,5 +1303,6 @@ module.exports = {
     runForecastWeeksForStores,
     runLifeLenzForecastForStores,
     runCombinedForecastForStores,
+    runCombinedForecastNextThreeWeeksForStores,
     resolveLifelenzCredentialsForRun,
 };

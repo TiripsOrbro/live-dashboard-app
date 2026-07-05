@@ -2,8 +2,7 @@ const { getStoreList } = require('../../../stores/src/storeList');
 const { storeHasMmxCredentials } = require('../../../mmx/src/macromatixScraper');
 const { listCredentialCandidates } = require('../../../stores/src/storeCredentials');
 const { assessHistoryReadiness } = require('../forecast/forecastHistoryLedger');
-const { resolveForecastTarget } = require('../forecast/forecastStatusLedger');
-const { runCombinedForecastForStores } = require('../forecast/forecastRunner');
+const { runCombinedForecastNextThreeWeeksForStores } = require('../forecast/forecastRunner');
 const { isStoreAutoSubmitEnabled } = require('../forecast/forecastStoreAutoSubmitLedger');
 const { markScheduledRun } = require('../forecast/forecastSchedule');
 const { isStoreEnabled: isStockDailyEnabled, setLastRun: setStockLastRun, getLastRun: getStockLastRun } = require('../fiveAmReports/fiveAmReportsStore');
@@ -23,7 +22,6 @@ const {
 } = require('./dailyReportsRunState');
 const {
     extractForecastFailureLines,
-    storeRunFailed,
     sendFailedAutomatedReportsEmail,
 } = require('./dailyReportsFailureEmail');
 
@@ -144,34 +142,43 @@ async function runForecastJob(storeNumber, runDateKey) {
     const lifelenzByStore = lifelenzCredentialsForStore(store);
     const lifelenzCredentials =
         lifelenzByStore && Object.keys(lifelenzByStore).length > 0 ? { byStore: lifelenzByStore } : null;
-    const { weekStart } = resolveForecastTarget({ targetScope: 'week-after' });
 
-    const combined = await runCombinedForecastForStores([store], {
-        completedBy: 'auto',
-        headless: true,
-        lifelenzHeadless: true,
-        lifelenzCredentials,
-        onProgress: (payload) => {
-            console.log(`[DailyReports] [${store}] forecast`, JSON.stringify(payload));
-        },
-    });
-
-    if (storeRunFailed(combined)) {
-        const lines = extractForecastFailureLines(combined);
-        const err = new Error(lines.join('; ') || 'Forecast auto-submit failed');
-        err.forecastLines = lines;
-        err.combined = combined;
+    let result;
+    try {
+        result = await runCombinedForecastNextThreeWeeksForStores([store], {
+            completedBy: 'auto',
+            headless: true,
+            lifelenzHeadless: true,
+            lifelenzCredentials,
+            onProgress: (payload) => {
+                console.log(`[DailyReports] [${store}] forecast`, JSON.stringify(payload));
+            },
+        });
+    } catch (err) {
+        const combined = err.combined || err.partialResults?.[err.partialResults.length - 1]?.combined;
+        if (combined) {
+            const lines = extractForecastFailureLines(combined);
+            const detail = lines.join('; ') || err.message || 'Forecast auto-submit failed';
+            const wrapped = new Error(
+                err.weekLabel ? `Week ${err.weekIndex} of 3 (${err.weekLabel}): ${detail}` : detail
+            );
+            wrapped.forecastLines = lines;
+            wrapped.combined = combined;
+            throw wrapped;
+        }
         throw err;
     }
 
-    markScheduledRun(runDateKey, weekStart, {
+    markScheduledRun(runDateKey, result.targetWeeks?.[0] || null, {
         storeCount: 1,
         failedStores: [],
         allSucceeded: true,
         storeNumber: store,
+        targetScope: 'next-three-weeks',
+        weekStarts: result.targetWeeks || [],
     });
-    console.info(`[DailyReports] Forecast auto-submit completed for store ${store}`);
-    return combined;
+    console.info(`[DailyReports] Forecast auto-submit completed for store ${store} (next 3 weeks)`);
+    return result;
 }
 
 function buildStorePlan(isTestStoreFn, options = {}) {

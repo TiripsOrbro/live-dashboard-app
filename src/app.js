@@ -4507,18 +4507,7 @@ app.put('/api/admin/five-am-reports/stores', (req, res) => {
     try {
         const enabled = !(req.body?.enabled === false || req.body?.enabled === 0 || req.body?.enabled === '0');
         setFiveAmReportsStoreEnabled(store, enabled, user.username);
-        const todayYmd = ymdInTimeZone(new Date(), fiveAmReportsTimeZoneForStore(store));
-        const hasTodayData =
-            getFiveAmReportsLastRun(store, fiveAmReportsTimeZoneForStore(store)) === todayYmd;
-        const pulling = Boolean(enabled) && !hasTodayData;
-        res.json({ success: true, store, enabled: Boolean(enabled), pulling });
-        // When enabling a store that has no data for today yet, pull it now rather than
-        // waiting for the next scheduled daily run. Runs in the background (per-store MMX lock applies).
-        if (pulling) {
-            void runFiveAmReportsForStore(store).catch((err) => {
-                console.warn(`[5AMReports] Immediate run for ${store} failed:`, err.message);
-            });
-        }
+        res.json({ success: true, store, enabled: Boolean(enabled) });
     } catch (err) {
         res.status(400).json({ success: false, error: err.message || 'Could not save 5AM reports setting.' });
     }
@@ -8984,7 +8973,7 @@ function fiveAmReportsTimeZoneForStore(storeNumber) {
 /**
  * Download + compute both stock-levels modes for one store, persist the result and
  * record the run. Skips if today's result already exists (unless `force`). Safe to
- * call from the scheduler or on-demand (e.g. when an admin enables a store).
+ * call from the scheduler.
  */
 async function runFiveAmReportsForStore(storeNumber, { force = false } = {}) {
     const store = String(storeNumber || '').trim();

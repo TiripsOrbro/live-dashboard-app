@@ -50,8 +50,6 @@
     let storesPayload = [];
     let canManage = false;
     let activeArea = '';
-    const pullingStores = new Set();
-
     function escapeHtml(value) {
         return String(value ?? '')
             .replace(/&/g, '&amp;')
@@ -194,9 +192,7 @@
                     return `<td class="admin-five-am-col-job">${renderJobToggle(job, store, enabled)}</td>`;
                 }).join('');
                 const stockRunAt = lastRunAt[store] || lastRun[store];
-                const stockRunLabel = pullingStores.has(store)
-                    ? 'Pulling now…'
-                    : formatShortDateTimeNoYear(stockRunAt);
+                const stockRunLabel = formatShortDateTimeNoYear(stockRunAt);
                 const forecastUpdateLabel = formatShortDateTimeNoYear(lastForecastUpdate[store]);
                 return `<tr>
                     <td class="admin-five-am-col-store">${escapeHtml(store)}<span class="admin-accounts-meta">${escapeHtml(s.storeName || '')}</span></td>
@@ -299,12 +295,6 @@
             const data = await job.writeEnabled(storeNumber, enabled);
             if (job.id === 'stock-levels') {
                 if (stockPayload?.stores) stockPayload.stores[storeNumber] = Boolean(enabled);
-                if (data.pulling) {
-                    pullingStores.add(String(storeNumber));
-                    refreshTable();
-                } else if (!enabled) {
-                    pullingStores.delete(String(storeNumber));
-                }
             } else if (job.id === 'forecast-auto-submit') {
                 if (forecastPayload?.stores) forecastPayload.stores[storeNumber] = Boolean(enabled);
             }

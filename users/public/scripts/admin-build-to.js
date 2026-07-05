@@ -462,7 +462,6 @@
                     <div class="admin-buildto-header-main">
                         <div class="admin-buildto-header-text">
                             <h2 id="admin-buildto-title">Build to adjustments</h2>
-                            <p class="admin-buildto-subtitle" id="admin-buildto-subtitle">Set build-to rules and low-stock thresholds by area or store.</p>
                         </div>
                         <div class="admin-buildto-header-actions">
                             <button type="button" class="mic-settings-btn admin-buildto-mode-toggle admin-buildto-header-icon-btn admin-buildto-mode-toggle--cog" id="admin-buildto-mode-toggle" hidden aria-label="Configure items" title="Configure items">${BUILD_TO_COG_SVG}</button>
@@ -564,7 +563,6 @@
         const root = ensureBackdrop();
         const isConfigure = viewMode === 'configure';
         const title = root.querySelector('#admin-buildto-title');
-        const subtitle = root.querySelector('#admin-buildto-subtitle');
         const modeToggle = root.querySelector('#admin-buildto-mode-toggle');
         const headerActions = root.querySelector('.admin-buildto-header-actions');
         const browseScopeHost = root.querySelector('#admin-buildto-browse-scope');
@@ -573,11 +571,6 @@
         const addBtn = root.querySelector('#admin-buildto-add');
 
         if (title) title.textContent = isConfigure ? 'Configure items' : 'Build to adjustments';
-        if (subtitle) {
-            subtitle.textContent = isConfigure
-                ? 'Set vendor routing, item codes, count units, and stock-count columns (global for all stores).'
-                : 'Set build-to rules and low-stock thresholds by area or store.';
-        }
         if (headerActions) {
             headerActions.classList.toggle('admin-buildto-header-actions--configure', isConfigure);
         }

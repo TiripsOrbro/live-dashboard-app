@@ -149,11 +149,10 @@
         });
     }
 
-    function sectionHeader(title, subtitle) {
+    function sectionHeader(title) {
         return `
             <header class="admin-section-header">
                 <h2>${escapeHtml(title)}</h2>
-                ${subtitle ? `<p class="admin-section-subtitle">${escapeHtml(subtitle)}</p>` : ''}
             </header>`;
     }
 
@@ -240,10 +239,7 @@
     function viewHtml() {
         return `
             <div class="admin-modal admin-modal--wide admin-store-logins-view" data-store-logins-view="main">
-                ${sectionHeader(
-                    'Store logins',
-                    'Use the org tree to pick a market, area, and store, then configure MMX, LifeLenz, SMG, NSF credentials, and report email.'
-                )}
+                ${sectionHeader('Store logins')}
                 <div id="admin-store-logins-browse-scope" class="admin-accounts-browse-scope admin-accounts-org-nav"></div>
                 <div class="admin-settings-scroll-body">
                     <div id="admin-store-logins-content" class="admin-store-logins-content" hidden>

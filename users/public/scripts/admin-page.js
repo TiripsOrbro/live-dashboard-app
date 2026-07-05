@@ -334,6 +334,7 @@
         backdrop?.classList.add('is-visible');
         backdrop?.removeAttribute('hidden');
         toggle?.setAttribute('aria-expanded', 'true');
+        toggle?.setAttribute('aria-label', 'Close menu');
         document.body.classList.add('admin-settings-nav-drawer-open');
         if (!drawerEscapeHandler) {
             drawerEscapeHandler = (event) => {
@@ -351,6 +352,7 @@
         backdrop?.classList.remove('is-visible');
         backdrop?.setAttribute('hidden', '');
         toggle?.setAttribute('aria-expanded', 'false');
+        toggle?.setAttribute('aria-label', 'Open menu');
         document.body.classList.remove('admin-settings-nav-drawer-open');
     }
 
@@ -468,7 +470,7 @@
                 <header class="admin-settings-header">
                     <div id="nav-back-host" class="admin-settings-header__back"></div>
                     <h1 class="admin-settings-title">Settings</h1>
-                    <button type="button" id="admin-settings-nav-toggle" class="admin-settings-nav-toggle admin-settings-header__menu" aria-expanded="false" aria-controls="admin-settings-nav">Menu</button>
+                    <button type="button" id="admin-settings-nav-toggle" class="admin-settings-nav-toggle admin-settings-header__menu" aria-expanded="false" aria-controls="admin-settings-nav" aria-label="Open menu"><svg class="admin-settings-nav-toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 7h16v2H4V7zm0 5h16v2H4v-2zm0 5h16v2H4v-2z"/></svg></button>
                 </header>
                 <div class="admin-settings-body">
                     <div id="admin-settings-nav-backdrop" class="admin-settings-nav-backdrop" hidden aria-hidden="true"></div>
@@ -601,8 +603,22 @@
     }
 
     function mountBackButton() {
-        const host = document.getElementById('nav-back-host');
-        if (!host || !global.DashboardNavBack?.mountBackButton) return;
+        const header = document.querySelector('.admin-settings-header');
+        if (!header || !global.DashboardNavBack?.mountBackButton) return;
+
+        let host = document.getElementById('nav-back-host');
+        if (host && !header.contains(host)) {
+            const title = header.querySelector('.admin-settings-title');
+            host.classList.add('admin-settings-header__back');
+            if (title) header.insertBefore(host, title);
+            else header.prepend(host);
+        }
+        if (!host) {
+            host = header.querySelector('.admin-settings-header__back');
+            if (host) host.id = 'nav-back-host';
+        }
+        if (!host) return;
+
         global.DashboardNavBack.mountBackButton(host, {
             fallback: global.AppPaths?.micOverview?.() || '/overview',
             fade: true,

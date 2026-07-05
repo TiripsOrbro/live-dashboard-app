@@ -259,16 +259,10 @@
     function render() {
         const root = getRoot();
         if (!root) return;
-        const hour = Number(stockPayload?.scheduleHour ?? forecastPayload?.scheduleHour);
-        const hourLabel = Number.isFinite(hour) ? `${hour}:00` : '7:00';
         const areaCount = Math.max(orderedAreas().length, 1);
         root.innerHTML = `
             <div class="admin-modal admin-modal--inline admin-five-am-reports">
                 <h2>Daily reports</h2>
-                <p class="admin-accounts-meta">
-                    Once-per-day automated jobs for enabled stores, typically around ${escapeHtml(hourLabel)} in each store's timezone.
-                    Stock results appear on the store's Stock levels tile; forecast auto-submit uses the Forecast tool settings.
-                </p>
                 <p class="admin-modal-error" id="admin-five-am-error" role="alert"></p>
                 <div class="admin-settings-segmented-tabs admin-accounts-browse-scope admin-accounts-org-nav admin-report-sub-area-nav">
                     <div class="admin-accounts-scope-row-wrap">

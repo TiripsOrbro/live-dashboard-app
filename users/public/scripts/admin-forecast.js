@@ -69,6 +69,13 @@
     ];
     const DAY_PART_HOURS = new Map(LIFELENZ_DAY_PARTS.map((part) => [part.key, part.hours]));
 
+    const FORECAST_HISTORY_SVG = `<svg class="admin-forecast-history-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 20V10"/>
+        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M10 20V4"/>
+        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M16 20v-8"/>
+        <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M22 20V8"/>
+    </svg>`;
+
     function addDaysToIso(iso, days) {
         const parts = String(iso || '').split('-').map(Number);
         if (parts.length < 3) return iso;
@@ -97,16 +104,23 @@
     }
 
     function getForecastTargetPayloadFromRoot(root, ids = {}) {
+        const scopeEl = root?.querySelector(ids.scope || '#admin-forecast-target-scope');
         const scope =
-            root?.querySelector(ids.scope || '#admin-forecast-target-scope')?.value || 'week-after';
+            scopeEl?.value ||
+            (!ids.scope ? sessionStorage.getItem(FORECAST_TARGET_SCOPE_KEY) : null) ||
+            'week-after';
         const payload = { targetScope: scope };
         if (scope === 'week') {
             payload.weekStart = String(
-                root?.querySelector(ids.weekStart || '#admin-forecast-target-week-start')?.value || ''
+                root?.querySelector(ids.weekStart || '#admin-forecast-target-week-start')?.value ||
+                    (!ids.weekStart ? sessionStorage.getItem(FORECAST_TARGET_WEEK_KEY) : '') ||
+                    ''
             ).trim();
         } else if (scope === 'day') {
             payload.date = String(
-                root?.querySelector(ids.day || '#admin-forecast-target-day')?.value || ''
+                root?.querySelector(ids.day || '#admin-forecast-target-day')?.value ||
+                    (!ids.day ? sessionStorage.getItem(FORECAST_TARGET_DAY_KEY) : '') ||
+                    ''
             ).trim();
         }
         return payload;
@@ -365,7 +379,6 @@
     const FORECAST_MODAL_HTML = `
             <div class="admin-modal admin-modal--wide admin-modal--forecast" role="dialog" aria-modal="true">
                 <h2>Forecast tool</h2>
-                <p class="admin-accounts-meta">Uses 5 weeks of stored hourly sales (trimmed weekday averages + hourly shape), then writes to Macromatix and LifeLenz when configured. Choose this week, next week, the week after, a custom week starting date, or a single day before preview/submit.</p>
                 <div class="admin-settings-segmented-tabs admin-accounts-browse-scope admin-accounts-org-nav admin-forecast-area-nav">
                     <div class="admin-accounts-scope-row-wrap">
                         <span class="admin-accounts-scope-row-label">Area</span>
@@ -373,29 +386,14 @@
                     </div>
                 </div>
                 <div class="admin-modal-toolbar admin-forecast-toolbar">
-                    <div class="admin-forecast-target-row">
-                        <div class="admin-forecast-target-wrap" id="admin-forecast-target-wrap">
-                            <label class="admin-forecast-target-scope-label">Forecast target
-                                <select id="admin-forecast-target-scope">
-                                    <option value="this-week">This week</option>
-                                    <option value="next-week">Next week</option>
-                                    <option value="week-after" selected>Week after</option>
-                                    <option value="week">Week starting…</option>
-                                    <option value="day">Single day</option>
-                                </select>
-                            </label>
-                            <label class="admin-forecast-target-week-start-label" id="admin-forecast-target-week-wrap" hidden>Week starting
-                                <input type="date" id="admin-forecast-target-week-start" />
-                            </label>
-                            <label class="admin-forecast-target-day-label" id="admin-forecast-target-day-wrap" hidden>Day
-                                <input type="date" id="admin-forecast-target-day" />
-                            </label>
-                        </div>
-                        <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-update-three-weeks">Update All store Next 3 weeks</button>
+                    <div class="admin-forecast-toolbar-row">
+                        <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-submit-all">Submit All Stores</button>
+                        <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-update-three-weeks">Update All Store Next 3 Weeks</button>
                     </div>
-                    <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-submit-all">submit all stores</button>
-                    <button type="button" class="mic-settings-btn" id="admin-forecast-ph-settings">PH settings</button>
-                    <button type="button" class="mic-settings-btn" id="admin-forecast-setup-lifelenz">Setup LifeLenz</button>
+                    <div class="admin-forecast-toolbar-row">
+                        <button type="button" class="mic-settings-btn" id="admin-forecast-ph-settings">PH Settings</button>
+                        <button type="button" class="mic-settings-btn" id="admin-forecast-setup-lifelenz">Setup LifeLenz</button>
+                    </div>
                     <span class="admin-forecast-lifelenz-status" id="admin-forecast-lifelenz-status">LifeLenz: checking…</span>
                     <span id="admin-forecast-busy" hidden>MMX busy…</span>
                 </div>
@@ -421,16 +419,6 @@
         });
         root.querySelector('#admin-forecast-ph-settings')?.addEventListener('click', () => {
             void openPhSettings();
-        });
-        root.querySelector('#admin-forecast-target-scope')?.addEventListener('change', (event) => {
-            syncForecastTargetFields(getRoot(), event.target.value);
-            sessionStorage.setItem(FORECAST_TARGET_SCOPE_KEY, event.target.value);
-        });
-        root.querySelector('#admin-forecast-target-week-start')?.addEventListener('change', (event) => {
-            sessionStorage.setItem(FORECAST_TARGET_WEEK_KEY, event.target.value);
-        });
-        root.querySelector('#admin-forecast-target-day')?.addEventListener('change', (event) => {
-            sessionStorage.setItem(FORECAST_TARGET_DAY_KEY, event.target.value);
         });
         root.querySelector('#admin-forecast-area-tabs')?.addEventListener('click', (event) => {
             const tab = event.target.closest('[data-forecast-area]');
@@ -2865,10 +2853,39 @@
         return data;
     }
 
-    function dot(completed, pending) {
-        if (pending) return '<span class="admin-status-dot admin-status-dot--pending" aria-hidden="true"></span>';
-        const cls = completed ? 'admin-status-dot--ok' : 'admin-status-dot--bad';
-        return `<span class="admin-status-dot ${cls}" aria-hidden="true"></span>`;
+    function forecastStatusVariant(completed, partial) {
+        if (partial) return 'partial';
+        return completed ? 'ok' : 'bad';
+    }
+
+    function forecastStatusCell(variant, innerHtml) {
+        const v = variant === 'ok' || variant === 'partial' ? variant : 'bad';
+        return `<td class="admin-forecast-status-cell admin-forecast-status-cell--${v}">
+            <div class="admin-forecast-status-cell-inner">
+                <div class="admin-forecast-status-cell-content">${innerHtml}</div>
+                <span class="admin-forecast-status-bar" aria-hidden="true"></span>
+            </div>
+        </td>`;
+    }
+
+    function forecastHistoryStatusCell(hist, storeNumber) {
+        if (hist.ready) {
+            return forecastStatusCell('ok', '<span class="admin-forecast-status-label">Ready</span>');
+        }
+        const variant = forecastStatusVariant(false, hist.daysRecorded > 0);
+        if (canManageBackfill) {
+            return forecastStatusCell(
+                variant,
+                `<button type="button" class="admin-forecast-status-backfill-btn" data-backfill-store="${escapeHtml(storeNumber)}" title="Backfill missing forecast history from MMX">
+                    <span class="admin-forecast-status-label">Missing data</span>
+                    <span class="admin-accounts-meta admin-forecast-status-hint">Click to backfill</span>
+                </button>`
+            );
+        }
+        return forecastStatusCell(
+            variant,
+            `<span class="admin-forecast-status-label">Missing data</span>`
+        );
     }
 
     function weekTotalForGrid(grid) {
@@ -4443,9 +4460,16 @@
         openBackfillProgressModal(`Backfilling ${stores.length} store(s) from MMX…`);
 
         const disableSelectors = ['#admin-forecast-submit-all', '#admin-forecast-history-backfill'];
+        const backfillStoreButtons = [
+            ...(root?.querySelectorAll('[data-backfill-store]') || []),
+            ...document.querySelectorAll('#admin-forecast-body [data-backfill-store]'),
+        ];
         for (const sel of disableSelectors) {
             const btn = root?.querySelector(sel) || ensureHistoryBackdrop().querySelector(sel);
             if (btn) btn.disabled = true;
+        }
+        for (const btn of backfillStoreButtons) {
+            btn.disabled = true;
         }
 
         try {
@@ -4503,6 +4527,9 @@
                 const btn = root?.querySelector(sel) || ensureHistoryBackdrop().querySelector(sel);
                 if (btn) btn.disabled = false;
             }
+            for (const btn of backfillStoreButtons) {
+                btn.disabled = false;
+            }
         }
     }
 
@@ -4521,7 +4548,7 @@
         const head = weeks
             .map((w, idx) => {
                 const label = FORECAST_WEEK_LABELS[idx] || w;
-                return `<th><span class="admin-history-col-label">${escapeHtml(label)}</span><span class="admin-accounts-meta">${escapeHtml(formatShortDate(w))}</span></th>`;
+                return `<th class="admin-forecast-status-col"><span class="admin-history-col-label">${escapeHtml(label)}</span></th>`;
             })
             .join('');
         const rows = stores
@@ -4535,7 +4562,7 @@
                 const histLabel = hist.ready
                     ? `History ${hist.daysRecorded}/${hist.daysRequired}d${captureNote}`
                     : `History ${hist.daysRecorded}/${hist.daysRequired}d${captureNote} - need ${escapeHtml((hist.weekdayGaps || []).join(', ') || 'more days')}`;
-                const runDisabled = hist.ready ? '' : ' disabled title="Open History and use Backfill data"';
+                const runDisabled = hist.ready ? '' : ' disabled title="Backfill missing history first"';
                 const weekCells = weeks
                     .map((weekStart) => {
                         const row = payload.stores[storeNumber]?.[weekStart] || {};
@@ -4544,34 +4571,58 @@
                             ? `<span class="admin-accounts-meta">${upd.daysUpdated || 0}/7 · ${upd.lastSource === 'auto' ? 'Auto' : 'User'} ${escapeHtml(formatShortDateTime(upd.lastUpdatedAt))}</span>`
                             : '';
                         if (row.completed) {
-                            return `<td>${dot(true)} Done${updNote}</td>`;
+                            return forecastStatusCell(
+                                'ok',
+                                `<span class="admin-forecast-status-label">Done</span>${updNote}`
+                            );
                         }
                         if (row.mmxCompleted && !row.lifelenzCompleted) {
-                            return `<td>${dot(false, true)} MMX only</td>`;
+                            return forecastStatusCell('partial', '<span class="admin-forecast-status-label">MMX only</span>');
                         }
                         if (row.lifelenzCompleted && !row.mmxCompleted) {
-                            return `<td>${dot(false, true)} LifeLenz only</td>`;
+                            return forecastStatusCell('partial', '<span class="admin-forecast-status-label">LifeLenz only</span>');
                         }
-                        return `<td>${dot(false)} Pending</td>`;
+                        return forecastStatusCell('bad', '<span class="admin-forecast-status-label">Pending</span>');
                     })
                     .join('');
                 return `<tr>
-                    <td>${escapeHtml(storeNumber)}<span class="admin-accounts-meta">${histLabel}</span></td>
-                    <td>${dot(hist.ready, !hist.ready && hist.daysRecorded > 0)} ${hist.ready ? 'Ready' : 'Not ready'}</td>
+                    <td class="admin-forecast-store-cell">
+                        <div class="admin-forecast-store-cell-inner">
+                            <div class="admin-forecast-store-heading">
+                                <div class="admin-forecast-store-number">${escapeHtml(storeNumber)}</div>
+                                <span class="admin-accounts-meta admin-forecast-store-history-label">${histLabel}</span>
+                            </div>
+                            <button type="button" class="admin-forecast-history-icon-btn" data-history-store="${escapeHtml(storeNumber)}" title="View forecast history" aria-label="View forecast history for store ${escapeHtml(storeNumber)}">${FORECAST_HISTORY_SVG}</button>
+                        </div>
+                    </td>
+                    ${forecastHistoryStatusCell(hist, storeNumber)}
                     ${weekCells}
                     <td class="admin-forecast-actions">
-                        <button type="button" class="mic-settings-btn" data-history-store="${escapeHtml(storeNumber)}">History</button>
-                        <button type="button" class="mic-settings-btn admin-btn-primary" data-submit-store="${escapeHtml(storeNumber)}"${runDisabled}>Submit</button>
-                        <button type="button" class="mic-settings-btn" data-update-three-weeks-store="${escapeHtml(storeNumber)}"${runDisabled}>3 weeks</button>
+                        <div class="admin-forecast-actions-inner">
+                            <button type="button" class="mic-settings-btn admin-btn-primary" data-submit-store="${escapeHtml(storeNumber)}"${runDisabled}>Submit</button>
+                            <button type="button" class="mic-settings-btn" data-update-three-weeks-store="${escapeHtml(storeNumber)}"${runDisabled}>3 weeks</button>
+                        </div>
                     </td>
                 </tr>`;
             })
             .join('');
+        const statusColCount = 1 + weeks.length;
+        const storeColPct = 36;
+        const actionsColPct = 14;
+        const statusColPct = (100 - storeColPct - actionsColPct) / statusColCount;
+        const statusCols = Array.from(
+            { length: statusColCount },
+            () => `<col class="admin-forecast-col-status" style="width: ${statusColPct}%" />`
+        ).join('');
         body.innerHTML = `
-            <p class="admin-accounts-meta">Daily forecast auto-submit is configured under Admin → Daily reports.</p>
-            <table class="admin-table">
+            <table class="admin-table admin-forecast-status-table">
+                <colgroup>
+                    <col class="admin-forecast-col-store" style="width: ${storeColPct}%" />
+                    ${statusCols}
+                    <col class="admin-forecast-col-actions" style="width: ${actionsColPct}%" />
+                </colgroup>
                 <thead>
-                    <tr><th>Store</th><th>History</th>${head}<th></th></tr>
+                    <tr><th>Store</th><th class="admin-forecast-status-col">History</th>${head}<th></th></tr>
                 </thead>
                 <tbody>${rows}</tbody>
             </table>`;
@@ -4583,6 +4634,11 @@
         body.querySelectorAll('[data-history-store]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 void openHistory(btn.getAttribute('data-history-store'));
+            });
+        });
+        body.querySelectorAll('[data-backfill-store]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                void runForecastBackfill([btn.getAttribute('data-backfill-store')]);
             });
         });
         body.querySelectorAll('[data-update-three-weeks-store]').forEach((btn) => {

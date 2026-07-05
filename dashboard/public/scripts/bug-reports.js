@@ -5,7 +5,6 @@
                 <div class="requests-view-header-row">
                     <div>
                         <h2>Report a bug</h2>
-                        <p class="admin-section-subtitle">Upvote bugs others reported to raise important ones. Photos are removed when a bug is marked fixed.</p>
                     </div>
                     <button type="button" id="bug-reports-add-toggle" class="requests-add-toggle" aria-label="Report bug" aria-expanded="false" title="Report bug">
                         <svg class="requests-add-toggle-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">

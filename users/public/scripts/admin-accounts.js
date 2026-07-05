@@ -37,21 +37,17 @@
         return Boolean(pageHost);
     }
 
-    function sectionHeader(title, subtitle) {
+    function sectionHeader(title) {
         return `
             <header class="admin-section-header">
                 <h2>${escapeHtml(title)}</h2>
-                ${subtitle ? `<p class="admin-section-subtitle">${escapeHtml(subtitle)}</p>` : ''}
             </header>`;
     }
 
     function createViewHtml() {
         return `
             <div class="admin-modal admin-modal--wide admin-accounts-view" data-accounts-view="create">
-                ${sectionHeader(
-                    'Create account',
-                    'Add a new dashboard login. A temporary password is generated automatically for the user to sign in and set their own password.'
-                )}
+                ${sectionHeader('Create account')}
                 <section id="admin-accounts-create" class="admin-accounts-create admin-accounts-create--standalone">
                     <form id="admin-accounts-create-form" class="admin-accounts-form-grid">
                         <div id="admin-create-scope-fields" class="admin-accounts-scope-stack"></div>
@@ -77,10 +73,7 @@
     function existingViewHtml() {
         return `
             <div class="admin-modal admin-modal--wide admin-accounts-view" data-accounts-view="existing">
-                ${sectionHeader(
-                    'Existing accounts',
-                    'Use the org tree to pick a market, area, and store, then view or manage crew logins for that store.'
-                )}
+                ${sectionHeader('Existing accounts')}
                 <div id="admin-accounts-browse-scope" class="admin-accounts-browse-scope admin-accounts-org-nav"></div>
                 <div id="admin-accounts-body" class="admin-accounts-body"></div>
                 <p id="admin-accounts-error" class="admin-modal-error" role="alert"></p>

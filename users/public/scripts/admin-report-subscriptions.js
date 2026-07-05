@@ -624,10 +624,6 @@
         root.innerHTML = `
             <div class="admin-modal admin-modal--inline admin-report-subscriptions">
                 <h2>Report subscriptions</h2>
-                <p class="admin-accounts-meta">
-                    Emailed CSV reports from ${escapeHtml(emailFrom)}. Each cell is one store${canManageAreaScope ? ' (or whole area)' : ''} and report type.
-                    Use <strong>Set up</strong> to configure recipients, frequency, and schedule. Hourly sales default to the last 35 days; ISE reports use weekly snapshots ending yesterday.
-                </p>
                 <p class="admin-modal-error" id="admin-report-sub-error" role="alert"></p>
                 <div class="admin-settings-segmented-tabs admin-accounts-browse-scope admin-accounts-org-nav admin-report-sub-area-nav">
                     <div class="admin-accounts-scope-row-wrap">

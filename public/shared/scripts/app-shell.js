@@ -263,7 +263,7 @@
                 <header class="admin-settings-header">
                     <div id="nav-back-host" class="admin-settings-header__back"></div>
                     <h1 class="admin-settings-title">Settings</h1>
-                    <button type="button" id="admin-settings-nav-toggle" class="admin-settings-nav-toggle admin-settings-header__menu" aria-expanded="false" aria-controls="admin-settings-nav">Menu</button>
+                    <button type="button" id="admin-settings-nav-toggle" class="admin-settings-nav-toggle admin-settings-header__menu" aria-expanded="false" aria-controls="admin-settings-nav" aria-label="Open menu"><svg class="admin-settings-nav-toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 7h16v2H4V7zm0 5h16v2H4v-2zm0 5h16v2H4v-2z"/></svg></button>
                 </header>
                 <div class="admin-settings-body">
                     <div id="admin-settings-nav-backdrop" class="admin-settings-nav-backdrop" hidden aria-hidden="true"></div>

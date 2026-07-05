@@ -298,10 +298,6 @@
         root.innerHTML = `
             <div class="admin-modal admin-modal--inline admin-store-hours">
                 <h2>Operating times</h2>
-                <p class="admin-accounts-meta">
-                    Set when each store opens and closes on the dashboard grid. Hours use a 24-hour clock
-                    (e.g. 10 = 10am, 22 = 10pm, 24 = midnight). Past-midnight closes can use 25, 26, etc.
-                </p>
                 <div class="admin-settings-segmented-tabs admin-accounts-browse-scope admin-accounts-org-nav admin-store-hours-area-nav">
                     <div class="admin-accounts-scope-row-wrap">
                         <span class="admin-accounts-scope-row-label">Area</span>

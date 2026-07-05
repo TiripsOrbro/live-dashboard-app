@@ -5,7 +5,6 @@
                 <div class="requests-view-header-row">
                     <div>
                         <h2>Feature requests</h2>
-                        <p class="admin-section-subtitle">Upvote requests to raise important ideas. Downvote to lower them. New requests email the team.</p>
                     </div>
                     <button type="button" id="requests-add-toggle" class="requests-add-toggle" aria-label="New request" aria-expanded="false" title="New request">
                         <svg class="requests-add-toggle-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
@@ -869,8 +868,26 @@
             .sort((a, b) => (Number(a.roadmapOrder) || 0) - (Number(b.roadmapOrder) || 0));
     }
 
-    function buildRoadmapConnectorHtml() {
-        return '<div class="requests-roadmap-connector" aria-hidden="true"><span class="requests-roadmap-connector-arrow">→</span></div>';
+    function buildTreeBranchSvg(placement) {
+        const trunkY = 110;
+        if (placement === 'above') {
+            return `<svg class="requests-roadmap-tree-branch" viewBox="0 0 240 220" preserveAspectRatio="none" aria-hidden="true">
+                <path d="M0 ${trunkY} H36 Q44 ${trunkY} 44 ${trunkY - 10} V52 Q44 44 52 44 H96" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>`;
+        }
+        return `<svg class="requests-roadmap-tree-branch" viewBox="0 0 240 220" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M0 ${trunkY} H36 Q44 ${trunkY} 44 ${trunkY + 10} V168 Q44 176 52 176 H96" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>`;
+    }
+
+    function buildRoadmapTreeSegmentHtml(row, index) {
+        const placement = index % 2 === 0 ? 'above' : 'below';
+        return `
+            <div class="requests-roadmap-tree-col requests-roadmap-tree-col--${placement}">
+                ${buildTreeBranchSvg(placement)}
+                <div class="requests-roadmap-tree-node">${buildRoadmapFeatureCardHtml(row)}</div>
+            </div>
+        `;
     }
 
     function buildRoadmapAddCardHtml() {
@@ -941,21 +958,27 @@
     function scrollRoadmapCardIntoView(requestId) {
         if (!requestId || !roadmapTrackEl) return;
         requestAnimationFrame(() => {
-            roadmapTrackEl
-                .querySelector(`[data-request-id="${CSS.escape(requestId)}"]`)
-                ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'end' });
+            const card = roadmapTrackEl.querySelector(`[data-request-id="${CSS.escape(requestId)}"]`);
+            (card?.closest('.requests-roadmap-tree-col') || card)?.scrollIntoView({
+                behavior: 'smooth',
+                block: 'nearest',
+                inline: 'end',
+            });
         });
     }
 
     function renderRoadmap() {
         if (!roadmapTrackEl) return;
         const items = roadmapRequests();
-        const parts = [buildRoadmapAddCardHtml()];
-        for (const row of items) {
-            parts.push(buildRoadmapConnectorHtml());
-            parts.push(buildRoadmapFeatureCardHtml(row));
-        }
-        roadmapTrackEl.innerHTML = parts.join('');
+        const segments = items.map((row, index) => buildRoadmapTreeSegmentHtml(row, index)).join('');
+        roadmapTrackEl.innerHTML = `
+            <div class="requests-roadmap-tree">
+                <div class="requests-roadmap-tree-col requests-roadmap-tree-col--root">
+                    <div class="requests-roadmap-tree-node requests-roadmap-tree-node--root">${buildRoadmapAddCardHtml()}</div>
+                </div>
+                ${segments}
+            </div>
+        `;
         if (roadmapEmptyEl) {
             roadmapEmptyEl.hidden = items.length > 0;
         }

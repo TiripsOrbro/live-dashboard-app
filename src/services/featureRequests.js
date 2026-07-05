@@ -21,8 +21,17 @@ const FEATURE_REQUEST_PRIORITIES = [
     { id: 'urgent', label: 'Urgent', rank: 4 },
 ];
 
+const ROADMAP_STATUSES = [
+    { id: 'not_started', label: 'Not Started' },
+    { id: 'started', label: 'Started' },
+    { id: 'testing', label: 'Testing' },
+    { id: 'debugging', label: 'Debugging' },
+    { id: 'finished', label: 'Finished' },
+];
+
 const PRIORITY_IDS = new Set(FEATURE_REQUEST_PRIORITIES.map((row) => row.id));
 const PRIORITY_RANK = Object.fromEntries(FEATURE_REQUEST_PRIORITIES.map((row) => [row.id, row.rank]));
+const ROADMAP_STATUS_IDS = new Set(ROADMAP_STATUSES.map((row) => row.id));
 
 const MAX_DETAILS_LENGTH = 5000;
 const MAX_MILESTONES = 50;
@@ -124,6 +133,21 @@ function priorityRank(priorityId) {
     return PRIORITY_RANK[normalizePriority(priorityId)] || PRIORITY_RANK.normal;
 }
 
+function normalizeRoadmapStatus(value) {
+    const id = String(value || 'not_started').trim().toLowerCase();
+    return ROADMAP_STATUS_IDS.has(id) ? id : 'not_started';
+}
+
+function nextRoadmapOrder(state) {
+    let max = 0;
+    for (const row of state.requests || []) {
+        if (row.onRoadmap && typeof row.roadmapOrder === 'number' && row.roadmapOrder > max) {
+            max = row.roadmapOrder;
+        }
+    }
+    return max + 1;
+}
+
 function normalizeMilestones(value) {
     if (!Array.isArray(value)) return [];
     return value
@@ -148,17 +172,30 @@ function normalizeRequest(row, state, viewerUsername = '') {
     const upvotes = Array.isArray(row.upvotes) ? row.upvotes.map(String) : [];
     const downvotes = Array.isArray(row.downvotes) ? row.downvotes.map(String) : [];
     const viewer = String(viewerUsername || '').trim();
+    const onRoadmap = Boolean(row.onRoadmap);
     const normalized = {
         ...row,
         priority: normalizePriority(row.priority),
         details: String(row.details || '').slice(0, MAX_DETAILS_LENGTH),
         milestones: normalizeMilestones(row.milestones),
+        onRoadmap,
+        roadmapStatus: normalizeRoadmapStatus(row.roadmapStatus),
         upvoteCount: upvotes.length,
         downvoteCount: downvotes.length,
         score: upvotes.length - downvotes.length,
         upvotedByViewer: viewer ? upvotes.includes(viewer) : false,
         downvotedByViewer: viewer ? downvotes.includes(viewer) : false,
     };
+    if (onRoadmap && typeof row.roadmapOrder === 'number') {
+        normalized.roadmapOrder = row.roadmapOrder;
+    } else {
+        delete normalized.roadmapOrder;
+    }
+    if (onRoadmap && row.roadmapAddedAt) {
+        normalized.roadmapAddedAt = row.roadmapAddedAt;
+    } else {
+        delete normalized.roadmapAddedAt;
+    }
     if (category) {
         normalized.category = category;
     } else {
@@ -199,6 +236,10 @@ function listFeatureRequestCategories(options = {}) {
 
 function listFeatureRequestPriorities() {
     return FEATURE_REQUEST_PRIORITIES.map((row) => ({ ...row }));
+}
+
+function listRoadmapStatuses() {
+    return ROADMAP_STATUSES.map((row) => ({ ...row }));
 }
 
 function listFeatureRequests(viewerUsername = '') {
@@ -407,6 +448,32 @@ function updateFeatureRequest(id, updates = {}, viewerUsername = '') {
     if (typeof updates.completed === 'boolean') {
         item.completed = updates.completed;
         item.completedAt = item.completed ? new Date().toISOString() : null;
+        if (item.completed && item.onRoadmap) {
+            item.roadmapStatus = 'finished';
+        } else if (!item.completed && item.onRoadmap) {
+            item.roadmapStatus = 'not_started';
+        }
+    }
+    if (typeof updates.onRoadmap === 'boolean') {
+        if (updates.onRoadmap) {
+            item.onRoadmap = true;
+            item.roadmapOrder = nextRoadmapOrder(state);
+            item.roadmapAddedAt = new Date().toISOString();
+            item.roadmapStatus = 'not_started';
+            item.completed = false;
+            item.completedAt = null;
+        } else {
+            item.onRoadmap = false;
+            delete item.roadmapOrder;
+            delete item.roadmapAddedAt;
+        }
+    }
+    if (updates.roadmapStatus !== undefined) {
+        item.roadmapStatus = normalizeRoadmapStatus(updates.roadmapStatus);
+        if (item.roadmapStatus === 'finished') {
+            item.completed = true;
+            item.completedAt = item.completedAt || new Date().toISOString();
+        }
     }
     if (updates.category !== undefined) {
         const normalizedCategory = normalizeCategory(updates.category, state);
@@ -438,8 +505,10 @@ function updateFeatureRequest(id, updates = {}, viewerUsername = '') {
 module.exports = {
     DEFAULT_CATEGORIES,
     FEATURE_REQUEST_PRIORITIES,
+    ROADMAP_STATUSES,
     listFeatureRequestCategories,
     listFeatureRequestPriorities,
+    listRoadmapStatuses,
     listFeatureRequests,
     addFeatureRequestCategory,
     hideFeatureRequestCategory,

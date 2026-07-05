@@ -828,3 +828,351 @@ html.mic-dark-mode .requests-panel-label {
         transform: none;
     }
 }
+
+/* View toggle */
+.requests-view-toggle {
+    margin-bottom: 0.75rem;
+}
+
+.requests-list-view[hidden],
+.requests-roadmap[hidden] {
+    display: none !important;
+}
+
+/* Roadmap horizontal track */
+.requests-roadmap {
+    margin-top: 0.25rem;
+    margin-bottom: 1rem;
+}
+
+.requests-roadmap-track {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.5rem 0 1rem;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+}
+
+.requests-roadmap-connector {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    color: color-mix(in srgb, var(--charcoal) 45%, transparent);
+    user-select: none;
+}
+
+.requests-roadmap-connector-arrow {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.requests-roadmap-card {
+    flex: 0 0 auto;
+    width: min(220px, 78vw);
+    min-height: 8.5rem;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 0.65rem;
+    padding: 0.85rem 0.9rem;
+    border: var(--cell-border) color-mix(in srgb, var(--charcoal) 22%, transparent);
+    border-radius: 0.5rem;
+    background: var(--white);
+    scroll-snap-align: start;
+}
+
+.requests-roadmap-card--add {
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    border-style: dashed;
+    border-color: color-mix(in srgb, var(--tb-purple-light) 55%, var(--charcoal));
+    background: color-mix(in srgb, var(--tb-purple-light) 6%, var(--white));
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.requests-roadmap-card--add:hover,
+.requests-roadmap-card--add:focus-visible {
+    background: color-mix(in srgb, var(--tb-purple-light) 14%, var(--white));
+    border-color: var(--tb-purple-light);
+    outline: none;
+}
+
+.requests-roadmap-card--readonly {
+    cursor: default;
+    opacity: 0.85;
+}
+
+.requests-roadmap-card-title {
+    display: block;
+    font-size: var(--font-size-3, 0.95rem);
+    font-weight: var(--font-weight-ui-label, 600);
+    line-height: 1.35;
+    color: var(--charcoal);
+}
+
+.requests-roadmap-card-plus {
+    display: block;
+    margin-top: 0.5rem;
+    font-size: 1.5rem;
+    line-height: 1;
+    color: var(--tb-purple-light);
+}
+
+.requests-roadmap-card-hint {
+    margin: 0.35rem 0 0;
+    font-size: var(--font-size-4, 0.82rem);
+    line-height: 1.35;
+    color: color-mix(in srgb, var(--charcoal) 55%, transparent);
+}
+
+.requests-roadmap-card-body {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.requests-roadmap-card-feature-title {
+    margin: 0;
+    font-size: var(--font-size-3, 0.95rem);
+    font-weight: var(--font-weight-ui-label, 600);
+    line-height: 1.35;
+    color: var(--charcoal);
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.requests-roadmap-card-meta {
+    margin: 0.35rem 0 0;
+    font-size: var(--font-size-4, 0.82rem);
+    color: color-mix(in srgb, var(--charcoal) 55%, transparent);
+}
+
+.requests-roadmap-card-score {
+    display: inline-block;
+    margin-bottom: 0.35rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    font-size: var(--font-size-4, 0.82rem);
+    font-weight: 600;
+    background: color-mix(in srgb, var(--charcoal) 8%, transparent);
+    color: var(--charcoal);
+}
+
+.requests-roadmap-status {
+    width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    font-size: var(--font-size-4, 0.82rem);
+    padding: 0.4rem 0.5rem;
+    border: var(--cell-border) color-mix(in srgb, var(--charcoal) 22%, transparent);
+    border-radius: 0.35rem;
+    background: var(--blank, var(--white));
+    color: var(--charcoal);
+}
+
+.requests-roadmap-status:focus-visible {
+    outline: none;
+    border-color: var(--tb-purple-light);
+}
+
+.requests-roadmap-status-readonly {
+    display: block;
+    font-size: var(--font-size-4, 0.82rem);
+    font-weight: 600;
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.35rem;
+    text-align: center;
+}
+
+.requests-roadmap-card--not-started {
+    border-color: color-mix(in srgb, var(--charcoal) 22%, transparent);
+}
+
+.requests-roadmap-card--started {
+    border-color: color-mix(in srgb, var(--tb-purple-light) 45%, transparent);
+    background: color-mix(in srgb, var(--tb-purple-light) 5%, var(--white));
+}
+
+.requests-roadmap-card--testing {
+    border-color: color-mix(in srgb, #3b82f6 45%, transparent);
+    background: color-mix(in srgb, #3b82f6 6%, var(--white));
+}
+
+.requests-roadmap-card--debugging {
+    border-color: color-mix(in srgb, #f59e0b 50%, transparent);
+    background: color-mix(in srgb, #f59e0b 8%, var(--white));
+}
+
+.requests-roadmap-card--finished {
+    border-color: color-mix(in srgb, #22c55e 45%, transparent);
+    background: color-mix(in srgb, #22c55e 8%, var(--white));
+}
+
+.requests-roadmap-status-readonly--not-started {
+    background: color-mix(in srgb, var(--charcoal) 8%, transparent);
+}
+
+.requests-roadmap-status-readonly--started {
+    background: color-mix(in srgb, var(--tb-purple-light) 18%, transparent);
+}
+
+.requests-roadmap-status-readonly--testing {
+    background: color-mix(in srgb, #3b82f6 18%, transparent);
+}
+
+.requests-roadmap-status-readonly--debugging {
+    background: color-mix(in srgb, #f59e0b 20%, transparent);
+}
+
+.requests-roadmap-status-readonly--finished {
+    background: color-mix(in srgb, #22c55e 20%, transparent);
+}
+
+.requests-roadmap-empty {
+    margin: 0.5rem 0 0;
+    font-size: var(--font-size-4, 0.82rem);
+    color: color-mix(in srgb, var(--charcoal) 55%, transparent);
+}
+
+/* Roadmap add dialog */
+.requests-roadmap-add-dialog {
+    border: var(--cell-border) color-mix(in srgb, var(--charcoal) 22%, transparent);
+    border-radius: 0.5rem;
+    padding: 0;
+    max-width: min(32rem, 92vw);
+    background: var(--white);
+    color: var(--charcoal);
+}
+
+.requests-roadmap-add-dialog::backdrop {
+    background: color-mix(in srgb, var(--charcoal) 35%, transparent);
+}
+
+.requests-roadmap-add-dialog-inner {
+    padding: 1.1rem 1.15rem 1rem;
+}
+
+.requests-roadmap-add-dialog-title {
+    margin: 0 0 0.35rem;
+    font-size: var(--font-size-2, 1.05rem);
+}
+
+.requests-roadmap-add-dialog-subtitle {
+    margin: 0 0 0.85rem;
+    font-size: var(--font-size-4, 0.82rem);
+    color: color-mix(in srgb, var(--charcoal) 55%, transparent);
+}
+
+.requests-roadmap-add-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    max-height: min(50vh, 22rem);
+    overflow-y: auto;
+    margin-bottom: 0.85rem;
+}
+
+.requests-roadmap-add-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.2rem;
+    width: 100%;
+    padding: 0.65rem 0.75rem;
+    border: var(--cell-border) color-mix(in srgb, var(--charcoal) 18%, transparent);
+    border-radius: 0.4rem;
+    background: var(--blank, var(--white));
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    color: var(--charcoal);
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.requests-roadmap-add-item:hover,
+.requests-roadmap-add-item:focus-visible {
+    background: color-mix(in srgb, var(--tb-purple-light) 10%, var(--white));
+    border-color: var(--tb-purple-light);
+    outline: none;
+}
+
+.requests-roadmap-add-item-text {
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.requests-roadmap-add-item-meta {
+    font-size: var(--font-size-4, 0.82rem);
+    color: color-mix(in srgb, var(--charcoal) 55%, transparent);
+}
+
+.requests-roadmap-add-empty {
+    margin: 0;
+    padding: 0.75rem;
+    font-size: var(--font-size-4, 0.82rem);
+    color: color-mix(in srgb, var(--charcoal) 55%, transparent);
+    text-align: center;
+}
+
+.requests-roadmap-add-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.requests-roadmap-add-cancel {
+    font: inherit;
+    padding: 0.45rem 0.85rem;
+    border: var(--cell-border) color-mix(in srgb, var(--charcoal) 22%, transparent);
+    border-radius: 0.35rem;
+    background: transparent;
+    color: var(--charcoal);
+    cursor: pointer;
+}
+
+.requests-roadmap-add-cancel:hover,
+.requests-roadmap-add-cancel:focus-visible {
+    background: color-mix(in srgb, var(--charcoal) 6%, transparent);
+    outline: none;
+}
+
+html.mic-dark-mode .requests-roadmap-card,
+html.mic-dark-mode .requests-roadmap-add-dialog {
+    background: var(--charcoal);
+    color: var(--white);
+}
+
+html.mic-dark-mode .requests-roadmap-card-title,
+html.mic-dark-mode .requests-roadmap-card-feature-title,
+html.mic-dark-mode .requests-roadmap-add-dialog-title {
+    color: var(--white);
+}
+
+html.mic-dark-mode .requests-roadmap-card-meta,
+html.mic-dark-mode .requests-roadmap-card-hint,
+html.mic-dark-mode .requests-roadmap-add-dialog-subtitle,
+html.mic-dark-mode .requests-roadmap-add-item-meta,
+html.mic-dark-mode .requests-roadmap-empty,
+html.mic-dark-mode .requests-roadmap-add-empty {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+html.mic-dark-mode .requests-roadmap-add-item {
+    background: color-mix(in srgb, var(--white) 6%, var(--charcoal));
+    color: var(--white);
+}
+
+@media (max-width: 720px) {
+    .requests-roadmap-card {
+        width: min(200px, 72vw);
+        min-height: 7.5rem;
+    }
+}

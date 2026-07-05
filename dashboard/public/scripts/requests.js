@@ -30,6 +30,15 @@
                 </form>
             </div>
             <p id="requests-success" class="requests-success" role="status" hidden></p>
+            <div class="admin-settings-segmented-tabs admin-accounts-org-nav requests-view-toggle">
+                <div class="admin-accounts-scope-row-wrap">
+                    <div class="admin-accounts-scope-row admin-accounts-scope-row--equal requests-view-toggle-row" role="tablist" aria-label="Feature request view" style="--scope-cols: 2">
+                        <button type="button" id="requests-view-list" class="admin-accounts-scope-chip is-active" role="tab" data-view="list" aria-selected="true">List</button>
+                        <button type="button" id="requests-view-roadmap" class="admin-accounts-scope-chip" role="tab" data-view="roadmap" aria-selected="false">Roadmap</button>
+                    </div>
+                </div>
+            </div>
+            <div id="requests-list-view" class="requests-list-view">
             <div class="admin-settings-segmented-tabs admin-accounts-org-nav requests-tabs-bar">
                 <div class="admin-accounts-scope-row-wrap">
                     <span class="admin-accounts-scope-row-label">Category</span>
@@ -41,7 +50,6 @@
             </div>
             <div id="requests-list" class="requests-list" aria-live="polite">Loading…</div>
             <p id="requests-empty" class="requests-empty" hidden>No feature requests yet.</p>
-            <p id="requests-error" class="requests-error" role="alert" hidden></p>
             <div class="admin-settings-segmented-tabs requests-done-bar">
                 <div class="admin-accounts-scope-row-wrap">
                     <div class="admin-accounts-scope-row admin-accounts-scope-row--equal requests-done-row" style="--scope-cols: 1">
@@ -49,6 +57,22 @@
                     </div>
                 </div>
             </div>
+            </div>
+            <div id="requests-roadmap" class="requests-roadmap" hidden aria-live="polite">
+                <div id="requests-roadmap-track" class="requests-roadmap-track"></div>
+                <p id="requests-roadmap-empty" class="requests-roadmap-empty" hidden>No items on the working roadmap yet.</p>
+            </div>
+            <p id="requests-error" class="requests-error" role="alert" hidden></p>
+            <dialog id="requests-roadmap-add-dialog" class="requests-roadmap-add-dialog">
+                <div class="requests-roadmap-add-dialog-inner">
+                    <h2 class="requests-roadmap-add-dialog-title">Add to Working Roadmap</h2>
+                    <p class="requests-roadmap-add-dialog-subtitle">Choose a request from the backlog to add to the roadmap.</p>
+                    <div id="requests-roadmap-add-list" class="requests-roadmap-add-list" role="listbox" aria-label="Backlog requests"></div>
+                    <div class="requests-roadmap-add-dialog-actions">
+                        <button type="button" id="requests-roadmap-add-cancel" class="requests-roadmap-add-cancel">Cancel</button>
+                    </div>
+                </div>
+            </dialog>
             <dialog id="requests-tab-dialog" class="requests-tab-dialog">
                 <form id="requests-tab-dialog-form" class="requests-tab-dialog-form">
                     <h2 class="requests-tab-dialog-title">New tab</h2>
@@ -83,9 +107,19 @@
     let emptyEl;
     let errorEl;
     let successEl;
+    let listViewEl;
+    let viewListBtn;
+    let viewRoadmapBtn;
+    let roadmapEl;
+    let roadmapTrackEl;
+    let roadmapEmptyEl;
+    let roadmapAddDialogEl;
+    let roadmapAddListEl;
+    let roadmapAddCancelEl;
 
     let categories = [];
     let priorities = [];
+    let roadmapStatuses = [];
     let allRequests = [];
     let canManage = false;
     let activeTab = null;
@@ -93,10 +127,13 @@
     let formOpen = false;
     let descriptionOpen = false;
     let panelAnimating = false;
+    let viewMode = 'list';
+    let lastAddedRoadmapId = null;
 
     const PANEL_MS = 700;
     const CREATE_TAB_VALUE = '__create_tab__';
     const UNASSIGNED_TAB = 'unassigned';
+    const VIEW_MODE_KEY = 'feature-requests-view-mode';
 
     function wait(ms) {
         return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -129,6 +166,15 @@
         emptyEl = root.querySelector('#requests-empty');
         errorEl = root.querySelector('#requests-error');
         successEl = root.querySelector('#requests-success');
+        listViewEl = root.querySelector('#requests-list-view');
+        viewListBtn = root.querySelector('#requests-view-list');
+        viewRoadmapBtn = root.querySelector('#requests-view-roadmap');
+        roadmapEl = root.querySelector('#requests-roadmap');
+        roadmapTrackEl = root.querySelector('#requests-roadmap-track');
+        roadmapEmptyEl = root.querySelector('#requests-roadmap-empty');
+        roadmapAddDialogEl = root.querySelector('#requests-roadmap-add-dialog');
+        roadmapAddListEl = root.querySelector('#requests-roadmap-add-list');
+        roadmapAddCancelEl = root.querySelector('#requests-roadmap-add-cancel');
     }
 
     function escapeHtml(value) {
@@ -744,6 +790,211 @@
         `;
     }
 
+    function loadViewMode() {
+        try {
+            const stored = sessionStorage.getItem(VIEW_MODE_KEY);
+            return stored === 'roadmap' ? 'roadmap' : 'list';
+        } catch {
+            return 'list';
+        }
+    }
+
+    function saveViewMode(mode) {
+        try {
+            sessionStorage.setItem(VIEW_MODE_KEY, mode);
+        } catch {
+            /* ignore */
+        }
+    }
+
+    function setViewMode(mode) {
+        viewMode = mode === 'roadmap' ? 'roadmap' : 'list';
+        saveViewMode(viewMode);
+        applyViewVisibility();
+        renderCurrentView();
+    }
+
+    function applyViewVisibility() {
+        const isList = viewMode === 'list';
+        if (listViewEl) listViewEl.hidden = !isList;
+        if (roadmapEl) roadmapEl.hidden = isList;
+        if (viewListBtn) {
+            viewListBtn.classList.toggle('is-active', isList);
+            viewListBtn.setAttribute('aria-selected', isList ? 'true' : 'false');
+        }
+        if (viewRoadmapBtn) {
+            viewRoadmapBtn.classList.toggle('is-active', !isList);
+            viewRoadmapBtn.setAttribute('aria-selected', !isList ? 'true' : 'false');
+        }
+    }
+
+    function renderCurrentView() {
+        if (viewMode === 'roadmap') {
+            renderRoadmap();
+        } else {
+            renderRequests();
+        }
+    }
+
+    function roadmapStatusLabel(statusId) {
+        const match = roadmapStatuses.find((row) => row.id === (statusId || 'not_started'));
+        return match?.label || 'Not Started';
+    }
+
+    function roadmapStatusOptionsHtml(selectedId) {
+        const selected = selectedId || 'not_started';
+        return roadmapStatuses
+            .map(
+                (row) =>
+                    `<option value="${escapeAttr(row.id)}"${row.id === selected ? ' selected' : ''}>${escapeHtml(row.label)}</option>`
+            )
+            .join('');
+    }
+
+    function compareBacklogSort(a, b) {
+        const scoreDiff = (Number(b.score) || 0) - (Number(a.score) || 0);
+        if (scoreDiff !== 0) return scoreDiff;
+        const rankDiff = priorityRank(b.priority) - priorityRank(a.priority);
+        if (rankDiff !== 0) return rankDiff;
+        return new Date(b.createdAt) - new Date(a.createdAt);
+    }
+
+    function backlogRequests() {
+        return allRequests.filter((row) => !row.onRoadmap && !row.completed).sort(compareBacklogSort);
+    }
+
+    function roadmapRequests() {
+        return allRequests
+            .filter((row) => row.onRoadmap && !row.completed)
+            .sort((a, b) => (Number(a.roadmapOrder) || 0) - (Number(b.roadmapOrder) || 0));
+    }
+
+    function buildRoadmapConnectorHtml() {
+        return '<div class="requests-roadmap-connector" aria-hidden="true"><span class="requests-roadmap-connector-arrow">→</span></div>';
+    }
+
+    function buildRoadmapAddCardHtml() {
+        if (!canManage) {
+            return `
+                <div class="requests-roadmap-card requests-roadmap-card--add requests-roadmap-card--readonly">
+                    <span class="requests-roadmap-card-title">Add to Working Roadmap</span>
+                    <p class="requests-roadmap-card-hint">Only the dashboard owner can add items.</p>
+                </div>
+            `;
+        }
+        return `
+            <button type="button" class="requests-roadmap-card requests-roadmap-card--add" data-action="roadmap-add-open">
+                <span class="requests-roadmap-card-title">Add to Working Roadmap</span>
+                <span class="requests-roadmap-card-plus">+</span>
+            </button>
+        `;
+    }
+
+    function buildRoadmapFeatureCardHtml(row) {
+        const status = row.roadmapStatus || 'not_started';
+        const statusClass = status.replace(/_/g, '-');
+        const score = Number(row.score) || 0;
+        const scoreHtml =
+            score !== 0 ? `<span class="requests-roadmap-card-score">${score > 0 ? '+' : ''}${score}</span>` : '';
+        const statusControl = canManage
+            ? `<select class="requests-roadmap-status" data-action="roadmap-status" data-request-id="${escapeAttr(row.id)}" aria-label="Roadmap status for ${escapeAttr(row.text)}">${roadmapStatusOptionsHtml(status)}</select>`
+            : `<span class="requests-roadmap-status-readonly requests-roadmap-status-readonly--${escapeAttr(statusClass)}">${escapeHtml(roadmapStatusLabel(status))}</span>`;
+
+        return `
+            <article class="requests-roadmap-card requests-roadmap-card--feature requests-roadmap-card--${escapeAttr(statusClass)}" data-request-id="${escapeAttr(row.id)}">
+                <div class="requests-roadmap-card-body">
+                    ${scoreHtml}
+                    <h3 class="requests-roadmap-card-feature-title">${escapeHtml(row.text)}</h3>
+                    <p class="requests-roadmap-card-meta">${escapeHtml(categoryLabel(row.category))}</p>
+                </div>
+                ${statusControl}
+            </article>
+        `;
+    }
+
+    function renderRoadmapAddDialog() {
+        if (!roadmapAddListEl) return;
+        const backlog = backlogRequests();
+        if (!backlog.length) {
+            roadmapAddListEl.innerHTML =
+                '<p class="requests-roadmap-add-empty">No requests available — submit one from the List view or + button first.</p>';
+            return;
+        }
+        roadmapAddListEl.innerHTML = backlog
+            .map(
+                (row) => `
+                    <button type="button" class="requests-roadmap-add-item" data-action="roadmap-add-pick" data-request-id="${escapeAttr(row.id)}" role="option">
+                        <span class="requests-roadmap-add-item-text">${escapeHtml(row.text)}</span>
+                        <span class="requests-roadmap-add-item-meta">${escapeHtml(categoryLabel(row.category))}${row.score ? ` · ${row.score > 0 ? '+' : ''}${row.score}` : ''}</span>
+                    </button>
+                `
+            )
+            .join('');
+    }
+
+    function openRoadmapAddDialog() {
+        if (!canManage || !roadmapAddDialogEl) return;
+        renderRoadmapAddDialog();
+        roadmapAddDialogEl.showModal();
+    }
+
+    function scrollRoadmapCardIntoView(requestId) {
+        if (!requestId || !roadmapTrackEl) return;
+        requestAnimationFrame(() => {
+            roadmapTrackEl
+                .querySelector(`[data-request-id="${CSS.escape(requestId)}"]`)
+                ?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'end' });
+        });
+    }
+
+    function renderRoadmap() {
+        if (!roadmapTrackEl) return;
+        const items = roadmapRequests();
+        const parts = [buildRoadmapAddCardHtml()];
+        for (const row of items) {
+            parts.push(buildRoadmapConnectorHtml());
+            parts.push(buildRoadmapFeatureCardHtml(row));
+        }
+        roadmapTrackEl.innerHTML = parts.join('');
+        if (roadmapEmptyEl) {
+            roadmapEmptyEl.hidden = items.length > 0;
+        }
+        if (lastAddedRoadmapId) {
+            scrollRoadmapCardIntoView(lastAddedRoadmapId);
+            lastAddedRoadmapId = null;
+        }
+    }
+
+    async function addRequestToRoadmap(requestId) {
+        if (!canManage || !requestId) return;
+        showError('');
+        try {
+            await patchRequest(requestId, { onRoadmap: true });
+            lastAddedRoadmapId = requestId;
+            roadmapAddDialogEl?.close();
+            showSuccess('Added to working roadmap.');
+            renderRoadmap();
+        } catch (error) {
+            showError(error.message || 'Could not add to roadmap.');
+        }
+    }
+
+    async function updateRoadmapStatus(requestId, status) {
+        if (!canManage || !requestId) return;
+        showError('');
+        const select = roadmapTrackEl?.querySelector(
+            `[data-action="roadmap-status"][data-request-id="${CSS.escape(requestId)}"]`
+        );
+        if (select) select.disabled = true;
+        try {
+            await patchRequest(requestId, { roadmapStatus: status });
+            renderRoadmap();
+        } catch (error) {
+            showError(error.message || 'Could not update status.');
+            renderRoadmap();
+        }
+    }
+
     function renderRequests() {
         if (!listEl) return;
         const rows = filterRequestsForTab(allRequests, activeTab);
@@ -798,9 +1049,20 @@
               ];
         allRequests = Array.isArray(data.requests) ? data.requests : [];
         canManage = Boolean(data.canManage);
+        roadmapStatuses = Array.isArray(data.roadmapStatuses)
+            ? data.roadmapStatuses
+            : [
+                  { id: 'not_started', label: 'Not Started' },
+                  { id: 'started', label: 'Started' },
+                  { id: 'testing', label: 'Testing' },
+                  { id: 'debugging', label: 'Debugging' },
+                  { id: 'finished', label: 'Finished' },
+              ];
+        viewMode = loadViewMode();
         ensureActiveTab();
         setFormCategorySelect(activeTab === 'done' ? '' : activeTab === UNASSIGNED_TAB ? '' : activeTab);
-        renderRequests();
+        applyViewVisibility();
+        renderCurrentView();
     }
 
     function readPanelState(itemEl) {
@@ -837,7 +1099,7 @@
         if (Array.isArray(data.categories)) {
             categories = data.categories;
         }
-        renderTabs();
+        renderCurrentView();
         return data;
     }
 
@@ -897,6 +1159,48 @@
     function wireEvents() {
         if (pageHost?.dataset.requestsBound) return;
         if (pageHost) pageHost.dataset.requestsBound = '1';
+
+    viewListBtn?.addEventListener('click', () => {
+        if (viewMode !== 'list') setViewMode('list');
+    });
+
+    viewRoadmapBtn?.addEventListener('click', () => {
+        if (viewMode !== 'roadmap') setViewMode('roadmap');
+    });
+
+    roadmapTrackEl?.addEventListener('click', (event) => {
+        const addBtn = event.target.closest('[data-action="roadmap-add-open"]');
+        if (addBtn) {
+            openRoadmapAddDialog();
+            return;
+        }
+    });
+
+    roadmapTrackEl?.addEventListener('change', (event) => {
+        const select = event.target.closest('[data-action="roadmap-status"]');
+        if (!select || !canManage) return;
+        const requestId = select.getAttribute('data-request-id');
+        const status = select.value;
+        if (requestId && status) {
+            void updateRoadmapStatus(requestId, status);
+        }
+    });
+
+    roadmapAddListEl?.addEventListener('click', (event) => {
+        const pickBtn = event.target.closest('[data-action="roadmap-add-pick"]');
+        if (!pickBtn) return;
+        const requestId = pickBtn.getAttribute('data-request-id');
+        if (requestId) void addRequestToRoadmap(requestId);
+    });
+
+    roadmapAddCancelEl?.addEventListener('click', () => {
+        roadmapAddDialogEl?.close();
+    });
+
+    roadmapAddDialogEl?.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        roadmapAddDialogEl?.close();
+    });
 
     tabsEl?.addEventListener('contextmenu', (event) => {
         if (!canManage) return;
@@ -1104,8 +1408,11 @@
         expandedId = null;
         formOpen = false;
         descriptionOpen = false;
+        viewMode = 'list';
+        lastAddedRoadmapId = null;
         return loadRequests().catch((error) => {
             if (listEl) listEl.innerHTML = '';
+            if (roadmapTrackEl) roadmapTrackEl.innerHTML = '';
             showError(error.message || 'Load failed.');
         });
     }

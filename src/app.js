@@ -544,6 +544,7 @@ const {
     listFeatureRequests,
     listFeatureRequestCategories,
     listFeatureRequestPriorities,
+    listRoadmapStatuses,
     addFeatureRequest,
     addFeatureRequestCategory,
     hideFeatureRequestCategory,
@@ -3405,6 +3406,7 @@ app.get('/api/feature-requests', (req, res) => {
         requests: listFeatureRequests(user.username),
         categories: listFeatureRequestCategories(),
         priorities: listFeatureRequestPriorities(),
+        roadmapStatuses: listRoadmapStatuses(),
         canManage: isSuperAdminUser(user),
         viewerUsername: user.username,
     });
@@ -3541,7 +3543,9 @@ app.patch('/api/feature-requests/:id', (req, res) => {
     const hasDetails = req.body?.details !== undefined;
     const hasMilestones = req.body?.milestones !== undefined;
     const hasPriority = req.body?.priority !== undefined;
-    if (!hasCompleted && !hasCategory && !hasDetails && !hasMilestones && !hasPriority) {
+    const hasOnRoadmap = typeof req.body?.onRoadmap === 'boolean';
+    const hasRoadmapStatus = req.body?.roadmapStatus !== undefined;
+    if (!hasCompleted && !hasCategory && !hasDetails && !hasMilestones && !hasPriority && !hasOnRoadmap && !hasRoadmapStatus) {
         res.status(400).json({ success: false, error: 'Expected at least one field to update.' });
         return;
     }
@@ -3553,6 +3557,8 @@ app.patch('/api/feature-requests/:id', (req, res) => {
             details: hasDetails ? req.body.details : undefined,
             milestones: hasMilestones ? req.body.milestones : undefined,
             priority: hasPriority ? req.body.priority : undefined,
+            onRoadmap: hasOnRoadmap ? req.body.onRoadmap : undefined,
+            roadmapStatus: hasRoadmapStatus ? req.body.roadmapStatus : undefined,
         },
         user.username
     );

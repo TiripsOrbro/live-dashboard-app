@@ -4675,6 +4675,7 @@ html.mic-dark-mode .admin-forecast-mode-toggle-btn.is-active {
 
 .admin-forecast-override-cell {
     padding: 0.15rem 0.3rem;
+    text-align: center;
 }
 
 .admin-forecast-override-grid .admin-history-num {
@@ -4686,9 +4687,10 @@ html.mic-dark-mode .admin-forecast-mode-toggle-btn.is-active {
     align-items: center;
     justify-content: center;
     gap: 0.15rem;
+    width: 100%;
 }
 
-.admin-forecast-override-input {
+.admin-forecast-override-grid .admin-forecast-override-input {
     width: 4.5rem;
     padding: 0.15rem 0.25rem;
     font-size: 0.8rem;
@@ -4696,6 +4698,14 @@ html.mic-dark-mode .admin-forecast-mode-toggle-btn.is-active {
     border: 1px solid rgba(0, 0, 0, 0.18);
     border-radius: 4px;
     background: transparent;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.admin-forecast-override-grid .admin-forecast-override-input::-webkit-outer-spin-button,
+.admin-forecast-override-grid .admin-forecast-override-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 
 .admin-forecast-override-input--changed {
@@ -4741,7 +4751,7 @@ html.mic-dark-mode .admin-forecast-override-dollar-hint {
     font-weight: 600;
 }
 
-html.mic-dark-mode .admin-forecast-override-input {
+html.mic-dark-mode .admin-forecast-override-grid .admin-forecast-override-input {
     border-color: #555;
     color: inherit;
 }

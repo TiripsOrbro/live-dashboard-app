@@ -3813,7 +3813,6 @@
                 <p id="admin-forecast-override-error" class="admin-modal-error" role="alert"></p>
                 <div class="admin-modal-actions admin-forecast-override-actions">
                     <button type="button" class="mic-settings-btn" id="admin-forecast-override-cancel">Cancel</button>
-                    <button type="button" class="mic-settings-btn" id="admin-forecast-override-save" disabled>Save overrides only</button>
                     <button type="button" class="mic-settings-btn admin-btn-primary" id="admin-forecast-override-submit" disabled>Submit forecast</button>
                 </div>
             </div>`;
@@ -3824,9 +3823,6 @@
         overrideForecastBackdrop
             .querySelector('#admin-forecast-override-cancel')
             ?.addEventListener('click', closeOverrideForecast);
-        overrideForecastBackdrop.querySelector('#admin-forecast-override-save')?.addEventListener('click', () => {
-            void saveOverrideForecast();
-        });
         overrideForecastBackdrop.querySelector('#admin-forecast-override-submit')?.addEventListener('click', () => {
             void submitOverrideForecast();
         });
@@ -4174,36 +4170,12 @@
     }
 
     function setOverrideButtonsBusy(root, busy) {
-        ['#admin-forecast-override-save', '#admin-forecast-override-submit', '#admin-forecast-override-cancel', '#admin-forecast-override-reset'].forEach(
+        ['#admin-forecast-override-submit', '#admin-forecast-override-cancel', '#admin-forecast-override-reset'].forEach(
             (id) => {
                 const btn = root.querySelector(id);
                 if (btn) btn.disabled = busy;
             }
         );
-    }
-
-    async function saveOverrideForecast() {
-        const root = ensureOverrideForecastBackdrop();
-        const st = overrideState;
-        if (!st) return;
-        const errEl = root.querySelector('#admin-forecast-override-error');
-        errEl.textContent = '';
-        const saveBtn = root.querySelector('#admin-forecast-override-save');
-        setOverrideButtonsBusy(root, true);
-        saveBtn.textContent = 'Saving…';
-        try {
-            await putOverrideRules(st);
-            closeOverrideForecast();
-            if (getRoot()) {
-                statusPayload = await fetchStatus();
-                renderTable(getRoot(), statusPayload);
-            }
-        } catch (error) {
-            errEl.textContent = error.message;
-        } finally {
-            setOverrideButtonsBusy(root, false);
-            saveBtn.textContent = 'Save overrides only';
-        }
     }
 
     async function submitOverrideForecast() {
@@ -4268,9 +4240,7 @@
         root.querySelector('#admin-forecast-override-error').textContent = '';
         root.querySelector('#admin-forecast-override-body').innerHTML = '<p>Loading forecast…</p>';
         root.querySelector('#admin-forecast-override-week-total').innerHTML = '';
-        const saveBtn = root.querySelector('#admin-forecast-override-save');
         const submitBtn = root.querySelector('#admin-forecast-override-submit');
-        saveBtn.disabled = true;
         submitBtn.disabled = true;
         syncOverrideDisplayModeToggle(root);
         const noteEl = root.querySelector('#admin-forecast-override-lifelenz-note');
@@ -4295,7 +4265,6 @@
                     ? 'Submit forecast writes to Macromatix first, then LifeLenz using your connected login.'
                     : 'LifeLenz is not configured - submit will update Macromatix only. Use Setup LifeLenz to connect.';
             }
-            saveBtn.disabled = false;
             submitBtn.disabled = false;
             syncOverrideDisplayModeToggle(root);
             renderOverrideForecastGrid();

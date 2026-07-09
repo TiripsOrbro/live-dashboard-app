@@ -73,6 +73,7 @@ stores/.storelist
 
 # Vendors runtime data
 vendors/data/stock-count-state.json
+vendors/data/ordering-day-state.json
 vendors/data/daily-stock-count-state.json
 vendors/data/mmx-pipeline-checkpoints.json
 vendors/data/orders-ready-for-review.json

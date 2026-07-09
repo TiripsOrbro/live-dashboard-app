@@ -13,6 +13,12 @@ const {
     getTrackedBrowserCount,
 } = require('./browserLifecycle');
 const { getStoreList, getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../../stores/src/storeList');
+const {
+    shouldSkipPendingVendorScrape,
+    recordPendingVendorScrape,
+    markStoreOrdersComplete,
+    getStoreEntry,
+} = require('../../vendors/src/orderingDayState');
 const { getStoreScrapePhase, formatScrapeWindow } = require('../../src/services/scrapeSchedule');
 
 const BASE_URL = 'https://tacobellau.macromatix.net/';
@@ -247,7 +253,7 @@ function getLastKnownPendingVendors(storeNumber, dateKey) {
 }
 
 function isScheduledOrdersCompleteToday(storeNumber, dateKey) {
-    return scheduledOrdersCompleteByStore.get(storeStateKey(storeNumber)) === dateKey;
+    return shouldSkipPendingVendorScrape(storeNumber, dateKey);
 }
 
 function recordScheduledOrdersResult(storeNumber, dateKey, vendors, options = {}) {
@@ -266,22 +272,28 @@ function recordScheduledOrdersResult(storeNumber, dateKey, vendors, options = {}
         }
     }
 
-    if (vendors.length > 0) {
-        scheduledOrdersEmptyCheckByStore.set(key, { dateKey, count: 0 });
-        scheduledOrdersCompleteByStore.delete(key);
+    if (options.morningPrecheck) {
         return;
     }
 
-    const prev = scheduledOrdersEmptyCheckByStore.get(key);
-    const nextCount = prev && prev.dateKey === dateKey ? prev.count + 1 : 1;
-    scheduledOrdersEmptyCheckByStore.set(key, { dateKey, count: nextCount });
+    if (vendors.length > 0) {
+        scheduledOrdersEmptyCheckByStore.set(key, { dateKey, count: 0 });
+        scheduledOrdersCompleteByStore.delete(key);
+        recordPendingVendorScrape(storeNumber, dateKey, vendors);
+        return;
+    }
 
-    if (nextCount >= getConfirmedEmptyOrderChecks()) {
-        const alreadyComplete = scheduledOrdersCompleteByStore.get(key) === dateKey;
+    if (shouldSkipPendingVendorScrape(storeNumber, dateKey)) {
         scheduledOrdersCompleteByStore.set(key, dateKey);
-        if (!alreadyComplete) {
-            notifyStoreOrdersComplete(storeNumber, dateKey);
-        }
+        return;
+    }
+
+    const scrapeResult = recordPendingVendorScrape(storeNumber, dateKey, vendors, {
+        requiredChecks: getConfirmedEmptyOrderChecks(),
+    });
+    if (scrapeResult.markedComplete || scrapeResult.status === 'complete') {
+        scheduledOrdersCompleteByStore.set(key, dateKey);
+        notifyStoreOrdersComplete(storeNumber, dateKey, 'confirmed_empty_scrape');
     }
 }
 
@@ -312,7 +324,8 @@ function onStoreOrdersComplete(listener) {
     storeOrdersCompleteListener = typeof listener === 'function' ? listener : null;
 }
 
-function notifyStoreOrdersComplete(storeNumber, dateKey) {
+function notifyStoreOrdersComplete(storeNumber, dateKey, reason = 'orders_complete') {
+    markStoreOrdersComplete(storeNumber, dateKey, reason);
     clearStoreOrderCaches(storeNumber, dateKey);
     const { runStoreOrdersCompleteCleanup } = require('../../vendors/src/storeOrdersCompleteCleanup');
     runStoreOrdersCompleteCleanup(storeNumber, dateKey)
@@ -1989,23 +2002,32 @@ async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
     );
 
     let pendingVendors = [];
-    try {
-        const pendingResult = await scrapePendingVendors(page, {
-            storeNumber,
-            pickYmd: testScheduledOrdersPick ? pickYmd : null,
-            skipStoreSelect,
-        });
-        pendingVendors = pendingResult.vendors;
-        console.log(`[Macromatix] Store ${label} pending vendors:`, pendingVendors.join(', ') || '(none)');
-        if (!skipScheduledPersistence) {
-            recordScheduledOrdersResult(storeNumber, todayKey, pendingVendors, {
-                allVendorLabels: pendingResult.allVendorLabels,
+    const skipVendorScrape = shouldSkipPendingVendorScrape(storeNumber, todayKey);
+    if (skipVendorScrape) {
+        const dayEntry = getStoreEntry(storeNumber, todayKey);
+        pendingVendors = [];
+        console.log(
+            `[Macromatix] Store ${label} ordering day status=${dayEntry.status || 'complete'} - skipping scheduled orders vendor check`
+        );
+    } else {
+        try {
+            const pendingResult = await scrapePendingVendors(page, {
+                storeNumber,
+                pickYmd: testScheduledOrdersPick ? pickYmd : null,
+                skipStoreSelect,
             });
+            pendingVendors = pendingResult.vendors;
+            console.log(`[Macromatix] Store ${label} pending vendors:`, pendingVendors.join(', ') || '(none)');
+            if (!skipScheduledPersistence) {
+                recordScheduledOrdersResult(storeNumber, todayKey, pendingVendors, {
+                    allVendorLabels: pendingResult.allVendorLabels,
+                });
+            }
+        } catch (vendorErr) {
+            rethrowIfSalesScrapeAborted(vendorErr);
+            console.warn(`[Macromatix] Store ${label} scheduled orders scrape failed:`, vendorErr.message);
+            pendingVendors = getLastKnownPendingVendors(storeNumber, todayKey);
         }
-    } catch (vendorErr) {
-        rethrowIfSalesScrapeAborted(vendorErr);
-        console.warn(`[Macromatix] Store ${label} scheduled orders scrape failed:`, vendorErr.message);
-        pendingVendors = getLastKnownPendingVendors(storeNumber, todayKey);
     }
 
     const hours = resolveStoreHours(store, storeNumber);

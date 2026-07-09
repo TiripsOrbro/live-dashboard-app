@@ -469,6 +469,46 @@ function clearStoreReportFilesByReportIds(storeNumber, reportsRoot, reportIds) {
     return clearStoreReportFilesByBasenames(storeNumber, reportsRoot, basenames);
 }
 
+const STOCK_LEVEL_REPORT_BASENAMES = ['stock-on-hand', 'stock-on-order'];
+
+function isStockLevelReportFilename(name) {
+    const base = path.basename(String(name || ''));
+    return STOCK_LEVEL_REPORT_BASENAMES.some(
+        (slug) => base.includes(`-${slug}.`) || base.includes(`-${slug}-`)
+    );
+}
+
+/** Remove downloaded reports but keep SOH/SOO files for the stock-levels UI. */
+function clearStoreReportFilesPreservingStockLevels(storeNumber, reportsRoot) {
+    const storeDir = path.join(reportsRoot, String(storeNumber));
+    if (!fs.existsSync(storeDir)) {
+        fs.mkdirSync(storeDir, { recursive: true });
+        return { storeDir, removed: [] };
+    }
+    const removed = [];
+    for (const name of fs.readdirSync(storeDir)) {
+        const filePath = path.join(storeDir, name);
+        if (!fs.statSync(filePath).isFile()) continue;
+        if (isStockLevelReportFilename(name) || name === '.report-manifest.json') continue;
+        fs.unlinkSync(filePath);
+        removed.push(name);
+    }
+    removed.sort();
+    return { storeDir, removed };
+}
+
+function storeStockReportDownloadInfo(storeNumber, reportsRoot) {
+    const files = resolveStoreReports(storeNumber, reportsRoot);
+    const build = (filePath) =>
+        filePath && fs.existsSync(filePath)
+            ? { available: true, filename: path.basename(filePath) }
+            : { available: false, filename: null };
+    return {
+        soh: build(files.stockOnHand),
+        soo: build(files.stockOnOrder),
+    };
+}
+
 function validateReportId(storeNumber, files, reportId, options = {}) {
     const issues = [];
     const { melbourneDateKey } = require('./stockCountState');
@@ -860,6 +900,10 @@ module.exports = {
     clearStoreReportFiles,
     clearStoreReportFilesByBasenames,
     clearStoreReportFilesByReportIds,
+    clearStoreReportFilesPreservingStockLevels,
+    storeStockReportDownloadInfo,
+    isStockLevelReportFilename,
+    STOCK_LEVEL_REPORT_BASENAMES,
     REPORT_OUTPUT_BASENAMES,
     REPORT_FILE_KEYS,
     writeStoreReportManifest,

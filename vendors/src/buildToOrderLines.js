@@ -16,8 +16,10 @@ const { melbourneDateKey } = require('./stockCountState');
 const { getVendorCatalog } = require('./vendorCatalog');
 const { normalizeItemCode } = require('./reportReader');
 const { buildBuildToEntriesForVendor, catalogLineCodeMatch } = require('./orderItemNameMatch');
+const { isOnIgnoreList } = require('./buildToIgnoreList');
 
 const { loadVendorOrdersConfig } = require('./vendorOrdersConfig');
+const { allLookupKeys } = require('./itemCodes');
 
 function itemMatchesVendorConfig(catalogItem, vendorCfg) {
     if (
@@ -111,6 +113,7 @@ async function buildOrderManualEntriesFromCounts(
 
     for (const item of catalog.items || []) {
         if (!itemMatchesVendorConfig(item, vendorCfg)) continue;
+        if (isOnIgnoreList(item)) continue;
         // ignore / manual / oh-only catalog lines
         if (item.buildToManual && !item.buildToOrderManual) continue;
 
@@ -249,16 +252,86 @@ function vendorCatalogCodeSet(catalog, vendorCfg) {
     return set;
 }
 
+/** MMX scheduled-order vendor ids (e.g. americold-frz) for catalog slugs (e.g. americold). */
+function vendorIdsForCatalogSlugs(catalogSlugs, vendorOrdersCfg = loadVendorOrdersConfig()) {
+    const wanted = new Set(
+        (catalogSlugs || []).map((slug) => String(slug || '').trim().toLowerCase()).filter(Boolean)
+    );
+    if (!wanted.size) return [];
+    return (vendorOrdersCfg.vendors || [])
+        .filter((vendorCfg) => wanted.has(String(vendorCfg.catalogSlug || '').trim().toLowerCase()))
+        .map((vendorCfg) => vendorCfg.id)
+        .filter(Boolean);
+}
+
+/** All normalized item / alias codes for vendor catalog slugs at a store. */
+function catalogItemCodesForSlugs(catalogSlugs, storeNumber) {
+    const codes = new Set();
+    const store = String(storeNumber || '').trim();
+    for (const slug of catalogSlugs || []) {
+        const catalog = getVendorCatalog(slug, store ? { storeNumber: store } : {});
+        if (!catalog) continue;
+        for (const item of catalog.items || []) {
+            const code = normalizeItemCode(item.itemCode);
+            if (!code) continue;
+            codes.add(code);
+            for (const alias of allLookupKeys(code)) {
+                const normalized = normalizeItemCode(alias);
+                if (normalized) codes.add(normalized);
+            }
+        }
+    }
+    return codes;
+}
+
+function vendorPackHasPositiveOrders(pack) {
+    return (pack?.buildToEntries || []).some((entry) => Number(entry.orderQty) > 0);
+}
+
+function summarizeOrderPack(orderPack, { onlyVendorIds } = {}) {
+    const only = onlyVendorIds ? new Set(onlyVendorIds.map(String)) : null;
+    const vendors = [];
+    for (const [vendorId, pack] of Object.entries(orderPack?.byVendorId || {})) {
+        if (only && !only.has(String(vendorId))) continue;
+        const positive = (pack.buildToEntries || []).filter((e) => Number(e.orderQty) > 0);
+        vendors.push({
+            vendorId,
+            label: pack.vendor?.label || vendorId,
+            catalogSlug: pack.vendor?.catalogSlug || '',
+            catalogItems: pack.buildToEntries?.length || 0,
+            orderLines: positive.length,
+            cartons: positive.reduce((sum, e) => sum + Number(e.orderQty || 0), 0),
+        });
+    }
+    return vendors.sort((a, b) => a.label.localeCompare(b.label));
+}
+
 /**
  * Build-to entries per vendor - ISE lines matched to vendor catalog by item name.
  */
 async function buildOrderLinesByVendorId(storeNumber, options = {}) {
     const vendorOrdersCfg = options.vendorOrdersCfg || loadVendorOrdersConfig();
-    const buildTo = await calculateBuildToOrders(storeNumber, options);
+    const onlyVendorIds = Array.isArray(options.onlyVendorIds)
+        ? new Set(options.onlyVendorIds.map(String))
+        : null;
+    const onlyCatalogSlugs = Array.isArray(options.onlyCatalogSlugs)
+        ? options.onlyCatalogSlugs.map((slug) => String(slug || '').trim().toLowerCase()).filter(Boolean)
+        : null;
+    const buildTo = await calculateBuildToOrders(storeNumber, {
+        ...options,
+        onlyCatalogSlugs: onlyCatalogSlugs?.length ? onlyCatalogSlugs : options.onlyCatalogSlugs,
+    });
     const dateKey = options.dateKey || melbourneDateKey();
     const byVendorId = {};
 
     for (const vendorCfg of vendorOrdersCfg.vendors || []) {
+        if (onlyVendorIds && !onlyVendorIds.has(String(vendorCfg.id))) continue;
+        if (
+            onlyCatalogSlugs?.length &&
+            !onlyCatalogSlugs.includes(String(vendorCfg.catalogSlug || '').trim().toLowerCase())
+        ) {
+            continue;
+        }
         const catalog = getVendorCatalog(vendorCfg.catalogSlug);
         const vendorCodes = vendorCatalogCodeSet(catalog, vendorCfg);
         const iseEntries = buildBuildToEntriesForVendor(
@@ -335,4 +408,8 @@ module.exports = {
     roundOrderQtyForVendor,
     roundOrderQtyToNearestPack,
     orderRoundStepForItem,
+    vendorIdsForCatalogSlugs,
+    catalogItemCodesForSlugs,
+    vendorPackHasPositiveOrders,
+    summarizeOrderPack,
 };

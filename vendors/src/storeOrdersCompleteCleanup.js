@@ -2,6 +2,7 @@
 const path = require('path');
 const { destroySessionsForStore } = require('../../mmx/src/mmxCountSession');
 const paths = require('../../src/paths');
+const { clearStoreReportFilesPreservingStockLevels } = require('./reportReader');
 const REPORTS_DIR = paths.vendors.reports;
 const TMP_DOWNLOADS_ROOT = path.join(paths.root, 'out', 'tmp-report-downloads');
 
@@ -24,8 +25,8 @@ function removeMatchingFiles(dir, pattern) {
 }
 
 function deleteStoreReportFiles(storeNumber) {
-    const storeDir = path.join(REPORTS_DIR, String(storeNumber));
-    return removeMatchingFiles(storeDir, /\.(csv|xls|xlsx)$/i);
+    const { removed } = clearStoreReportFilesPreservingStockLevels(storeNumber, REPORTS_DIR);
+    return removed.length;
 }
 
 function deleteTempReportDownloadDirs() {
@@ -46,11 +47,17 @@ function deleteTempReportDownloadDirs() {
 }
 
 /**
- * After confirmed empty scheduled orders for a store today: drop downloaded reports,
- * temp download folders, and any open MMX count browser session for that store.
+ * After confirmed empty scheduled orders for a store today: drop ISE and temp downloads,
+ * keep SOH/SOO for stock-levels download, and clear any open MMX count browser session.
  */
 async function runStoreOrdersCompleteCleanup(storeNumber, dateKey) {
     const label = String(storeNumber || '').trim() || '(default)';
+    try {
+        const { markStoreOrdersComplete } = require('./orderingDayState');
+        markStoreOrdersComplete(storeNumber, dateKey, 'orders_pipeline');
+    } catch (err) {
+        console.warn(`[Macromatix] Store ${label} ordering day mark-complete failed:`, err.message);
+    }
     const reportFiles = deleteStoreReportFiles(storeNumber);
     const tempDirs = deleteTempReportDownloadDirs();
     await destroySessionsForStore(storeNumber, 'orders-complete');

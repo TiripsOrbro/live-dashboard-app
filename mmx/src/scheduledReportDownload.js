@@ -95,6 +95,14 @@ function msUntilNextScheduleRun(date = new Date()) {
  * then download build-to reports for those stores only (single browser session).
  */
 async function runOrderDayReportDownload(options = {}) {
+    const useMorningPrecheck = !/^(0|false|no|off)$/i.test(
+        String(process.env.ORDERING_MORNING_PRECHECK ?? '1').trim()
+    );
+    if (useMorningPrecheck) {
+        const { runMorningOrderingPrecheck } = require('./orderingMorningPrecheck');
+        return runMorningOrderingPrecheck(options);
+    }
+
     const orderDateKey = resolveOrderDateKey(options.orderDate);
     const pickYmd = ymdToPickParts(orderDateKey);
     const runDateKey = melbourneDateKey();
@@ -193,6 +201,7 @@ module.exports = {
     TIME_ZONE,
     melbourneDateKey,
     resolveOrderDateKey,
+    ymdToPickParts,
     scheduleHour,
     scheduleWindowMinutes,
     isScheduleEnabled,

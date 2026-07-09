@@ -323,8 +323,9 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
             page,
             browser,
             skipReportDownload: false,
-            forceReportDownload: reportsOnly,
+            forceReportDownload: false,
             cleanupReports: options.cleanupReports !== false,
+            onlyCatalogSlugs: toSend.map((row) => row.slug),
         });
         const orders = cycle.orders;
         if (ordersAllSuccessful(orders)) {
@@ -515,10 +516,19 @@ async function ensureReportsForOrders(storeNumber, options = {}) {
     const targetReportIds = Array.isArray(options.onlyReportIds) && options.onlyReportIds.length
         ? options.onlyReportIds.filter((id) => allReportIds.includes(id))
         : allReportIds;
-    const idsToDownload = reportIdsNeedingDownload(storeNumber, targetReportIds, reportsDir, {
-        forceDownload: Boolean(options.forceDownload),
-        dateKey: options.dateKey,
-    });
+    let idsToDownload;
+    if (options.forceDownload) {
+        idsToDownload = [...targetReportIds];
+    } else {
+        const forceSet = new Set(
+            Array.isArray(options.forceReportIds) ? options.forceReportIds.filter(Boolean) : []
+        );
+        const needs = reportIdsNeedingDownload(storeNumber, targetReportIds, reportsDir, {
+            dateKey: options.dateKey,
+        });
+        const forced = targetReportIds.filter((id) => forceSet.has(id));
+        idsToDownload = [...new Set([...needs, ...forced])];
+    }
 
     if (!idsToDownload.length) {
         log.info(`Reports already valid for store ${storeNumber} - skipping download (${targetReportIds.join(', ')})`);
@@ -719,16 +729,13 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
     const dateKey = options.dateKey || melbourneDateKey();
     const afterCountApply = Boolean(options.afterCountApply);
     const allReportIds = ['report1', 'report2', 'report3'];
-    let refreshReportIds = afterCountApply ? ['report1', 'report2'] : allReportIds;
+    let refreshReportIds = allReportIds;
     if (afterCountApply) {
-        const preFiles = resolveStoreReports(storeNumber, reportsDir);
-        const iseIssues = validateReportId(storeNumber, preFiles, 'report3', { dateKey });
-        if (iseIssues.length) {
-            refreshReportIds = [...refreshReportIds, 'report3'];
-            log.info(
-                `Store ${storeNumber}: ISE not reusable (${iseIssues.join('; ')}) — will download inventory-special-event`
-            );
-        }
+        const { reportIdsForAfterCountApply } = require('./orderingReportPrefetch');
+        refreshReportIds = reportIdsForAfterCountApply(storeNumber, reportsDir, { dateKey });
+        log.info(
+            `Store ${storeNumber}: after count apply — refresh ${refreshReportIds.join(', ')} (SOH always; ISE/SOO if morning prefetch missing or stale)`
+        );
     }
     const preReady = reportsReadyForStore(storeNumber, reportsDir);
     const skipDownload = options.requireAllReports
@@ -777,6 +784,7 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
                     reportsDir,
                     onlyReportIds: refreshReportIds,
                     forceDownload: Boolean(options.forceReportDownload),
+                    forceReportIds: afterCountApply ? ['report1'] : undefined,
                     dateKey,
                     afterCountApply,
                 })
@@ -804,6 +812,9 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
             dateKey,
             noOrderRounding: options.noOrderRounding,
             preferReportOnHand: true,
+            preferManualCountWhenPresent: afterCountApply,
+            onlyCatalogSlugs: options.onlyCatalogSlugs,
+            onlyVendorIds: options.onlyVendorIds,
         };
         await touchPipelineStep(storeNumber, 'Calculating order quantities from reports');
         const buildTo = await timeStoreStage(storeNumber, 'build-to-calc', () =>
@@ -838,7 +849,7 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
             }
         }
         log.info(
-            `On-hand sources: ${buildTo.onHandFromReportCount || 0} from SOH report (${buildTo.reportFiles?.stockOnHand ? path.basename(buildTo.reportFiles.stockOnHand) : 'missing'}), ${buildTo.onHandFromManualCount || 0} from stock-count (ignored in this cycle)`
+            `On-hand sources: ${buildTo.onHandFromReportCount || 0} from SOH report (${buildTo.reportFiles?.stockOnHand ? path.basename(buildTo.reportFiles.stockOnHand) : 'missing'}), ${buildTo.onHandFromManualCount || 0} from stock-count (${afterCountApply ? 'used when submitted today' : 'ignored in this cycle'})`
         );
 
         const orderPack = await buildOrderLinesByVendorId(storeNumber, buildToOpts);
@@ -893,10 +904,17 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
         return { dateKey, buildTo, orderPack, orders, lowStockAlerts };
     } finally {
         if (cleanup && cycleSucceeded) {
-            const { removed } = clearStoreReportFiles(storeNumber, reportsDir);
-            log.info(
-                `Build-to cycle: removed ${removed.length} report file(s) from Reports/${storeNumber}/ after successful run`
-            );
+            try {
+                const { clearStoreReportFilesPreservingStockLevels } = require('./reportReader');
+                const { removed } = clearStoreReportFilesPreservingStockLevels(storeNumber, reportsDir);
+                log.info(
+                    `Build-to cycle: removed ${removed.length} non-stock-level report file(s) from Reports/${storeNumber}/ after successful run (SOH/SOO kept)`
+                );
+            } catch (err) {
+                log.warn(
+                    `Store ${storeNumber}: report cleanup after orders failed (orders already placed): ${err.message}`
+                );
+            }
         } else if (cleanup && !cycleSucceeded) {
             log.warn(
                 `Build-to cycle failed for store ${storeNumber} - report files left in Reports/${storeNumber}/ for retry`
@@ -907,6 +925,12 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
 
 async function runOrdersAfterApply(storeNumber, dateKey, mmx = {}, pipelineOptions = {}) {
     const page = mmx?.page ?? mmx;
+    const onlyCatalogSlugs = pipelineOptions.onlyCatalogSlugs || pipelineOptions.vendorSlugs;
+    const onlyVendorIds =
+        pipelineOptions.onlyVendorIds ||
+        (onlyCatalogSlugs?.length
+            ? require('./buildToOrderLines').vendorIdsForCatalogSlugs(onlyCatalogSlugs)
+            : undefined);
     const result = await runStoreBuildToCycle(storeNumber, {
         ...withStoreMmxOptions(storeNumber, pipelineOptions),
         dateKey,
@@ -917,6 +941,8 @@ async function runOrdersAfterApply(storeNumber, dateKey, mmx = {}, pipelineOptio
         skipReportDownload: false,
         afterCountApply: true,
         cleanupReports: true,
+        onlyCatalogSlugs,
+        onlyVendorIds,
     });
     return result.orders;
 }
@@ -1297,7 +1323,7 @@ async function stockCountMmxOrdersComplete(storeNumber, dateKey = melbourneDateK
     return submitted.every((slug) => sent.includes(slug));
 }
 
-async function getStockCountPipelineStatus(storeNumber) {
+async function getStockCountPipelineStatus(storeNumber, options = {}) {
     const checkpoint = await reconcileStaleCheckpoint(storeNumber);
     const stage = checkpoint?.stage || 'idle';
     const sessionId = checkpoint?.sessionId || null;
@@ -1310,6 +1336,7 @@ async function getStockCountPipelineStatus(storeNumber) {
         inProgress: PIPELINE_IN_PROGRESS_STAGES.has(stage),
         workLive,
         ordersComplete: stage === 'completed',
+        orderFailures: checkpoint?.orderFailures || null,
         lastError: checkpoint?.lastError || null,
         failedAtStep: checkpoint?.failedAtStep || null,
         stepLabel: checkpoint?.stepLabel || defaultStepLabel(stage),
@@ -1335,6 +1362,7 @@ async function getStockCountPipelineStatus(storeNumber) {
     // mmxSentAt is set when the count is applied, not when scheduled orders finish - only
     // treat all-vendors-sent as orders complete when the pipeline is idle and not failed.
     const ordersMaybeDone =
+        !options.light &&
         !payload.ordersComplete &&
         !payload.inProgress &&
         !workLive &&
@@ -1342,7 +1370,7 @@ async function getStockCountPipelineStatus(storeNumber) {
         !PIPELINE_TERMINAL_FAIL_STAGES.has(stage) &&
         stage !== 'applied-orders-pending' &&
         !checkpoint?.skipKeyItemCount &&
-        !checkpoint?.lastError &&
+        !checkpoint?.failedAtStep &&
         (await stockCountMmxOrdersComplete(storeNumber, dateKey));
     if (ordersMaybeDone) {
         payload.ordersComplete = true;
@@ -1424,10 +1452,16 @@ async function completeResumedOrdersCheckpoint(storeNumber, dateKey, vendorSlugs
         dateKey,
         vendorSlugs,
         ordersCompletedAt: new Date().toISOString(),
-        lastError: orderFailures,
+        orderFailures: orderFailures || null,
+        lastError: null,
+        failedAtStep: null,
         timings: getStageTimings(storeNumber),
     });
-    await clearCheckpoint(storeNumber);
+    try {
+        await clearCheckpoint(storeNumber);
+    } catch (err) {
+        log.warn(`Store ${storeNumber}: checkpoint clear after orders failed (orders already placed): ${err.message}`);
+    }
 }
 
 function startResumedOrdersWork(storeNumber, dateKey, options = {}) {
@@ -1607,9 +1641,17 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
                     dateKey,
                     vendorSlugs,
                     ordersCompletedAt: new Date().toISOString(),
-                    lastError: orderFailures,
+                    orderFailures: orderFailures || null,
+                    lastError: null,
+                    failedAtStep: null,
                 });
-                await clearCheckpoint(storeNumber);
+                try {
+                    await clearCheckpoint(storeNumber);
+                } catch (err) {
+                    log.warn(
+                        `Store ${storeNumber}: checkpoint clear after resume orders failed (orders already placed): ${err.message}`
+                    );
+                }
                 return {
                     success: true,
                     resumed: true,
@@ -1645,6 +1687,7 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
         let orderPipelineResult = null;
         let appliedInMmx = false;
         let countAlreadyApplied = false;
+        let ordersPipelineFinished = false;
 
         try {
             await updateCheckpoint(storeNumber, {
@@ -1677,7 +1720,11 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
 
             if (await shouldRunOrderPipeline(storeNumber, dateKey)) {
                 log.info(`Key Item Count applied for store ${storeNumber} - downloading reports, then scheduled orders`);
-                orderPipelineResult = await runOrdersAfterApply(storeNumber, dateKey, { page, browser }, options);
+                orderPipelineResult = await runOrdersAfterApply(storeNumber, dateKey, { page, browser }, {
+                    ...options,
+                    vendorSlugs,
+                });
+                ordersPipelineFinished = true;
                 if (ordersAllSuccessful(orderPipelineResult)) {
                     await runStoreOrdersCompleteCleanup(storeNumber, dateKey);
                 }
@@ -1691,22 +1738,64 @@ async function applyStockCountSessionWork(storeNumber, sessionId, options = {}) 
                     sessionId,
                     vendorSlugs,
                     ordersCompletedAt: new Date().toISOString(),
-                    lastError: orderFailures,
+                    orderFailures: orderFailures || null,
+                    lastError: null,
+                    failedAtStep: null,
                     timings: getStageTimings(storeNumber),
                 });
+            } else {
+                ordersPipelineFinished = true;
             }
-            await clearCheckpoint(storeNumber);
+            try {
+                await clearCheckpoint(storeNumber);
+            } catch (err) {
+                log.warn(
+                    `Store ${storeNumber}: checkpoint clear after apply/orders failed (work may have succeeded): ${err.message}`
+                );
+            }
         } catch (error) {
-            const cp = await getCheckpoint(storeNumber);
-            await updateCheckpoint(storeNumber, {
-                stage: appliedInMmx ? 'applied-orders-pending' : 'apply-failed',
-                dateKey,
-                sessionId,
-                vendorSlugs,
-                lastError: error.message || String(error),
-                failedAtStep: cp?.stepLabel || defaultStepLabel(cp?.stage || 'applying'),
-            });
-            throw error;
+            if (ordersPipelineFinished || orderPipelineResult) {
+                log.warn(
+                    `Store ${storeNumber}: post-order cleanup failed after orders were placed: ${error.message}`
+                );
+                try {
+                    const orderFailures = formatOrderFailures(orderPipelineResult);
+                    if (ordersAllSuccessful(orderPipelineResult)) {
+                        await runStoreOrdersCompleteCleanup(storeNumber, dateKey).catch((cleanupErr) => {
+                            log.warn(
+                                `Store ${storeNumber}: ordering day cleanup after successful orders failed: ${cleanupErr.message}`
+                            );
+                        });
+                    }
+                    await updateCheckpoint(storeNumber, {
+                        stage: 'completed',
+                        dateKey,
+                        sessionId,
+                        vendorSlugs,
+                        ordersCompletedAt: new Date().toISOString(),
+                        orderFailures: orderFailures || null,
+                        lastError: null,
+                        failedAtStep: null,
+                        timings: getStageTimings(storeNumber),
+                    }).catch(() => {});
+                    await clearCheckpoint(storeNumber).catch(() => {});
+                } catch (recoveryErr) {
+                    log.warn(
+                        `Store ${storeNumber}: could not finalize successful order checkpoint: ${recoveryErr.message}`
+                    );
+                }
+            } else {
+                const cp = await getCheckpoint(storeNumber);
+                await updateCheckpoint(storeNumber, {
+                    stage: appliedInMmx ? 'applied-orders-pending' : 'apply-failed',
+                    dateKey,
+                    sessionId,
+                    vendorSlugs,
+                    lastError: error.message || String(error),
+                    failedAtStep: cp?.stepLabel || defaultStepLabel(cp?.stage || 'applying'),
+                });
+                throw error;
+            }
         } finally {
             await destroySession(session, 'applied');
         }
@@ -1786,7 +1875,9 @@ async function checkStockLevelsForStore(storeNumber, options = {}) {
             invalidateLowStockSummaryCache(storeNumber, { onHandOnly });
 
             await ensureReportsForOrders(storeNumber, {
-                forceDownload: true,
+                forceDownload: false,
+                forceReportIds: ['report1'],
+                onlyReportIds: onHandOnly ? ['report1'] : ['report1', 'report2'],
                 parallelReportDownload: false,
                 dateKey: options.dateKey,
                 ...withStoreMmxOptions(storeNumber, options),
@@ -1864,4 +1955,9 @@ module.exports = {
     ensureReportsForOrders,
     shouldRunOrderPipeline,
     vendorEntriesNeedKeyItemCount,
+    getStageTimings,
+    resetStageTimings,
+    withLightweightStoreLock,
+    beginLightweightStockLevelsWork,
+    endLightweightStockLevelsWork,
 };

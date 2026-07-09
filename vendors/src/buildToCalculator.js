@@ -25,41 +25,24 @@ const {
 } = require('./itemCodes');
 const { buildToOverridesForStore, mergeBuildToRules } = require('./buildToStoreOverrides');
 const { adminOverridesForStore } = require('./buildToAdminOverrides');
+const { isOnIgnoreList } = require('./buildToIgnoreList');
 const {
     findIseRowForCatalogItem,
     resolveCatalogItemForIseRow,
     findInReportMapWithNameFallback,
     lineCoversCatalogItem,
 } = require('./orderItemNameMatch');
+const {
+    getDefaultBuildToDays,
+    getExtendedBuildToDays,
+    getSaladBuildToDays,
+    getExtendedBuildToItemCodes,
+    isSaladItem,
+    buildToDaysForItemDefaults,
+} = require('./orderingLiveData');
 
 const paths = require('../../src/paths');
 const REPORTS_DIR = paths.vendors.reports;
-
-const DEFAULT_BUILD_TO_DAYS = 10;
-const EXTENDED_BUILD_TO_DAYS = 13;
-const SALAD_BUILD_TO_DAYS = 7;
-
-/** Cut fresh / short shelf-life - 7-day build-to (lettuce, tomato, onion, herbs, pico). */
-const SALAD_NAME_RE =
-    /\blettuce\b|\btomato\b|\bonion\b|\bcorriander\b|\bcoriander\b|\bpico de gallo\b|\bsalad\b/i;
-
-/** Beef, tortillas, flatbread, tostadas, nacho chips, fries - 13-day build-to when catalog has no day prefix. */
-const BUILD_TO_13_DAY_ITEM_CODES = new Set(
-    [
-        '39520', // Beef
-        '37923',
-        '37925',
-        '37927', // Tortillas (10.25 / 12 / 6.5 in)
-        '37928', // Flatbread
-        '37891', // Tostadas
-        '39009', // Nacho chips
-        '40109', // Fries (Chips)
-    ].map(normalizeItemCode)
-);
-
-function isSaladItem(description) {
-    return SALAD_NAME_RE.test(String(description || ''));
-}
 
 function catalogRuleForItem(itemCode, catalogRules, storeOverrideMap) {
     if (!catalogRules && !storeOverrideMap) return null;
@@ -75,10 +58,7 @@ function buildToDaysForItem(itemCode, description, catalogRules, storeOverrideMa
         return rule.buildToDays;
     }
     if (rule?.buildToFixed != null && Number.isFinite(rule.buildToFixed)) return null;
-    if (isSaladItem(description)) return SALAD_BUILD_TO_DAYS;
-    return BUILD_TO_13_DAY_ITEM_CODES.has(normalizeItemCode(itemCode))
-        ? EXTENDED_BUILD_TO_DAYS
-        : DEFAULT_BUILD_TO_DAYS;
+    return buildToDaysForItemDefaults(itemCode, description);
 }
 
 function buildToTarget(avgDaily, itemCode, description, catalogRules, storeOverrideMap) {
@@ -290,10 +270,14 @@ function resolveOnOrderCartons(onOrderReport, itemCode, iseUnit, isePack, storeN
     };
 }
 
-function allBuildToCatalogItems(storeNumber = '') {
+function allBuildToCatalogItems(storeNumber = '', onlyCatalogSlugs = null) {
     const items = [];
     const store = String(storeNumber || '').trim();
+    const wanted = onlyCatalogSlugs
+        ? new Set(onlyCatalogSlugs.map((slug) => String(slug || '').trim().toLowerCase()))
+        : null;
     for (const vendor of listConfiguredVendors()) {
+        if (wanted && !wanted.has(String(vendor.slug || '').trim().toLowerCase())) continue;
         const catalog = getVendorCatalog(vendor.slug, store ? { storeNumber: store } : {});
         if (!catalog) continue;
         for (const item of catalog.items || []) {
@@ -347,6 +331,51 @@ function ensureBuildToReportContext(storeNumber, options = {}) {
     return options._buildToReportCtx;
 }
 
+/** Pick the best on-hand cartons across item-code aliases (and optional name fallback). */
+function resolveOnHandFromReport(onHandReport, { reportItemCode, itemCode, catalogName, storeNumber, iseUnit, isePack }) {
+    if (!onHandReport) return { cartons: 0, row: null, matchSource: 'missing' };
+
+    const keys = new Set();
+    for (const code of [reportItemCode, itemCode]) {
+        for (const key of allLookupKeys(code, storeNumber)) {
+            keys.add(normalizeItemCode(key));
+        }
+    }
+
+    let bestCartons = 0;
+    let bestRow = null;
+    let bestKey = null;
+    for (const key of keys) {
+        const row = onHandReport.get(key);
+        if (!row) continue;
+        const cartons = onHandToCartons(row, iseUnit, isePack, key);
+        if (cartons > bestCartons) {
+            bestCartons = cartons;
+            bestRow = row;
+            bestKey = key;
+        }
+    }
+
+    if (bestRow) {
+        return { cartons: bestCartons, row: bestRow, matchSource: 'code', matchKey: bestKey };
+    }
+
+    if (catalogName) {
+        const nameHit = findInReportMapWithNameFallback(itemCode, catalogName, onHandReport, storeNumber);
+        if (nameHit && Number(nameHit.matchScore) >= 80) {
+            const cartons = onHandToCartons(nameHit.row, iseUnit, isePack, nameHit.key);
+            return {
+                cartons,
+                row: nameHit.row,
+                matchSource: nameHit.matchSource || 'name',
+                matchKey: nameHit.key,
+            };
+        }
+    }
+
+    return { cartons: 0, row: null, matchSource: 'missing' };
+}
+
 /** On-hand cartons from stock-on-hand report (alias-aware, same rules as ISE build-to lines). */
 function onHandCartonsForCatalogItem(itemCode, catalogItem, ctx) {
     if (!ctx?.onHandReport) return null;
@@ -358,11 +387,15 @@ function onHandCartonsForCatalogItem(itemCode, catalogItem, ctx) {
         const inner = Number(catalogItem?.innerPerCarton);
         isePack = Number.isFinite(inner) && inner > 0 ? inner : 0;
     }
-    const hit = findInReportMap(ctx.onHandReport, itemCode, storeNumber);
-    if (hit?.row) {
-        return onHandToCartons(hit.row, iseUnit, isePack, hit.key);
-    }
-    return null;
+    const resolved = resolveOnHandFromReport(ctx.onHandReport, {
+        reportItemCode: itemCode,
+        itemCode,
+        catalogName: catalogItem?.name || '',
+        storeNumber,
+        iseUnit,
+        isePack,
+    });
+    return resolved.row ? resolved.cartons : null;
 }
 
 /** On-order cartons from stock-on-order report (same rules as ISE build-to lines). */
@@ -395,6 +428,29 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         );
     }
 
+    const onlyCatalogSlugs = Array.isArray(options.onlyCatalogSlugs)
+        ? options.onlyCatalogSlugs.map((slug) => String(slug || '').trim().toLowerCase()).filter(Boolean)
+        : null;
+    let scopedCatalogCodes = null;
+    if (onlyCatalogSlugs?.length) {
+        const { catalogItemCodesForSlugs } = require('./buildToOrderLines');
+        scopedCatalogCodes = catalogItemCodesForSlugs(onlyCatalogSlugs, storeNumber);
+    }
+
+    function iseRowInScope(reportItemCode, catalogItem = null) {
+        if (!scopedCatalogCodes) return true;
+        const code = normalizeItemCode(reportItemCode);
+        if (code && scopedCatalogCodes.has(code)) return true;
+        if (catalogItem) {
+            const catCode = normalizeItemCode(catalogItem.itemCode);
+            if (catCode && scopedCatalogCodes.has(catCode)) return true;
+        }
+        for (const key of allLookupKeys(reportItemCode, storeNumber)) {
+            if (scopedCatalogCodes.has(normalizeItemCode(key))) return true;
+        }
+        return false;
+    }
+
     const usage = parseInventorySpecialEvent(files.inventorySpecialEvent);
     const onHandReport = parseStockOnHand(files.stockOnHand, storeNumber);
     const onOrderReport = parseStockOnOrder(files.stockOnOrder, storeNumber);
@@ -407,7 +463,7 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
     }
     const manualCounts = await loadManualCountsForStore(storeNumber, dateKey);
     let manualCountItems = 0;
-    const catalogItems = allBuildToCatalogItems(storeNumber);
+    const catalogItems = allBuildToCatalogItems(storeNumber, onlyCatalogSlugs);
 
     const lines = [];
     const usedIseCodes = new Set();
@@ -429,21 +485,16 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         const matchSource = resolved?.matchSource || iseMatchSource || 'code';
         const catalogName = matchedCatalog?.name || ise.description || '';
 
-        let onHandHit = findInReportMap(onHandReport, reportItemCode, storeNumber);
-        if (!onHandHit && catalogName) {
-            const nameHit = findInReportMapWithNameFallback(
-                itemCode,
-                catalogName,
-                onHandReport,
-                storeNumber
-            );
-            // Loose name match (e.g. "CHOC CHIPS" vs "DESSERT CHOCETTES") can attach the wrong SOH row.
-            if (nameHit && Number(nameHit.matchScore) >= 80) {
-                onHandHit = nameHit;
-            }
-        }
-        const onHandRow = onHandHit?.row || null;
         const isePack = ise.packSize || packSizeFromUnit(ise.unit);
+        const onHandResolved = resolveOnHandFromReport(onHandReport, {
+            reportItemCode,
+            itemCode,
+            catalogName,
+            storeNumber,
+            iseUnit: ise.unit,
+            isePack,
+        });
+        const onHandRow = onHandResolved.row;
 
         let manualEntry = manualCounts.get(normalizeItemCode(reportItemCode)) || null;
         if (!manualEntry && matchedCatalog) {
@@ -456,28 +507,37 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
             }
         }
         const catalogRule = catalogRuleForItem(itemCode, catalogRules, storeOverrideMap);
-        const onHandFromReport = onHandToCartons(onHandRow, ise.unit, isePack, reportItemCode);
+        const onHandFromReport = onHandResolved.cartons;
         const onHandFromManual =
             manualEntry && manualEntry.catalogItem
                 ? manualCountToCartons({ columns: manualEntry.columns }, manualEntry.catalogItem, isePack)
                 : null;
         const useReportOnHandOnly =
-            Boolean(catalogRule?.skipStockCount) || Boolean(options.preferReportOnHand);
-        const onHandCartons = useReportOnHandOnly
-            ? onHandFromReport
-            : onHandFromManual != null
-              ? onHandFromManual
-              : onHandFromReport;
-        const onHandSource = useReportOnHandOnly
-            ? onHandRow
-                ? 'report'
-                : 'missing'
-            : onHandFromManual != null
-              ? 'manual-count'
-              : onHandRow
-                ? 'report'
-                : 'missing';
-        if (onHandFromManual != null && !useReportOnHandOnly) manualCountItems++;
+            Boolean(catalogRule?.skipStockCount) ||
+            (Boolean(options.preferReportOnHand) && !options.preferManualCountWhenPresent);
+        const useManualAfterApply =
+            Boolean(options.preferManualCountWhenPresent) &&
+            !catalogRule?.skipStockCount &&
+            onHandFromManual != null;
+        const onHandCartons = useManualAfterApply
+            ? onHandFromManual
+            : useReportOnHandOnly
+              ? onHandFromReport
+              : onHandFromManual != null
+                ? onHandFromManual
+                : onHandFromReport;
+        const onHandSource = useManualAfterApply
+            ? 'manual-count'
+            : useReportOnHandOnly
+              ? onHandRow
+                  ? 'report'
+                  : 'missing'
+              : onHandFromManual != null
+                ? 'manual-count'
+                : onHandRow
+                  ? 'report'
+                  : 'missing';
+        if (onHandFromManual != null && (useManualAfterApply || !useReportOnHandOnly)) manualCountItems++;
 
         const { onOrderCartons, onOrderRow } = resolveOnOrderCartons(
             onOrderReport,
@@ -513,7 +573,10 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
         const buildToDays = buildToDaysForItem(itemCode, description, catalogRules, storeOverrideMap);
         const buildTo = buildToTarget(ise.avgDaily, itemCode, description, catalogRules, storeOverrideMap);
         const rawOrder = buildTo - onHandCartons - onOrderCartons;
-        const orderQty = finalizeOrderQty(rawOrder, options);
+        let orderQty = finalizeOrderQty(rawOrder, options);
+        if (isOnIgnoreList({ itemCode, iseItemCode: reportItemCode, description })) {
+            orderQty = 0;
+        }
         const hasStoreOverride = storeOverrideMap.has(normalizeItemCode(itemCode));
         const buildToSource =
             catalogRule?.buildToOrderManual ||
@@ -546,6 +609,7 @@ async function calculateBuildToOrders(storeNumber, options = {}) {
     };
 
     for (const [reportItemCode, ise] of usage.entries()) {
+        if (!iseRowInScope(reportItemCode)) continue;
         appendLineFromIse(reportItemCode, ise, null, 'code');
     }
 
@@ -612,10 +676,11 @@ module.exports = {
     ensureBuildToReportContext,
     onHandCartonsForCatalogItem,
     onOrderCartonsForCatalogItem,
-    BUILD_TO_13_DAY_ITEM_CODES,
-    DEFAULT_BUILD_TO_DAYS,
-    EXTENDED_BUILD_TO_DAYS,
-    SALAD_BUILD_TO_DAYS,
+    getDefaultBuildToDays,
+    getExtendedBuildToDays,
+    getSaladBuildToDays,
+    getExtendedBuildToItemCodes,
     isSaladItem,
+    buildToDaysForItemDefaults,
     REPORTS_DIR,
 };

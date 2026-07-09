@@ -1,4 +1,8 @@
 ﻿const { listConfiguredVendors } = require('./vendorCatalog');
+const {
+    filterVisiblePendingVendors,
+    getOrderRemindersForApi,
+} = require('./orderingLiveData');
 
 const TIME_ZONE = process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
 
@@ -55,17 +59,9 @@ function isMelbourneLastMondayOfMonth(d = new Date()) {
     return day === lastMon;
 }
 
-function matchesLastMondayOnlyVendor(label) {
-    const collapsed = String(label).replace(/\s+/g, '').toLowerCase();
-    return ['ecolab', 'reward', 'franke', 'staples'].includes(collapsed);
-}
-
 function getVisiblePendingVendors(pendingVendors = []) {
-    const list = Array.isArray(pendingVendors) ? pendingVendors.map(String) : [];
-    const lastMondayMonth = isMelbourneLastMondayOfMonth();
-    return list.filter((v) => {
-        if (!lastMondayMonth && matchesLastMondayOnlyVendor(v)) return false;
-        return true;
+    return filterVisiblePendingVendors(pendingVendors, {
+        lastMondayOfMonth: isMelbourneLastMondayOfMonth(),
     });
 }
 
@@ -102,12 +98,19 @@ function resolveStockCountTileHref(storeNumber, pendingVendors, stockCountVendor
  */
 function buildStockCountTileState(storeNumber, storeSlice = {}) {
     const store = String(storeNumber || '').trim();
-    const pendingVendors = Array.isArray(storeSlice.pendingVendors) ? storeSlice.pendingVendors : [];
+    let pendingVendors = Array.isArray(storeSlice.pendingVendors) ? storeSlice.pendingVendors : [];
+    if (storeSlice.orderingDay?.skipVendorChecks) {
+        pendingVendors = [];
+    }
     const stockCountVendors = listConfiguredVendors();
     const visible = getVisiblePendingVendors(pendingVendors);
     const monday = isMelbourneMonday();
     const lastMondayMonth = isMelbourneLastMondayOfMonth();
-    const hasOrdersToPlace = visible.length > 0 || monday || lastMondayMonth;
+    const orderReminders = getOrderRemindersForApi();
+    const hasOrdersToPlace =
+        visible.length > 0 ||
+        (monday && orderReminders.monday.length > 0) ||
+        (lastMondayMonth && orderReminders.lastMondayOfMonth.length > 0);
     const href = resolveStockCountTileHref(store, pendingVendors, stockCountVendors);
 
     return {
@@ -122,10 +125,16 @@ function buildStockCountTileState(storeNumber, storeSlice = {}) {
         message: hasOrdersToPlace
             ? visible.length
                 ? `${visible.length} vendor${visible.length === 1 ? '' : 's'} to count`
-                : monday
+                : monday && orderReminders.monday.length
                   ? 'Monday orders - open stock count'
-                  : 'Monthly orders - open stock count'
-            : 'All orders are placed for today',
+                  : lastMondayMonth && orderReminders.lastMondayOfMonth.length
+                    ? 'Monthly orders - open stock count'
+                    : 'Orders to place'
+            : storeSlice.orderingDay?.status === 'no_orders'
+              ? 'No orders to place today'
+              : storeSlice.orderingDay?.status === 'complete'
+                ? 'All orders placed for today'
+                : 'All orders are placed for today',
     };
 }
 
@@ -137,6 +146,8 @@ async function enrichStockCountTileState(base, storeNumber, options = {}) {
         const { getLowStockSummary, stockLevelsSubFromSummary } = require('./lowStockAlerts');
         const summary = await getLowStockSummary(store, { onHandOnly });
         const stockLevelsSub = stockLevelsSubFromSummary(summary);
+        const { storeStockReportDownloadInfo } = require('./reportReader');
+        const { REPORTS_DIR } = require('./buildToCalculator');
         return {
             ...base,
             lowStockCount: summary.count,
@@ -146,6 +157,7 @@ async function enrichStockCountTileState(base, storeNumber, options = {}) {
             stockLevelsOnHandOnly: Boolean(summary.onHandOnly),
             stockLevelsSub,
             stockLevelsHref: store ? `/${store}/stock-count/levels` : '',
+            stockReports: storeStockReportDownloadInfo(store, REPORTS_DIR),
             sub: base.active ? `${base.message} · ${stockLevelsSub}` : stockLevelsSub,
         };
     } catch {

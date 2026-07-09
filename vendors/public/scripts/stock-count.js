@@ -1,4 +1,6 @@
-const app = document.getElementById('app');
+function getAppRoot() {
+    return document.getElementById('app');
+}
 
 let STORE_NUMBER = '';
 let VENDOR_SLUG = '';
@@ -162,7 +164,25 @@ function sleep(ms) {
 
 async function fetchJson(url, options = {}) {
     const headers = { Accept: 'application/json', ...(options.headers || {}) };
-    const res = await fetch(url, { ...options, headers, credentials: 'include' });
+    const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 45000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let res;
+    try {
+        res = await fetch(url, {
+            ...options,
+            headers,
+            credentials: 'include',
+            signal: controller.signal,
+        });
+    } catch (error) {
+        if (error?.name === 'AbortError') {
+            throw new Error('Request timed out - check your connection or try again.');
+        }
+        throw error;
+    } finally {
+        clearTimeout(timer);
+    }
     const text = await res.text();
     if (!text) return { res, data: {} };
     try {
@@ -1339,7 +1359,7 @@ async function attemptMmxPipelineAutoResume() {
 
 function pipelineSuccessPayload(status) {
     return {
-        orderFailures: status?.lastError || null,
+        orderFailures: status?.orderFailures || null,
         lowStockAlerts: Array.isArray(status?.lowStockAlerts) ? status.lowStockAlerts : [],
         lowStockCount: Number(status?.lowStockCount) || 0,
     };
@@ -1636,7 +1656,11 @@ function pipelineFailureFromStatus(status) {
         stage === 'prepare-failed' ||
         stage === 'apply-failed' ||
         stage === 'check-levels-failed' ||
-        (stage === 'applied-orders-pending' && status.lastError && !status.workLive);
+        (stage === 'applied-orders-pending' &&
+            status.lastError &&
+            status.failedAtStep &&
+            !status.workLive &&
+            !status.ordersComplete);
     if (!failedStage) return null;
     return {
         message: status.lastError,
@@ -1649,7 +1673,6 @@ function pipelineOrdersActuallyComplete(status) {
     if (!status?.ordersComplete) return false;
     if (status.inProgress) return false;
     if (status.workLive) return false;
-    if (status.lastError) return false;
     const stage = status.stage || 'idle';
     if (stage === 'prepare-failed' || stage === 'apply-failed' || stage === 'check-levels-failed') {
         return false;
@@ -1657,6 +1680,7 @@ function pipelineOrdersActuallyComplete(status) {
     if (stage === 'downloading-reports' || stage === 'filling-orders' || stage === 'applied-orders-pending') {
         return false;
     }
+    if (status.lastError && stage !== 'completed' && stage !== 'idle') return false;
     if (stage === 'completed' || stage === 'idle') return true;
     return false;
 }
@@ -1862,6 +1886,12 @@ async function pollStockCountPipelineUntilDone() {
 
     if (await attemptMmxPipelineAutoResume()) {
         return pollStockCountPipelineUntilDone();
+    }
+
+    const lastChance = await fetchPipelineStatusOrNull();
+    if (lastChance.ok && pipelineOrdersActuallyComplete(lastChance.status)) {
+        finishMmxOrdersSuccess(pipelineSuccessPayload(lastChance.status));
+        return { autoApplied: true };
     }
 
     throw new Error(
@@ -2082,8 +2112,8 @@ async function refreshMmxPipelineUi() {
     }
 }
 
-async function tryResumePipelineOnLoad() {
-    const result = await fetchPipelineStatusOrNull();
+async function tryResumePipelineOnLoad(preloaded = null) {
+    const result = preloaded || (await fetchPipelineStatusOrNull());
     let uiWatch = readMmxUiWatch();
     const status = result.ok ? result.status : null;
     const hadActiveWatch = Boolean(uiWatch);
@@ -3133,7 +3163,8 @@ function buildLowStockWarningHtml() {
 }
 
 function render() {
-    if (!catalog) return;
+    const app = getAppRoot();
+    if (!app || !catalog) return;
     const statusHtml = statusMessage
         ? `<div class="stock-count-status${statusKind ? ` stock-count-status--${statusKind}` : ''}" role="status">${escapeHtml(statusMessage)}</div>`
         : '';
@@ -3178,6 +3209,8 @@ function render() {
 }
 
 function bindEvents() {
+    const app = getAppRoot();
+    if (!app) return;
     app.querySelector('#sc-low-stock-toggle')?.addEventListener('click', () => {
         lowStockPanelOpen = !lowStockPanelOpen;
         render();
@@ -3238,6 +3271,25 @@ async function dismissStaleMmxSessionOnLoad() {
 
 function levelsOnHandOnly() {
     return levelsCheckMode === 'on-hand-only';
+}
+
+function buildStockReportDownloadsHtml(reports) {
+    const soh = reports?.soh?.available;
+    const soo = reports?.soo?.available;
+    if ((!soh && !soo) || !STORE_NUMBER) return '';
+    const store = encodeURIComponent(STORE_NUMBER);
+    const parts = [];
+    if (soh) {
+        parts.push(
+            `<a class="stock-count-report-download-btn" href="/api/stock-count/reports/soh?store=${store}" download>Download SOH</a>`
+        );
+    }
+    if (soo) {
+        parts.push(
+            `<a class="stock-count-report-download-btn" href="/api/stock-count/reports/soo?store=${store}" download>Download SOO</a>`
+        );
+    }
+    return `<div class="stock-count-levels-report-downloads" aria-label="Download stock reports">${parts.join('')}</div>`;
 }
 
 function buildStockCheckTabsHtml(mode, checking) {
@@ -3444,6 +3496,8 @@ async function refreshLevelsData() {
 }
 
 function renderLevelsView() {
+    const app = getAppRoot();
+    if (!app) return;
     const threshold = levelsSummary?.thresholdDays ?? 5;
     const count = Number(levelsSummary?.lowStockCount) || lowStockAlerts.length;
     const subtitle = levelsSummary?.stockLevelsSub
@@ -3468,6 +3522,7 @@ function renderLevelsView() {
             </header>
             ${statusHtml}
             <div class="stock-count-levels-actions">
+                ${buildStockReportDownloadsHtml(levelsSummary?.stockReports)}
                 <div class="stock-count-levels-actions-row">
                     ${buildStockCheckTabsHtml(levelsCheckMode, levelsChecking)}
                     ${buildLevelsRefreshControlHtml()}
@@ -3497,7 +3552,59 @@ function renderLevelsView() {
     });
 }
 
+/** Warm ISE + on-order in the background while the crew counts (SOH waits until Send to MMX apply). */
+function requestOrderingReportPrefetch() {
+    setTimeout(() => {
+        void fetchJson(apiQuery('/api/stock-count/prefetch-reports'), { method: 'POST' }).catch(() => {});
+    }, 2000);
+}
+
+function applyBootstrapPayload(data) {
+    canSkipKeyItemCount = Boolean(data.canSkipKeyItemCount);
+    catalog = data.catalog;
+    queueStatus = data.queueStatus || null;
+
+    if (isCombinedMode()) {
+        combinedVendorSlugs = data.vendorSlugs || catalog?.vendorSlugs || [];
+        vendorDrafts = data.vendorDrafts || {};
+        vendorCatalogsCache.clear();
+        for (const [slug, cat] of Object.entries(data.vendorCatalogs || {})) {
+            vendorCatalogsCache.set(slug, cat);
+        }
+        draft = combinedVendorSlugs.length ? vendorDrafts[combinedVendorSlugs[0]] : null;
+        return;
+    }
+
+    draft = data.draft;
+}
+
+async function loadStockCountBootstrap() {
+    const { res, data } = await fetchJson(apiQuery('/api/stock-count/bootstrap'));
+    if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to load stock count.');
+    }
+    return data;
+}
+
+async function finishStockCountInit(bootstrap) {
+    const pipelineResult =
+        bootstrap?.pipeline != null ? { ok: true, status: bootstrap.pipeline } : await fetchPipelineStatusOrNull();
+
+    if (!(await tryResumePipelineOnLoad(pipelineResult))) {
+        if (bootstrap?.needsSessionDismiss) {
+            await dismissStaleMmxSessionOnLoad();
+        }
+    }
+    render();
+    requestOrderingReportPrefetch();
+}
+
 async function init() {
+    const app = getAppRoot();
+    if (!app) {
+        console.error('[StockCount] #app element missing');
+        return;
+    }
     document.documentElement.classList.add('stock-count-page');
     document.body.classList.add('stock-count-page');
     setupMmxPipelineVisibilityRecovery();
@@ -3521,8 +3628,6 @@ async function init() {
         app.textContent = 'Invalid stock count URL.';
         return;
     }
-
-    await loadUserCapabilities();
 
     if (IS_LEVELS) {
         try {
@@ -3561,57 +3666,11 @@ async function init() {
     }
 
     try {
-        if (isCombinedMode()) {
-            const { res: catRes, data: catData } = await fetchJson(
-                apiQuery('/api/stock-count/catalog', 'combined')
-            );
-            if (!catRes.ok || !catData.success) {
-                throw new Error(catData.error || 'No vendors need a stock count today.');
-            }
-            catalog = catData.catalog;
-            combinedVendorSlugs = catData.vendorSlugs || catalog.vendorSlugs || [];
-            vendorDrafts = {};
-            vendorCatalogsCache.clear();
-            await Promise.all(
-                combinedVendorSlugs.map(async (slug) => {
-                    const [catR, draftR] = await Promise.all([
-                        fetchJson(apiQuery('/api/stock-count/catalog', slug)),
-                        fetchJson(apiQuery('/api/stock-count/draft', slug)),
-                    ]);
-                    if (catR.res.ok && catR.data.success) {
-                        vendorCatalogsCache.set(slug, catR.data.catalog);
-                    }
-                    if (draftR.res.ok && draftR.data.success) {
-                        vendorDrafts[slug] = draftR.data;
-                    }
-                })
-            );
-            draft = combinedVendorSlugs.length ? vendorDrafts[combinedVendorSlugs[0]] : null;
-            if (!(await tryResumePipelineOnLoad())) {
-                await dismissStaleMmxSessionOnLoad();
-            }
-            await loadQueueStatus();
-            document.title = `Stock Count - ${catalog.label}`;
-            render();
-            return;
-        }
-
-        const [catResult, draftResult] = await Promise.all([
-            fetchJson(apiQuery('/api/stock-count/catalog')),
-            fetchJson(apiQuery('/api/stock-count/draft')),
-        ]);
-        const { res: catRes, data: catData } = catResult;
-        const { res: draftRes, data: draftData } = draftResult;
-        if (!catRes.ok || !catData.success) throw new Error(catData.error || 'Catalog not found.');
-        if (!draftRes.ok || !draftData.success) throw new Error(draftData.error || 'Draft not found.');
-        catalog = catData.catalog;
-        draft = draftData;
-        if (!(await tryResumePipelineOnLoad())) {
-            await dismissStaleMmxSessionOnLoad();
-        }
-        await loadQueueStatus();
+        const bootstrap = await loadStockCountBootstrap();
+        applyBootstrapPayload(bootstrap);
         document.title = `Stock Count - ${catalog.label}`;
         render();
+        void finishStockCountInit(bootstrap);
     } catch (error) {
         app.innerHTML = `<div class="stock-count"><p class="stock-count-status stock-count-status--error">${escapeHtml(error.message)}</p><p><a class="stock-count-back" href="${escapeHtml(dashboardPath())}">← Dashboard</a></p></div>`;
     }

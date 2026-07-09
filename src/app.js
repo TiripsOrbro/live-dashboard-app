@@ -72,6 +72,7 @@ const {
     getStockCountQueueStatus,
     melbourneDateKey,
 } = require('./services/stockCountState');
+const { buildStockCountBootstrap } = require('./services/stockCountBootstrap');
 const {
     getStoreScrapePhase,
     anyStoreInActiveScrapeWindow,
@@ -101,7 +102,11 @@ const {
     getStoreDayEntry,
     getMelbourneWeekStart,
 } = require('./services/sssg/sssgWeeklyLedger');
-const { getLowStockSummary, stockLevelsSubFromSummary } = require('../vendors/src/lowStockAlerts');
+const { getLowStockSummary, stockLevelsSubFromSummary, refreshSummaryDisplayNames } = require('../vendors/src/lowStockAlerts');
+const {
+    storeStockReportDownloadInfo,
+    resolveStockLevelReportPath,
+} = require('../vendors/src/reportReader');
 const {
     prepareStockCountForMmx,
     applyStockCountSession,
@@ -351,6 +356,7 @@ const {
     resolveLifelenzCredentialsForRun,
     previewForecastForStore,
     previewForecastForStores,
+    forecastWeekTotalsForStores,
     forecastRunOptions,
 } = require('../dashboard/src/forecast/forecastRunner');
 const {
@@ -1452,6 +1458,55 @@ function logDashboardScrapeComplete(payload) {
     console.log(
         `[Dashboard] Scrape cycle complete - ${when} ${tz} | ${stores.length} store(s): ${summary || '(none)'}`
     );
+    scheduleOrderingReportPrefetch(payload);
+}
+
+function scheduleOrderingReportPrefetch(payload) {
+    const stores = Array.isArray(payload?.stores) ? payload.stores : [];
+    if (!stores.length) return;
+    setImmediate(() => {
+        const { prefetchOrderingReportsForPendingStores } = require('../vendors/src/orderingReportPrefetch');
+        const { shouldSkipPendingVendorScrape } = require('../vendors/src/orderingDayState');
+        const { melbourneDateKey } = require('../vendors/src/stockCountState');
+        const dateKey = melbourneDateKey();
+        const eligible = stores.filter((store) => {
+            const storeNumber = String(store?.storeNumber || '').trim();
+            if (!storeNumber || store?.error) return false;
+            if (!Array.isArray(store.pendingVendors) || !store.pendingVendors.length) return false;
+            return !shouldSkipPendingVendorScrape(storeNumber, dateKey);
+        });
+        if (!eligible.length) return;
+        prefetchOrderingReportsForPendingStores(eligible).catch((err) => {
+            console.warn('[Ordering] Prefetch after sales scrape failed:', err.message || err);
+        });
+    });
+}
+
+function patchSalesCacheFromMorningPrecheck(summary) {
+    if (!salesCache?.stores || !Array.isArray(summary?.probed)) return;
+    for (const row of summary.probed) {
+        const storeNumber = String(row?.storeNumber || '').trim();
+        if (!storeNumber) continue;
+        const vendors =
+            row.hasOrders && Array.isArray(row.pendingVendors) ? row.pendingVendors.map(String) : [];
+        patchSalesCachePendingVendors(storeNumber, vendors);
+    }
+}
+
+function scheduleMorningOrderingPrecheckIfNeeded() {
+    setImmediate(() => {
+        const { runMorningOrderingPrecheck, morningPrecheckEnabled } = require('./services/orderingMorningPrecheck');
+        if (!morningPrecheckEnabled()) return;
+        runMorningOrderingPrecheck({ scheduled: true })
+            .then((summary) => {
+                if (summary && !summary.skipped) {
+                    patchSalesCacheFromMorningPrecheck(summary);
+                }
+            })
+            .catch((err) => {
+                console.warn('[Ordering] Morning precheck failed:', err.message || err);
+            });
+    });
 }
 
 function normalizeAuditLabels(labels) {
@@ -1749,9 +1804,26 @@ function loadPostCloseSnapshotFromDisk(storeNumber) {
     }
 }
 
-function restorePostCloseSnapshot(store) {
+function snapshotDateKey(storeNumber, snap, now = new Date()) {
+    if (!snap) return '';
+    if (snap.dateKey) return String(snap.dateKey);
+    const cfg = getStoreConfig(storeNumber) || {};
+    const when = snap.capturedAt ? new Date(snap.capturedAt) : now;
+    return getStoreDateKey(
+        { storeNumber, timeZone: cfg.timeZone || process.env.DASHBOARD_TIME_ZONE },
+        when
+    );
+}
+
+function isSnapshotForToday(storeNumber, snap, now = new Date()) {
+    const todayKey = getStoreDateKey(storeNumber, now);
+    return snapshotDateKey(storeNumber, snap, now) === todayKey;
+}
+
+function restorePostCloseSnapshot(store, now = new Date()) {
     const snap = store.postCloseSnapshot || loadPostCloseSnapshotFromDisk(store.storeNumber);
     if (!snap) return false;
+    if (!isSnapshotForToday(store.storeNumber, snap, now)) return false;
     store.actual = [...snap.actual];
     store.forecast = [...snap.forecast];
     store.pendingVendors = Array.isArray(snap.pendingVendors) ? [...snap.pendingVendors] : [];
@@ -1777,7 +1849,7 @@ function clearPostCloseSnapshot(storeNumber) {
  * dashboard retains the last-known values instead of blanking out for a cycle. Trading
  * hours/name from the fresh result are carried forward (they may change across the day).
  */
-function mergeStoresPreservingGood(prevPayload, freshPayload) {
+function mergeStoresPreservingGood(prevPayload, freshPayload, now = new Date()) {
     const freshByNum = new Map();
     if (freshPayload && Array.isArray(freshPayload.stores)) {
         for (const s of freshPayload.stores) freshByNum.set(String(s.storeNumber), s);
@@ -1793,6 +1865,10 @@ function mergeStoresPreservingGood(prevPayload, freshPayload) {
         if (storeHasMeaningfulData(fresh) && !fresh.error) return fresh;
         const prev = prevByNum.get(key);
         if (storeHasMeaningfulData(prev)) {
+            const prevSnap = prev.postCloseSnapshot;
+            if (prevSnap && !isSnapshotForToday(key, prevSnap, now)) {
+                return fresh;
+            }
             return {
                 ...prev,
                 openHour: Number.isFinite(fresh.openHour) ? fresh.openHour : prev.openHour,
@@ -1868,7 +1944,7 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
                 }
             }
             if (!storeHasMeaningfulData(store)) {
-                restorePostCloseSnapshot(store);
+                restorePostCloseSnapshot(store, now);
             }
             if (storeHasMeaningfulData(store)) {
                 const todayKey = getStoreDateKey(listedStore, now);
@@ -1884,9 +1960,10 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
                 resetScheduledOrdersForNewDay(key);
                 resetSssgForNewDay(key);
                 resetWeeklyLedgerIfNeeded(now);
-            }
-            if (!storeHasMeaningfulData(store)) {
-                restorePostCloseSnapshot(store);
+                clearPostCloseSnapshot(key);
+                delete store.postCloseSnapshot;
+            } else if (!storeHasMeaningfulData(store)) {
+                restorePostCloseSnapshot(store, now);
             }
             if (store.sssgPercent == null && storeHasMeaningfulData(store)) {
                 store.sssgPercent = computeSssgForStore(store);
@@ -2653,6 +2730,23 @@ async function enrichSalesSliceWithStockCount(slice, options = {}) {
     if (!slice || typeof slice !== 'object') return slice;
     const storeNumber = String(slice.storeNumber || '').trim();
     slice.stockCountVendors = listConfiguredVendors();
+    const { getOrderRemindersForApi, getLastMondayOnlyVendorKeys } = require('./services/orderingLiveData');
+    const { getOrderingDayStatusForApi } = require('./services/orderingDayState');
+    const { melbourneDateKey } = require('./services/stockCountState');
+    slice.orderReminders = getOrderRemindersForApi();
+    slice.lastMondayOnlyVendorKeys = getLastMondayOnlyVendorKeys();
+    if (storeNumber) {
+        slice.orderingDay = getOrderingDayStatusForApi(storeNumber, melbourneDateKey());
+        if (slice.orderingDay.skipVendorChecks) {
+            slice.pendingVendors = [];
+        } else if (
+            (!Array.isArray(slice.pendingVendors) || !slice.pendingVendors.length) &&
+            Array.isArray(slice.orderingDay.pendingVendors) &&
+            slice.orderingDay.pendingVendors.length
+        ) {
+            slice.pendingVendors = [...slice.orderingDay.pendingVendors];
+        }
+    }
     if (!storeNumber) {
         slice.stockCountCompleted = [];
         return slice;
@@ -3915,6 +4009,7 @@ app.get('/api/admin/forecast/status', (req, res) => {
         }
     }
     const defaultWeek = payload.targetWeeks?.[2] || payload.targetWeeks?.[0] || getTargetForecastWeekStarts()[0];
+    const forecastWeekTotals = forecastWeekTotalsForStores(storeNumbers, payload.targetWeeks);
     const autoSubmit = buildAutoSubmitStatus();
     const storeAutoSubmit = buildStoreAutoSubmitMap(storeNumbers);
     res.json({
@@ -3925,6 +4020,7 @@ app.get('/api/admin/forecast/status', (req, res) => {
         forecastUpdatesByWeek,
         updatesSummary: updatesSummaryByWeek[defaultWeek] || {},
         updatesSummaryByWeek,
+        forecastWeekTotals,
         autoSubmit,
         storeAutoSubmit,
         protectedDates: ensureProtectedDatesInitialized(),
@@ -5764,6 +5860,47 @@ app.get('/api/stock-count/vendors', (req, res) => {
     res.json({ success: true, vendors: listConfiguredVendors() });
 });
 
+app.get('/api/stock-count/bootstrap', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        const vendorSlug = stockCountVendorFromQuery(req);
+        if (!store) {
+            res.status(400).json({ success: false, error: 'Store is required.' });
+            return;
+        }
+        if (!vendorSlug) {
+            res.status(400).json({ success: false, error: 'Vendor is required.' });
+            return;
+        }
+        if (!assertStoreAccess(req, res, store)) return;
+
+        try {
+            const { requestPreemptLowerPriority, PRIORITY } = require('../mmx/src/mmxTaskQueue');
+            requestPreemptLowerPriority(PRIORITY.MIC, `stock count page load (store ${store})`);
+        } catch {
+            /* optional - keep bootstrap fast if queue module unavailable */
+        }
+
+        const user = req.dashboardUser || getRequestUser(req);
+        const profile = userProfileForClient(user);
+        const pendingVendorLabels = pendingVendorLabelsForStockCount(req, store);
+        const payload = await buildStockCountBootstrap(store, vendorSlug, { pendingVendorLabels });
+
+        if (!payload.success) {
+            res.status(404).json(payload);
+            return;
+        }
+
+        res.json({
+            ...payload,
+            canSkipKeyItemCount: Boolean(profile.canEditGlobalBuildTo),
+        });
+    } catch (error) {
+        console.error('API: Error loading stock count bootstrap:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.get('/api/stock-count/catalog', (req, res) => {
     const vendorSlug = stockCountVendorFromQuery(req);
     if (isCombinedStockCountSlug(vendorSlug)) {
@@ -5999,6 +6136,72 @@ app.post('/api/stock-count/mmx-user-login', async (req, res) => {
     res.json({ success: true, remembered: result.remembered, maskedUsername: maskMmxLoginForStatus(result.mmxUsername) });
 });
 
+app.get('/api/stock-count/prefetch-status', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const { prefetchStatusForStore, prefetchOrderingReportsForStore } = require('./services/orderingReportPrefetch');
+        const { getOrderingDayStatusForApi } = require('./services/orderingDayState');
+        const { melbourneDateKey } = require('./services/stockCountState');
+        res.json({
+            success: true,
+            ...prefetchStatusForStore(store),
+            orderingDay: getOrderingDayStatusForApi(store, melbourneDateKey()),
+        });
+    } catch (error) {
+        console.error('API: Error reading ordering prefetch status:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/stock-count/prefetch-reports', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+
+        const pipeline = await getStockCountPipelineStatus(store);
+        if (isStockCountExclusiveActive(pipeline, store)) {
+            res.status(409).json({
+                success: false,
+                error: 'Stock count pipeline is running - prefetch will run after it finishes.',
+                inProgress: true,
+                stage: pipeline.stage,
+            });
+            return;
+        }
+        if (isStockCountLightweightActive(pipeline)) {
+            res.status(409).json({
+                success: false,
+                error: 'Macromatix report work is already running for this store.',
+                inProgress: true,
+                stage: pipeline.stage,
+            });
+            return;
+        }
+
+        const { prefetchStatusForStore, prefetchOrderingReportsForStore } = require('./services/orderingReportPrefetch');
+        const status = prefetchStatusForStore(store);
+        if (status.ready) {
+            res.json({ success: true, accepted: false, alreadyReady: true, ...status });
+            return;
+        }
+
+        if (!assertStockCountUserMmxLogin(req, res)) return;
+
+        console.log(
+            `[Ordering] Prefetch requested for store ${store} (missing: ${(status.missingReportIds || []).join(', ') || 'none'})`
+        );
+        res.json({ success: true, accepted: true, storeNumber: String(store), missingReportIds: status.missingReportIds });
+
+        void prefetchOrderingReportsForStore(store, mmxAutomationOptions(req, store, {})).catch((error) => {
+            console.error('API: Ordering report prefetch failed:', error);
+        });
+    } catch (error) {
+        console.error('API: Error starting ordering report prefetch:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.get('/api/stock-count/send-plan', async (req, res) => {
     try {
         const store = stockCountStoreFromQuery(req);
@@ -6216,6 +6419,7 @@ app.get('/api/stock-count/low-stock-summary', async (req, res) => {
                 summary = saved[mode];
             }
         }
+        summary = refreshSummaryDisplayNames(summary);
         res.json({
             success: true,
             storeNumber: String(store),
@@ -6227,9 +6431,26 @@ app.get('/api/stock-count/low-stock-summary', async (req, res) => {
             stockLevelsCheckedAt: summary.checkedAt || null,
             thresholdDays: summary.thresholdDays,
             onHandOnly: Boolean(summary.onHandOnly),
+            stockReports: storeStockReportDownloadInfo(store, paths.vendors.reports),
         });
     } catch (error) {
         console.error('API: Error loading low stock summary:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/stock-count/reports/:type', async (req, res) => {
+    try {
+        const store = stockCountStoreFromQuery(req);
+        if (!store || !assertStoreAccess(req, res, store)) return;
+        const filePath = resolveStockLevelReportPath(store, req.params.type, paths.vendors.reports);
+        if (!filePath || !require('fs').existsSync(filePath)) {
+            res.status(404).json({ success: false, error: 'Report file not found for this store.' });
+            return;
+        }
+        res.download(filePath, path.basename(filePath));
+    } catch (error) {
+        console.error('API: Error downloading stock report:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -8892,6 +9113,7 @@ function startBackgroundRefresh() {
         shouldPrimeOnBoot: shouldPrimeSalesCacheOnBoot,
         isScrapeInFlight: () => Boolean(salesInFlight),
     });
+    scheduleMorningOrderingPrecheckIfNeeded();
 }
 
 // Start the server (bind all interfaces so other LAN devices can reach the Pi).

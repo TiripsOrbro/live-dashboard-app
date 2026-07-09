@@ -4,11 +4,16 @@ const path = require('path');
 const paths = require('../../src/paths');
 const CONFIG_PATH = path.join(paths.vendors.config, 'vendor-orders.json');
 const EXAMPLE_PATH = path.join(paths.vendors.config, 'vendor-orders.json.example');
+const { resolvePiLiveFile } = require('./piLiveDataPaths');
 
 function loadVendorOrdersConfig() {
-    const file = fs.existsSync(CONFIG_PATH) ? CONFIG_PATH : EXAMPLE_PATH;
-    if (!fs.existsSync(file)) {
-        throw new Error('Missing config/vendor-orders.json - copy from config/vendor-orders.json.example');
+    const file = resolvePiLiveFile({
+        livePath: CONFIG_PATH,
+        examplePath: EXAMPLE_PATH,
+        label: 'vendor-orders.json',
+    });
+    if (!file) {
+        throw new Error('Missing vendors/config/vendor-orders.json on this server.');
     }
     return JSON.parse(fs.readFileSync(file, 'utf8'));
 }

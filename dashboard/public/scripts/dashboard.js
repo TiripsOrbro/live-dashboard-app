@@ -490,16 +490,25 @@ let salesDataLoadedOnce = false;
 let pendingVendors = [];
 /** Vendors with stock-count catalogs ({ slug, label }). */
 let stockCountVendors = [];
+/** Pi-local order reminders from /api/sales (ordering-defaults.json). */
+let orderReminders = { monday: [], lastMondayOfMonth: [] };
+/** Collapsed vendor keys hidden until last Melbourne Monday (from Pi config). */
+let lastMondayOnlyVendorKeys = [];
 /** Labels the user has marked done this session (hidden until Macromatix drops them from the API list). */
 const dismissedPendingVendors = new Set();
+
+function normalizeVendorMatchKey(label) {
+    return String(label || '').replace(/\s+/g, '').toLowerCase();
+}
 
 /**
  * Vendors that may appear in Macromatix early - we only surface them on the last Melbourne Monday of the month.
  * Match is case-insensitive with spaces removed (e.g. "Eco Lab", "ECOLAB").
  */
 function matchesLastMondayOnlyVendor(label) {
-    const collapsed = String(label).replace(/\s+/g, '').toLowerCase();
-    return ['ecolab', 'reward', 'franke', 'staples'].includes(collapsed);
+    const key = normalizeVendorMatchKey(label);
+    if (!key) return false;
+    return lastMondayOnlyVendorKeys.includes(key);
 }
 
 function getVisiblePendingVendors() {
@@ -541,7 +550,13 @@ function combinedStockCountPathForStore(storeNum, pendingList) {
     const visible = visiblePendingVendorsForList(pendingList);
     const hasCountable = visible.some((name) => vendorHasStockCount(name));
     if (!hasCountable) {
-        if (!isMelbourneMonday() && !isMelbourneLastMondayOfMonth()) return null;
+        const hasMondayReminders =
+            isMelbourneMonday() && Array.isArray(orderReminders.monday) && orderReminders.monday.length > 0;
+        const hasLastMondayReminders =
+            isMelbourneLastMondayOfMonth() &&
+            Array.isArray(orderReminders.lastMondayOfMonth) &&
+            orderReminders.lastMondayOfMonth.length > 0;
+        if (!hasMondayReminders && !hasLastMondayReminders) return null;
     }
     return `/${num}/stock-count/combined`;
 }
@@ -714,21 +729,25 @@ function isMelbourneLastMondayOfMonth(d) {
     return day === lastMon;
 }
 
-/** Fixed label for Mondays - not returned by Macromatix `pendingVendors`. */
+/** Fixed labels for Mondays - loaded from Pi ordering-defaults.json via /api/sales. */
 function mondayCashOrderReminderHtml() {
-    return `<div class="pending-vendor-item pending-vendor-item--info" role="status">
-        <div class="pending-vendor-monday-note">${escapeHtml('Cash Order')}</div>
-    </div>`;
+    return (Array.isArray(orderReminders.monday) ? orderReminders.monday : [])
+        .map(
+            (label) =>
+                `<div class="pending-vendor-item pending-vendor-item--info" role="status">
+        <div class="pending-vendor-monday-note">${escapeHtml(String(label))}</div>
+    </div>`
+        )
+        .join('');
 }
 
-/** Last Monday of the month - one row per vendor (not from Macromatix list on other days). */
+/** Last Monday of the month - one row per vendor (from Pi ordering-defaults.json). */
 function lastMondayMonthlyOrdersReminderHtml() {
-    const labels = ['Eco Lab', 'Reward', 'Franke', 'Staples'];
-    return labels
+    return (Array.isArray(orderReminders.lastMondayOfMonth) ? orderReminders.lastMondayOfMonth : [])
         .map(
             (label) =>
                 `<div class="pending-vendor-item pending-vendor-item--info" role="status"><div class="pending-vendor-monday-note">${escapeHtml(
-                    label
+                    String(label)
                 )}</div></div>`
         )
         .join('');
@@ -885,6 +904,20 @@ function applySalesPayload(data) {
     liveSales = Array.isArray(data.actual) ? data.actual.slice(sliceStart, sliceEnd) : [];
     pendingVendors = Array.isArray(data.pendingVendors) ? data.pendingVendors : [];
     stockCountVendors = Array.isArray(data.stockCountVendors) ? data.stockCountVendors : [];
+    if (data.orderReminders && typeof data.orderReminders === 'object') {
+        orderReminders = {
+            monday: Array.isArray(data.orderReminders.monday) ? data.orderReminders.monday : [],
+            lastMondayOfMonth: Array.isArray(data.orderReminders.lastMondayOfMonth)
+                ? data.orderReminders.lastMondayOfMonth
+                : [],
+        };
+    }
+    lastMondayOnlyVendorKeys = Array.isArray(data.lastMondayOnlyVendorKeys)
+        ? data.lastMondayOnlyVendorKeys.map((key) => String(key).replace(/\s+/g, '').toLowerCase())
+        : [];
+    if (data.orderingDay?.skipVendorChecks) {
+        pendingVendors = [];
+    }
     for (const d of [...dismissedPendingVendors]) {
         if (!pendingVendors.includes(d)) dismissedPendingVendors.delete(d);
     }
@@ -2412,10 +2445,15 @@ function updatePendingVendorsPanel() {
     const visible = getVisiblePendingVendors();
     const monday = isMelbourneMonday();
     const lastMondayMonth = isMelbourneLastMondayOfMonth();
-    const hasOrdersContent = visible.length > 0 || monday || lastMondayMonth;
+    const hasMondayReminders = monday && Array.isArray(orderReminders.monday) && orderReminders.monday.length > 0;
+    const hasLastMondayReminders =
+        lastMondayMonth &&
+        Array.isArray(orderReminders.lastMondayOfMonth) &&
+        orderReminders.lastMondayOfMonth.length > 0;
+    const hasOrdersContent = visible.length > 0 || hasMondayReminders || hasLastMondayReminders;
 
-    const mondayHtml = monday ? mondayCashOrderReminderHtml() : '';
-    const lastMondayHtml = lastMondayMonth ? lastMondayMonthlyOrdersReminderHtml() : '';
+    const mondayHtml = hasMondayReminders ? mondayCashOrderReminderHtml() : '';
+    const lastMondayHtml = hasLastMondayReminders ? lastMondayMonthlyOrdersReminderHtml() : '';
     const combinedPath = combinedStockCountPath();
     const combinedChipHtml = combinedPath
         ? `<div class="pending-vendor-item pending-vendor-item--combined"><a class="pending-vendor-chip pending-vendor-chip--link pending-vendor-chip--combined" href="${escapeHtml(combinedPath)}" aria-label="Start combined stock count for all vendors today">Stock count</a></div>`

@@ -289,11 +289,6 @@ async function getStockCountSendPlan(storeNumber, vendorSlug, options = {}) {
  */
 async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, options = {}) {
     const reportsOnly = Boolean(options.reportsOnly);
-    if (!reportsOnly) {
-        for (const row of toSend) {
-            await markMmxSent(storeNumber, row.slug, dateKey);
-        }
-    }
 
     await beginStockCountMmxWork(
         reportsOnly ? `skip KIC → orders (store ${storeNumber})` : `manual counts → orders (store ${storeNumber})`,
@@ -325,11 +320,16 @@ async function runOrdersFromManualCountsOnly(storeNumber, toSend, dateKey, optio
             skipReportDownload: false,
             forceReportDownload: false,
             cleanupReports: options.cleanupReports !== false,
+            preferManualCountWhenPresent: !reportsOnly,
             onlyCatalogSlugs: toSend.map((row) => row.slug),
         });
         const orders = cycle.orders;
         if (ordersAllSuccessful(orders)) {
-            if (reportsOnly) {
+            if (!reportsOnly) {
+                for (const row of toSend) {
+                    await markMmxSent(storeNumber, row.slug, dateKey);
+                }
+            } else {
                 for (const row of toSend) {
                     await ensureMmxSentRecord(storeNumber, row.slug, dateKey);
                 }
@@ -812,7 +812,8 @@ async function runStoreBuildToCycle(storeNumber, options = {}) {
             dateKey,
             noOrderRounding: options.noOrderRounding,
             preferReportOnHand: true,
-            preferManualCountWhenPresent: afterCountApply,
+            preferManualCountWhenPresent:
+                afterCountApply || Boolean(options.preferManualCountWhenPresent),
             onlyCatalogSlugs: options.onlyCatalogSlugs,
             onlyVendorIds: options.onlyVendorIds,
         };

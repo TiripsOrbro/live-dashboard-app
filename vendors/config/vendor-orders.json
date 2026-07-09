@@ -50,6 +50,12 @@
       "label": "Cut Fresh NSW",
       "vendorMatch": "cut\\s*fresh",
       "catalogSlug": "cutfresh"
+    },
+    {
+      "id": "schweppes",
+      "label": "Schweppes VIC",
+      "vendorMatch": "schweppes",
+      "catalogSlug": "schweppes"
     }
   ],
   "orderEntry": {

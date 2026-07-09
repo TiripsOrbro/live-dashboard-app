@@ -3,6 +3,8 @@
  * when the dashboard cache was cleared). Writes data/sales-snapshots/{store}.json
  * so `pm2 restart dashboard` can restore the UI.
  *
+ * Snapshots are written to dashboard/data/sales-snapshots/ (same path the server reads).
+ *
  * Usage:
  *   npm run force-sales-scrape
  *   npm run force-sales-scrape -- --store 3811
@@ -10,6 +12,9 @@
 const path = require('path');
 const fs = require('fs');
 require('./load-project-env');
+
+const paths = require('../src/paths');
+const SNAPSHOT_DIR = path.join(paths.dashboard.data, 'sales-snapshots');
 
 if (!process.env.SCRAPER_EXECUTABLE_PATH && process.platform === 'win32') {
     const candidates = [
@@ -23,8 +28,6 @@ if (!process.env.SCRAPER_EXECUTABLE_PATH && process.platform === 'win32') {
 }
 
 const scrapeMacromatix = require('../src/services/macromatixScraper');
-
-const SNAPSHOT_DIR = path.join(__dirname, '../data/sales-snapshots');
 
 function sumHourly(arr) {
     return (Array.isArray(arr) ? arr : []).reduce((n, v) => n + (Number(v) || 0), 0);
@@ -107,7 +110,7 @@ function parseArgs(argv) {
             console.log('[force-sales-scrape] Run: pm2 restart dashboard  (then refresh the browser)');
         } else {
             console.warn(
-                '[force-sales-scrape] Macromatix returned no sales totals. Data may only be recoverable from an older snapshot in data/sales-snapshots/.'
+                '[force-sales-scrape] Macromatix returned no sales totals. Data may only be recoverable from an older snapshot in dashboard/data/sales-snapshots/.'
             );
             process.exitCode = 1;
         }

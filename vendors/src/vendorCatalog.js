@@ -508,6 +508,7 @@ function isItemCode(value) {
 
 function sectionToMmxOrderClass(sectionName) {
     const s = String(sectionName || '').toLowerCase();
+    if (s.includes('carryover')) return 'DRY';
     if (s.includes('dry')) return 'DRY';
     if (s.includes('fridge')) return 'FRG';
     return 'FRZ';
@@ -779,14 +780,10 @@ function getVendorCatalog(slug, options = {}) {
     let sourceItems = catalog.items;
     if (options.storeNumber) {
         const { applyAdminCatalogOverrides } = require('./buildToAdminOverrides');
-        if (options.forStockCount || options.forDailyCount) {
-            const { buildRoutedStockCountItems, buildRoutedDailyCountItems } = require('./vendorCatalogRouting');
-            sourceItems =
-                options.forDailyCount
-                    ? buildRoutedDailyCountItems(slug, options.storeNumber)
-                    : buildRoutedStockCountItems(slug, options.storeNumber);
-        } else {
-            sourceItems = applyAdminCatalogOverrides(catalog, options.storeNumber, slug).items;
+        sourceItems = applyAdminCatalogOverrides(catalog, options.storeNumber, slug).items;
+        if (options.forDailyCount) {
+            const { buildRoutedDailyCountItems } = require('./vendorCatalogRouting');
+            sourceItems = buildRoutedDailyCountItems(slug, options.storeNumber);
         }
     }
 

@@ -35,50 +35,50 @@
 10 | 40003 | TB JALAPENO 6X2.3KG | Boxes | Bags | Each | Fridge | In Use
 10 | 37013 | TB SAUCE PICO DE GALLO 12X500GM | Boxes | Bags | Each | Fridge
 
-# --- Dry (MMX DRY tab) — manual packaging + gloves/supplies (order=N) + counted rice/seasoning; SCM dry food uses oh: ---
+# --- Dry (MMX DRY tab) — stock count: gloves, rice, seasoning, sugar, cinnamon twists, paper/toilet rolls, multipurpose bags; SCM sauces/oil oh:; packaging skip: ---
 oh:10 | 17005 | SAUCE TOMATO SQUEEZE 100x14GM | Boxes | Bags | Each | Dry
 oh:10 | 38163 | TB SAUCE CHOCOLATE DA VINCI 2X2LTR | Boxes | Bags | Each | Dry
 oh:10 | 106191 | SAUCE CARAMEL MONIN 1.8L | Boxes | Bags | Each | Dry
-oh:10 | 40037 | SUGAR CINNAMON 5X2.5KG | Boxes | Bags | Each | Dry
-oh:10 | 40062A | TR CINNAMON TWISTS 2 X 5KG | Boxes | Bags | Each | Dry
+10 | 40037 | SUGAR CINNAMON 5X2.5KG | Boxes | Bags | Each | Dry
+10 | 40062A | TR CINNAMON TWISTS 2 X 5KG | Boxes | Bags | Each | Dry
 10 | 37914 | RICE LONG GRAIN WHITE 10KG | Boxes | Bags | Each | Dry
 10 | 37915 | TD RICE LONG GRAIN WHITE 10KG | Boxes | Bags | Each | Dry
 10 | 39054 | TR SEASONING MEXICAN RECI 10X1 | Boxes | Bags | Each | Dry
 oh:10 | 607826 | OIL FRYING LIQUID 15KG | Boxes | Bags | Each | Dry
-manual | 33090 | TD CUP POSTMIX REGULAR 1000EA NEW | Boxes | N/a | Each | Dry
-manual | 33091 | TB CUP POSTMIX LARGE 20X50EA NEW | Boxes | N/a | Each | Dry | 20
-manual | TB13735 | LIDS CUP POST MIX 400/500ML 2000EA | Boxes | N/a | Each | Dry
-manual | 33094 | TB LID POSTMIX 20X50EA | Boxes | N/a | Each | Dry | 20
-manual | 601518 | STRAW PAPER CFC 4000EA | Boxes | N/a | Each | Dry
-manual | 505798 | TRAYS DRINKS 4 CUP 100EA | Boxes | N/a | Each | Dry
-manual | 601078 | CUP SEMI FOR 1000PK | Boxes | N/a | Each | Dry
-manual | 507017 | LID FCS DOME 500 ML | Boxes | N/a | Each | Dry
-manual | 37987 | TR BAG TAKEAWAY BROWN SMALL 1000EA | Boxes | N/a | Each | Dry
-manual | 37989 | TB BAG TAKEAWAY BROWN MEDIUM 1000EA | Boxes | N/a | Each | Dry
-manual | 37991 | TD BAG TAKEAWAY BROWN LARGE 250EA | Boxes | N/a | Each | Dry
-manual | 30044 | TB BAG CHIP REGULAR 3000EA | Boxes | N/a | Each | Dry
-manual | 30044A | TD BAG CHIPS LARGE / NACHO CHIPS REGULAR | Boxes | N/a | Each | Dry
-manual | 30045 | TR BAG NACHO CHIP LARGE 2000EA | Boxes | N/a | Each | Dry
-manual | 30042 | TB BAG CRUNCHWRAP 2000EA | Boxes | N/a | Each | Dry
-manual | 40014 | TD BOX CANTINA 200EA | Boxes | N/a | Each | Dry
-manual | 30052 | TB BIG BELL BOX 200EA | Boxes | N/a | Each | Dry
-manual | 30744 | TD DIPPING CUP 60ML 1000EA | Boxes | N/a | Each | Dry
-manual | 30740 | TR LID CLEAR SEMI DIPPING CUP 1000EA | Boxes | N/a | Each | Dry
-manual | 37921 | TD WRAP SMALL WHITE PRINTED 3000EA | Boxes | N/a | Each | Dry
-manual | 37901 | TR WRAP LARGE WHITE PRINTED 2000EA | Boxes | N/a | Each | Dry
-manual | 33059 | TB WRAP WASTE WHITE UNPRINTED 3X1000EA | Boxes | N/a | Each | Dry
-manual | 33050 | NAPKINS BROWN RECYCLE | Boxes | N/a | Each | Dry
-manual | 30041 | TR WOODEN FORK 1000EA | Boxes | N/a | Each | Dry
+skip | 33090 | TD CUP POSTMIX REGULAR 1000EA NEW | Boxes | N/a | Each | Dry
+skip | 33091 | TB CUP POSTMIX LARGE 20X50EA NEW | Boxes | N/a | Each | Dry | 20
+skip | TB13735 | LIDS CUP POST MIX 400/500ML 2000EA | Boxes | N/a | Each | Dry
+skip | 33094 | TB LID POSTMIX 20X50EA | Boxes | N/a | Each | Dry | 20
+skip | 601518 | STRAW PAPER CFC 4000EA | Boxes | N/a | Each | Dry
+skip | 505798 | TRAYS DRINKS 4 CUP 100EA | Boxes | N/a | Each | Dry
+skip | 601078 | CUP SEMI FOR 1000PK | Boxes | N/a | Each | Dry
+skip | 507017 | LID FCS DOME 500 ML | Boxes | N/a | Each | Dry
+skip | 37987 | TR BAG TAKEAWAY BROWN SMALL 1000EA | Boxes | N/a | Each | Dry
+skip | 37989 | TB BAG TAKEAWAY BROWN MEDIUM 1000EA | Boxes | N/a | Each | Dry
+skip | 37991 | TD BAG TAKEAWAY BROWN LARGE 250EA | Boxes | N/a | Each | Dry
+skip | 30044 | TB BAG CHIP REGULAR 3000EA | Boxes | N/a | Each | Dry
+skip | 30044A | TD BAG CHIPS LARGE / NACHO CHIPS REGULAR | Boxes | N/a | Each | Dry
+skip | 30045 | TR BAG NACHO CHIP LARGE 2000EA | Boxes | N/a | Each | Dry
+skip | 30042 | TB BAG CRUNCHWRAP 2000EA | Boxes | N/a | Each | Dry
+skip | 40014 | TD BOX CANTINA 200EA | Boxes | N/a | Each | Dry
+skip | 30052 | TB BIG BELL BOX 200EA | Boxes | N/a | Each | Dry
+skip | 30744 | TD DIPPING CUP 60ML 1000EA | Boxes | N/a | Each | Dry
+skip | 30740 | TR LID CLEAR SEMI DIPPING CUP 1000EA | Boxes | N/a | Each | Dry
+skip | 37921 | TD WRAP SMALL WHITE PRINTED 3000EA | Boxes | N/a | Each | Dry
+skip | 37901 | TR WRAP LARGE WHITE PRINTED 2000EA | Boxes | N/a | Each | Dry
+skip | 33059 | TB WRAP WASTE WHITE UNPRINTED 3X1000EA | Boxes | N/a | Each | Dry
+skip | 33050 | NAPKINS BROWN RECYCLE | Boxes | N/a | Each | Dry
+skip | 30041 | TR WOODEN FORK 1000EA | Boxes | N/a | Each | Dry
 order=2 | 100481 | GLOVE NITRILE MEDIUM 10X100 | Cartons | Packs | N/a | Dry | 10
 order=2 | 100482 | GLOVE NITRILE LARGE10X100 | Cartons | Packs | N/a | Dry | 10
 order=2 | 100483 | GLOVE NITRILE XLARGE 10X100 | Cartons | Packs | N/a | Dry | 10
 order=1 | 38076 | TOWEL PAPER HAND TORK WHITE 6 ROLLS | Cartons | Rolls | N/a | Dry | 6
 order=1 | 38078 | TOILET PAPER SMARTONE 12 ROLLS | Cartons | Rolls | N/a | Dry | 12
-order=1 | 38464 | FILTER SHEET EVOLUTION LOADED 100EA | Cartons | N/a | N/a | Dry
-order=2 | 38542 | BIN LINER 240L H/DUTY 8X25 EA | Cartons | N/a | N/a | Dry
-order=1 | 504245 | SCOURERS SMALL GREEN MAXPAC 30 | Cartons | Packs | N/a | Dry | 6
-order=1 | 504372 | WIPING CLOTH BLUE 350EA | Cartons | N/a | N/a | Dry
-order=1 | 505796 | WIPING CLOTH YELLOW | Cartons | N/a | N/a | Dry
+skip | 38464 | FILTER SHEET EVOLUTION LOADED 100EA | Cartons | N/a | N/a | Dry
+skip | 38542 | BIN LINER 240L H/DUTY 8X25 EA | Cartons | N/a | N/a | Dry
+skip | 504245 | SCOURERS SMALL GREEN MAXPAC 30 | Cartons | Packs | N/a | Dry | 6
+skip | 504372 | WIPING CLOTH BLUE 350EA | Cartons | N/a | N/a | Dry
+skip | 505796 | WIPING CLOTH YELLOW | Cartons | N/a | N/a | Dry
 order=0.2 | 505253 | TB BAG MULTIPURPOSE 5000EA | Cartons | N/a | N/a | Dry
 
 # --- Carryover (MMX CARRY OVER tab) — partial pans: chicken, beef, nacho cheese (see Freezer/Fridge lines above) ---

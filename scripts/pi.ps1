@@ -105,7 +105,7 @@ function Sync-Deploy {
     }
 }
 
-$RemoteGitDeploy = 'cd ~/live-dashboard-app && git pull && npm install --omit=dev && pm2 restart dashboard report-download-scheduler forecast-scheduler'
+$RemoteGitDeploy = 'cd ~/live-dashboard-app && git pull && node scripts/patch-americold-dry-carryover.js --write && npm install --omit=dev && pm2 restart dashboard report-download-scheduler forecast-scheduler'
 $RemoteRestart = 'cd ~/live-dashboard-app && pm2 restart dashboard report-download-scheduler forecast-scheduler'
 
 switch ($Command) {

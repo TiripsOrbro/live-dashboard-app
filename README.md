@@ -54,6 +54,43 @@ After pulling on the Pi, run `npm run migrate-domain-layout` once if upgrading f
 
 Release notes in plain English (for store managers and admins) are in **[CHANGELOG.md](CHANGELOG.md)**. Update that file whenever you cut a new version branch — see the “How to update” section at the top.
 
+## Hardware branches
+
+Production is split by host RAM. Feature work lands on **`4gb`** first; merge into **`16gb`** before deploying to the EliteDesk server.
+
+| Branch | Host | Deploy | Env template |
+|--------|------|--------|--------------|
+| **`4gb`** | Raspberry Pi 4 (4 GB) | `npm run pi:deploy` | [`.env.example`](.env.example) |
+| **`16gb`** | HP EliteDesk / 16 GB server | `npm run server:deploy` (on `16gb` branch) | `.env.server16gb.example` (on `16gb` branch) |
+| `Version-0.6` | Release line | merge from `4gb` when cutting releases | same as target host |
+
+```sh
+git checkout 4gb          # default dev branch
+npm run pi:deploy         # Pi production
+
+git checkout 16gb
+git merge 4gb             # before server deploy
+# then: npm run server:deploy
+```
+
+Tuning is env-driven (`SCRAPER_CONCURRENCY`, `SCRAPE_FAST_INTERVAL_SECONDS`, `PM2_DASHBOARD_MAX_MEMORY`) — no separate app code per branch.
+
+### Week 2 Pi tuning (`4gb`, stay on 4 GB RAM)
+
+Do **not** raise `SCRAPER_CONCURRENCY` above **2** on the Pi. After benchmarking:
+
+```sh
+node scripts/test-scrape.js 2
+```
+
+If the full cycle finishes well under the interval, tighten refresh in Pi `.env` (one change at a time, then `pm2 restart dashboard`):
+
+- `SCRAPE_FAST_INTERVAL_SECONDS=90` (from 120)
+- `PM2_DASHBOARD_MAX_MEMORY=1G` (from 900M default)
+- `DASHBOARD_MEMORY_LOG=1` during the tuning week
+
+Acceptance: 48h with stable `pm2 status`, no OOM restarts, scrape cycles completing before the next interval tick.
+
 ## Raspberry Pi setup (PM2)
 
 This is the current production setup (Pi 4, user `orbro`, sibling to `mmx-report-automation`). PM2 keeps the dashboard running, restarts it on crash, and brings it back after reboot.

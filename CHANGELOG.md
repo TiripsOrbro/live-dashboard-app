@@ -2,7 +2,7 @@
 
 Plain-English summary of what changed in each release — written for store managers and admins, not developers.
 
-**Current live branch:** `Version-0.6`
+**Current live branch:** `Version-0.6` (dev default: **`4gb`** Pi profile; server: **`16gb`**)
 
 ---
 
@@ -25,6 +25,25 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ---
 
 ## Release history
+
+### Hardware branches – July 2026
+
+**Added**
+
+- **`4gb` branch** — Raspberry Pi 4 (4 GB) production profile; default dev branch.
+- **`16gb` branch** — EliteDesk / 16 GB server profile with higher scrape concurrency and `server:deploy` tooling.
+
+**Changed**
+
+- Pi `.env` defaults documented in `.env.example` (`SCRAPER_CONCURRENCY=2`, `SCRAPE_FAST_INTERVAL_SECONDS=120`).
+- Server `.env` template: `.env.server16gb.example` on `16gb` (`SCRAPER_CONCURRENCY=4`, etc.).
+
+**What you need to do**
+
+- Dev: `git checkout 4gb` for feature work; deploy Pi with `npm run pi:deploy`.
+- Server (when EliteDesk is ready): `git checkout 16gb`, merge `4gb`, copy `.env.server16gb.example` → `.env`, run [EliteDesk setup](#elitedesk-setup-16gb-server) in README.
+
+---
 
 ### Version 0.6.0.0 – June 2026
 

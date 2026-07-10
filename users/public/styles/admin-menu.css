@@ -3260,7 +3260,7 @@ html.mic-dark-mode .admin-forecast-ph-date-item {
     flex-direction: column;
     align-items: flex-start;
     justify-content: center;
-    gap: 0.25rem;
+    gap: 0.2rem;
     height: 100%;
     min-height: 4.55rem;
     box-sizing: border-box;
@@ -3294,12 +3294,12 @@ html.mic-dark-mode .admin-forecast-ph-date-item {
     vertical-align: top;
 }
 
-.admin-forecast-store-heading {
+.admin-forecast-store-meta {
     display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 0.35rem 0.5rem;
-    min-height: 2.5rem;
+    align-items: center;
+    gap: 0.35rem;
+    width: 100%;
+    min-width: 0;
 }
 
 .admin-forecast-store-number {
@@ -3312,7 +3312,7 @@ html.mic-dark-mode .admin-forecast-ph-date-item {
 
 .admin-forecast-store-history-label {
     line-height: 1.25;
-    flex: 1 1 8rem;
+    flex: 1 1 auto;
     min-width: 0;
     display: -webkit-box;
     -webkit-box-orient: vertical;
@@ -3326,7 +3326,7 @@ html.mic-dark-mode .admin-forecast-ph-date-item {
     width: auto;
     min-width: 0;
     min-height: 0;
-    margin-top: 0.1rem;
+    margin-top: 0;
     padding: 0.2rem;
     border: none !important;
     background: transparent !important;

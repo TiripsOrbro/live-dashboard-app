@@ -4588,11 +4588,11 @@
                 return `<tr>
                     <td class="admin-forecast-store-cell">
                         <div class="admin-forecast-store-cell-inner">
-                            <div class="admin-forecast-store-heading">
-                                <div class="admin-forecast-store-number">${escapeHtml(storeNumber)}</div>
+                            <div class="admin-forecast-store-number">${escapeHtml(storeNumber)}</div>
+                            <div class="admin-forecast-store-meta">
                                 <span class="admin-accounts-meta admin-forecast-store-history-label">${histLabel}</span>
+                                <button type="button" class="admin-forecast-history-icon-btn" data-history-store="${escapeHtml(storeNumber)}" title="View forecast history" aria-label="View forecast history for store ${escapeHtml(storeNumber)}">${FORECAST_HISTORY_SVG}</button>
                             </div>
-                            <button type="button" class="admin-forecast-history-icon-btn" data-history-store="${escapeHtml(storeNumber)}" title="View forecast history" aria-label="View forecast history for store ${escapeHtml(storeNumber)}">${FORECAST_HISTORY_SVG}</button>
                         </div>
                     </td>
                     ${forecastHistoryStatusCell(hist, storeNumber)}

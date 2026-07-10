@@ -1257,14 +1257,16 @@ async function loadMicDataInner() {
         const res = await fetch(`/api/overview${storeParam}`, {
             credentials: 'same-origin',
         });
+        if (!canMaintainMicStoreOverview()) return;
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) {
-            if (!micData) {
+            if (!micData && canMaintainMicStoreOverview()) {
                 app.textContent = data.error || 'Could not load MIC overview.';
             }
             return;
         }
         micData = await enrichMicSalesHourly(data);
+        if (!canMaintainMicStoreOverview()) return;
         if (micData.salesToday && 'pending' in micData.salesToday) {
             const { pending, ...salesToday } = micData.salesToday;
             micData.salesToday = salesToday;
@@ -1289,12 +1291,12 @@ async function loadMicDataInner() {
             signalLoginPreloadReady('content');
         }
         void patchStockLevelsForMode().then(() => {
-            if (micData) renderTiles(micData);
+            if (canMaintainMicStoreOverview() && micData) renderTiles(micData);
         });
     } finally {
         micSalesFetchInFlight = false;
         syncSalesWaitPolling();
-        if (salesPlaceholderState(micData?.salesToday)?.show) {
+        if (salesPlaceholderState(micData?.salesToday)?.show && canMaintainMicStoreOverview()) {
             renderTiles(micData);
         }
     }
@@ -1383,6 +1385,7 @@ async function initStoreOverview(me, { skipShell = false } = {}) {
         STORE_NUMBER = await resolveMicStoreNumber();
     }
     if (!STORE_NUMBER) {
+        if (!canMaintainMicStoreOverview()) return;
         app.textContent = 'Invalid store.';
         return;
     }
@@ -1443,6 +1446,7 @@ async function init() {
         const overviewPaintedEarly = paintOverviewShellEarly();
         const me = await fetchMeProfile();
         if (!me) {
+            if (window.__APP_SHELL__ && !canMaintainMicStoreOverview()) return;
             app.textContent = 'Could not load your profile. Redirecting to sign in…';
             window.location.href = '/login';
             return;
@@ -1480,6 +1484,7 @@ async function init() {
         await initStoreOverview(me, { skipShell: canReuseEarlyPaint });
     } catch (err) {
         console.error('[MIC overview] Init failed:', err);
+        if (!canMaintainMicStoreOverview()) return;
         app.textContent = err?.message || 'Could not load MIC overview.';
     }
 }

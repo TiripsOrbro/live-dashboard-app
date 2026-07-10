@@ -491,8 +491,17 @@
         return document.getElementById('admin-settings-content');
     }
 
+    function sectionPanelNeedsRemount(sectionId) {
+        const row = sectionPanels.get(sectionId);
+        return Boolean(row?.mounted && row.host && !row.host.childElementCount);
+    }
+
     async function ensureSectionMounted(section) {
-        if (section.external || sectionPanels.get(section.id)?.mounted) return;
+        if (section.external) return;
+        if (sectionPanels.get(section.id)?.mounted) {
+            if (!sectionPanelNeedsRemount(section.id)) return;
+            sectionPanels.set(section.id, { host: sectionPanels.get(section.id).host, mounted: false });
+        }
 
         const host = contentHost();
         if (!host) return;
@@ -508,8 +517,14 @@
             sectionPanels.set(section.id, { host: panel, mounted: false });
         }
 
+        await ensureDeferredScriptsForSection(section.id);
+
         try {
             await section.mount(panel, mountOptions());
+            if (!PREFERENCES_BOOT_SECTIONS.has(section.id) && !panel.childElementCount) {
+                sectionPanels.set(section.id, { host: panel, mounted: false });
+                return;
+            }
             sectionPanels.set(section.id, { host: panel, mounted: true });
         } catch (error) {
             panel.innerHTML = `<p class="admin-modal-error" role="alert">${escapeAttr(error.message || 'Could not load section.')}</p>`;
@@ -557,7 +572,9 @@
             return;
         }
 
-        await ensureDeferredScriptsForSection(section.id);
+        if (sectionPanelNeedsRemount(section.id)) {
+            sectionPanels.set(section.id, { host: sectionPanels.get(section.id).host, mounted: false });
+        }
         if (!sectionPanels.get(section.id)?.mounted) {
             await ensureSectionMounted(section);
         }

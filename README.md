@@ -61,7 +61,7 @@ Production is split by host RAM. Feature work lands on **`4gb`** first; merge in
 | Branch | Host | Deploy | Env template |
 |--------|------|--------|--------------|
 | **`4gb`** | Raspberry Pi 4 (4 GB) | `npm run pi:deploy` | [`.env.example`](.env.example) |
-| **`16gb`** | HP EliteDesk / 16 GB server | `npm run server:deploy` (on `16gb` branch) | `.env.server16gb.example` (on `16gb` branch) |
+| **`16gb`** | HP EliteDesk / 16 GB server | `npm run server:deploy` | [`.env.server16gb.example`](.env.server16gb.example) |
 | `Version-0.6` | Release line | merge from `4gb` when cutting releases | same as target host |
 
 ```sh
@@ -70,7 +70,7 @@ npm run pi:deploy         # Pi production
 
 git checkout 16gb
 git merge 4gb             # before server deploy
-# then: npm run server:deploy
+npm run server:deploy     # EliteDesk (after [setup](#elitedesk-setup-16gb-server) below)
 ```
 
 Tuning is env-driven (`SCRAPER_CONCURRENCY`, `SCRAPE_FAST_INTERVAL_SECONDS`, `PM2_DASHBOARD_MAX_MEMORY`) — no separate app code per branch.
@@ -388,6 +388,105 @@ systemctl status cloudflared
 Test `https://tbadashboard.com/` and `https://tbadashboard.com/3806`. Path routing (`/3806`, `/3803`, `/3811`, ...) is handled entirely by Express + the frontend — no per-store DNS entries needed.
 
 Adding another hostname later is config-only — add an `ingress` hostname pointing at the same `http://localhost:3000` and run `cloudflared tunnel route dns dashboard <new-hostname>`. No app changes.
+
+## EliteDesk setup (16GB server)
+
+Target: Ubuntu Server 24.04 or Debian 12 on the HP EliteDesk (branch **`16gb`**). Use Linux rather than Windows for lower RAM overhead.
+
+### 1. SSH from your dev PC
+
+Add to `~/.ssh/config` (Windows: `C:\Users\<you>\.ssh\config`):
+
+```
+Host dashboard
+    HostName 192.168.x.x
+    User orbro
+    IdentityFile ~/.ssh/id_ed25519
+```
+
+From the repo on branch `16gb`:
+
+```powershell
+npm run server:setup
+npm run server:ssh
+```
+
+### 2. System packages
+
+```sh
+sudo apt update
+sudo apt install -y chromium nodejs npm git
+sudo npm install -g pm2
+node -v   # must be >= 18
+which chromium
+```
+
+### 3. Clone and configure
+
+```sh
+git clone -b 16gb <repository-url> ~/live-dashboard-app
+cd ~/live-dashboard-app
+cp .env.server16gb.example .env
+chmod 600 .env
+# Edit .env: secrets, STORE_CREDENTIALS_KEY, DASHBOARD_AUTH_SECRET, store logins via Admin UI
+npm install --omit=dev
+pm2 start ecosystem.config.cjs
+pm2 save
+pm2 startup   # run the printed command once
+```
+
+Server defaults in `.env.server16gb.example`: `SCRAPER_CONCURRENCY=4`, `PM2_DASHBOARD_MAX_MEMORY=1.5G`, `SCRAPE_FAST_INTERVAL_SECONDS=90`.
+
+### 4. Cloudflare Tunnel (amd64)
+
+Use the **amd64** package on x86 — not the Pi arm64 deb:
+
+```sh
+wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared-linux-amd64.deb
+cloudflared tunnel login
+cloudflared tunnel create dashboard
+```
+
+Create `~/.cloudflared/config.yml` (adjust user path and UUID):
+
+```yaml
+tunnel: <UUID>
+credentials-file: /home/orbro/.cloudflared/<UUID>.json
+
+ingress:
+  - hostname: tbadashboard.com
+    service: http://localhost:3000
+  - service: http_status:404
+```
+
+```sh
+cloudflared tunnel route dns dashboard tbadashboard.com
+sudo cloudflared service install
+sudo systemctl enable --now cloudflared
+```
+
+### 5. Migrate from Pi (cutover)
+
+Copy from the Pi (paths match `pi.ps1` deploy excludes — these are **not** overwritten by deploy):
+
+- `.env` secrets and keys (merge into server `.env` from `.env.server16gb.example` base)
+- `stores/.storelist`
+- `users/` (accounts, data)
+- `dashboard/data/`
+- `vendors/` (reports, catalogs, data)
+- `tacaudit/data/`
+- `mmx/data/`
+
+**Cutover:** only one host should run the production tunnel at a time. Test on a staging hostname first, then point `tbadashboard.com` at the EliteDesk. Keep the Pi as warm standby for one week.
+
+Deploy updates from Windows:
+
+```powershell
+git checkout 16gb
+git merge 4gb
+npm run server:deploy
+```
 
 ### Alternative: systemd
 

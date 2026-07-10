@@ -41,7 +41,7 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 **What you need to do**
 
 - Dev: `git checkout 4gb` for feature work; deploy Pi with `npm run pi:deploy`.
-- Server (when EliteDesk is ready): `git checkout 16gb`, merge `4gb`, copy `.env.server16gb.example` → `.env`, run [EliteDesk setup](#elitedesk-setup-16gb-server) in README.
+- Server (when EliteDesk is ready): `git checkout 16gb`, merge `4gb`, copy `.env.server16gb.example` → `.env`, follow [EliteDesk setup](#elitedesk-setup-16gb-server) in README, deploy with `npm run server:deploy`.
 
 ---
 

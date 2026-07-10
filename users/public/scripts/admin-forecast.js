@@ -27,6 +27,7 @@
     let sessionLifeLenzCredentials = null;
     let backfillProgressBackdrop = null;
     let backfillProgressRunning = false;
+    let backfillProgressRerun = null;
     let canManageBackfill = false;
     let threeWeekConfirmBackdrop = null;
     let phSettingsBackdrop = null;
@@ -344,15 +345,53 @@
         const weekStart = resolveStatusTableWeekStart(payload);
         if (!weekStart) return null;
         const entry = payload?.forecastWeekTotals?.[weekStart]?.[String(storeNumber)];
-        if (!entry?.ready || entry.weekTotal == null) return null;
-        return Number(entry.weekTotal);
+        if (entry?.weekTotal != null && Number.isFinite(Number(entry.weekTotal))) {
+            return Number(entry.weekTotal);
+        }
+        return null;
+    }
+
+    async function ensureWeekTotalsOnPayload(payload, storeNumbers) {
+        if (!payload || !storeNumbers.length) return payload;
+        const weekStart = resolveStatusTableWeekStart(payload);
+        if (!weekStart) return payload;
+        if (!payload.forecastWeekTotals) payload.forecastWeekTotals = {};
+        if (!payload.forecastWeekTotals[weekStart]) payload.forecastWeekTotals[weekStart] = {};
+        const bucket = payload.forecastWeekTotals[weekStart];
+        const missing = storeNumbers.filter((storeNumber) => {
+            const entry = bucket[String(storeNumber)];
+            return entry?.weekTotal == null || !Number.isFinite(Number(entry.weekTotal));
+        });
+        if (!missing.length) return payload;
+        try {
+            const target = getForecastTargetPayload();
+            const previewTarget = { ...target };
+            if (!previewTarget.targetScope) previewTarget.targetScope = 'week-after';
+            if (previewTarget.targetScope === 'week' && !previewTarget.weekStart) {
+                previewTarget.weekStart = weekStart;
+            }
+            const data = await fetchPreview(missing, previewTarget);
+            for (const row of data.previews || []) {
+                if (!row.ok) continue;
+                const total = row.adjustedWeekTotal ?? row.grid?.weekTotal ?? weekTotalForGrid(row.grid);
+                if (!Number.isFinite(Number(total))) continue;
+                bucket[String(row.storeNumber)] = {
+                    ready: true,
+                    weekTotal: Number(total),
+                    baseWeekTotal: row.baseWeekTotal ?? null,
+                };
+            }
+        } catch (err) {
+            console.warn('[Forecast] Could not load week totals for status table:', err);
+        }
+        return payload;
     }
 
     function renderStoreWeekTotalHtml(storeNumber, payload, { disabled = false } = {}) {
         const total = storeWeekTotalForPayload(storeNumber, payload);
         const weekLabel = describeForecastTarget(getForecastTargetPayload());
         const title = total == null ? 'Forecast total unavailable' : `${weekLabel} forecast total`;
-        const label = total == null ? '—' : formatMoney(total);
+        const label = total == null ? '…' : formatMoney(total);
         const disabledAttr = disabled ? ' disabled' : '';
         return `<button type="button" class="admin-forecast-store-week-total-btn" data-submit-store="${escapeHtml(storeNumber)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)} for store ${escapeHtml(storeNumber)}"${disabledAttr}>${escapeHtml(label)}</button>`;
     }
@@ -536,8 +575,9 @@
         });
         historyBackdrop.querySelector('#admin-forecast-history-backfill')?.addEventListener('click', () => {
             if (!historyStoreNumber) return;
-            const ready = Boolean(statusPayload?.history?.stores?.[historyStoreNumber]?.ready);
-            void runForecastBackfill([historyStoreNumber], { refreshHistory: true, force: ready });
+            const btn = historyBackdrop.querySelector('#admin-forecast-history-backfill');
+            const force = btn?.dataset.backfillForce === '1';
+            void runForecastBackfill([historyStoreNumber], { refreshHistory: true, force });
         });
         historyBackdrop.querySelector('#admin-forecast-history-edit')?.addEventListener('click', (event) => {
             const btn = event.target.closest('[data-history-edit-action]');
@@ -2905,6 +2945,15 @@
 
     function forecastHistoryStatusCell(hist, storeNumber) {
         if (hist.ready) {
+            if (canManageBackfill) {
+                return forecastStatusCell(
+                    'ok',
+                    `<span class="admin-forecast-status-label">Ready</span>
+                    <button type="button" class="admin-forecast-status-refresh-btn" data-backfill-store="${escapeHtml(storeNumber)}" data-backfill-force="1" title="Re-download sales history from MMX">
+                        <span class="admin-accounts-meta admin-forecast-status-hint">Refresh</span>
+                    </button>`
+                );
+            }
             return forecastStatusCell('ok', '<span class="admin-forecast-status-label">Ready</span>');
         }
         const variant = forecastStatusVariant(false, hist.daysRecorded > 0);
@@ -4351,6 +4400,7 @@
         btn.title = ready
             ? 'Re-download sales history from MMX'
             : 'Backfill missing forecast history from MMX';
+        btn.dataset.backfillForce = ready ? '1' : '0';
     }
 
     function ensureBackfillProgressModal() {
@@ -4367,12 +4417,19 @@
                     <ol class="admin-report-sub-progress-log" id="admin-forecast-backfill-progress-log" role="log" aria-live="polite"></ol>
                 </div>
                 <div class="admin-report-sub-form-actions">
+                    <button type="button" id="admin-forecast-backfill-progress-rerun" hidden>Run again</button>
                     <button type="button" id="admin-forecast-backfill-progress-close" disabled>Close</button>
                 </div>
             </div>`;
         document.body.appendChild(backfillProgressBackdrop);
         backfillProgressBackdrop.querySelector('#admin-forecast-backfill-progress-close')?.addEventListener('click', () => {
             if (!backfillProgressRunning) closeBackfillProgressModal();
+        });
+        backfillProgressBackdrop.querySelector('#admin-forecast-backfill-progress-rerun')?.addEventListener('click', () => {
+            if (backfillProgressRunning || !backfillProgressRerun) return;
+            const rerun = backfillProgressRerun;
+            closeBackfillProgressModal();
+            void runForecastBackfill(rerun.storeNumbers, rerun.options);
         });
         backfillProgressBackdrop.addEventListener('click', (event) => {
             if (event.target === backfillProgressBackdrop && !backfillProgressRunning) closeBackfillProgressModal();
@@ -4421,11 +4478,13 @@
         const logEl = modal.querySelector('#admin-forecast-backfill-progress-log');
         if (logEl) logEl.innerHTML = '';
         modal.querySelector('#admin-forecast-backfill-progress-close').disabled = true;
+        modal.querySelector('#admin-forecast-backfill-progress-rerun').hidden = true;
+        backfillProgressRerun = null;
         modal.hidden = false;
         backfillProgressRunning = true;
     }
 
-    function finishBackfillProgressModal(statusText, success) {
+    function finishBackfillProgressModal(statusText, success, { showRerun = false } = {}) {
         backfillProgressRunning = false;
         const modal = backfillProgressBackdrop;
         if (!modal) return;
@@ -4435,6 +4494,8 @@
             statusEl.classList.toggle('admin-modal-error', !success);
             statusEl.classList.toggle('admin-report-sub-progress-status--ok', success);
         }
+        const rerunBtn = modal.querySelector('#admin-forecast-backfill-progress-rerun');
+        if (rerunBtn) rerunBtn.hidden = !showRerun;
         modal.querySelector('#admin-forecast-backfill-progress-close').disabled = false;
     }
 
@@ -4444,7 +4505,9 @@
             backfillProgressBackdrop.hidden = true;
             const statusEl = backfillProgressBackdrop.querySelector('#admin-forecast-backfill-progress-status');
             statusEl?.classList.remove('admin-modal-error', 'admin-report-sub-progress-status--ok');
+            backfillProgressBackdrop.querySelector('#admin-forecast-backfill-progress-rerun').hidden = true;
         }
+        backfillProgressRerun = null;
     }
 
     async function consumeForecastBackfillStream(response, onEvent) {
@@ -4494,6 +4557,8 @@
         if (!stores.length) return;
         const root = getRoot();
         root?.querySelector('#admin-forecast-error')?.replaceChildren();
+        const runOptions = { refreshHistory, force: Boolean(force) };
+        backfillProgressRerun = { storeNumbers: stores, options: { ...runOptions, force: true } };
 
         const modal = ensureBackfillProgressModal();
         const logEl = modal.querySelector('#admin-forecast-backfill-progress-log');
@@ -4549,14 +4614,23 @@
             if (!finalEvent.success) throw new Error(finalEvent.error || 'Backfill failed.');
 
             const result = finalEvent.result || {};
-            finishBackfillProgressModal(
-                result.forecastReady
-                    ? force
-                        ? 'Refresh complete. Forecast history updated.'
-                        : 'Backfill complete. Forecast history ready.'
-                    : result.message || 'Backfill finished. See log for details.',
-                Boolean(result.forecastReady || result.ready)
-            );
+            if (result.skipped) {
+                finishBackfillProgressModal(
+                    result.message || 'History already complete. Nothing was re-downloaded.',
+                    false,
+                    { showRerun: true }
+                );
+            } else {
+                finishBackfillProgressModal(
+                    result.forecastReady
+                        ? force
+                            ? 'Refresh complete. Forecast history updated.'
+                            : 'Backfill complete. Forecast history ready.'
+                        : result.message || 'Backfill finished. See log for details.',
+                    Boolean(result.forecastReady || result.ready),
+                    { showRerun: true }
+                );
+            }
 
             if (root) {
                 await refresh(root);
@@ -4638,8 +4712,10 @@
                             <div class="admin-forecast-store-number">${escapeHtml(storeNumber)}</div>
                             <div class="admin-forecast-store-meta">
                                 <span class="admin-accounts-meta admin-forecast-store-history-label">${histLabel}</span>
-                                <button type="button" class="admin-forecast-history-icon-btn" data-history-store="${escapeHtml(storeNumber)}" title="View forecast history" aria-label="View forecast history for store ${escapeHtml(storeNumber)}">${FORECAST_HISTORY_SVG}</button>
-                                ${renderStoreWeekTotalHtml(storeNumber, payload, { disabled: !hist.ready })}
+                                <div class="admin-forecast-store-tools">
+                                    <button type="button" class="admin-forecast-history-icon-btn" data-history-store="${escapeHtml(storeNumber)}" title="View forecast history" aria-label="View forecast history for store ${escapeHtml(storeNumber)}">${FORECAST_HISTORY_SVG}</button>
+                                    ${renderStoreWeekTotalHtml(storeNumber, payload, { disabled: !hist.ready })}
+                                </div>
                             </div>
                         </div>
                     </td>
@@ -4686,7 +4762,8 @@
         });
         body.querySelectorAll('[data-backfill-store]').forEach((btn) => {
             btn.addEventListener('click', () => {
-                void runForecastBackfill([btn.getAttribute('data-backfill-store')]);
+                const force = btn.getAttribute('data-backfill-force') === '1' || btn.dataset.backfillForce === '1';
+                void runForecastBackfill([btn.getAttribute('data-backfill-store')], { force });
             });
         });
         body.querySelectorAll('[data-update-three-weeks-store]').forEach((btn) => {
@@ -4847,6 +4924,8 @@
         renderAreaTabs(root);
         renderForecastTargetControls(root, statusPayload);
         syncBackfillButtons();
+        const areaStores = storesInActiveArea(allStores);
+        await ensureWeekTotalsOnPayload(statusPayload, areaStores);
         renderTable(root, statusPayload);
     }
 

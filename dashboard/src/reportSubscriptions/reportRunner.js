@@ -131,6 +131,7 @@ async function backfillMissingHourlySales(storeNumber, dateRange = {}, options =
             ...assessHourlySalesCoverage(storeNumber, dateRange),
             forecastReadiness,
             backfillRange,
+            skipped: true,
         };
     }
 
@@ -776,25 +777,32 @@ async function backfillForecastHistoryForStores(storeNumbers, options = {}) {
     const ready = statuses.length > 0 && statuses.every((r) => r.coverage.ready);
     const forecastReady =
         statuses.length > 0 && statuses.every((r) => r.coverage.forecastReadiness?.ready);
-    const message =
-        stores.length === 1
-            ? forecastReady
-                ? `Store ${stores[0]} ready.`
-                : ready
-                  ? `Store ${stores[0]}: report data ready; forecast history still needed.`
-                  : 'Backfill finished. Some stores still need data.'
-            : forecastReady
-              ? 'Forecast history backfill complete. All stores ready.'
+    const skipped = statuses.length > 0 && statuses.every((r) => r.coverage.skipped);
+    const worked = statuses.some((r) => !r.coverage.skipped);
+    const message = skipped
+        ? stores.length === 1
+            ? `Store ${stores[0]} already has complete history. Use Refresh to re-download from MMX.`
+            : 'All selected stores already have complete history. Use Refresh to re-download from MMX.'
+        : stores.length === 1
+          ? forecastReady
+              ? `Store ${stores[0]} ready.`
               : ready
-                ? 'Backfill finished. Some stores still need more weekday history (see log).'
-                : 'Backfill finished. Some stores still need data.';
+                ? `Store ${stores[0]}: report data ready; forecast history still needed.`
+                : 'Backfill finished. Some stores still need data.'
+          : forecastReady
+            ? 'Forecast history backfill complete. All stores ready.'
+            : ready
+              ? 'Backfill finished. Some stores still need more weekday history (see log).'
+              : 'Backfill finished. Some stores still need data.';
     emitProgress(options, {
         type: 'scope-done',
         ready,
         forecastReady,
+        skipped,
+        worked,
         message,
     });
-    return { ready, forecastReady, stores: statuses, message };
+    return { ready, forecastReady, skipped, worked, stores: statuses, message };
 }
 
 module.exports = {

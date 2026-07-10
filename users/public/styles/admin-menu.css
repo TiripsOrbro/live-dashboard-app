@@ -3342,6 +3342,45 @@ html.mic-dark-mode .admin-forecast-ph-date-item {
     color: #2563eb;
 }
 
+.admin-forecast-store-week-total-btn {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0.1rem 0.25rem;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+    color: rgba(42, 42, 50, 0.88);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.admin-forecast-store-week-total-btn:hover:not(:disabled) {
+    color: #2563eb;
+}
+
+.admin-forecast-store-week-total-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.admin-forecast-store-week-total-btn:focus-visible {
+    outline: 2px solid rgba(37, 99, 235, 0.45);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+html.mic-dark-mode .admin-forecast-store-week-total-btn {
+    color: rgba(255, 255, 255, 0.88);
+}
+
+html.mic-dark-mode .admin-forecast-store-week-total-btn:hover:not(:disabled) {
+    color: #93c5fd;
+}
+
 .admin-forecast-history-icon-btn:focus-visible {
     outline: 2px solid rgba(37, 99, 235, 0.45);
     outline-offset: 2px;

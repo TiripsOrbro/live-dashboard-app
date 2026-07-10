@@ -135,7 +135,9 @@ async function backfillMissingHourlySales(storeNumber, dateRange = {}, options =
     }
 
     const missing = coverage.missingDays || [];
-    if (!missing.length && !options.force) {
+    const allDatesInRange = datesInRange(backfillRange.startDate, backfillRange.endDate);
+    const datesToScrape = options.force ? allDatesInRange : missing;
+    if (!datesToScrape.length && !options.force) {
         return {
             ...assessHourlySalesCoverage(storeNumber, dateRange),
             forecastReadiness: assessHistoryReadiness(storeNumber),
@@ -152,8 +154,8 @@ async function backfillMissingHourlySales(storeNumber, dateRange = {}, options =
     emitProgress(options, {
         type: 'store-start',
         storeNumber: store,
-        message: `Store ${store}: backfilling ${missing.length} missing day(s) from MMX…`,
-        missingCount: missing.length,
+        message: `Store ${store}: ${options.force ? 'refreshing' : 'backfilling'} ${datesToScrape.length} day(s) from MMX…`,
+        missingCount: datesToScrape.length,
     });
 
     let browser;
@@ -176,7 +178,7 @@ async function backfillMissingHourlySales(storeNumber, dateRange = {}, options =
         await page.goto(LABOUR_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await scraper.selectStoreOnPage(page, store);
 
-        const scraped = await scraper.scrapeMissingHistoricalDays(page, missing, {
+        const scraped = await scraper.scrapeMissingHistoricalDays(page, datesToScrape, {
             timeZone: process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne',
             onProgress: (ev) => {
                 const enriched = enrichHourlyBackfillProgress(store, ev);

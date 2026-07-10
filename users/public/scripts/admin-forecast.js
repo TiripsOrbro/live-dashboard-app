@@ -324,6 +324,39 @@
         return 'Selected forecast target';
     }
 
+    function resolveStatusTableWeekStart(payload) {
+        const weeks = payload?.targetWeeks || [];
+        const target = getForecastTargetPayload();
+        if (target.targetScope === 'this-week' && weeks[0]) return weeks[0];
+        if (target.targetScope === 'next-week' && weeks[1]) return weeks[1];
+        if (target.targetScope === 'week-after' && weeks[2]) return weeks[2];
+        if (target.targetScope === 'week' && target.weekStart) return target.weekStart;
+        if (target.targetScope === 'day' && target.date) {
+            for (const weekStart of weeks) {
+                const weekEnd = addDaysToIso(weekStart, 6);
+                if (target.date >= weekStart && target.date <= weekEnd) return weekStart;
+            }
+        }
+        return weeks[2] || weeks[0] || '';
+    }
+
+    function storeWeekTotalForPayload(storeNumber, payload) {
+        const weekStart = resolveStatusTableWeekStart(payload);
+        if (!weekStart) return null;
+        const entry = payload?.forecastWeekTotals?.[weekStart]?.[String(storeNumber)];
+        if (!entry?.ready || entry.weekTotal == null) return null;
+        return Number(entry.weekTotal);
+    }
+
+    function renderStoreWeekTotalHtml(storeNumber, payload, { disabled = false } = {}) {
+        const total = storeWeekTotalForPayload(storeNumber, payload);
+        const weekLabel = describeForecastTarget(getForecastTargetPayload());
+        const title = total == null ? 'Forecast total unavailable' : `${weekLabel} forecast total`;
+        const label = total == null ? '—' : formatMoney(total);
+        const disabledAttr = disabled ? ' disabled' : '';
+        return `<button type="button" class="admin-forecast-store-week-total-btn" data-submit-store="${escapeHtml(storeNumber)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)} for store ${escapeHtml(storeNumber)}"${disabledAttr}>${escapeHtml(label)}</button>`;
+    }
+
     function escapeHtml(text) {
         return String(text)
             .replace(/&/g, '&amp;')
@@ -502,7 +535,9 @@
             void loadHistoryGrid(historyStoreNumber, historyWeekStart);
         });
         historyBackdrop.querySelector('#admin-forecast-history-backfill')?.addEventListener('click', () => {
-            if (historyStoreNumber) void runForecastBackfill([historyStoreNumber], { refreshHistory: true });
+            if (!historyStoreNumber) return;
+            const ready = Boolean(statusPayload?.history?.stores?.[historyStoreNumber]?.ready);
+            void runForecastBackfill([historyStoreNumber], { refreshHistory: true, force: ready });
         });
         historyBackdrop.querySelector('#admin-forecast-history-edit')?.addEventListener('click', (event) => {
             const btn = event.target.closest('[data-history-edit-action]');
@@ -3599,7 +3634,7 @@
         historyWeekStart = weekStart || null;
         const root = ensureHistoryBackdrop();
         root.hidden = false;
-        syncBackfillButtons();
+        syncBackfillButtons(storeNumber);
         root.querySelector('#admin-forecast-history-error').textContent = '';
         await loadHistoryGrid(storeNumber, historyWeekStart);
     }
@@ -4306,11 +4341,16 @@
         await loadOverrideForecastData(storeNumber);
     }
 
-    function syncBackfillButtons() {
+    function syncBackfillButtons(storeNumber = historyStoreNumber) {
         const show = Boolean(canManageBackfill);
-        ensureHistoryBackdrop()
-            .querySelector('#admin-forecast-history-backfill')
-            ?.toggleAttribute('hidden', !show);
+        const btn = ensureHistoryBackdrop().querySelector('#admin-forecast-history-backfill');
+        btn?.toggleAttribute('hidden', !show);
+        if (!btn || !show) return;
+        const ready = Boolean(storeNumber && statusPayload?.history?.stores?.[storeNumber]?.ready);
+        btn.textContent = ready ? 'Refresh data' : 'Backfill data';
+        btn.title = ready
+            ? 'Re-download sales history from MMX'
+            : 'Backfill missing forecast history from MMX';
     }
 
     function ensureBackfillProgressModal() {
@@ -4449,7 +4489,7 @@
         return finalResult;
     }
 
-    async function runForecastBackfill(storeNumbers, { refreshHistory = false } = {}) {
+    async function runForecastBackfill(storeNumbers, { refreshHistory = false, force = false } = {}) {
         const stores = [...new Set((storeNumbers || []).map((s) => String(s || '').trim()).filter(Boolean))];
         if (!stores.length) return;
         const root = getRoot();
@@ -4457,7 +4497,11 @@
 
         const modal = ensureBackfillProgressModal();
         const logEl = modal.querySelector('#admin-forecast-backfill-progress-log');
-        openBackfillProgressModal(`Backfilling ${stores.length} store(s) from MMX…`);
+        const actionLabel = force ? 'Refreshing' : 'Backfilling';
+        openBackfillProgressModal(`${actionLabel} ${stores.length} store(s) from MMX…`);
+        modal.querySelector('#admin-forecast-backfill-progress-title').textContent = force
+            ? 'Refreshing forecast history'
+            : 'Backfilling forecast history';
 
         const disableSelectors = ['#admin-forecast-submit-all', '#admin-forecast-history-backfill'];
         const backfillStoreButtons = [
@@ -4477,7 +4521,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'same-origin',
-                body: JSON.stringify({ storeNumbers: stores }),
+                body: JSON.stringify({ storeNumbers: stores, force: Boolean(force) }),
             });
             if (!res.ok && !res.body) {
                 const data = await res.json().catch(() => ({}));
@@ -4507,7 +4551,9 @@
             const result = finalEvent.result || {};
             finishBackfillProgressModal(
                 result.forecastReady
-                    ? 'Backfill complete. Forecast history ready.'
+                    ? force
+                        ? 'Refresh complete. Forecast history updated.'
+                        : 'Backfill complete. Forecast history ready.'
                     : result.message || 'Backfill finished. See log for details.',
                 Boolean(result.forecastReady || result.ready)
             );
@@ -4515,6 +4561,7 @@
             if (root) {
                 await refresh(root);
                 if (refreshHistory && historyStoreNumber && stores.includes(historyStoreNumber)) {
+                    syncBackfillButtons(historyStoreNumber);
                     await loadHistoryGrid(historyStoreNumber, historyWeekStart);
                 }
             }
@@ -4592,6 +4639,7 @@
                             <div class="admin-forecast-store-meta">
                                 <span class="admin-accounts-meta admin-forecast-store-history-label">${histLabel}</span>
                                 <button type="button" class="admin-forecast-history-icon-btn" data-history-store="${escapeHtml(storeNumber)}" title="View forecast history" aria-label="View forecast history for store ${escapeHtml(storeNumber)}">${FORECAST_HISTORY_SVG}</button>
+                                ${renderStoreWeekTotalHtml(storeNumber, payload, { disabled: !hist.ready })}
                             </div>
                         </div>
                     </td>

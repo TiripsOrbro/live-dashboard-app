@@ -660,6 +660,46 @@ function previewForecastForStores(storeNumbers, options = {}) {
     return results;
 }
 
+/** Lightweight week totals for the admin forecast status table (no full preview grid). */
+function forecastWeekTotalsForStores(storeNumbers, targetWeeks = []) {
+    const weeks = (targetWeeks || []).length ? targetWeeks : getTargetForecastWeekStarts();
+    const byWeek = {};
+    for (const weekStart of weeks) {
+        const weekKey = String(weekStart || '').trim();
+        if (!weekKey) continue;
+        byWeek[weekKey] = {};
+        for (const storeNumber of storeNumbers || []) {
+            const store = String(storeNumber || '').trim();
+            if (!store) continue;
+            try {
+                const readiness = assessHistoryReadiness(store);
+                if (!readiness.ready) {
+                    byWeek[weekKey][store] = { ready: false, weekTotal: null, baseWeekTotal: null };
+                    continue;
+                }
+                const { plan, basePlan } = buildForecastPlanForStore(store, {
+                    targetScope: 'week',
+                    weekStart: weekKey,
+                });
+                if (!plan.length) {
+                    byWeek[weekKey][store] = { ready: false, weekTotal: null, baseWeekTotal: null };
+                    continue;
+                }
+                const grid = buildForecastPreviewGrid(plan);
+                const baseGrid = buildForecastPreviewGrid(basePlan);
+                byWeek[weekKey][store] = {
+                    ready: true,
+                    weekTotal: grid.weekTotal,
+                    baseWeekTotal: baseGrid.weekTotal,
+                };
+            } catch (err) {
+                byWeek[weekKey][store] = { ready: false, error: err.message || String(err) };
+            }
+        }
+    }
+    return byWeek;
+}
+
 function wrapMultiWeekForecastProgress(options = {}, storeNumber, weekStartByDate) {
     const completedBy = options.completedBy || null;
     const userOnProgress = options.onProgress;
@@ -1297,6 +1337,7 @@ module.exports = {
     buildForecastPlanForStore,
     previewForecastForStore,
     previewForecastForStores,
+    forecastWeekTotalsForStores,
     runForecastForStore,
     runForecastForStores,
     runForecastWeeksForStore,

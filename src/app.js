@@ -3995,39 +3995,44 @@ app.get('/api/admin/forecast/status', (req, res) => {
         res.status(403).json({ success: false, error: 'Admin menu access required.' });
         return;
     }
-    const storeNumbers = getEffectiveStoresForUser(user).filter((s) => !isTestStore(s));
-    const payload = buildStatusForStores(storeNumbers);
-    const history = buildHistoryCoverageForStores(storeNumbers);
-    const forecastUpdatesByWeek = {};
-    const updatesSummaryByWeek = {};
-    for (const weekStart of payload.targetWeeks || []) {
-        const weekUpdates = buildForecastUpdatesForStores(storeNumbers, weekStart);
-        forecastUpdatesByWeek[weekStart] = weekUpdates;
-        updatesSummaryByWeek[weekStart] = {};
-        for (const store of storeNumbers) {
-            updatesSummaryByWeek[weekStart][String(store)] = summarizeForecastUpdates(weekUpdates[String(store)]);
+    try {
+        const storeNumbers = getEffectiveStoresForUser(user).filter((s) => !isTestStore(s));
+        const payload = buildStatusForStores(storeNumbers);
+        const history = buildHistoryCoverageForStores(storeNumbers);
+        const forecastUpdatesByWeek = {};
+        const updatesSummaryByWeek = {};
+        for (const weekStart of payload.targetWeeks || []) {
+            const weekUpdates = buildForecastUpdatesForStores(storeNumbers, weekStart);
+            forecastUpdatesByWeek[weekStart] = weekUpdates;
+            updatesSummaryByWeek[weekStart] = {};
+            for (const store of storeNumbers) {
+                updatesSummaryByWeek[weekStart][String(store)] = summarizeForecastUpdates(weekUpdates[String(store)]);
+            }
         }
+        const defaultWeek = payload.targetWeeks?.[2] || payload.targetWeeks?.[0] || getTargetForecastWeekStarts()[0];
+        const forecastWeekTotals = forecastWeekTotalsForStores(storeNumbers, payload.targetWeeks);
+        const autoSubmit = buildAutoSubmitStatus();
+        const storeAutoSubmit = buildStoreAutoSubmitMap(storeNumbers);
+        res.json({
+            success: true,
+            ...payload,
+            history,
+            forecastUpdates: forecastUpdatesByWeek[defaultWeek] || {},
+            forecastUpdatesByWeek,
+            updatesSummary: updatesSummaryByWeek[defaultWeek] || {},
+            updatesSummaryByWeek,
+            forecastWeekTotals,
+            autoSubmit,
+            storeAutoSubmit,
+            protectedDates: ensureProtectedDatesInitialized(),
+            canManageAutoSubmit: canUserEditGlobalBuildTo(user),
+            canManageProtectedDates: canUserEditGlobalBuildTo(user),
+            canManageBackfill: canUserEditGlobalBuildTo(user),
+        });
+    } catch (err) {
+        console.error('[Forecast] status failed:', err);
+        res.status(500).json({ success: false, error: err?.message || 'Could not load forecast status.' });
     }
-    const defaultWeek = payload.targetWeeks?.[2] || payload.targetWeeks?.[0] || getTargetForecastWeekStarts()[0];
-    const forecastWeekTotals = forecastWeekTotalsForStores(storeNumbers, payload.targetWeeks);
-    const autoSubmit = buildAutoSubmitStatus();
-    const storeAutoSubmit = buildStoreAutoSubmitMap(storeNumbers);
-    res.json({
-        success: true,
-        ...payload,
-        history,
-        forecastUpdates: forecastUpdatesByWeek[defaultWeek] || {},
-        forecastUpdatesByWeek,
-        updatesSummary: updatesSummaryByWeek[defaultWeek] || {},
-        updatesSummaryByWeek,
-        forecastWeekTotals,
-        autoSubmit,
-        storeAutoSubmit,
-        protectedDates: ensureProtectedDatesInitialized(),
-        canManageAutoSubmit: canUserEditGlobalBuildTo(user),
-        canManageProtectedDates: canUserEditGlobalBuildTo(user),
-        canManageBackfill: canUserEditGlobalBuildTo(user),
-    });
 });
 
 app.get('/api/admin/forecast/next-three-weeks', (req, res) => {

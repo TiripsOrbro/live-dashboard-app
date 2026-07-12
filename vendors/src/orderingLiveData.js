@@ -28,6 +28,7 @@ let defaultsMtime = 0;
 let saladNameReCache = null;
 let extendedItemCodesCache = null;
 let lastMondayOnlyKeysCache = null;
+let missingDefaultsWarned = false;
 
 function readJsonFile(filePath) {
     if (!filePath || !fs.existsSync(filePath)) return null;
@@ -39,18 +40,23 @@ function readJsonFile(filePath) {
 }
 
 function loadOrderingDefaultsDoc() {
+    if (defaultsCache && !defaultsMtime) return defaultsCache;
+
     const file = resolvePiLiveFile({
         livePath: ORDERING_DEFAULTS_PATH,
         examplePath: ORDERING_DEFAULTS_EXAMPLE,
         label: 'ordering defaults',
     });
     if (!file) {
-        if (requireLivePiOrderingData()) {
+        if (requireLivePiOrderingData() && !missingDefaultsWarned) {
+            missingDefaultsWarned = true;
             console.warn(
-                '[ordering] Missing vendors/config/ordering-defaults.json on Pi — using embedded fallbacks until configured.'
+                `[ordering] Missing ${ORDERING_DEFAULTS_PATH} — using embedded fallbacks until configured.`
             );
         }
-        return { ...FALLBACK_DEFAULTS };
+        defaultsCache = { ...FALLBACK_DEFAULTS };
+        defaultsMtime = 0;
+        return defaultsCache;
     }
 
     try {
@@ -71,9 +77,12 @@ function loadOrderingDefaultsDoc() {
         saladNameReCache = null;
         extendedItemCodesCache = null;
         lastMondayOnlyKeysCache = null;
+        missingDefaultsWarned = false;
         return defaultsCache;
     } catch {
-        return { ...FALLBACK_DEFAULTS };
+        defaultsCache = { ...FALLBACK_DEFAULTS };
+        defaultsMtime = 0;
+        return defaultsCache;
     }
 }
 
@@ -83,6 +92,7 @@ function invalidateOrderingDefaultsCache() {
     saladNameReCache = null;
     extendedItemCodesCache = null;
     lastMondayOnlyKeysCache = null;
+    missingDefaultsWarned = false;
 }
 
 function getBuildToDefaults() {

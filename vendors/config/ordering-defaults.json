@@ -1,0 +1,35 @@
+{
+  "buildTo": {
+    "defaultDays": 10,
+    "extendedDays": 13,
+    "saladDays": 7,
+    "saladNamePattern": "\\blettuce\\b|\\btomato\\b|\\bonion\\b|\\bcorriander\\b|\\bcoriander\\b|\\bpico de gallo\\b|\\bsalad\\b",
+    "extendedItemCodes": [
+      "39520",
+      "37923",
+      "37925",
+      "37927",
+      "37928",
+      "37891",
+      "39009",
+      "40109"
+    ]
+  },
+  "orderReminders": {
+    "monday": [
+      "Cash Order"
+    ],
+    "lastMondayOfMonth": [
+      "Eco Lab",
+      "Reward",
+      "Franke",
+      "Staples"
+    ]
+  },
+  "lastMondayOnlyVendors": [
+    "Eco Lab",
+    "Reward",
+    "Franke",
+    "Staples"
+  ]
+}

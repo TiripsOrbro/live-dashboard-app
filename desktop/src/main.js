@@ -95,6 +95,7 @@ function createSettingsWindow() {
     const cfg = getConfig();
     const url = settingsUrl(cfg);
     if (settingsWindow && !settingsWindow.isDestroyed()) {
+        settingsWindow.show();
         settingsWindow.focus();
         settingsWindow.loadURL(url);
         return settingsWindow;
@@ -108,11 +109,33 @@ function createSettingsWindow() {
             contextIsolation: true,
             nodeIntegration: false,
         },
-        show: false,
+        show: true,
     });
     settingsWindow.removeMenu();
     settingsWindow.loadURL(url);
-    settingsWindow.once('ready-to-show', () => settingsWindow.show());
+    settingsWindow.webContents.on('did-fail-load', (_e, code, desc, validatedURL) => {
+        if (!settingsWindow || settingsWindow.isDestroyed()) return;
+        if (code === -3) return; // aborted
+        const safeDesc = String(desc || 'load failed');
+        const safeUrl = String(validatedURL || url);
+        settingsWindow.loadURL(
+            `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html>
+<html><body style="font-family:Segoe UI,sans-serif;padding:40px;background:#111;color:#eee;max-width:640px">
+  <h1 style="margin:0 0 12px">Admin is starting…</h1>
+  <p style="color:#aaa;line-height:1.45">The dashboard server is not ready yet (${safeDesc}).</p>
+  <p style="color:#888;font-size:13px;word-break:break-all">${safeUrl}</p>
+  <p style="margin-top:20px">This window stays open — it will retry automatically. You can also use the tray → <strong>Start server</strong>.</p>
+</body></html>`)}`
+        );
+        settingsWindow.show();
+        settingsWindow.focus();
+    });
+    settingsWindow.once('ready-to-show', () => {
+        if (settingsWindow && !settingsWindow.isDestroyed()) {
+            settingsWindow.show();
+            settingsWindow.focus();
+        }
+    });
     settingsWindow.on('closed', () => {
         settingsWindow = null;
     });
@@ -126,18 +149,28 @@ async function openSettings() {
         createWizardWindow();
         return;
     }
+    // Show Admin immediately so the app never looks like it "vanished" into the tray.
+    createSettingsWindow();
     if (cfg.mode === 'host') {
         try {
             const health = await host.probeLocalHealth();
             if (!health.ok) {
                 hostServerPhase = 'starting';
-                await host.ensureServerRunning({ waitMs: 20000 });
+                const result = await host.ensureServerRunning({ waitMs: 45000 });
+                if (result.health?.ok && settingsWindow && !settingsWindow.isDestroyed()) {
+                    settingsWindow.loadURL(settingsUrl(getConfig()));
+                    settingsWindow.show();
+                    settingsWindow.focus();
+                }
             }
         } catch (err) {
             console.warn('[desktop] openSettings ensure server', err);
         }
     }
-    createSettingsWindow();
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+        settingsWindow.show();
+        settingsWindow.focus();
+    }
 }
 
 async function pollLiveVersion() {
@@ -731,11 +764,11 @@ function registerIpc() {
         if (mode === 'client') {
             await bootstrap.runClientBootstrap({ onProgress: sendProgress });
             sendProgress('Opening Settings…');
+            await openSettings();
             if (wizardWindow && !wizardWindow.isDestroyed()) {
                 wizardWindow.close();
             }
             rebuildContextMenu().catch(() => {});
-            openSettings();
             return getConfig();
         }
 
@@ -796,7 +829,7 @@ function registerIpc() {
                     cfOk
                         ? 'Cloudflare tunnel walkthrough finished.'
                         : 'Cloudflare was skipped or needs tray → Setup Cloudflare tunnel…',
-                    'Opening Admin Settings on this PC now.',
+                    'Admin Settings will stay open on this PC.',
                 ].join('\n'),
             });
         } catch (err) {
@@ -804,12 +837,13 @@ function registerIpc() {
             throw err;
         }
 
+        // Open Admin first so a window is visible, then close the wizard.
+        await openSettings();
         if (wizardWindow && !wizardWindow.isDestroyed()) {
             wizardWindow.close();
         }
         rebuildContextMenu().catch(() => {});
         refreshTrayStatus().catch(() => {});
-        await openSettings();
         return getConfig();
     });
 
@@ -870,12 +904,21 @@ if (!gotLock) {
             startLiveWatch();
             hostLease.ensureHostId();
             startStatusPolling();
+            // Always open Admin/Settings so install/launch never leaves only a tray icon.
+            openSettings().catch(() => {});
             if (cfg.mode === 'host') {
                 startHostHeartbeat();
-                // Don't block tray on server start
-                ensureHostServerOnLaunch().catch((err) => {
-                    console.warn('[desktop] ensureHostServerOnLaunch', err);
-                });
+                ensureHostServerOnLaunch()
+                    .then(async () => {
+                        if (settingsWindow && !settingsWindow.isDestroyed()) {
+                            settingsWindow.loadURL(settingsUrl(getConfig()));
+                            settingsWindow.show();
+                            settingsWindow.focus();
+                        }
+                    })
+                    .catch((err) => {
+                        console.warn('[desktop] ensureHostServerOnLaunch', err);
+                    });
             } else {
                 refreshTrayStatus().catch(() => {});
             }

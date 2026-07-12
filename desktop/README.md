@@ -39,6 +39,12 @@ Taco Bell Dashboard Pack\
 
 On the new PC: install, choose **This PC is the main server** (or tray → Become Host…), then **Browse** to the `secrets` folder when asked. Taking over demotes the old Host (stops its server + Cloudflare).
 
+Host Cloudflare setup now:
+- Uses the production **dashboard** tunnel only
+- Runs the tunnel as **your Windows user** (LocalSystem service caused public 503s on this Host)
+- Installs a **Startup** entry so the tunnel returns after reboot when you log in
+- Auto-starts the tunnel again whenever the Host tray app launches
+
 ## Updates
 
 Packaged installs check GitHub Releases **before** setup or host work. If a newer `desktop-v*` release exists, the app downloads it, installs, and restarts — then continues. Offline checks fail open (setup still works). Tray → Check for updates remains available while running.

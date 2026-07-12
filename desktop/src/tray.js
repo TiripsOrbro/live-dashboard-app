@@ -155,14 +155,14 @@ async function rebuildContextMenu() {
                           });
                           if (cf.skipped) return;
                           await dialog.showMessageBox({
-                              type: cf.service?.running || cf.elevated ? 'info' : 'warning',
+                              type: cf.running || cf.pidRunning ? 'info' : 'warning',
                               message: 'Cloudflare tunnel',
                               detail: [
                                   `${cf.hostname} → ${cf.localOrigin}`,
                                   `Tunnel: ${cf.tunnel?.name}`,
-                                  cf.service?.running || cf.elevated
-                                      ? 'Service: running'
-                                      : 'Service: background connector (may need Admin)',
+                                  cf.via === 'user-process' || cf.pidRunning
+                                      ? 'Mode: your Windows user + Startup (survives reboot after login)'
+                                      : 'Tunnel may still be starting — check tray status in a few seconds',
                               ].join('\n'),
                           });
                       } catch (err) {

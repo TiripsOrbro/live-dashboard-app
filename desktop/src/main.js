@@ -595,6 +595,20 @@ async function ensureHostServerOnLaunch() {
             body: String(err.message || err),
         });
     }
+
+    // Same recovery path as install: user-mode Cloudflare tunnel + Startup persistence.
+    try {
+        await cloudflare.ensureHostTunnelRunning({
+            onProgress: (msg) => console.log('[desktop]', msg),
+        });
+    } catch (err) {
+        console.warn('[desktop] ensureHostTunnelRunning', err);
+        showOperatorNotice({
+            title: 'Cloudflare tunnel not running',
+            body: `${err.message || err}\n\nUse tray → Setup Cloudflare tunnel…`,
+        });
+    }
+
     rebuildContextMenu().catch(() => {});
     refreshTrayStatus().catch(() => {});
 }
@@ -627,11 +641,15 @@ async function buildStatusSummary() {
 
         try {
             const cf = await cloudflare.getCloudflareStatus();
-            tunnelLabel = cf.running
-                ? cf.service?.running
-                    ? 'Tunnel: service running'
-                    : 'Tunnel: connector running'
-                : 'Tunnel: stopped';
+            if (cf.pidRunning) {
+                tunnelLabel = cf.startupInstalled
+                    ? 'Tunnel: running (Startup)'
+                    : 'Tunnel: running';
+            } else if (cf.service?.running) {
+                tunnelLabel = 'Tunnel: system service (use Setup Cloudflare)';
+            } else {
+                tunnelLabel = 'Tunnel: stopped';
+            }
         } catch {
             tunnelLabel = 'Tunnel: unknown';
         }

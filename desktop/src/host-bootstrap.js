@@ -282,10 +282,12 @@ async function runHostBootstrap({
             });
             if (cloudflareResult.skipped) {
                 progress('Cloudflare skipped — use tray → Setup Cloudflare tunnel when ready');
+            } else if (cloudflareResult.via === 'user-process' || cloudflareResult.running) {
+                progress('Cloudflare tunnel started (user mode + Startup for reboot)');
             } else if (cloudflareResult.elevated) {
                 progress('Cloudflare Windows service installed');
             } else if (cloudflareResult.ok) {
-                progress('Cloudflare tunnel started (for reboot auto-start, approve Admin once from the tray)');
+                progress('Cloudflare tunnel started');
             }
             steps.push('cloudflare');
         } catch (err) {

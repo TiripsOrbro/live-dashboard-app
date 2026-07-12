@@ -4,11 +4,13 @@ const path = require('path');
 const os = require('os');
 
 const DEFAULT_HOSTNAME = 'tbadashboard.com';
-/** Prefer the existing production tunnel (DNS + public hostname already configured). */
+/** Production tunnel for tbadashboard.com — do not fall back to other tunnel names. */
 const PREFERRED_TUNNEL_NAME = 'dashboard';
-const FALLBACK_TUNNEL_NAME = 'live-dashboard';
+const FALLBACK_TUNNEL_NAME = 'live-dashboard'; // kept for diagnostics only; never used for production hostname
 const LOCAL_ORIGIN = 'http://127.0.0.1:3000';
 const PID_FILE = path.join(os.homedir(), '.cloudflared', 'live-dashboard-tunnel.pid');
+const TOKEN_FILE = path.join(os.homedir(), '.cloudflared', 'live-dashboard-host.token');
+const STARTUP_CMD_NAME = 'LiveDashboard-Cloudflared.cmd';
 
 function cloudflaredCandidates() {
     return [
@@ -306,7 +308,7 @@ function stopPidFileProcess() {
 
 function startTokenProcess(bin, token) {
     stopPidFileProcess();
-    // Avoid duplicate connectors fighting each other
+    // Prefer killing user-owned duplicates; service processes may ignore this without Admin.
     try {
         execFile('taskkill', ['/IM', 'cloudflared.exe', '/F'], { windowsHide: true });
     } catch {
@@ -316,11 +318,142 @@ function startTokenProcess(bin, token) {
         detached: true,
         stdio: 'ignore',
         windowsHide: true,
+        env: process.env,
     });
     child.unref();
     fs.mkdirSync(path.dirname(PID_FILE), { recursive: true });
     fs.writeFileSync(PID_FILE, String(child.pid), 'utf8');
     return child.pid;
+}
+
+function saveHostTunnelToken(token) {
+    fs.mkdirSync(path.dirname(TOKEN_FILE), { recursive: true });
+    fs.writeFileSync(TOKEN_FILE, String(token).trim(), 'utf8');
+    return TOKEN_FILE;
+}
+
+function readHostTunnelToken() {
+    try {
+        if (!fs.existsSync(TOKEN_FILE)) return null;
+        const t = fs.readFileSync(TOKEN_FILE, 'utf8').trim();
+        return t.length > 40 ? t : null;
+    } catch {
+        return null;
+    }
+}
+
+function startupCmdPath() {
+    const startup = path.join(
+        process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
+        'Microsoft',
+        'Windows',
+        'Start Menu',
+        'Programs',
+        'Startup'
+    );
+    return path.join(startup, STARTUP_CMD_NAME);
+}
+
+/** Persist tunnel across reboot via Startup folder (runs as the logged-in user). */
+function installTunnelAutostart(bin, token) {
+    saveHostTunnelToken(token);
+    const cmdPath = startupCmdPath();
+    fs.mkdirSync(path.dirname(cmdPath), { recursive: true });
+    const tokenPath = TOKEN_FILE;
+    const body = [
+        '@echo off',
+        'REM Live Dashboard Host — Cloudflare tunnel (user session; survives reboot after login)',
+        `set "CFBIN=${bin}"`,
+        `set "TOKENFILE=${tokenPath}"`,
+        'if not exist "%TOKENFILE%" exit /b 0',
+        'set /p TOKEN=<"%TOKENFILE%"',
+        'if "%TOKEN%"=="" exit /b 0',
+        'start "" /min "%CFBIN%" tunnel run --token %TOKEN%',
+        '',
+    ].join('\r\n');
+    fs.writeFileSync(cmdPath, body, 'utf8');
+    return { cmdPath, tokenFile: TOKEN_FILE };
+}
+
+function removeTunnelAutostart() {
+    try {
+        const cmdPath = startupCmdPath();
+        if (fs.existsSync(cmdPath)) fs.unlinkSync(cmdPath);
+    } catch {
+        /* ignore */
+    }
+    try {
+        if (fs.existsSync(TOKEN_FILE)) fs.unlinkSync(TOKEN_FILE);
+    } catch {
+        /* ignore */
+    }
+}
+
+/**
+ * Disable LocalSystem Cloudflared service — on this Host it returned 503 while
+ * the same token run as the logged-in user worked.
+ */
+async function disableSystemCloudflaredService({ onProgress } = {}) {
+    const dir = path.join(os.tmpdir(), 'live-dashboard-cloudflared');
+    fs.mkdirSync(dir, { recursive: true });
+    const scriptFile = path.join(dir, 'disable-cloudflared-service.ps1');
+    const resultFile = path.join(dir, 'disable-cloudflared-result.txt');
+    try {
+        fs.unlinkSync(resultFile);
+    } catch {
+        /* ignore */
+    }
+    const ps = [
+        "$ErrorActionPreference = 'Continue'",
+        `Set-Content -Path '${resultFile.replace(/'/g, "''")}' -Value 'started'`,
+        "foreach ($name in @('Cloudflared','cloudflared')) {",
+        '  try { Stop-Service $name -Force -ErrorAction SilentlyContinue } catch {}',
+        '  try { sc.exe stop $name | Out-Null } catch {}',
+        '  try { sc.exe config $name start= disabled | Out-Null } catch {}',
+        '}',
+        'Start-Sleep -Seconds 1',
+        'Get-Process cloudflared -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue',
+        `Set-Content -Path '${resultFile.replace(/'/g, "''")}' -Value 'ok'`,
+    ].join('\r\n');
+    fs.writeFileSync(scriptFile, ps, 'utf8');
+    onProgress?.('Disabling LocalSystem Cloudflare service (approve Admin if asked)…');
+
+    await new Promise((resolve) => {
+        const child = spawn(
+            'powershell.exe',
+            [
+                '-NoProfile',
+                '-ExecutionPolicy',
+                'Bypass',
+                '-Command',
+                `Start-Process -FilePath powershell.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','${scriptFile.replace(
+                    /'/g,
+                    "''"
+                )}')`,
+            ],
+            { windowsHide: true }
+        );
+        child.on('error', () => resolve());
+        child.on('close', () => resolve());
+    });
+
+    let result = '';
+    try {
+        result = fs.readFileSync(resultFile, 'utf8').trim();
+    } catch {
+        result = '';
+    }
+    return { ok: result === 'ok', result };
+}
+
+function isPidRunning(pid) {
+    if (!pid) return false;
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 function writeHelperConfig(tunnel, hostname) {
@@ -329,7 +462,8 @@ function writeHelperConfig(tunnel, hostname) {
     const configPath = path.join(dir, 'config.yml');
     const body = [
         `# Managed by Live Dashboard Host setup`,
-        `# Primary connector uses tunnel token for "${tunnel.name}".`,
+        `# Production uses tunnel token for "${tunnel.name}" run as the logged-in Windows user.`,
+        `# Do not point tbadashboard.com at other tunnels (e.g. live-dashboard).`,
         `tunnel: ${tunnel.id}`,
         `ingress:`,
         `  - hostname: ${hostname}`,
@@ -343,21 +477,56 @@ function writeHelperConfig(tunnel, hostname) {
 
 async function pickTunnel(bin) {
     const tunnels = await listTunnels(bin);
-    return (
-        tunnels.find((t) => t.name === PREFERRED_TUNNEL_NAME) ||
-        tunnels.find((t) => t.name === FALLBACK_TUNNEL_NAME) ||
-        tunnels[0] ||
-        null
-    );
+    const preferred = tunnels.find((t) => t.name === PREFERRED_TUNNEL_NAME);
+    if (preferred) return preferred;
+    return null;
 }
 
 /**
- * Host Cloudflare cutover using the existing production tunnel token when possible
- * (keeps tbadashboard.com DNS working). Falls back to background process if the
- * Windows service cannot be installed without elevation.
+ * Ensure the Host user-mode Cloudflare tunnel is running (install path + tray launch).
+ */
+async function ensureHostTunnelRunning({ onProgress, token: tokenArg } = {}) {
+    const progress = (msg) => onProgress?.(String(msg || ''));
+    const bin = resolveCloudflared();
+    if (!bin) throw new Error('cloudflared is not installed');
+
+    const status = await getCloudflareStatus();
+    if (status.pidRunning) {
+        progress('Cloudflare tunnel already running');
+        return { ok: true, already: true, via: 'user-process', status };
+    }
+
+    let token = tokenArg || readHostTunnelToken();
+    if (!token) {
+        // Prefer production tunnel name only
+        if (!hasCert()) {
+            throw new Error('Cloudflare is not signed in on this PC. Use tray → Setup Cloudflare tunnel…');
+        }
+        progress('Fetching production tunnel token…');
+        token = await getTunnelToken(bin, PREFERRED_TUNNEL_NAME);
+        saveHostTunnelToken(token);
+        installTunnelAutostart(bin, token);
+    }
+
+    progress('Starting Cloudflare tunnel…');
+    const pid = startTokenProcess(bin, token);
+    await new Promise((r) => setTimeout(r, 2500));
+    return {
+        ok: true,
+        already: false,
+        via: 'user-process',
+        pid,
+        status: await getCloudflareStatus(),
+    };
+}
+
+/**
+ * Host Cloudflare cutover for tbadashboard.com.
+ * Uses the production "dashboard" tunnel token as the logged-in Windows user
+ * (LocalSystem Windows service returned 503 on this Host hardware).
+ * Persists via Startup folder so reboot + auto-login restores the tunnel.
  *
  * @param {{ hostname?: string, onProgress?: Function, confirm?: Function, guided?: boolean }} opts
- *   confirm(opts) → Promise<number> button index (Electron dialog response)
  */
 async function setupCloudflareTunnel({
     hostname = DEFAULT_HOSTNAME,
@@ -387,8 +556,9 @@ async function setupCloudflareTunnel({
             detail: [
                 'This walkthrough will:',
                 '• Sign you into Cloudflare (browser)',
-                '• Attach the existing “dashboard” tunnel to this PC',
-                '• Ask Windows for Admin once so the tunnel restarts after reboot',
+                '• Connect the production “dashboard” tunnel',
+                '• Start the tunnel as your Windows user (reliable on this Host)',
+                '• Install a Startup entry so it returns after reboot when you log in',
                 '',
                 'When it finishes, Admin Settings will open on this PC.',
             ].join('\n'),
@@ -415,15 +585,18 @@ async function setupCloudflareTunnel({
     }
     steps.push({ step: 'login', ok: true, detail: login.already ? 'already' : 'fresh' });
 
-    progress('Looking up your Cloudflare tunnels…');
+    progress('Looking up the production “dashboard” tunnel…');
     const tunnel = await pickTunnel(bin);
     if (!tunnel) {
         throw new Error(
-            'No Cloudflare tunnels found on this account. Create one named "dashboard" in Zero Trust, or run: cloudflared tunnel create dashboard'
+            'Production tunnel “dashboard” was not found on this Cloudflare account. Sign in with the account that owns tbadashboard.com (do not create a new live-dashboard tunnel for production).'
         );
     }
+    if (tunnel.name !== PREFERRED_TUNNEL_NAME) {
+        throw new Error(`Expected tunnel “${PREFERRED_TUNNEL_NAME}”, got “${tunnel.name}”`);
+    }
     steps.push({ step: 'tunnel', ok: true, detail: `${tunnel.name} (${tunnel.id})` });
-    progress(`Using tunnel “${tunnel.name}”`);
+    progress(`Using production tunnel “${tunnel.name}”`);
 
     if (guided) {
         await ask({
@@ -431,9 +604,10 @@ async function setupCloudflareTunnel({
             title: 'Step: Connect tunnel',
             message: `Connect “${tunnel.name}” to this PC`,
             detail: [
-                `${hostname} will point at http://127.0.0.1:3000 on this computer.`,
+                `${hostname} → ${LOCAL_ORIGIN}`,
                 '',
-                'Only one PC should run this tunnel at a time.',
+                'Only one Host should run this tunnel at a time.',
+                'The tunnel runs as your Windows user (not LocalSystem), which is required for a reliable public site on this PC.',
             ].join('\n'),
             buttons: ['Connect tunnel'],
             defaultId: 0,
@@ -443,124 +617,45 @@ async function setupCloudflareTunnel({
     progress('Fetching tunnel token…');
     const token = await getTunnelToken(bin, tunnel.name);
     steps.push({ step: 'token', ok: true });
+    saveHostTunnelToken(token);
 
     writeHelperConfig(tunnel, hostname);
     steps.push({ step: 'config', ok: true });
 
-    let elevated = false;
-    let preferService = true;
-    if (guided && typeof confirm === 'function') {
-        const serviceChoice = await ask({
-            type: 'info',
-            title: 'Step: Windows service (recommended)',
-            message: 'Install Cloudflare as a Windows service?',
-            detail: [
-                'Next, Windows will show a blue/yellow User Account Control (UAC) window.',
-                'Click Yes — that installs Cloudflare so tbadashboard.com stays up after reboot.',
-                '',
-                'If you click No, the tunnel only lasts until you sign out.',
-            ].join('\n'),
-            buttons: ['Install service (click Yes on UAC)', 'Start without service'],
-            defaultId: 0,
-            cancelId: 1,
+    // Disable LocalSystem service so it cannot fight the user-mode connector / return 503.
+    try {
+        const disabled = await disableSystemCloudflaredService({ onProgress: progress });
+        steps.push({ step: 'disable-system-service', ok: disabled.ok });
+    } catch (err) {
+        steps.push({
+            step: 'disable-system-service',
+            ok: false,
+            detail: String(err && err.message ? err.message : err),
         });
-        preferService = serviceChoice === 0;
+        progress('Could not disable LocalSystem Cloudflare service — continuing with user tunnel');
     }
 
-    if (preferService) {
-        let serviceInstalled = false;
-        for (let attempt = 1; attempt <= 3 && !serviceInstalled; attempt += 1) {
-            try {
-                progress(
-                    attempt === 1
-                        ? 'Installing Cloudflare Windows service (approve Admin / Yes)…'
-                        : `Retrying Admin service install (attempt ${attempt})…`
-                );
-                // Prefer UAC elevation — tray app is rarely already Administrator.
-                try {
-                    await installServiceElevated(bin, token, { onProgress: progress });
-                } catch (elevErr) {
-                    progress(`Elevated install: ${elevErr.message || elevErr} — trying direct install…`);
-                    await installServiceWithToken(bin, token);
-                    await startService();
-                }
-                const serviceNow = await queryService();
-                if (!serviceNow.running) {
-                    await startService();
-                }
-                steps.push({ step: 'service-install', ok: true, attempt });
-                elevated = true;
-                serviceInstalled = true;
-                progress('Cloudflare Windows service is running');
-            } catch (err) {
-                steps.push({
-                    step: 'service-install',
-                    ok: false,
-                    attempt,
-                    detail: String(err.message || err),
-                });
-                if (guided && typeof confirm === 'function' && attempt < 3) {
-                    const retry = await ask({
-                        type: 'warning',
-                        title: 'Admin approval needed',
-                        message: 'Cloudflare Windows service was not installed',
-                        detail: [
-                            String(err.message || err),
-                            '',
-                            'Click Yes on the Windows UAC prompt when it appears.',
-                            'Without the service, the public site stops after reboot/sign-out.',
-                        ].join('\n'),
-                        buttons: ['Try Admin install again', 'Continue without service'],
-                        defaultId: 0,
-                        cancelId: 1,
-                    });
-                    if (retry !== 0) break;
-                } else {
-                    break;
-                }
-            }
-        }
+    progress('Installing Startup entry so the tunnel returns after reboot…');
+    const autostart = installTunnelAutostart(bin, token);
+    steps.push({ step: 'autostart', ok: true, detail: autostart.cmdPath });
 
-        if (!serviceInstalled) {
-            progress('Starting tunnel in the background for this session…');
-            const pid = startTokenProcess(bin, token);
-            steps.push({ step: 'tunnel-run-fallback', ok: true, detail: `pid ${pid}` });
-            if (guided) {
-                await ask({
-                    type: 'warning',
-                    title: 'Tunnel started without Windows service',
-                    message: 'Cloudflare is running for this session only',
-                    detail: [
-                        'The Windows service still needs Administrator approval.',
-                        '',
-                        'Site can work until you reboot. Then use tray → Setup Cloudflare tunnel… and click Yes on UAC.',
-                    ].join('\n'),
-                    buttons: ['Continue'],
-                    defaultId: 0,
-                });
-            }
-        }
-    } else {
-        progress('Starting Cloudflare tunnel without Windows service…');
-        const pid = startTokenProcess(bin, token);
-        steps.push({ step: 'tunnel-run-fallback', ok: true, detail: `pid ${pid}` });
-    }
+    progress('Starting Cloudflare tunnel…');
+    const pid = startTokenProcess(bin, token);
+    steps.push({ step: 'tunnel-run', ok: true, detail: `pid ${pid}` });
 
     progress('Waiting for Cloudflare connector…');
-    await new Promise((r) => setTimeout(r, 2500));
-    const service = await queryService();
+    await new Promise((r) => setTimeout(r, 3000));
+    const status = await getCloudflareStatus();
 
     if (guided) {
         await ask({
-            type: elevated || service.running ? 'info' : 'warning',
+            type: status.running ? 'info' : 'warning',
             title: 'Cloudflare setup finished',
-            message: elevated || service.running ? 'Tunnel is connected' : 'Tunnel started',
+            message: status.running ? 'Tunnel is connected' : 'Tunnel start needs a moment',
             detail: [
                 `${hostname} → ${LOCAL_ORIGIN}`,
                 `Tunnel: ${tunnel.name}`,
-                elevated || service.running
-                    ? 'Windows service: running (survives reboot)'
-                    : 'Background connector: running until sign-out/reboot',
+                'Mode: your Windows user + Startup (survives reboot after login)',
                 '',
                 'Next: Admin Settings will open on this PC so you can sign in.',
             ].join('\n'),
@@ -574,37 +669,41 @@ async function setupCloudflareTunnel({
         hostname,
         tunnel,
         localOrigin: LOCAL_ORIGIN,
-        service,
+        service: status.service,
+        pidRunning: status.pidRunning,
+        running: status.running,
+        autostart,
         steps,
         bin,
-        elevated,
+        elevated: false,
+        via: 'user-process',
     };
 }
 
 async function getCloudflareStatus() {
     const service = await queryService();
     let pidRunning = false;
+    let pid = null;
     try {
         if (fs.existsSync(PID_FILE)) {
-            const pid = Number(fs.readFileSync(PID_FILE, 'utf8'));
-            if (pid) {
-                try {
-                    process.kill(pid, 0);
-                    pidRunning = true;
-                } catch {
-                    /* not running */
-                }
-            }
+            pid = Number(fs.readFileSync(PID_FILE, 'utf8'));
+            pidRunning = isPidRunning(pid);
         }
     } catch {
         /* ignore */
     }
+    const startupInstalled = fs.existsSync(startupCmdPath());
+    const hasToken = Boolean(readHostTunnelToken());
     return {
         cloudflaredPath: resolveCloudflared(),
         hasCert: hasCert(),
         service,
+        pid,
         pidRunning,
-        running: Boolean(service.running || pidRunning),
+        startupInstalled,
+        hasToken,
+        // Prefer user-mode pid; LocalSystem service alone is not considered healthy on this Host.
+        running: Boolean(pidRunning),
         configPath: path.join(cloudflaredDir(), 'config.yml'),
         pidFile: PID_FILE,
     };
@@ -612,12 +711,12 @@ async function getCloudflareStatus() {
 
 /**
  * Stop local Cloudflare connector so another Host can own the tunnel.
- * Best-effort: stops service, uninstalls service, kills pid-file process.
  */
 async function stopCloudflareTunnel() {
     const steps = [];
     stopPidFileProcess();
-    steps.push({ step: 'pid-file', ok: true });
+    removeTunnelAutostart();
+    steps.push({ step: 'pid-file-and-autostart', ok: true });
 
     const stopped = await stopService();
     steps.push({ step: 'service-stop', ok: stopped.ok, detail: stopped.text });
@@ -656,6 +755,8 @@ module.exports = {
     resolveCloudflared,
     setupCloudflareTunnel,
     stopCloudflareTunnel,
+    ensureHostTunnelRunning,
     getCloudflareStatus,
     queryService,
+    installTunnelAutostart,
 };

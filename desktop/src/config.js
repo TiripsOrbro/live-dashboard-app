@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const Store = require('electron-store');
 
 const DEFAULT_SERVER_URL = 'https://tbadashboard.com';
@@ -5,19 +7,58 @@ const LOCAL_SERVER_URL = 'http://127.0.0.1:3000';
 const DEFAULT_GIT_BRANCH = '16gb';
 const DEFAULT_GIT_REMOTE = 'https://github.com/TiripsOrbro/live-dashboard-app.git';
 
+const STORE_NAME = 'live-dashboard-desktop';
+const STORE_DEFAULTS = {
+    setupComplete: false,
+    mode: null, // 'host' | 'client'
+    hostId: null,
+    serverUrl: DEFAULT_SERVER_URL,
+    serverDir: null,
+    gitBranch: DEFAULT_GIT_BRANCH,
+    gitRemote: DEFAULT_GIT_REMOTE,
+    openAtLogin: true,
+    lastHostStatus: 'stopped',
+};
+
+/** Strip BOM / recover if PowerShell or editors wrote invalid JSON. */
+function parseStoreJson(text) {
+    const cleaned = String(text || '').replace(/^\uFEFF/, '').trim();
+    if (!cleaned) return {};
+    return JSON.parse(cleaned);
+}
+
+function repairStoreFileIfNeeded() {
+    const filePath = path.join(
+        process.env.APPDATA || '',
+        STORE_NAME,
+        `${STORE_NAME}.json`
+    );
+    if (!filePath || !fs.existsSync(filePath)) return;
+    const raw = fs.readFileSync(filePath, 'utf8');
+    try {
+        parseStoreJson(raw);
+        // Rewrite without BOM if present so Conf/electron-store never trip on it.
+        if (raw.charCodeAt(0) === 0xfeff || raw.startsWith('\uFEFF')) {
+            fs.writeFileSync(filePath, `${JSON.stringify(parseStoreJson(raw), null, '\t')}\n`, 'utf8');
+        }
+    } catch (err) {
+        const backup = `${filePath}.corrupt-${Date.now()}.bak`;
+        try {
+            fs.copyFileSync(filePath, backup);
+        } catch {
+            /* ignore */
+        }
+        console.warn(`[desktop] Corrupt config ${filePath} — backed up to ${backup}:`, err.message);
+        fs.writeFileSync(filePath, `${JSON.stringify(STORE_DEFAULTS, null, '\t')}\n`, 'utf8');
+    }
+}
+
+repairStoreFileIfNeeded();
+
 const store = new Store({
-    name: 'live-dashboard-desktop',
-    defaults: {
-        setupComplete: false,
-        mode: null, // 'host' | 'client'
-        hostId: null,
-        serverUrl: DEFAULT_SERVER_URL,
-        serverDir: null,
-        gitBranch: DEFAULT_GIT_BRANCH,
-        gitRemote: DEFAULT_GIT_REMOTE,
-        openAtLogin: true,
-        lastHostStatus: 'stopped',
-    },
+    name: STORE_NAME,
+    defaults: STORE_DEFAULTS,
+    deserialize: (text) => parseStoreJson(text),
 });
 
 function getConfig() {

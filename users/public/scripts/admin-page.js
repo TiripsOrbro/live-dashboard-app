@@ -93,6 +93,15 @@
             activate: () =>
                 global.AdminReportSubscriptions?.setInlineHost?.(sectionPanels.get('report-subscriptions')?.host),
         },
+        {
+            id: 'live-logs',
+            label: 'Live logs',
+            group: 'admin',
+            navGroup: 'admin',
+            visible: (p) => p.canAccessAdminMenu,
+            mount: (host, opts) => requireMount('Live logs', global.AdminLiveLogs?.mount)(host, opts),
+            activate: () => global.AdminLiveLogs?.setInlineHost?.(sectionPanels.get('live-logs')?.host),
+        },
     ];
 
     const USER_SECTIONS = [

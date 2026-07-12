@@ -5706,3 +5706,126 @@ html.mic-dark-mode .admin-modal-success,
 html.mic-dark-mode .admin-report-sub-progress-status--ok {
     color: #6ee7a0;
 }
+
+/* Live logs */
+.admin-live-logs-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1rem;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 0 0.75rem;
+}
+
+.admin-live-logs-sources,
+.admin-live-logs-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.admin-live-logs-source,
+.admin-live-logs-action {
+    appearance: none;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    background: rgba(255, 255, 255, 0.7);
+    color: inherit;
+    font: inherit;
+    font-size: 0.8125rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.admin-live-logs-source.is-active,
+.admin-live-logs-action.is-active {
+    border-color: rgba(122, 62, 177, 0.45);
+    background: rgba(122, 62, 177, 0.12);
+    color: #5b2d86;
+    font-weight: 600;
+}
+
+.admin-live-logs-status {
+    margin: 0 0 0.65rem;
+    font-size: 0.8125rem;
+    color: rgba(0, 0, 0, 0.55);
+}
+
+.admin-live-logs-status[data-level='ok'] {
+    color: #067647;
+}
+
+.admin-live-logs-status[data-level='warn'] {
+    color: #9a6700;
+}
+
+.admin-live-logs-status[data-level='error'] {
+    color: #b42318;
+}
+
+.admin-live-logs-output {
+    height: min(62vh, 560px);
+    overflow: auto;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    background: #12141a;
+    color: #d7dce5;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    padding: 0.65rem 0.75rem;
+}
+
+.admin-live-logs-line {
+    display: grid;
+    grid-template-columns: minmax(7.5rem, max-content) 1fr;
+    gap: 0.65rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.admin-live-logs-line + .admin-live-logs-line {
+    margin-top: 0.15rem;
+}
+
+.admin-live-logs-tag {
+    color: #9aa3b5;
+    user-select: none;
+}
+
+.admin-live-logs-line--error .admin-live-logs-text {
+    color: #ffb4a9;
+}
+
+.admin-live-logs-line--hist {
+    opacity: 0.78;
+}
+
+html.mic-dark-mode .admin-live-logs-source,
+html.mic-dark-mode .admin-live-logs-action {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+html.mic-dark-mode .admin-live-logs-source.is-active,
+html.mic-dark-mode .admin-live-logs-action.is-active {
+    border-color: rgba(186, 140, 230, 0.5);
+    background: rgba(122, 62, 177, 0.28);
+    color: #e8d6ff;
+}
+
+html.mic-dark-mode .admin-live-logs-status {
+    color: rgba(255, 255, 255, 0.55);
+}
+
+html.mic-dark-mode .admin-live-logs-status[data-level='ok'] {
+    color: #6ee7a0;
+}
+
+html.mic-dark-mode .admin-live-logs-status[data-level='warn'] {
+    color: #fbbf24;
+}
+
+html.mic-dark-mode .admin-live-logs-status[data-level='error'] {
+    color: #fca5a5;
+}

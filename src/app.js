@@ -1203,6 +1203,7 @@ app.get('/api/dashboard/meta', (_req, res) => {
 liveEvents.attach(app);
 const hostLease = require('./hostLease');
 hostLease.attach(app, { liveEvents });
+const adminLiveLogs = require('./adminLiveLogs');
 
 app.post('/unlock', (req, res) => {
     const password = String(req.body?.accessKey || '');
@@ -4051,6 +4052,47 @@ app.get('/api/admin/forecast/status', (req, res) => {
     } catch (err) {
         console.error('[Forecast] status failed:', err);
         res.status(500).json({ success: false, error: err?.message || 'Could not load forecast status.' });
+    }
+});
+
+app.get('/api/admin/logs/sources', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    res.set('Cache-Control', 'no-store');
+    res.json({
+        success: true,
+        logsDir: adminLiveLogs.pm2LogsDir(),
+        sources: adminLiveLogs.listSources(),
+    });
+});
+
+app.get('/api/admin/logs/stream', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
+    try {
+        adminLiveLogs.streamLogs(res, {
+            source: req.query?.source,
+            tail: req.query?.tail,
+        });
+    } catch (err) {
+        console.error('[AdminLogs] stream failed:', err);
+        try {
+            res.write(`event: status\ndata: ${JSON.stringify({ level: 'error', message: err.message || String(err) })}\n\n`);
+        } catch {
+            /* ignore */
+        }
+        res.end();
     }
 });
 

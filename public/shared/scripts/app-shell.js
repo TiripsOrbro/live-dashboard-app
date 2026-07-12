@@ -55,6 +55,16 @@
     /** After load, verify scripts that register a global view/export actually did so. */
     const SCRIPT_READY_CHECKS = {
         '/scripts/dashboard.js': () => global.SalesDashboardView?.mount,
+        '/scripts/admin-accounts.js': () => global.AdminAccounts?.mountCreate,
+        '/scripts/admin-forecast.js': () => global.AdminForecast?.mount,
+        '/scripts/admin-build-to.js': () => global.AdminBuildTo?.mount,
+        '/scripts/admin-store-hours.js': () => global.AdminStoreHours?.mount,
+        '/scripts/admin-five-am-reports.js': () => global.AdminFiveAmReports?.mount,
+        '/scripts/admin-report-subscriptions.js': () => global.AdminReportSubscriptions?.mount,
+        '/scripts/admin-store-logins.js': () => global.AdminStoreLogins?.mount,
+        '/scripts/admin-smg-nsf.js': () => global.AdminSmgNsf?.mount,
+        '/scripts/requests.js': () => global.FeatureRequestsView?.mount,
+        '/scripts/bug-reports.js': () => global.BugReportsView?.mount,
     };
 
     function scriptBasePath(url) {
@@ -301,9 +311,8 @@
         paintAdminSettingsBootShell(app);
         try {
             await loadScriptBatch(SHARED_ADMIN_SCRIPTS);
-            void ensureAdminDeferredScripts().catch((err) => {
-                console.warn('[AppShell] deferred admin settings scripts failed:', err);
-            });
+            // Host PCs: wait for every settings module before mounting so tabs never open blank.
+            await ensureAdminDeferredScripts();
             if (global.AdminSettingsView?.mount) {
                 await global.AdminSettingsView.mount(app);
                 return;

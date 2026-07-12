@@ -14,7 +14,7 @@
             navParent: 'accounts',
             navParentLabel: 'Accounts',
             visible: (p) => p.canAccessAdminMenu,
-            mount: (host, opts) => global.AdminAccounts?.mountCreate?.(host, opts),
+            mount: (host, opts) => requireMount('Accounts', global.AdminAccounts?.mountCreate)(host, opts),
             activate: () => global.AdminAccounts?.setInlineHost?.(sectionPanels.get('accounts-create')?.host, 'create'),
         },
         {
@@ -25,7 +25,7 @@
             navParent: 'accounts',
             navParentLabel: 'Accounts',
             visible: (p) => p.canAccessAdminMenu,
-            mount: (host, opts) => global.AdminAccounts?.mountExisting?.(host, opts),
+            mount: (host, opts) => requireMount('Accounts', global.AdminAccounts?.mountExisting)(host, opts),
             activate: () => global.AdminAccounts?.setInlineHost?.(sectionPanels.get('accounts-existing')?.host, 'existing'),
         },
         {
@@ -34,7 +34,7 @@
             group: 'admin',
             navGroup: 'admin',
             visible: (p) => p.canManageStoreLogins,
-            mount: (host, opts) => global.AdminStoreLogins?.mount?.(host, opts),
+            mount: (host, opts) => requireMount('Store logins', global.AdminStoreLogins?.mount)(host, opts),
             activate: () => global.AdminStoreLogins?.setInlineHost?.(sectionPanels.get('store-logins')?.host),
         },
         {
@@ -43,7 +43,7 @@
             group: 'admin',
             navGroup: 'admin',
             visible: () => false,
-            mount: (host) => global.AdminSmgNsf?.mount?.(host),
+            mount: (host) => requireMount('SMG/NSF', global.AdminSmgNsf?.mount)(host),
             activate: () => global.AdminSmgNsf?.setInlineHost?.(sectionPanels.get('smg-nsf')?.host),
         },
         {
@@ -52,7 +52,7 @@
             group: 'admin',
             navGroup: 'admin',
             visible: (p) => p.canAccessAdminMenu,
-            mount: (host, opts) => global.AdminForecast?.mount?.(host, opts),
+            mount: (host, opts) => requireMount('Forecast tool', global.AdminForecast?.mount)(host, opts),
             activate: () => global.AdminForecast?.setInlineHost?.(sectionPanels.get('forecast')?.host),
         },
         {
@@ -61,7 +61,7 @@
             group: 'admin',
             navGroup: 'admin',
             visible: (p) => p.canAccessAdminMenu,
-            mount: (host, opts) => global.AdminBuildTo?.mount?.(host, opts),
+            mount: (host, opts) => requireMount('Build to adjustments', global.AdminBuildTo?.mount)(host, opts),
             activate: () => global.AdminBuildTo?.setInlineHost?.(sectionPanels.get('build-to')?.host),
         },
         {
@@ -70,7 +70,7 @@
             group: 'admin',
             navGroup: 'admin',
             visible: (p) => p.canAccessAdminMenu,
-            mount: (host, opts) => global.AdminStoreHours?.mount?.(host, opts),
+            mount: (host, opts) => requireMount('Operating times', global.AdminStoreHours?.mount)(host, opts),
             activate: () => global.AdminStoreHours?.setInlineHost?.(sectionPanels.get('store-hours')?.host),
         },
         {
@@ -79,7 +79,7 @@
             group: 'admin',
             navGroup: 'admin',
             visible: (p) => p.canAccessAdminMenu,
-            mount: (host, opts) => global.AdminFiveAmReports?.mount?.(host, opts),
+            mount: (host, opts) => requireMount('Daily reports', global.AdminFiveAmReports?.mount)(host, opts),
             activate: () => global.AdminFiveAmReports?.setInlineHost?.(sectionPanels.get('five-am-reports')?.host),
         },
         {
@@ -88,7 +88,8 @@
             group: 'admin',
             navGroup: 'admin',
             visible: (p) => p.canAccessAdminMenu,
-            mount: (host, opts) => global.AdminReportSubscriptions?.mount?.(host, opts),
+            mount: (host, opts) =>
+                requireMount('Report subscriptions', global.AdminReportSubscriptions?.mount)(host, opts),
             activate: () =>
                 global.AdminReportSubscriptions?.setInlineHost?.(sectionPanels.get('report-subscriptions')?.host),
         },
@@ -101,7 +102,8 @@
             group: 'user',
             navGroup: 'personal',
             visible: () => true,
-            mount: (host, opts) => global.MicSettings?.mountPageSection?.('preferences', host, opts),
+            mount: (host, opts) =>
+                requireMount('Preferences', global.MicSettings?.mountPageSection)('preferences', host, opts),
             activate: () => global.AdminStoreView?.mountSettingsBlock?.(profile),
         },
         {
@@ -110,7 +112,8 @@
             group: 'user',
             navGroup: 'personal',
             visible: () => true,
-            mount: (host, opts) => global.MicSettings?.mountPageSection?.('general', host, opts),
+            mount: (host, opts) =>
+                requireMount('General', global.MicSettings?.mountPageSection)('general', host, opts),
             activate: () => {},
         },
         {
@@ -119,7 +122,8 @@
             group: 'user',
             navGroup: 'personal',
             visible: () => false,
-            mount: (host, opts) => global.MicSettings?.mountPageSection?.('account', host, opts),
+            mount: (host, opts) =>
+                requireMount('Account', global.MicSettings?.mountPageSection)('account', host, opts),
             activate: () => {},
         },
         {
@@ -128,7 +132,8 @@
             group: 'user',
             navGroup: 'personal',
             visible: () => false,
-            mount: (host, opts) => global.MicSettings?.mountPageSection?.('store', host, opts),
+            mount: (host, opts) =>
+                requireMount('Store', global.MicSettings?.mountPageSection)('store', host, opts),
             activate: () => {},
         },
         {
@@ -137,7 +142,8 @@
             group: 'user',
             navGroup: 'support',
             visible: (p) => p.canViewFeatureRequests,
-            mount: (host, opts) => global.FeatureRequestsView?.mount?.(host, opts),
+            mount: (host, opts) =>
+                requireMount('Feature requests', global.FeatureRequestsView?.mount)(host, opts),
             activate: () => {},
         },
         {
@@ -146,17 +152,26 @@
             group: 'user',
             navGroup: 'support',
             visible: () => true,
-            mount: (host, opts) => global.BugReportsView?.mount?.(host, opts),
+            mount: (host, opts) => requireMount('Bug reports', global.BugReportsView?.mount)(host, opts),
             activate: () => {},
         },
     ];
 
     const SECTIONS = [...ADMIN_SECTIONS, ...USER_SECTIONS];
 
+    function requireMount(label, fn) {
+        if (typeof fn !== 'function') {
+            throw new Error(`${label} failed to load. Refresh the page or reopen Settings.`);
+        }
+        return fn;
+    }
+
     let profile = null;
     let activeSection = '';
     /** @type {Map<string, { host: HTMLElement, mounted: boolean }>} */
     const sectionPanels = new Map();
+    /** @type {Map<string, Promise<void>>} */
+    const mountingPromises = new Map();
     let preloadPromise = null;
     /** @type {Set<string>} */
     const expandedParents = new Set();
@@ -503,32 +518,47 @@
             sectionPanels.set(section.id, { host: sectionPanels.get(section.id).host, mounted: false });
         }
 
-        const host = contentHost();
-        if (!host) return;
-
-        let panel = sectionPanels.get(section.id)?.host;
-        if (!panel) {
-            panel = document.createElement('div');
-            panel.className = 'admin-settings-section-panel';
-            if (section.group === 'user') panel.classList.add('admin-settings-user-panel');
-            panel.dataset.adminSection = section.id;
-            panel.hidden = true;
-            host.appendChild(panel);
-            sectionPanels.set(section.id, { host: panel, mounted: false });
+        const inflight = mountingPromises.get(section.id);
+        if (inflight) {
+            await inflight;
+            return;
         }
 
-        await ensureDeferredScriptsForSection(section.id);
+        const work = (async () => {
+            const host = contentHost();
+            if (!host) return;
 
-        try {
-            await section.mount(panel, mountOptions());
-            if (!PREFERENCES_BOOT_SECTIONS.has(section.id) && !panel.childElementCount) {
+            let panel = sectionPanels.get(section.id)?.host;
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.className = 'admin-settings-section-panel';
+                if (section.group === 'user') panel.classList.add('admin-settings-user-panel');
+                panel.dataset.adminSection = section.id;
+                panel.hidden = true;
+                host.appendChild(panel);
                 sectionPanels.set(section.id, { host: panel, mounted: false });
-                return;
             }
-            sectionPanels.set(section.id, { host: panel, mounted: true });
-        } catch (error) {
-            panel.innerHTML = `<p class="admin-modal-error" role="alert">${escapeAttr(error.message || 'Could not load section.')}</p>`;
-            sectionPanels.set(section.id, { host: panel, mounted: false });
+
+            await ensureDeferredScriptsForSection(section.id);
+
+            try {
+                await section.mount(panel, mountOptions());
+                if (!PREFERENCES_BOOT_SECTIONS.has(section.id) && !panel.childElementCount) {
+                    throw new Error(`${section.label || section.id} loaded empty. Try refreshing Settings.`);
+                }
+                sectionPanels.set(section.id, { host: panel, mounted: true });
+            } catch (error) {
+                panel.innerHTML = `<p class="admin-modal-error" role="alert">${escapeAttr(error.message || 'Could not load section.')}</p>`;
+                // Keep mounted true so we still reveal the error instead of a blank white panel.
+                sectionPanels.set(section.id, { host: panel, mounted: true });
+            }
+        })();
+
+        mountingPromises.set(section.id, work);
+        try {
+            await work;
+        } finally {
+            mountingPromises.delete(section.id);
         }
     }
 
@@ -546,7 +576,10 @@
     function preloadAllSections(data) {
         const opts = mountOptions();
         if (!preloadPromise) {
-            preloadPromise = preloadSections(visibleSections(data, opts));
+            preloadPromise = preloadSections(visibleSections(data, opts)).catch((err) => {
+                preloadPromise = null;
+                throw err;
+            });
         }
         return preloadPromise;
     }
@@ -566,7 +599,12 @@
         await global.AppShell?.ensureAdminDeferredScripts?.();
     }
 
-    async function activateSection(section, data) {
+    function setLoadingMessage(text) {
+        const panel = contentHost()?.querySelector('.admin-settings-loading-panel .admin-settings-loading');
+        if (panel) panel.textContent = text;
+    }
+
+    async function activateSection(section, data, { skipPreloadKick = false } = {}) {
         if (section.external) {
             global.location.href = section.external;
             return;
@@ -588,7 +626,7 @@
         setActiveNav(section.id, { expandForSection: true });
         revealSection(section.id);
         if (isDrawerMode()) closeNavDrawer();
-        void preloadAllSections(data);
+        if (!skipPreloadKick) void preloadAllSections(data);
     }
 
     async function showSection(sectionId) {
@@ -649,6 +687,9 @@
         mountBackButton();
         global.__APP_SHELL__ = Boolean(global.__APP_SHELL__);
         try {
+            // Wait for all admin section scripts before mounting panels (avoids blank Store logins etc.).
+            await global.AppShell?.ensureAdminDeferredScripts?.();
+
             const data = await fetchProfile();
             global.MicSettings?.setStoreContext?.({
                 storeNumber: mountOptions().storeNumber,
@@ -661,14 +702,18 @@
             const host = contentHost();
             if (host && !host.querySelector('.admin-settings-loading-panel')) {
                 host.innerHTML =
-                    '<div class="admin-settings-loading-panel" aria-live="polite"><p class="admin-settings-loading">Loading settings…</p></div>';
+                    '<div class="admin-settings-loading-panel" aria-live="polite"><p class="admin-settings-loading">Loading all settings…</p></div>';
+            } else {
+                setLoadingMessage('Loading all settings…');
             }
 
             const requested = sectionFromLocation() || defaultSectionId(data);
             const allowed = visibleSections(data, mountOptions());
             const section = allowed.find((row) => row.id === requested) || allowed[0];
             if (section) {
-                await activateSection(section, data);
+                // Preload every visible section on this Host before first paint.
+                await preloadAllSections(data);
+                await activateSection(section, data, { skipPreloadKick: true });
             }
         } catch {
             global.location.href = '/login';
@@ -692,6 +737,7 @@
         async mount() {
             preloadPromise = null;
             sectionPanels.clear();
+            mountingPromises.clear();
             activeSection = '';
             profile = null;
             expandedParents.clear();
@@ -709,6 +755,7 @@
             document.body.classList.remove('admin-settings-page', 'admin-settings-nav-drawer-open');
             preloadPromise = null;
             sectionPanels.clear();
+            mountingPromises.clear();
             activeSection = '';
             profile = null;
             expandedParents.clear();

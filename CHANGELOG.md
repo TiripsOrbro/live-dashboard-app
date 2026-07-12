@@ -39,12 +39,14 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 
 - App version line moves from **0.6** to **1.0** for the Host/Client desktop era.
 - Hardware profiles stay on **`4gb`** (Pi) and **`16gb`** (Windows Host).
+- **Settings preload** — Admin Settings waits for all section scripts, mounts every visible panel before first paint, and never reveals a blank white panel when a module fails (shows an error instead). Fixes frequent empty Store logins / other admin tabs on AppShell.
 
 **What you need to do**
 
 - Windows Host: pull **`16gb`** or **`Version-1.0`**, run tray / `npm run win:start` as usual; use **Export Host secrets pack** before moving Host.
 - Clients: install/update the desktop app and choose **I just need access** (or tray → Become Host if taking over).
 - Pi: stay on **`4gb`** unless you intentionally merge this release line.
+- After pulling: Host tray → **Update from Git…** (or restart server) and hard-refresh Settings.
 
 ---
 

@@ -15,24 +15,10 @@ const {
 const { codeFieldsFromLayers, areaForStoreNumber } = require('./itemCodeOverrides');
 const { normalizeItemCode } = require('./reportReader');
 const { stockCountDisplayName } = require('./stockCountDisplayNames');
-const {
-    DEFAULT_BUILD_TO_DAYS,
-    EXTENDED_BUILD_TO_DAYS,
-    SALAD_BUILD_TO_DAYS,
-    BUILD_TO_13_DAY_ITEM_CODES,
-} = require('./buildToCalculator');
-
-function isSaladItem(description) {
-    return /\blettuce\b|\btomato\b|\bonion\b|\bcorriander\b|\bcoriander\b|\bpico de gallo\b|\bsalad\b/i.test(
-        String(description || '')
-    );
-}
+const { buildToDaysForItemDefaults } = require('./orderingLiveData');
 
 function defaultDaysForItem(itemCode, description) {
-    if (isSaladItem(description)) return SALAD_BUILD_TO_DAYS;
-    return BUILD_TO_13_DAY_ITEM_CODES.has(normalizeItemCode(itemCode))
-        ? EXTENDED_BUILD_TO_DAYS
-        : DEFAULT_BUILD_TO_DAYS;
+    return buildToDaysForItemDefaults(itemCode, description);
 }
 
 function describeRuleType(rule, description, itemCode, item, skipKeyItemCount) {

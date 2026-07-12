@@ -1,6 +1,6 @@
 const { Tray, Menu, nativeImage, shell, app, dialog } = require('electron');
 const path = require('path');
-const { getConfig, settingsUrl, dashboardUrl, publicSettingsUrl, publicDashboardUrl } = require('./config');
+const { getConfig, dashboardUrl, publicDashboardUrl } = require('./config');
 const host = require('./host-controller');
 const { checkForUpdates } = require('./updater');
 const cloudflare = require('./cloudflare');
@@ -48,6 +48,10 @@ function notifyTray(title, content) {
     }
 }
 
+function serverAppearsRunning(summary) {
+    return /running|starting/i.test(String(summary?.serverLabel || ''));
+}
+
 async function rebuildContextMenu() {
     const cfg = getConfig();
     const isHost = cfg.mode === 'host';
@@ -60,158 +64,157 @@ async function rebuildContextMenu() {
         }
     }
 
-    const statusItems = [];
-    if (isHost) {
-        statusItems.push(
-            { type: 'separator' },
-            { label: summary?.serverLabel || 'Server: unknown', enabled: false },
-            { label: summary?.tunnelLabel || 'Tunnel: unknown', enabled: false },
-            { label: summary?.leaseLabel || 'Lease: unknown', enabled: false }
-        );
-    } else if (cfg.setupComplete) {
-        statusItems.push(
-            { type: 'separator' },
-            { label: summary?.siteLabel || 'Site: checking…', enabled: false },
-            { label: summary?.leaseLabel || 'Host: checking…', enabled: false }
-        );
-    }
-
     if (summary?.tooltip) {
         setTrayTooltip(summary.tooltip);
     }
 
     const hostItems = isHost
         ? [
+              serverAppearsRunning(summary)
+                  ? {
+                        label: 'Stop server',
+                        click: async () => {
+                            try {
+                                await host.stopServer();
+                            } catch (err) {
+                                await dialog.showErrorBox('Stop failed', String(err.message || err));
+                            }
+                            refreshMenu && refreshMenu();
+                        },
+                    }
+                  : {
+                        label: 'Start server',
+                        click: async () => {
+                            try {
+                                await host.startServer();
+                                await dialog.showMessageBox({
+                                    type: 'info',
+                                    message: 'Server started',
+                                    detail: 'Ensure Cloudflare tunnel points at http://localhost:3000 for tbadashboard.com.',
+                                });
+                            } catch (err) {
+                                await dialog.showErrorBox('Start failed', String(err.message || err));
+                            }
+                            refreshMenu && refreshMenu();
+                        },
+                    },
               {
-                  label: 'Start server',
-                  click: async () => {
-                      try {
-                          await host.startServer();
-                          await dialog.showMessageBox({
-                              type: 'info',
-                              message: 'Server started',
-                              detail: 'Ensure Cloudflare tunnel points at http://localhost:3000 for tbadashboard.com.',
-                          });
-                      } catch (err) {
-                          await dialog.showErrorBox('Start failed', String(err.message || err));
-                      }
-                      refreshMenu && refreshMenu();
-                  },
-              },
-              {
-                  label: 'Stop server',
-                  click: async () => {
-                      try {
-                          await host.stopServer();
-                      } catch (err) {
-                          await dialog.showErrorBox('Stop failed', String(err.message || err));
-                      }
-                      refreshMenu && refreshMenu();
-                  },
-              },
-              {
-                  label: 'Update from Git…',
-                  click: async () => {
-                      try {
-                          const result = await host.updateFromGit();
-                          await dialog.showMessageBox({
-                              type: 'info',
-                              message: 'Server updated',
-                              detail: `Branch ${result.branch} pulled and server restarted.`,
-                          });
-                      } catch (err) {
-                          await dialog.showErrorBox('Git update failed', String(err.message || err));
-                      }
-                      refreshMenu && refreshMenu();
-                  },
-              },
-              {
-                  label: 'Setup Cloudflare tunnel…',
-                  click: async () => {
-                      try {
-                          const cf = await cloudflare.setupCloudflareTunnel({
-                              hostname: (() => {
-                                  try {
-                                      return new URL(getConfig().serverUrl).hostname;
-                                  } catch {
-                                      return cloudflare.DEFAULT_HOSTNAME;
-                                  }
-                              })(),
-                              guided: true,
-                              confirm: async (opts) => {
-                                  const { response } = await dialog.showMessageBox({
-                                      type: opts.type || 'info',
-                                      title: opts.title || 'Cloudflare',
-                                      message: opts.message || '',
-                                      detail: opts.detail || '',
-                                      buttons: opts.buttons || ['OK'],
-                                      defaultId: opts.defaultId ?? 0,
-                                      cancelId: opts.cancelId,
-                                      noLink: true,
+                  label: 'Updates',
+                  submenu: [
+                      {
+                          label: 'Server from Git…',
+                          click: async () => {
+                              try {
+                                  const result = await host.updateFromGit();
+                                  await dialog.showMessageBox({
+                                      type: 'info',
+                                      message: 'Server updated',
+                                      detail: `Branch ${result.branch} pulled and server restarted.`,
                                   });
-                                  return response;
-                              },
-                              onProgress: (msg) => console.log('[cloudflare]', msg),
-                          });
-                          if (cf.skipped) return;
-                          await dialog.showMessageBox({
-                              type: cf.running || cf.pidRunning ? 'info' : 'warning',
-                              message: 'Cloudflare tunnel',
-                              detail: [
-                                  `${cf.hostname} → ${cf.localOrigin}`,
-                                  `Tunnel: ${cf.tunnel?.name}`,
-                                  cf.via === 'user-process' || cf.pidRunning
-                                      ? 'Mode: your Windows user + Startup (survives reboot after login)'
-                                      : 'Tunnel may still be starting — check tray status in a few seconds',
-                              ].join('\n'),
-                          });
-                      } catch (err) {
-                          await dialog.showErrorBox('Cloudflare setup failed', String(err.message || err));
-                      }
-                      refreshMenu && refreshMenu();
-                  },
+                              } catch (err) {
+                                  await dialog.showErrorBox('Git update failed', String(err.message || err));
+                              }
+                              refreshMenu && refreshMenu();
+                          },
+                      },
+                      {
+                          label: 'Tray app…',
+                          click: () => checkForUpdates({ silent: false }).catch(() => {}),
+                      },
+                  ],
               },
               {
-                  label: 'Export Host secrets pack…',
-                  click: async () => {
-                      if (onExportSecrets) await onExportSecrets();
-                      refreshMenu && refreshMenu();
-                  },
-              },
-              {
-                  label: 'Stop hosting (become Client)…',
-                  click: async () => {
-                      if (onStopHosting) await onStopHosting();
-                      refreshMenu && refreshMenu();
-                  },
-              },
-              {
-                  label: 'Easy Host repair / reinstall tools…',
-                  click: async () => {
-                      const { response } = await dialog.showMessageBox({
-                          type: 'question',
-                          buttons: ['Continue', 'Cancel'],
-                          defaultId: 0,
-                          cancelId: 1,
-                          message: 'Re-run automatic Host setup?',
-                          detail: 'This checks/installs Node, Git, Cloudflare Tunnel, updates the server folder, and restarts services. Approve any Windows prompts.',
-                      });
-                      if (response !== 0) return;
-                      try {
-                          const bootstrap = require('./host-bootstrap');
-                          await bootstrap.runHostBootstrap({
-                              onProgress: (msg) => console.log('[host-repair]', msg),
-                              setupCloudflare: true,
-                          });
-                          await dialog.showMessageBox({
-                              type: 'info',
-                              message: 'Host repair finished',
-                          });
-                      } catch (err) {
-                          await dialog.showErrorBox('Host repair failed', String(err.message || err));
-                      }
-                      refreshMenu && refreshMenu();
-                  },
+                  label: 'Host tools',
+                  submenu: [
+                      {
+                          label: 'Setup Cloudflare tunnel…',
+                          click: async () => {
+                              try {
+                                  const cf = await cloudflare.setupCloudflareTunnel({
+                                      hostname: (() => {
+                                          try {
+                                              return new URL(getConfig().serverUrl).hostname;
+                                          } catch {
+                                              return cloudflare.DEFAULT_HOSTNAME;
+                                          }
+                                      })(),
+                                      guided: true,
+                                      confirm: async (opts) => {
+                                          const { response } = await dialog.showMessageBox({
+                                              type: opts.type || 'info',
+                                              title: opts.title || 'Cloudflare',
+                                              message: opts.message || '',
+                                              detail: opts.detail || '',
+                                              buttons: opts.buttons || ['OK'],
+                                              defaultId: opts.defaultId ?? 0,
+                                              cancelId: opts.cancelId,
+                                              noLink: true,
+                                          });
+                                          return response;
+                                      },
+                                      onProgress: (msg) => console.log('[cloudflare]', msg),
+                                  });
+                                  if (cf.skipped) return;
+                                  await dialog.showMessageBox({
+                                      type: cf.running || cf.pidRunning ? 'info' : 'warning',
+                                      message: 'Cloudflare tunnel',
+                                      detail: [
+                                          `${cf.hostname} → ${cf.localOrigin}`,
+                                          `Tunnel: ${cf.tunnel?.name}`,
+                                          cf.via === 'user-process' || cf.pidRunning
+                                              ? 'Mode: your Windows user + Startup (survives reboot after login)'
+                                              : 'Tunnel may still be starting — check tray status in a few seconds',
+                                      ].join('\n'),
+                                  });
+                              } catch (err) {
+                                  await dialog.showErrorBox('Cloudflare setup failed', String(err.message || err));
+                              }
+                              refreshMenu && refreshMenu();
+                          },
+                      },
+                      {
+                          label: 'Export Host secrets pack…',
+                          click: async () => {
+                              if (onExportSecrets) await onExportSecrets();
+                              refreshMenu && refreshMenu();
+                          },
+                      },
+                      {
+                          label: 'Easy Host repair / reinstall tools…',
+                          click: async () => {
+                              const { response } = await dialog.showMessageBox({
+                                  type: 'question',
+                                  buttons: ['Continue', 'Cancel'],
+                                  defaultId: 0,
+                                  cancelId: 1,
+                                  message: 'Re-run automatic Host setup?',
+                                  detail: 'This checks/installs Node, Git, Cloudflare Tunnel, updates the server folder, and restarts services. Approve any Windows prompts.',
+                              });
+                              if (response !== 0) return;
+                              try {
+                                  const bootstrap = require('./host-bootstrap');
+                                  await bootstrap.runHostBootstrap({
+                                      onProgress: (msg) => console.log('[host-repair]', msg),
+                                      setupCloudflare: true,
+                                  });
+                                  await dialog.showMessageBox({
+                                      type: 'info',
+                                      message: 'Host repair finished',
+                                  });
+                              } catch (err) {
+                                  await dialog.showErrorBox('Host repair failed', String(err.message || err));
+                              }
+                              refreshMenu && refreshMenu();
+                          },
+                      },
+                      {
+                          label: 'Stop hosting (become Client)…',
+                          click: async () => {
+                              if (onStopHosting) await onStopHosting();
+                              refreshMenu && refreshMenu();
+                          },
+                      },
+                  ],
               },
           ]
         : cfg.setupComplete
@@ -222,6 +225,10 @@ async function rebuildContextMenu() {
                         if (onBecomeHost) await onBecomeHost();
                         refreshMenu && refreshMenu();
                     },
+                },
+                {
+                    label: 'Update tray app…',
+                    click: () => checkForUpdates({ silent: false }).catch(() => {}),
                 },
             ]
           : [];
@@ -235,18 +242,8 @@ async function rebuildContextMenu() {
             label: 'Open Dashboard',
             click: () => shell.openExternal(getConfig().mode === 'host' ? dashboardUrl() : publicDashboardUrl()),
         },
-        {
-            label: 'Open Settings in browser',
-            click: () =>
-                shell.openExternal(getConfig().mode === 'host' ? publicSettingsUrl() : settingsUrl()),
-        },
-        ...statusItems,
-        ...hostItems,
+        ...(hostItems.length ? [{ type: 'separator' }, ...hostItems] : []),
         { type: 'separator' },
-        {
-            label: 'Check for app updates…',
-            click: () => checkForUpdates({ silent: false }).catch(() => {}),
-        },
         {
             label: 'Quit Live Dashboard',
             click: () => app.quit(),

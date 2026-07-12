@@ -5778,14 +5778,20 @@ html.mic-dark-mode .admin-report-sub-progress-status--ok {
 
 .admin-live-logs-line {
     display: grid;
-    grid-template-columns: minmax(7.5rem, max-content) 1fr;
-    gap: 0.65rem;
+    grid-template-columns: 4.75rem minmax(7.5rem, max-content) 1fr;
+    gap: 0.55rem;
     white-space: pre-wrap;
     word-break: break-word;
 }
 
 .admin-live-logs-line + .admin-live-logs-line {
     margin-top: 0.15rem;
+}
+
+.admin-live-logs-time {
+    color: #6b7385;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
 }
 
 .admin-live-logs-tag {

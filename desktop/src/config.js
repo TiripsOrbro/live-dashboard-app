@@ -17,6 +17,8 @@ const STORE_DEFAULTS = {
     gitBranch: DEFAULT_GIT_BRANCH,
     gitRemote: DEFAULT_GIT_REMOTE,
     openAtLogin: true,
+    /** Host: git pull server clone on tray launch when origin is ahead (fail-open). */
+    autoUpdateFromGitOnLaunch: true,
     lastHostStatus: 'stopped',
 };
 
@@ -71,6 +73,7 @@ function getConfig() {
         gitBranch: store.get('gitBranch') || DEFAULT_GIT_BRANCH,
         gitRemote: store.get('gitRemote') || DEFAULT_GIT_REMOTE,
         openAtLogin: store.get('openAtLogin') !== false,
+        autoUpdateFromGitOnLaunch: store.get('autoUpdateFromGitOnLaunch') !== false,
         lastHostStatus: store.get('lastHostStatus') || 'stopped',
     };
 }

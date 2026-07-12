@@ -1,5 +1,5 @@
 /**
- * Admin "view dashboard as store user" - session preference + settings UI.
+ * Admin "view dashboard as store user" — session preference + overview header selector.
  */
 (function (global) {
     const ENABLED_KEY = 'admin-view-as-store-enabled';
@@ -7,7 +7,6 @@
     const HEADER_DEFAULT_VALUE = '__all__';
 
     let meProfile = null;
-    let wired = false;
     let cachedStoreOptions = [];
 
     function canUse(profile) {
@@ -40,7 +39,7 @@
         } catch {
             /* ignore */
         }
-        syncSettingsUi();
+        syncHeaderStoreButton();
         global.dispatchEvent(new CustomEvent('admin-store-view-change'));
     }
 
@@ -52,7 +51,7 @@
         } catch {
             /* ignore */
         }
-        syncSettingsUi();
+        syncHeaderStoreButton();
         global.dispatchEvent(new CustomEvent('admin-store-view-change'));
     }
 
@@ -154,72 +153,6 @@
         });
     }
 
-    function openStorePicker({ enableOnSelect = false } = {}) {
-        global.AdminScopePicker?.open({
-            title: 'Select store',
-            hint: 'Choose market, area, and store to preview the store-level dashboard.',
-            preferredStore: getSelectedStore(),
-            onSelect: (store) => {
-                if (enableOnSelect) {
-                    setEnabled(true);
-                    setStore(store);
-                    global.location.reload();
-                    return;
-                }
-                setStore(store);
-                if (isEnabled()) {
-                    global.location.reload();
-                    return;
-                }
-                syncSettingsUi();
-            },
-        });
-    }
-
-    function renderSettingsBlock() {
-        return `
-            <div class="mic-settings-pref-block mic-admin-store-view" id="mic-admin-store-view-block">
-                <div class="mic-settings-toggle-row">
-                    <span class="mic-settings-toggle-label" id="mic-admin-store-view-label">View as store user</span>
-                    <label class="mic-toggle-switch">
-                        <input type="checkbox" id="mic-admin-store-view-toggle" role="switch" aria-labelledby="mic-admin-store-view-label" />
-                        <span class="mic-toggle-slider" aria-hidden="true"></span>
-                    </label>
-                </div>
-                <p class="mic-settings-pref-hint" id="mic-admin-store-view-hint">
-                    Use the store selector in the page header, or the toggle below, to preview the MIC overview as a single store.
-                </p>
-                <p class="mic-admin-store-view-current" id="mic-admin-store-view-current"></p>
-                <button type="button" class="mic-settings-btn" id="mic-admin-store-view-pick">Select store</button>
-            </div>`;
-    }
-
-    function mountSettingsBlock(profile) {
-        meProfile = profile || meProfile;
-        if (!canUse(meProfile)) return;
-        const panel =
-            document.querySelector('[data-admin-section="preferences"]') ||
-            document.querySelector('[data-settings-panel="preferences"]');
-        if (!panel || document.getElementById('mic-admin-store-view-block')) return;
-        panel.insertAdjacentHTML('afterbegin', renderSettingsBlock());
-        wireSettingsControls();
-        syncSettingsUi();
-    }
-
-    function syncSettingsUi() {
-        syncHeaderStoreButton();
-        const block = document.getElementById('mic-admin-store-view-block');
-        if (!block || block.hidden) return;
-        const toggle = document.getElementById('mic-admin-store-view-toggle');
-        const current = document.getElementById('mic-admin-store-view-current');
-        const store = getSelectedStore();
-        if (toggle) toggle.checked = isEnabled();
-        if (current) {
-            current.textContent = store ? `Selected: ${storeLabel(store)}` : 'No store selected yet.';
-            current.classList.toggle('mic-admin-store-view-current--empty', !store);
-        }
-    }
-
     function formatStoreOptionLabel(row) {
         const num = String(row?.storeNumber || '').trim();
         const name = String(row?.storeName || '').trim();
@@ -304,37 +237,6 @@
         void loadStoreOptions().then(() => syncHeaderStoreButton(btn));
     }
 
-    function wireSettingsControls() {
-        if (wired) return;
-        const toggle = document.getElementById('mic-admin-store-view-toggle');
-        const pickBtn = document.getElementById('mic-admin-store-view-pick');
-        if (!toggle && !pickBtn) return;
-        wired = true;
-
-        toggle?.addEventListener('change', () => {
-            const wantOn = toggle.checked;
-            const store = getSelectedStore();
-            if (wantOn && !store) {
-                toggle.checked = false;
-                openStorePicker({ enableOnSelect: true });
-                return;
-            }
-            applyAndReload({ enabled: wantOn });
-        });
-
-        pickBtn?.addEventListener('click', () => {
-            openStorePicker({ enableOnSelect: false });
-        });
-    }
-
-    function escapeHtml(value) {
-        return String(value ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-    }
-
     async function init(profile) {
         meProfile = profile || meProfile;
     }
@@ -343,7 +245,6 @@
         meProfile = profile || meProfile;
         if (!canUse(meProfile)) return;
         mountHeaderSelector();
-        mountSettingsBlock(meProfile);
     }
 
     global.AdminStoreView = {
@@ -355,9 +256,6 @@
         resolveStoreForOverview,
         isActiveOnOverview,
         mountHeaderSelector,
-        mountSettingsBlock,
-        syncSettingsUi,
-        openStorePicker,
         applyAndReload,
     };
 })(window);

@@ -1,10 +1,13 @@
 const { autoUpdater } = require('electron-updater');
-const { app, dialog, BrowserWindow } = require('electron');
+const { app, dialog, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 
 let configured = false;
 /** When true, downloaded updates install immediately (no Later prompt). */
 let launchGateActive = false;
+/** When true, tray "Update tray app" shows the splash and download progress. */
+let manualCheckActive = false;
+let splashIpcReady = false;
 let splashWindow = null;
 let quitAndInstallStarted = false;
 
@@ -38,11 +41,21 @@ function isNewerVersion(remoteVersion, localVersion) {
     return false;
 }
 
+function ensureSplashIpc() {
+    if (splashIpcReady) return;
+    splashIpcReady = true;
+    ipcMain.on('update-splash-close', () => {
+        manualCheckActive = false;
+        closeSplashWindow();
+    });
+}
+
 function createSplashWindow() {
+    ensureSplashIpc();
     if (splashWindow && !splashWindow.isDestroyed()) return splashWindow;
     splashWindow = new BrowserWindow({
         width: 400,
-        height: 200,
+        height: 240,
         resizable: false,
         maximizable: false,
         minimizable: false,
@@ -54,6 +67,7 @@ function createSplashWindow() {
         webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
+            preload: path.join(__dirname, 'update-splash-preload.js'),
         },
     });
     splashWindow.removeMenu();
@@ -67,15 +81,50 @@ function createSplashWindow() {
     return splashWindow;
 }
 
-function setSplashStatus(text, percent) {
+function setSplashView(opts = {}) {
     if (!splashWindow || splashWindow.isDestroyed()) return;
-    const pctArg =
-        typeof percent === 'number' && Number.isFinite(percent) ? String(percent) : 'undefined';
     splashWindow.webContents
-        .executeJavaScript(
-            `window.setUpdateStatus(${JSON.stringify(String(text || ''))}, ${pctArg})`
-        )
+        .executeJavaScript(`window.setUpdateView(${JSON.stringify(opts)})`)
         .catch(() => {});
+}
+
+function setSplashStatus(text, percent) {
+    const hasPercent = typeof percent === 'number' && Number.isFinite(percent);
+    setSplashView({
+        status: String(text || ''),
+        showBar: hasPercent,
+        percent: hasPercent ? percent : null,
+    });
+}
+
+function showManualUpdateFound(version) {
+    setSplashView({
+        headline: 'Update Found',
+        status: `Downloading version ${version}…`,
+        showBar: true,
+        percent: 0,
+        showClose: false,
+    });
+}
+
+function showManualUpdateInstalled(version) {
+    manualCheckActive = false;
+    setSplashView({
+        headline: 'Update installed',
+        status: `Version ${version} is ready. Restart when convenient.`,
+        showBar: false,
+        showClose: true,
+    });
+}
+
+function showManualUpToDate(localVersion) {
+    manualCheckActive = false;
+    setSplashView({
+        headline: 'Up to date',
+        status: `Taco Bell Dashboard ${localVersion} is current.`,
+        showBar: false,
+        showClose: true,
+    });
 }
 
 function closeSplashWindow() {
@@ -99,12 +148,24 @@ function configureUpdater() {
         console.log('[desktop-updater] update available', info && info.version);
         if (launchGateActive) {
             setSplashStatus(`Downloading version ${info.version}…`, 0);
+        } else if (manualCheckActive) {
+            showManualUpdateFound(info.version);
         }
     });
 
     autoUpdater.on('download-progress', (progress) => {
-        if (!launchGateActive) return;
+        if (!launchGateActive && !manualCheckActive) return;
         const pct = Number(progress && progress.percent);
+        if (manualCheckActive) {
+            setSplashView({
+                headline: 'Update Found',
+                status: 'Downloading update…',
+                showBar: true,
+                percent: Number.isFinite(pct) ? pct : undefined,
+                showClose: false,
+            });
+            return;
+        }
         setSplashStatus('Downloading update…', Number.isFinite(pct) ? pct : undefined);
     });
 
@@ -112,6 +173,10 @@ function configureUpdater() {
         if (launchGateActive) {
             setSplashStatus(`Installing version ${info.version}…`, 100);
             setTimeout(() => requestQuitAndInstall(), 400);
+            return;
+        }
+
+        if (manualCheckActive) {
             return;
         }
 
@@ -162,24 +227,7 @@ async function ensureUpToDateBeforeLaunch() {
 
         setSplashStatus(`Update ${remote} found — downloading…`, 0);
 
-        if (result.downloadPromise) {
-            await result.downloadPromise;
-        } else {
-            await new Promise((resolve, reject) => {
-                let settled = false;
-                const finish = (fn, arg) => {
-                    if (settled) return;
-                    settled = true;
-                    autoUpdater.removeListener('update-downloaded', onDownloaded);
-                    autoUpdater.removeListener('error', onError);
-                    fn(arg);
-                };
-                const onDownloaded = () => finish(resolve);
-                const onError = (err) => finish(reject, err);
-                autoUpdater.once('update-downloaded', onDownloaded);
-                autoUpdater.once('error', onError);
-            });
-        }
+        await waitForUpdateDownload(result);
 
         // Event handler also installs; call explicitly so we never hang if the event already fired.
         setSplashStatus(`Installing version ${remote}…`, 100);
@@ -196,26 +244,104 @@ async function ensureUpToDateBeforeLaunch() {
     }
 }
 
+async function waitForUpdateDownload(result) {
+    if (result && result.downloadPromise) {
+        await result.downloadPromise;
+        return;
+    }
+    await new Promise((resolve, reject) => {
+        let settled = false;
+        const finish = (fn, arg) => {
+            if (settled) return;
+            settled = true;
+            autoUpdater.removeListener('update-downloaded', onDownloaded);
+            autoUpdater.removeListener('error', onError);
+            fn(arg);
+        };
+        const onDownloaded = () => finish(resolve);
+        const onError = (err) => finish(reject, err);
+        autoUpdater.once('update-downloaded', onDownloaded);
+        autoUpdater.once('error', onError);
+    });
+}
+
 async function checkForUpdates({ silent = false } = {}) {
     configureUpdater();
-    try {
-        const result = await autoUpdater.checkForUpdates();
-        const remote = result && result.updateInfo && result.updateInfo.version;
-        if (!silent && (!remote || !isNewerVersion(remote, app.getVersion()))) {
+
+    if (!app.isPackaged) {
+        if (!silent) {
             await dialog.showMessageBox({
                 type: 'info',
                 title: 'Up to date',
-                message: `Taco Bell Dashboard ${app.getVersion()} is up to date.`,
+                message: 'Development build — tray app updates apply when you rebuild the installer.',
             });
         }
+        return null;
+    }
+
+    const useSplash = !silent;
+    if (useSplash) {
+        manualCheckActive = true;
+        createSplashWindow();
+        await new Promise((r) => setTimeout(r, 200));
+        setSplashView({
+            headline: 'Taco Bell Dashboard',
+            status: 'Checking for updates…',
+            showBar: false,
+            showClose: false,
+        });
+    }
+
+    try {
+        const result = await autoUpdater.checkForUpdates();
+        const remote = result && result.updateInfo && result.updateInfo.version;
+        const local = app.getVersion();
+
+        if (!remote || !isNewerVersion(remote, local)) {
+            if (useSplash) {
+                showManualUpToDate(local);
+            } else if (!silent) {
+                await dialog.showMessageBox({
+                    type: 'info',
+                    title: 'Up to date',
+                    message: `Taco Bell Dashboard ${local} is up to date.`,
+                });
+            }
+            return result;
+        }
+
+        if (useSplash) {
+            showManualUpdateFound(remote);
+            await waitForUpdateDownload(result);
+            setSplashView({
+                headline: 'Update Found',
+                status: 'Installing update…',
+                showBar: true,
+                percent: 100,
+                showClose: false,
+            });
+            await new Promise((r) => setTimeout(r, 500));
+            showManualUpdateInstalled(remote);
+        }
+
         return result;
     } catch (err) {
+        if (useSplash) {
+            closeSplashWindow();
+            manualCheckActive = false;
+        }
         if (!silent) {
+            const raw = String(err && err.message ? err.message : err);
+            const missingYml = /latest\.yml/i.test(raw);
             await dialog.showMessageBox({
                 type: 'warning',
                 title: 'Update check failed',
-                message: String(err && err.message ? err.message : err),
-                detail: 'Updates come from GitHub Releases (desktop-v* tags). Check your network and try again.',
+                message: missingYml
+                    ? 'Update metadata (latest.yml) is missing from the GitHub release.'
+                    : raw.slice(0, 280),
+                detail: missingYml
+                    ? 'Desktop releases must include latest.yml next to the installer. Tag desktop-v* after the release workflow fix, or re-upload that file to the current release.'
+                    : 'Updates come from GitHub Releases (desktop-v* tags). Check your network and try again.',
             });
         }
         throw err;

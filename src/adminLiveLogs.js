@@ -99,9 +99,41 @@ function takeLastLines(text, maxLines) {
     return lines.slice(-maxLines);
 }
 
+/**
+ * PM2 `log_date_format` prefixes lines like:
+ *   2026-07-13 09:02:15 +10:00: message
+ * Older files have no prefix — fall back to `fallbackIso` (live poll time).
+ */
+function parseLogLine(raw, fallbackIso) {
+    const text = String(raw ?? '');
+    const match = text.match(
+        /^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:\s*[+-]\d{2}:?\d{2}|Z)?)\s*[:|]?\s*(.*)$/
+    );
+    if (match) {
+        const stamp = match[1].replace(' ', 'T');
+        const parsed = Date.parse(stamp);
+        return {
+            at: Number.isFinite(parsed) ? new Date(parsed).toISOString() : fallbackIso || null,
+            line: match[2],
+        };
+    }
+    return { at: fallbackIso || null, line: text };
+}
+
 function writeSse(res, event, data) {
     res.write(`event: ${event}\n`);
     res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+function emitLogLine(res, file, rawLine, { historical, fallbackIso }) {
+    const { at, line } = parseLogLine(rawLine, fallbackIso);
+    writeSse(res, 'line', {
+        process: file.process,
+        stream: file.stream,
+        line,
+        at,
+        historical: Boolean(historical),
+    });
 }
 
 /**
@@ -128,12 +160,7 @@ function streamLogs(res, { source: sourceKey = 'dashboard', tail = 200 } = {}) {
         anyExists = true;
         const lines = takeLastLines(snap.text, maxTail);
         for (const line of lines) {
-            writeSse(res, 'line', {
-                process: file.process,
-                stream: file.stream,
-                line,
-                historical: true,
-            });
+            emitLogLine(res, file, line, { historical: true, fallbackIso: null });
         }
     }
 
@@ -170,14 +197,10 @@ function streamLogs(res, { source: sourceKey = 'dashboard', tail = 200 } = {}) {
                     fs.readSync(fd, buf, 0, len, from);
                     offsets.set(file.path, size);
                     const chunk = buf.toString('utf8');
+                    const nowIso = new Date().toISOString();
                     for (const line of splitLines(chunk)) {
                         if (!line && chunk.endsWith('\n')) continue;
-                        writeSse(res, 'line', {
-                            process: file.process,
-                            stream: file.stream,
-                            line,
-                            historical: false,
-                        });
+                        emitLogLine(res, file, line, { historical: false, fallbackIso: nowIso });
                     }
                 } finally {
                     fs.closeSync(fd);

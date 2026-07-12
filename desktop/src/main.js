@@ -579,6 +579,22 @@ async function ensureHostServerOnLaunch() {
     refreshTrayStatus().catch(() => {});
     notifyTray('Live Dashboard', 'Checking Host server…');
 
+    if (cfg.autoUpdateFromGitOnLaunch !== false) {
+        try {
+            notifyTray('Live Dashboard', 'Checking Git for server updates…');
+            const sync = await host.syncFromGitIfBehind();
+            if (sync.updated) {
+                showOperatorNotice({
+                    title: 'Server updated from Git',
+                    body: `Pulled ${sync.branch} and restarted the Host server.`,
+                });
+            }
+        } catch (err) {
+            console.warn('[desktop] syncFromGitIfBehind', err);
+            // Fail open — still try to start whatever is already on disk.
+        }
+    }
+
     try {
         const result = await host.ensureServerRunning({ waitMs: 15000 });
         if (result.already) {

@@ -1582,16 +1582,11 @@ async function scrapeHistoricalDaySales(page, dateIso, options = {}) {
 
 /** Read ActualSalesKpi / ForecastSalesKpi without re-clicking the Day view tab. */
 async function readDayViewSalesOnly(page, shouldReadForecast = false, options = {}) {
-    const timeout = Number(options.timeout) > 0 ? Number(options.timeout) : 15000;
+    const timeout =
+        Number(options.timeout) > 0 ? Number(options.timeout) : dayViewKpiTimeoutMs();
     const softFail = options.softFail !== false;
     try {
-        await page.waitForFunction(
-            () => {
-                const row = document.querySelector('tr[data-kpi="ActualSalesKpi"]');
-                return row && row.querySelectorAll('td').length > 10;
-            },
-            { timeout }
-        );
+        await waitForActualSalesKpiRow(page, timeout);
     } catch (err) {
         if (!softFail) throw err;
         return { actual: [], forecast: null };
@@ -1621,13 +1616,29 @@ async function readDayViewSalesOnly(page, shouldReadForecast = false, options = 
 const DAY_VIEW_TAB_SELECTOR =
     '#ctl00_ph_scheduleLabour_rdScheduler_C_rtbLabour > div > div > div > ul > li:nth-child(12) > a';
 
+function dayViewKpiTimeoutMs() {
+    const n = Number(process.env.SCRAPER_DAY_VIEW_TIMEOUT_MS || 30000);
+    return Number.isFinite(n) && n >= 5000 ? n : 30000;
+}
+
+async function waitForActualSalesKpiRow(page, timeoutMs) {
+    await page.waitForFunction(
+        () => {
+            const row = document.querySelector('tr[data-kpi="ActualSalesKpi"]');
+            return Boolean(row && row.querySelectorAll('td').length > 10);
+        },
+        { timeout: timeoutMs }
+    );
+}
+
 async function openDayViewAndReadSales(page, shouldReadForecast) {
+    const kpiTimeout = dayViewKpiTimeoutMs();
     const alreadyReady = await page.evaluate(() => {
         const row = document.querySelector('tr[data-kpi="ActualSalesKpi"]');
         return Boolean(row && row.querySelectorAll('td').length > 10);
     });
     if (!alreadyReady) {
-        await page.waitForSelector(DAY_VIEW_TAB_SELECTOR, { timeout: 15000 });
+        await page.waitForSelector(DAY_VIEW_TAB_SELECTOR, { timeout: Math.max(15000, kpiTimeout) });
         await page.click(DAY_VIEW_TAB_SELECTOR);
 
         await Promise.race([
@@ -1637,14 +1648,30 @@ async function openDayViewAndReadSales(page, shouldReadForecast) {
         await page.waitForTimeout(1200);
     }
 
-    await page.waitForFunction(
-        () => {
-            const row = document.querySelector('tr[data-kpi="ActualSalesKpi"]');
-            if (!row) return false;
-            return row.querySelectorAll('td').length > 10;
-        },
-        { timeout: 15000 }
-    );
+    let lastErr;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+            if (attempt > 0) {
+                console.log('[Macromatix] Day view KPI not ready — re-clicking Day tab and retrying');
+                await page.click(DAY_VIEW_TAB_SELECTOR).catch(() => {});
+                await Promise.race([
+                    page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {}),
+                    page.waitForTimeout(2500),
+                ]);
+                await page.waitForTimeout(1500);
+            }
+            await waitForActualSalesKpiRow(page, kpiTimeout);
+            lastErr = null;
+            break;
+        } catch (err) {
+            lastErr = err;
+        }
+    }
+    if (lastErr) {
+        throw new Error(
+            `Labour day view ActualSalesKpi not ready after ${kpiTimeout}ms: ${lastErr.message}`
+        );
+    }
 
     return page.evaluate((readForecast) => {
         const parseHourlyRow = (row) => {
@@ -3024,7 +3051,7 @@ async function scrapeStoreWithCredentialCandidates(browser, store, ctx, candidat
             rethrowIfSalesScrapeAborted(err);
             const hasMore = attempt < tries.length - 1;
             if (!isStoreInaccessibleError(err) || hasMore) {
-                console.warn(
+                console.log(
                     `[Macromatix] Store ${label}: ${resolved.source} failed - ${err.message}${
                         hasMore ? ' - trying next login' : ''
                     }`

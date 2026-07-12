@@ -47,7 +47,27 @@ Host Cloudflare setup now:
 
 ## Updates
 
-Packaged installs check GitHub Releases **before** setup or host work. If a newer `desktop-v*` release exists, the app downloads it, installs, and restarts — then continues. Offline checks fail open (setup still works). Tray → Check for updates remains available while running.
+### Host server (tbadashboard.com)
+
+On **Host** launch the tray app automatically `git fetch`es the server clone and, if origin is ahead, pulls, `npm install`s, and restarts the server. No uninstall needed for dashboard/feature updates.
+
+- Manual: tray → **Updates → Server from Git…**
+- Disable auto-pull by setting `autoUpdateFromGitOnLaunch` to `false` in `%APPDATA%\live-dashboard-desktop\live-dashboard-desktop.json`
+
+### Tray app (this Windows shell)
+
+The installed app under Program Files is a packaged binary — **git cannot update it in place**. You do **not** need to uninstall/reinstall when a proper release exists: **Updates → Tray app…** (or the launch-time check) downloads the new installer and upgrades in place. Releases must include `latest.yml` (see Desktop release workflow).
+
+**Day-to-day Host development** (tray menu / desktop code): run from the git checkout instead of the installer:
+
+```powershell
+cd desktop
+.\start-from-git.cmd
+```
+
+That pulls the repo, then runs Electron from source so a restart picks up the latest tray code after you push/pull.
+
+Publishing a desktop build: bump `desktop/package.json` version, then tag `desktop-vX.Y.Z` and push the tag. The [Desktop release](../.github/workflows/desktop-release.yml) workflow builds the NSIS installer and uploads **`Taco Bell Dashboard Installer.exe`**, **`latest.yml`**, and the **`.blockmap`**.
 
 ## Develop / build
 
@@ -58,4 +78,4 @@ npm start
 npm run dist
 ```
 
-Output: `dist/Taco Bell Dashboard Installer.exe` (version is inside the app, not the filename)
+Output: `dist/Taco Bell Dashboard Installer.exe` plus `latest.yml` (version is inside the app, not the filename)

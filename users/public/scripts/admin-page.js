@@ -113,7 +113,7 @@
             visible: () => true,
             mount: (host, opts) =>
                 requireMount('Preferences', global.MicSettings?.mountPageSection)('preferences', host, opts),
-            activate: () => global.AdminStoreView?.mountSettingsBlock?.(profile),
+            activate: () => {},
         },
         {
             id: 'general',

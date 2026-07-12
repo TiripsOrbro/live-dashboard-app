@@ -144,19 +144,39 @@ async function restartServer() {
     return startServer();
 }
 
-async function updateFromGit() {
+async function gitRev(serverDir, ref) {
+    const { stdout } = await run('git', ['rev-parse', ref], { cwd: serverDir });
+    return String(stdout || '').trim();
+}
+
+/**
+ * Fetch + fast-forward the Host server clone when origin is ahead.
+ * Used on Host launch so a restart picks up the latest dashboard without a reinstall.
+ */
+async function syncFromGitIfBehind({ force = false } = {}) {
     const cfg = getConfig();
     if (cfg.mode !== 'host') {
-        throw new Error('Update from Git is only available in Host mode');
+        throw new Error('Git sync is only available in Host mode');
     }
     const serverDir = await ensureServerDir(cfg);
     const branch = cfg.gitBranch || DEFAULT_GIT_BRANCH;
     await run('git', ['fetch', 'origin', branch], { cwd: serverDir });
     await run('git', ['checkout', branch], { cwd: serverDir });
+
+    const local = await gitRev(serverDir, 'HEAD');
+    const remote = await gitRev(serverDir, `origin/${branch}`);
+    if (!force && local && remote && local === remote) {
+        return { serverDir, branch, updated: false, local, remote };
+    }
+
     await run('git', ['pull', '--ff-only', 'origin', branch], { cwd: serverDir });
     await npmInstall(serverDir);
     const result = await restartServer();
-    return { ...result, branch, updated: true };
+    return { ...result, branch, updated: true, local, remote };
+}
+
+async function updateFromGit() {
+    return syncFromGitIfBehind({ force: true });
 }
 
 async function probeLocalHealth(port = 3000) {
@@ -226,6 +246,7 @@ module.exports = {
     stopServer,
     restartServer,
     updateFromGit,
+    syncFromGitIfBehind,
     getHostStatus,
     probeLocalHealth,
     ensureServerRunning,

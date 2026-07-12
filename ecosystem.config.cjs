@@ -45,6 +45,9 @@ const env = {
     NODE_ENV: 'production',
 };
 
+/** Prefixed onto every PM2 out/err line so Live logs / `pm2 logs` show wall-clock time. */
+const LOG_DATE_FORMAT = 'YYYY-MM-DD HH:mm:ss Z';
+
 module.exports = {
     apps: [
         {
@@ -60,6 +63,7 @@ module.exports = {
             // Pi 4 (4GB): default 900M. Windows 16gb profile: 4G via .env.
             max_memory_restart: env.PM2_DASHBOARD_MAX_MEMORY || '900M',
             kill_timeout: 15000,
+            log_date_format: LOG_DATE_FORMAT,
             env,
         },
         {
@@ -73,6 +77,7 @@ module.exports = {
             restart_delay: 10000,
             max_memory_restart: env.PM2_REPORT_SCHEDULER_MAX_MEMORY || '400M',
             kill_timeout: 120000,
+            log_date_format: LOG_DATE_FORMAT,
             env: {
                 ...env,
                 REPORT_DOWNLOAD_SCHEDULE_ENABLED: env.REPORT_DOWNLOAD_SCHEDULE_ENABLED || '1',
@@ -89,6 +94,7 @@ module.exports = {
             restart_delay: 10000,
             max_memory_restart: env.PM2_FORECAST_SCHEDULER_MAX_MEMORY || '500M',
             kill_timeout: 180000,
+            log_date_format: LOG_DATE_FORMAT,
             env: {
                 ...env,
                 FORECAST_SCHEDULE_ENABLED: env.FORECAST_SCHEDULE_ENABLED || '1',
@@ -106,6 +112,7 @@ module.exports = {
             restart_delay: 5000,
             max_memory_restart: env.PM2_MORNING_RESTART_MAX_MEMORY || '150M',
             kill_timeout: 10000,
+            log_date_format: LOG_DATE_FORMAT,
             env: {
                 ...env,
                 MORNING_RESTART_ENABLED: env.MORNING_RESTART_ENABLED || '1',

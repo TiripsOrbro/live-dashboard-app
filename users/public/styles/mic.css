@@ -4107,22 +4107,6 @@ html:not(.mic-flat-tiles) .mic-item-picker-panel.mic-settings-panel .mic-setting
     background: color-mix(in srgb, var(--tb-purple-light) 12%, white);
 }
 
-.mic-admin-store-view-current {
-    margin: 0.35rem 0 0.5rem;
-    font-size: var(--font-size-4);
-    font-weight: var(--font-weight-semibold, 600);
-    color: var(--charcoal);
-}
-
-.mic-admin-store-view-current--empty {
-    color: color-mix(in srgb, var(--charcoal) 55%, white);
-    font-weight: 500;
-}
-
-.mic-admin-store-view .mic-settings-btn {
-    width: 100%;
-}
-
 .mic-header-store-select-wrap {
     display: flex;
     align-items: center;
@@ -4215,14 +4199,6 @@ html.mic-dark-mode .mic-admin-store-view-banner-exit {
     background: #2a2a2a;
     border-color: #5a5a5a;
     color: #f0f0f0;
-}
-
-html.mic-dark-mode .mic-admin-store-view-current {
-    color: #e8e8e8;
-}
-
-html.mic-dark-mode .mic-admin-store-view-current--empty {
-    color: color-mix(in srgb, #e8e8e8 55%, #161616);
 }
 
 html.mic-dark-mode .mic-header-store-select-label {

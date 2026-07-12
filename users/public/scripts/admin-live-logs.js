@@ -43,19 +43,45 @@
         return getRoot()?.querySelector('#admin-live-logs-output');
     }
 
-    function appendLine({ process: proc, stream, line, historical }) {
+    function formatLogTime(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return '';
+        try {
+            return d.toLocaleTimeString('en-AU', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+            });
+        } catch {
+            return d.toISOString().slice(11, 19);
+        }
+    }
+
+    function appendLine({ process: proc, stream, line, historical, at }) {
         if (paused && !historical) return;
         const root = logEl();
         if (!root) return;
         const row = document.createElement('div');
         row.className = `admin-live-logs-line admin-live-logs-line--${stream === 'error' ? 'error' : 'out'}`;
         if (historical) row.classList.add('admin-live-logs-line--hist');
+        const time = document.createElement('span');
+        time.className = 'admin-live-logs-time';
+        const stamp = formatLogTime(at);
+        time.textContent = stamp || '—';
+        if (at) time.title = at;
         const tag = document.createElement('span');
         tag.className = 'admin-live-logs-tag';
         tag.textContent = `${proc || '?'}${stream === 'error' ? ' · err' : ''}`;
+        tag.title =
+            stream === 'error'
+                ? 'stderr (console.warn / console.error) — not always a hard failure'
+                : 'stdout';
         const body = document.createElement('span');
         body.className = 'admin-live-logs-text';
         body.textContent = line ?? '';
+        row.appendChild(time);
         row.appendChild(tag);
         row.appendChild(body);
         root.appendChild(row);

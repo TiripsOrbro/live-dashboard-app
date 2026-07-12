@@ -187,6 +187,106 @@ async function installServiceWithToken(bin, token) {
     }
 }
 
+/**
+ * Install + start cloudflared Windows service via a UAC-elevated PowerShell script.
+ * Required because the tray app is usually not running as Administrator.
+ */
+async function installServiceElevated(bin, token, { onProgress } = {}) {
+    const dir = path.join(os.tmpdir(), 'live-dashboard-cloudflared');
+    fs.mkdirSync(dir, { recursive: true });
+    const tokenFile = path.join(dir, 'tunnel.token');
+    const scriptFile = path.join(dir, 'install-service.ps1');
+    const resultFile = path.join(dir, 'install-result.txt');
+
+    fs.writeFileSync(tokenFile, String(token).trim(), 'utf8');
+    try {
+        fs.unlinkSync(resultFile);
+    } catch {
+        /* ignore */
+    }
+
+    const ps = [
+        "$ErrorActionPreference = 'Stop'",
+        `Set-Content -Path '${resultFile.replace(/'/g, "''")}' -Value 'started'`,
+        `$bin = '${String(bin).replace(/'/g, "''")}'`,
+        `$token = (Get-Content -Raw '${tokenFile.replace(/'/g, "''")}').Trim()`,
+        'try {',
+        '  & $bin service uninstall 2>$null | Out-Null',
+        '} catch {}',
+        'Start-Sleep -Milliseconds 500',
+        '& $bin service install $token',
+        'if ($LASTEXITCODE -ne 0) { throw "cloudflared service install exit $LASTEXITCODE" }',
+        'Start-Sleep -Milliseconds 800',
+        'try { Start-Service -Name cloudflared -ErrorAction Stop } catch {',
+        '  & sc.exe start cloudflared | Out-Null',
+        '}',
+        `Set-Content -Path '${resultFile.replace(/'/g, "''")}' -Value 'ok'`,
+        `Remove-Item -Force '${tokenFile.replace(/'/g, "''")}' -ErrorAction SilentlyContinue`,
+    ].join('\r\n');
+    fs.writeFileSync(scriptFile, ps, 'utf8');
+
+    onProgress?.('Windows will ask for Administrator permission — click Yes…');
+
+    const elevate = await new Promise((resolve) => {
+        const child = spawn(
+            'powershell.exe',
+            [
+                '-NoProfile',
+                '-ExecutionPolicy',
+                'Bypass',
+                '-Command',
+                `Start-Process -FilePath powershell.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File','${scriptFile.replace(
+                    /'/g,
+                    "''"
+                )}')`,
+            ],
+            { windowsHide: true }
+        );
+        let stderr = '';
+        child.stderr?.on('data', (d) => {
+            stderr += d.toString();
+        });
+        child.on('error', (err) => resolve({ ok: false, error: String(err.message || err) }));
+        child.on('close', (code) => {
+            resolve({ ok: code === 0, code, stderr: stderr.trim() });
+        });
+    });
+
+    let resultText = '';
+    try {
+        resultText = fs.readFileSync(resultFile, 'utf8').trim();
+    } catch {
+        resultText = '';
+    }
+
+    // Clean token file even if elevate failed
+    try {
+        fs.unlinkSync(tokenFile);
+    } catch {
+        /* ignore */
+    }
+
+    if (!elevate.ok || resultText !== 'ok') {
+        const service = await queryService();
+        if (service.installed && service.running) {
+            return { ok: true, elevated: true, service };
+        }
+        throw new Error(
+            elevate.stderr ||
+                (resultText === 'started'
+                    ? 'Administrator approval was cancelled or the elevated install did not finish.'
+                    : 'Could not install Cloudflare Windows service as Administrator.')
+        );
+    }
+
+    await new Promise((r) => setTimeout(r, 1000));
+    const service = await queryService();
+    if (!service.running) {
+        await startService();
+    }
+    return { ok: true, elevated: true, service: await queryService() };
+}
+
 function stopPidFileProcess() {
     try {
         if (!fs.existsSync(PID_FILE)) return;
@@ -355,12 +455,12 @@ async function setupCloudflareTunnel({
             title: 'Step: Windows service (recommended)',
             message: 'Install Cloudflare as a Windows service?',
             detail: [
-                'Windows may show a User Account Control (UAC) prompt — click Yes.',
+                'Next, Windows will show a blue/yellow User Account Control (UAC) window.',
+                'Click Yes — that installs Cloudflare so tbadashboard.com stays up after reboot.',
                 '',
-                'This keeps tbadashboard.com online after reboot.',
-                'If you decline Admin, the tunnel still starts until you sign out.',
+                'If you click No, the tunnel only lasts until you sign out.',
             ].join('\n'),
-            buttons: ['Install service (Admin)', 'Start without service'],
+            buttons: ['Install service (click Yes on UAC)', 'Start without service'],
             defaultId: 0,
             cancelId: 1,
         });
@@ -368,30 +468,72 @@ async function setupCloudflareTunnel({
     }
 
     if (preferService) {
-        try {
-            progress('Installing Cloudflare Windows service (approve Admin if asked)…');
-            await installServiceWithToken(bin, token);
-            steps.push({ step: 'service-install', ok: true });
-            const started = await startService();
-            steps.push({ step: 'service-start', ok: started.ok, detail: started.text });
-            elevated = true;
-            progress('Cloudflare Windows service is running');
-        } catch (err) {
-            steps.push({ step: 'service-install', ok: false, detail: String(err.message || err) });
-            progress(
-                `Service install needs Admin — starting tunnel in the background instead (${err.message || err})`
-            );
+        let serviceInstalled = false;
+        for (let attempt = 1; attempt <= 3 && !serviceInstalled; attempt += 1) {
+            try {
+                progress(
+                    attempt === 1
+                        ? 'Installing Cloudflare Windows service (approve Admin / Yes)…'
+                        : `Retrying Admin service install (attempt ${attempt})…`
+                );
+                // Prefer UAC elevation — tray app is rarely already Administrator.
+                try {
+                    await installServiceElevated(bin, token, { onProgress: progress });
+                } catch (elevErr) {
+                    progress(`Elevated install: ${elevErr.message || elevErr} — trying direct install…`);
+                    await installServiceWithToken(bin, token);
+                    await startService();
+                }
+                const serviceNow = await queryService();
+                if (!serviceNow.running) {
+                    await startService();
+                }
+                steps.push({ step: 'service-install', ok: true, attempt });
+                elevated = true;
+                serviceInstalled = true;
+                progress('Cloudflare Windows service is running');
+            } catch (err) {
+                steps.push({
+                    step: 'service-install',
+                    ok: false,
+                    attempt,
+                    detail: String(err.message || err),
+                });
+                if (guided && typeof confirm === 'function' && attempt < 3) {
+                    const retry = await ask({
+                        type: 'warning',
+                        title: 'Admin approval needed',
+                        message: 'Cloudflare Windows service was not installed',
+                        detail: [
+                            String(err.message || err),
+                            '',
+                            'Click Yes on the Windows UAC prompt when it appears.',
+                            'Without the service, the public site stops after reboot/sign-out.',
+                        ].join('\n'),
+                        buttons: ['Try Admin install again', 'Continue without service'],
+                        defaultId: 0,
+                        cancelId: 1,
+                    });
+                    if (retry !== 0) break;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        if (!serviceInstalled) {
+            progress('Starting tunnel in the background for this session…');
             const pid = startTokenProcess(bin, token);
             steps.push({ step: 'tunnel-run-fallback', ok: true, detail: `pid ${pid}` });
             if (guided) {
                 await ask({
                     type: 'warning',
                     title: 'Tunnel started without Windows service',
-                    message: 'Cloudflare is running for this session',
+                    message: 'Cloudflare is running for this session only',
                     detail: [
-                        'The Windows service could not be installed (usually missing Admin approval).',
+                        'The Windows service still needs Administrator approval.',
                         '',
-                        'The site can work now, but after reboot use tray → Setup Cloudflare tunnel and approve Admin once.',
+                        'Site can work until you reboot. Then use tray → Setup Cloudflare tunnel… and click Yes on UAC.',
                     ].join('\n'),
                     buttons: ['Continue'],
                     defaultId: 0,

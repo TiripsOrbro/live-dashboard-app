@@ -1,0 +1,68 @@
+{
+  "name": "live-dashboard-desktop",
+  "version": "1.0.0",
+  "description": "Tray shell for Live Dashboard — Host or Client mode",
+  "main": "src/main.js",
+  "author": "Orbro",
+  "license": "ISC",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis",
+    "dist:publish": "electron-builder --win nsis --publish always"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.orbro.livedashboard",
+    "productName": "Live Dashboard",
+    "copyright": "Copyright © Orbro",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Taco Bell Dashboard Installer.${ext}",
+      "signAndEditExecutable": false,
+      "verifyUpdateCodeSignature": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "perMachine": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Live Dashboard",
+      "runAfterFinish": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "TiripsOrbro",
+        "repo": "live-dashboard-app",
+        "releaseType": "release"
+      }
+    ]
+  }
+}

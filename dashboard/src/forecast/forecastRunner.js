@@ -18,6 +18,22 @@ const { getStoreConfig, DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR } = require('../..
 const { closeAllTrackedBrowsers } = require('../../../mmx/src/browserLifecycle');
 const { acquireMmxResource, releaseMmxResource } = require('../../../mmx/src/mmxResourceGate');
 const { resolveLifeLenzHeadless } = require('../../../lifelenz/src/lifelenzAuth');
+const { envConcurrency, mapWithConcurrency } = require('../../../src/shared/concurrency');
+
+/** Serialize LifeLenz browser sessions — timing breaks under multi-Chromium contention. */
+let lifeLenzExclusiveChain = Promise.resolve();
+function withLifeLenzExclusive(fn) {
+    const run = lifeLenzExclusiveChain.then(() => fn());
+    lifeLenzExclusiveChain = run.then(
+        () => undefined,
+        () => undefined
+    );
+    return run;
+}
+
+function forecastStoreConcurrency(storeCount) {
+    return Math.min(envConcurrency('FORECAST_STORE_CONCURRENCY', 1), Math.max(1, storeCount || 1));
+}
 
 function resolveLifeLenzHeadlessOption(options = {}) {
     if (options.lifelenzHeadless === false || options.lifelenzHeadless === true) {
@@ -849,15 +865,17 @@ async function runForecastWeeksForStore(storeNumber, weekTargets, options = {}) 
 }
 
 async function runForecastWeeksForStores(storeNumbers, weekTargets, options = {}) {
-    const results = [];
-    for (const storeNumber of storeNumbers || []) {
+    const stores = [...(storeNumbers || [])];
+    const concurrency = forecastStoreConcurrency(stores.length);
+    if (concurrency > 1) {
+        console.log(`[Forecast] MMX weeks submit concurrency ${concurrency} for ${stores.length} store(s)`);
+    }
+    return mapWithConcurrency(stores, concurrency, async (storeNumber) => {
         if (options.shouldAbort?.()) {
-            results.push({ storeNumber, ok: false, error: 'Cancelled before this store was submitted.' });
-            continue;
+            return { storeNumber, ok: false, error: 'Cancelled before this store was submitted.' };
         }
         try {
             const result = await runForecastWeeksForStore(storeNumber, weekTargets, options);
-            results.push({ storeNumber, ok: true, ...result });
             if (options.markPlatformComplete !== false) {
                 for (const weekStart of result.targetWeeks || []) {
                     markStoreWeekPlatformComplete(weekStart, storeNumber, 'mmx', {
@@ -868,15 +886,15 @@ async function runForecastWeeksForStores(storeNumbers, weekTargets, options = {}
             if (typeof options.onProgress === 'function') {
                 options.onProgress({ platform: 'mmx', type: 'store-complete', storeNumber, ok: true, ...result });
             }
+            return { storeNumber, ok: true, ...result };
         } catch (err) {
             const error = err.message || String(err);
-            results.push({ storeNumber, ok: false, error });
             if (typeof options.onProgress === 'function') {
                 options.onProgress({ platform: 'mmx', type: 'store-error', storeNumber, error });
             }
+            return { storeNumber, ok: false, error };
         }
-    }
-    return results;
+    });
 }
 
 async function runForecastForStore(storeNumber, options = {}) {
@@ -963,15 +981,17 @@ async function runForecastForStore(storeNumber, options = {}) {
 
 async function runForecastForStores(storeNumbers, options = {}) {
     const runTarget = forecastRunOptions(options);
-    const results = [];
-    for (const storeNumber of storeNumbers || []) {
+    const stores = [...(storeNumbers || [])];
+    const concurrency = forecastStoreConcurrency(stores.length);
+    if (concurrency > 1) {
+        console.log(`[Forecast] MMX store submit concurrency ${concurrency} for ${stores.length} store(s)`);
+    }
+    return mapWithConcurrency(stores, concurrency, async (storeNumber) => {
         if (options.shouldAbort?.()) {
-            results.push({ storeNumber, ok: false, error: 'Cancelled before this store was submitted.' });
-            continue;
+            return { storeNumber, ok: false, error: 'Cancelled before this store was submitted.' };
         }
         try {
             const result = await runForecastForStore(storeNumber, { ...options, ...runTarget });
-            results.push({ storeNumber, ok: true, ...result });
             if (options.markPlatformComplete !== false) {
                 for (const weekStart of result.targetWeeks || []) {
                     markStoreWeekPlatformComplete(weekStart, storeNumber, 'mmx', {
@@ -982,15 +1002,15 @@ async function runForecastForStores(storeNumbers, options = {}) {
             if (typeof options.onProgress === 'function') {
                 options.onProgress({ platform: 'mmx', type: 'store-complete', storeNumber, ok: true, ...result });
             }
+            return { storeNumber, ok: true, ...result };
         } catch (err) {
             const error = err.message || String(err);
-            results.push({ storeNumber, ok: false, error });
             if (typeof options.onProgress === 'function') {
                 options.onProgress({ platform: 'mmx', type: 'store-error', storeNumber, error });
             }
+            return { storeNumber, ok: false, error };
         }
-    }
-    return results;
+    });
 }
 async function runLifeLenzForecastForStores(storeNumbers, credentials, options = {}) {
     const { createAuthenticatedLifeLenzSession } = require('../../../lifelenz/src/lifelenzAuth');
@@ -1039,74 +1059,125 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
         throw new Error('LifeLenz credentials are required.');
     }
 
-    let browser;
-    let page;
-    let accessibleStores = [];
-    const lifelenzHeadless = resolveLifeLenzHeadlessOption(options);
-    const lifelenzBrowserOptions = {
-        ...options,
-        headless: lifelenzHeadless,
-        skipSlowMo: true,
-    };
+    return withLifeLenzExclusive(async () => {
+        let browser;
+        let page;
+        let accessibleStores = [];
+        const lifelenzHeadless = resolveLifeLenzHeadlessOption(options);
+        const lifelenzBrowserOptions = {
+            ...options,
+            headless: lifelenzHeadless,
+            skipSlowMo: true,
+        };
+        const sessionResults = [];
 
-    try {
-        if (typeof options.onProgress === 'function') {
-            options.onProgress({ platform: 'lifelenz', type: 'session-start', storeNumbers });
-        }
-        if (!lifelenzHeadless) {
-            console.log('[Forecast] Headed LifeLenz browser (LIFELENZ_SCRAPER_HEADLESS=false)');
-        }
-        const session = await createAuthenticatedLifeLenzSession(email, password, lifelenzBrowserOptions);
-        browser = session.browser;
-        page = session.page;
-        accessibleStores = session.stores || [];
-
-        for (const storeNumber of storeNumbers || []) {
-            const store = String(storeNumber || '').trim();
-            if (options.shouldAbort?.()) {
-                results.push({ storeNumber: store, ok: false, error: 'Cancelled before this store was submitted.' });
-                continue;
+        try {
+            if (typeof options.onProgress === 'function') {
+                options.onProgress({ platform: 'lifelenz', type: 'session-start', storeNumbers });
             }
-            try {
-                const preview = previewForecastForStore(store, { ...options, ...runTarget });
-                const weekStart = preview.weekStart || preview.targetWeeks?.[0];
-                const { plan: activePlan, skippedDates, protectedDates } = splitPlanForSubmit(
-                    store,
-                    preview.plan,
-                    weekStart,
-                    'lifelenz',
-                    options
-                );
-                if (typeof options.onProgress === 'function') {
-                    options.onProgress({
-                        platform: 'lifelenz',
-                        type: 'store-start',
+            if (!lifelenzHeadless) {
+                console.log('[Forecast] Headed LifeLenz browser (LIFELENZ_SCRAPER_HEADLESS=false)');
+            }
+            const session = await createAuthenticatedLifeLenzSession(email, password, lifelenzBrowserOptions);
+            browser = session.browser;
+            page = session.page;
+            accessibleStores = session.stores || [];
+
+            for (const storeNumber of storeNumbers || []) {
+                const store = String(storeNumber || '').trim();
+                if (options.shouldAbort?.()) {
+                    sessionResults.push({
                         storeNumber: store,
-                        storeName: preview.storeName,
-                        dayCount: activePlan.length,
-                        skippedDays: skippedDates.length,
+                        ok: false,
+                        error: 'Cancelled before this store was submitted.',
                     });
-                    const lifelenzProgress = (payload) =>
-                        options.onProgress?.({ platform: 'lifelenz', storeNumber: store, ...payload });
-                    emitProtectedDaySkips(lifelenzProgress, store, 'lifelenz', protectedDates);
-                    emitResumedDaySkips(lifelenzProgress, store, 'lifelenz', skippedDates, protectedDates);
+                    continue;
                 }
-                if (!activePlan.length) {
+                try {
+                    const preview = previewForecastForStore(store, { ...options, ...runTarget });
+                    const weekStart = preview.weekStart || preview.targetWeeks?.[0];
+                    const { plan: activePlan, skippedDates, protectedDates } = splitPlanForSubmit(
+                        store,
+                        preview.plan,
+                        weekStart,
+                        'lifelenz',
+                        options
+                    );
+                    if (typeof options.onProgress === 'function') {
+                        options.onProgress({
+                            platform: 'lifelenz',
+                            type: 'store-start',
+                            storeNumber: store,
+                            storeName: preview.storeName,
+                            dayCount: activePlan.length,
+                            skippedDays: skippedDates.length,
+                        });
+                        const lifelenzProgress = (payload) =>
+                            options.onProgress?.({ platform: 'lifelenz', storeNumber: store, ...payload });
+                        emitProtectedDaySkips(lifelenzProgress, store, 'lifelenz', protectedDates);
+                        emitResumedDaySkips(lifelenzProgress, store, 'lifelenz', skippedDates, protectedDates);
+                    }
+                    if (!activePlan.length) {
+                        if (options.markPlatformComplete !== false) {
+                            for (const ws of preview.targetWeeks || []) {
+                                markStoreWeekPlatformComplete(ws, store, 'lifelenz', {
+                                    completedBy: options.completedBy || null,
+                                });
+                            }
+                        }
+                        sessionResults.push({
+                            storeNumber: store,
+                            ok: true,
+                            storeName: preview.storeName,
+                            forecastDays: preview.plan?.length || 0,
+                            resumed: skippedDates.length > 0,
+                            skippedDays: skippedDates,
+                            lifelenz: [],
+                        });
+                        if (typeof options.onProgress === 'function') {
+                            options.onProgress({
+                                platform: 'lifelenz',
+                                type: 'store-complete',
+                                storeNumber: store,
+                                ok: true,
+                                resumed: true,
+                                forecastDays: 0,
+                            });
+                        }
+                        continue;
+                    }
+                    const applied = await writeForecastPlanOnPage(page, store, activePlan, accessibleStores, {
+                        headless: lifelenzHeadless,
+                        onProgress: wrapForecastProgress(
+                            {
+                                ...options,
+                                onProgress: (payload) => {
+                                    if (typeof options.onProgress === 'function') {
+                                        options.onProgress({ platform: 'lifelenz', storeNumber: store, ...payload });
+                                    }
+                                },
+                            },
+                            {
+                                weekStart: preview.weekStart || preview.targetWeeks?.[0],
+                                storeNumber: store,
+                                completedBy: options.completedBy,
+                                platform: 'lifelenz',
+                            }
+                        ),
+                    });
                     if (options.markPlatformComplete !== false) {
-                        for (const ws of preview.targetWeeks || []) {
-                            markStoreWeekPlatformComplete(ws, store, 'lifelenz', {
+                        for (const weekStart of preview.targetWeeks || []) {
+                            markStoreWeekPlatformComplete(weekStart, store, 'lifelenz', {
                                 completedBy: options.completedBy || null,
                             });
                         }
                     }
-                    results.push({
+                    sessionResults.push({
                         storeNumber: store,
                         ok: true,
                         storeName: preview.storeName,
-                        forecastDays: preview.plan?.length || 0,
-                        resumed: skippedDates.length > 0,
-                        skippedDays: skippedDates,
-                        lifelenz: [],
+                        forecastDays: applied.length,
+                        lifelenz: applied,
                     });
                     if (typeof options.onProgress === 'function') {
                         options.onProgress({
@@ -1114,78 +1185,34 @@ async function runLifeLenzForecastForStores(storeNumbers, credentials, options =
                             type: 'store-complete',
                             storeNumber: store,
                             ok: true,
-                            resumed: true,
-                            forecastDays: 0,
+                            forecastDays: applied.length,
                         });
                     }
-                    continue;
-                }
-                const applied = await writeForecastPlanOnPage(page, store, activePlan, accessibleStores, {
-                    headless: lifelenzHeadless,
-                    onProgress: wrapForecastProgress(
-                        {
-                            ...options,
-                            onProgress: (payload) => {
-                                if (typeof options.onProgress === 'function') {
-                                    options.onProgress({ platform: 'lifelenz', storeNumber: store, ...payload });
-                                }
-                            },
-                        },
-                        {
-                            weekStart: preview.weekStart || preview.targetWeeks?.[0],
-                            storeNumber: store,
-                            completedBy: options.completedBy,
+                } catch (err) {
+                    const error = err.message || String(err);
+                    sessionResults.push({ storeNumber: store, ok: false, error });
+                    if (typeof options.onProgress === 'function') {
+                        options.onProgress({
                             platform: 'lifelenz',
-                        }
-                    ),
-                });
-                if (options.markPlatformComplete !== false) {
-                    for (const weekStart of preview.targetWeeks || []) {
-                        markStoreWeekPlatformComplete(weekStart, store, 'lifelenz', {
-                            completedBy: options.completedBy || null,
+                            type: 'store-error',
+                            storeNumber: store,
+                            error,
                         });
                     }
+                    // The shared session may be left with an open picker/modal or a
+                    // half-committed date; dismiss overlays so the next store starts clean.
+                    await page.keyboard.press('Escape').catch(() => null);
+                    await page.keyboard.press('Escape').catch(() => null);
                 }
-                results.push({
-                    storeNumber: store,
-                    ok: true,
-                    storeName: preview.storeName,
-                    forecastDays: applied.length,
-                    lifelenz: applied,
-                });
-                if (typeof options.onProgress === 'function') {
-                    options.onProgress({
-                        platform: 'lifelenz',
-                        type: 'store-complete',
-                        storeNumber: store,
-                        ok: true,
-                        forecastDays: applied.length,
-                    });
-                }
-            } catch (err) {
-                const error = err.message || String(err);
-                results.push({ storeNumber: store, ok: false, error });
-                if (typeof options.onProgress === 'function') {
-                    options.onProgress({
-                        platform: 'lifelenz',
-                        type: 'store-error',
-                        storeNumber: store,
-                        error,
-                    });
-                }
-                // The shared session may be left with an open picker/modal or a
-                // half-committed date; dismiss overlays so the next store starts clean.
-                await page.keyboard.press('Escape').catch(() => null);
-                await page.keyboard.press('Escape').catch(() => null);
+            }
+        } finally {
+            if (!options.keepBrowserOpen) {
+                await closeBrowserQuietly(browser, 'lifelenz-forecast-batch');
             }
         }
-    } finally {
-        if (!options.keepBrowserOpen) {
-            await closeBrowserQuietly(browser, 'lifelenz-forecast-batch');
-        }
-    }
 
-    return results;
+        return sessionResults;
+    });
 }
 
 function resolveLifelenzCredentialsForRun(storeNumbers, { storeByStore = {}, session = null, user = null } = {}) {
@@ -1229,9 +1256,8 @@ async function runCombinedForecastForStores(storeNumbers, options = {}) {
         onProgress: (payload) => onProgress?.({ platform: 'mmx', ...payload }),
     };
 
-    // Run the platforms sequentially. Two simultaneous Chromium instances
-    // starve each other of CPU, and the LifeLenz scraper's save/reload timing
-    // is the first thing to break under contention.
+    // MMX stores can run in parallel (FORECAST_STORE_CONCURRENCY). LifeLenz stays
+    // exclusive — concurrent LifeLenz Chromium sessions break save/reload timing.
     const mmxResults = await runForecastForStores(storeNumbers, mmxOptions);
 
     let lifelenzResults = [];

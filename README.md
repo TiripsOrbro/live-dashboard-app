@@ -56,24 +56,60 @@ Release notes in plain English (for store managers and admins) are in **[CHANGEL
 
 ## Hardware branches
 
-Production is split by host RAM. Feature work lands on **`4gb`** first; merge into **`16gb`** before deploying to the EliteDesk server.
+Production is split by host. Feature work lands on **`4gb`** first; merge into **`16gb`** before deploying to the Windows server (or Linux EliteDesk).
 
 | Branch | Host | Deploy | Env template |
 |--------|------|--------|--------------|
 | **`4gb`** | Raspberry Pi 4 (4 GB) | `npm run pi:deploy` | [`.env.example`](.env.example) |
-| **`16gb`** | HP EliteDesk / 16 GB server | `npm run server:deploy` | [`.env.server16gb.example`](.env.server16gb.example) |
-| `Version-0.6` | Release line | merge from `4gb` when cutting releases | same as target host |
+| **`16gb`** | Powerful Windows PC (32–64 GB) | `npm run win:start` | [`.env.server16gb.example`](.env.server16gb.example) |
+| **`16gb`** (alt) | Linux EliteDesk 16 GB | `npm run server:deploy` | same template (Linux fallback comments) |
+| `Version-1.0` | Release line | merge from `4gb` when cutting releases | same as target host |
 
 ```sh
-git checkout 4gb          # default dev branch
+git checkout 4gb          # default Pi / feature branch
 npm run pi:deploy         # Pi production
 
 git checkout 16gb
 git merge 4gb             # before server deploy
-npm run server:deploy     # EliteDesk (after [setup](#elitedesk-setup-16gb-server) below)
+npm run win:setup-env     # first time on Windows
+npm run win:install
+npm run win:start         # local Windows PM2 (see [Windows setup](#windows-setup-16gb-server))
+# Or remote Linux EliteDesk: npm run server:deploy
 ```
 
 Tuning is env-driven (`SCRAPER_CONCURRENCY`, `SCRAPE_FAST_INTERVAL_SECONDS`, `PM2_DASHBOARD_MAX_MEMORY`) — no separate app code per branch.
+
+## Desktop tray app (Host / Client)
+
+One Windows installer for everyone — **not** two installers. First launch picks mode:
+
+| Mode | What it does |
+|------|----------------|
+| **Host** | Starts/stops the Node server + scrapers on this PC; can **Update from Git** (`16gb`); Cloudflare publishes `tbadashboard.com` → `localhost:3000` |
+| **Client** | Tray only; opens Admin Settings against `https://tbadashboard.com` |
+
+- Tray click → Settings (`/Admin/Settings`)
+- **Host Cloudflare:** first-run Host setup (or tray → **Setup Cloudflare tunnel…**) installs/runs `cloudflared` for `tbadashboard.com` using the existing `dashboard` tunnel token. Run once as Administrator to install the Windows service for auto-start; otherwise it starts a background connector until logoff.
+- **After setup:** Client tray → **Become Host…**; Host tray → **Stop hosting (become Client)…**, **Export Host secrets pack…**. Host launch auto-starts the server if it is down. Demotion / stop hosting tears down local Cloudflare.
+- Settings changes are saved on the host; other users refresh via `/api/live/events` (SSE) + version poll
+- Tray app updates via GitHub Releases (`electron-updater`); server code updates only on the Host via **Update from Git**
+
+```powershell
+npm run desktop:install
+npm run desktop:start          # dev
+npm run desktop:dist           # NSIS installer → desktop/dist/
+```
+
+## What to share
+
+**One file for everyone:** `desktop/dist/Taco Bell Dashboard Installer.exe`
+
+| Who | What they do |
+|-----|----------------|
+| **Most people (Client)** | Install → choose **I just need access** → sign in |
+| **Main server PC (Host)** | Install → choose **This PC is the main server** → approve Windows/Cloudflare prompts if asked → wait while it auto-installs Node/Git/cloudflared and downloads the server |
+
+No manual folder paths, concurrency settings, or Cloudflare config for normal users.
 
 ### Week 2 Pi tuning (`4gb`, stay on 4 GB RAM)
 
@@ -389,13 +425,103 @@ Test `https://tbadashboard.com/` and `https://tbadashboard.com/3806`. Path routi
 
 Adding another hostname later is config-only — add an `ingress` hostname pointing at the same `http://localhost:3000` and run `cloudflared tunnel route dns dashboard <new-hostname>`. No app changes.
 
-## EliteDesk setup (16GB server)
+## Windows setup (16gb server)
 
-Target: Ubuntu Server 24.04 or Debian 12 on the HP EliteDesk (branch **`16gb`**). Use Linux rather than Windows for lower RAM overhead.
+Target: a powerful Windows PC on branch **`16gb`** (e.g. 8+ cores, 32–64 GB RAM). This is the preferred host for the `16gb` profile. Chrome or Edge is used for Puppeteer (auto-detected if `SCRAPER_EXECUTABLE_PATH` is unset).
 
-### 1. SSH from your dev PC
+### 1. Prerequisites
 
-Add to `~/.ssh/config` (Windows: `C:\Users\<you>\.ssh\config`):
+- Node.js 18+ (this machine already uses Node 24)
+- Google Chrome **or** Microsoft Edge
+- PM2: `npm install -g pm2`
+
+### 2. Clone / checkout and configure
+
+```powershell
+git checkout 16gb
+git pull origin 16gb
+npm run win:setup-env
+# Edit .env: STORE_CREDENTIALS_KEY, DASHBOARD_AUTH_SECRET, migrate secrets from the Pi
+npm run win:install
+npm run win:start
+npm run win:startup   # follow the printed command so PM2 survives reboot
+```
+
+Or step by step:
+
+```powershell
+Copy-Item .env.server16gb.example .env
+npm install --omit=dev
+pm2 start ecosystem.config.cjs
+pm2 save
+```
+
+Windows defaults in `.env.server16gb.example`: `SCRAPER_CONCURRENCY=12`, `SCRAPE_BATCH_SIZE=12`, `PM2_DASHBOARD_MAX_MEMORY=8G`, `SCRAPE_FAST_INTERVAL_SECONDS=60`.
+
+Useful local commands:
+
+```powershell
+npm run win:status
+npm run win:logs
+npm run win:restart
+npm run win:stop
+```
+
+### 3. Cloudflare Tunnel (Windows)
+
+Install the Windows amd64 build of [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/), then:
+
+```powershell
+cloudflared tunnel login
+cloudflared tunnel create dashboard
+```
+
+Create `%USERPROFILE%\.cloudflared\config.yml` (adjust paths and UUID):
+
+```yaml
+tunnel: <UUID>
+credentials-file: C:\Users\<you>\.cloudflared\<UUID>.json
+
+ingress:
+  - hostname: tbadashboard.com
+    service: http://localhost:3000
+  - service: http_status:404
+```
+
+```powershell
+cloudflared tunnel route dns dashboard tbadashboard.com
+cloudflared service install
+# Start the Windows service from Services.msc or:
+net start cloudflared
+```
+
+### 4. Migrate from Pi (cutover)
+
+Copy from the Pi (same data set as Linux deploy excludes — do **not** overwrite with empty folders):
+
+- `.env` secrets and keys (merge into Windows `.env` from `.env.server16gb.example` base)
+- `stores/.storelist`
+- `users/` (accounts, data)
+- `dashboard/data/`
+- `vendors/` (reports, catalogs, data)
+- `tacaudit/data/`
+- `mmx/data/`
+
+**Cutover:** only one host should run the production tunnel at a time. Test on a staging hostname first, then point `tbadashboard.com` at this PC. Keep the Pi as warm standby for one week.
+
+Day-to-day updates on this Windows host:
+
+```powershell
+git checkout 16gb
+git pull origin 16gb
+git merge 4gb
+npm install --omit=dev
+npm run win:restart
+```
+
+### Alternative: Linux EliteDesk (16 GB)
+
+If you prefer Ubuntu Server 24.04 / Debian 12 on an EliteDesk instead of Windows, use SSH deploy from this PC:
 
 ```
 Host dashboard
@@ -404,101 +530,24 @@ Host dashboard
     IdentityFile ~/.ssh/id_ed25519
 ```
 
-From the repo on branch `16gb`:
-
 ```powershell
 npm run server:setup
-npm run server:ssh
-```
-
-### 2. System packages
-
-```sh
-sudo apt update
-sudo apt install -y chromium nodejs npm git
-sudo npm install -g pm2
-node -v   # must be >= 18
-which chromium
-```
-
-### 3. Clone and configure
-
-```sh
-git clone -b 16gb <repository-url> ~/live-dashboard-app
-cd ~/live-dashboard-app
-cp .env.server16gb.example .env
-chmod 600 .env
-# Edit .env: secrets, STORE_CREDENTIALS_KEY, DASHBOARD_AUTH_SECRET, store logins via Admin UI
-npm install --omit=dev
-pm2 start ecosystem.config.cjs
-pm2 save
-pm2 startup   # run the printed command once
-```
-
-Server defaults in `.env.server16gb.example`: `SCRAPER_CONCURRENCY=4`, `PM2_DASHBOARD_MAX_MEMORY=1.5G`, `SCRAPE_FAST_INTERVAL_SECONDS=90`.
-
-### 4. Cloudflare Tunnel (amd64)
-
-Use the **amd64** package on x86 — not the Pi arm64 deb:
-
-```sh
-wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-sudo dpkg -i cloudflared-linux-amd64.deb
-cloudflared tunnel login
-cloudflared tunnel create dashboard
-```
-
-Create `~/.cloudflared/config.yml` (adjust user path and UUID):
-
-```yaml
-tunnel: <UUID>
-credentials-file: /home/orbro/.cloudflared/<UUID>.json
-
-ingress:
-  - hostname: tbadashboard.com
-    service: http://localhost:3000
-  - service: http_status:404
-```
-
-```sh
-cloudflared tunnel route dns dashboard tbadashboard.com
-sudo cloudflared service install
-sudo systemctl enable --now cloudflared
-```
-
-### 5. Migrate from Pi (cutover)
-
-Copy from the Pi (paths match `pi.ps1` deploy excludes — these are **not** overwritten by deploy):
-
-- `.env` secrets and keys (merge into server `.env` from `.env.server16gb.example` base)
-- `stores/.storelist`
-- `users/` (accounts, data)
-- `dashboard/data/`
-- `vendors/` (reports, catalogs, data)
-- `tacaudit/data/`
-- `mmx/data/`
-
-**Cutover:** only one host should run the production tunnel at a time. Test on a staging hostname first, then point `tbadashboard.com` at the EliteDesk. Keep the Pi as warm standby for one week.
-
-Deploy updates from Windows:
-
-```powershell
-git checkout 16gb
-git merge 4gb
 npm run server:deploy
 ```
 
-### Alternative: systemd
+On the Linux box: install `chromium`, Node 18+, and PM2; copy `.env.server16gb.example` → `.env` and uncomment the Linux fallback lines (`SCRAPER_CONCURRENCY=4`, `PM2_DASHBOARD_MAX_MEMORY=1.5G`, `SCRAPER_EXECUTABLE_PATH=/usr/bin/chromium`).
 
-If you prefer `systemd` over PM2, run the app on boot and restart after failures.
+### Alternative: systemd (Linux only)
 
-Keep secrets out of the service file. Put them in an environment file owned by the Pi user and readable only by that user:
+If you prefer `systemd` over PM2 on Linux, run the app on boot and restart after failures.
+
+Keep secrets out of the service file. Put them in an environment file owned by the app user and readable only by that user:
 
 ```sh
-sudo install -o pi -g pi -m 600 /dev/null /home/pi/live-dashboard-app/.env.production
+sudo install -o orbro -g orbro -m 600 /dev/null /home/orbro/live-dashboard-app/.env.production
 ```
 
-Example `/home/pi/live-dashboard-app/.env.production`:
+Example `/home/orbro/live-dashboard-app/.env.production`:
 
 ```ini
 NODE_ENV=production

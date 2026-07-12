@@ -2,7 +2,7 @@
 
 Plain-English summary of what changed in each release — written for store managers and admins, not developers.
 
-**Current live branch:** `Version-0.6` (dev default: **`4gb`** Pi profile; server: **`16gb`**)
+**Current live branch:** `Version-1.0` (Pi: **`4gb`**; Windows server: **`16gb`**)
 
 ---
 
@@ -26,22 +26,48 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 
 ## Release history
 
+### Version 1.0.0.0 – July 2026
+
+**Added**
+
+- **Desktop tray app (1.0)** — single Windows installer with Host/Client modes, Host lease, secrets pack export/import, Cloudflare tunnel setup, and GitHub Releases auto-update.
+- **Host / Client tray QOL** — auto-start Host server after reboot; Server / Tunnel / Lease status (Clients see Site / Host); **Become Host…**, **Stop hosting (become Client)…**, **Export Host secrets pack…**; demotion tears down Cloudflare and notifies.
+- **Host lease API** — single active Host claim/heartbeat/release so takeover can demote the previous PC.
+- **Morning restart + Windows `win:*` tooling** — local Host ops scripts alongside existing Pi/`server` deploy paths.
+
+**Changed**
+
+- App version line moves from **0.6** to **1.0** for the Host/Client desktop era.
+- Hardware profiles stay on **`4gb`** (Pi) and **`16gb`** (Windows Host).
+
+**What you need to do**
+
+- Windows Host: pull **`16gb`** or **`Version-1.0`**, run tray / `npm run win:start` as usual; use **Export Host secrets pack** before moving Host.
+- Clients: install/update the desktop app and choose **I just need access** (or tray → Become Host if taking over).
+- Pi: stay on **`4gb`** unless you intentionally merge this release line.
+
+---
+
 ### Hardware branches – July 2026
 
 **Added**
 
-- **`4gb` branch** — Raspberry Pi 4 (4 GB) production profile; default dev branch.
-- **`16gb` branch** — EliteDesk / 16 GB server profile with higher scrape concurrency and `server:deploy` tooling.
+- **`4gb` branch** — Raspberry Pi 4 (4 GB) production profile; default feature branch.
+- **`16gb` branch** — Powerful Windows PC profile (32–64 GB) with higher scrape concurrency, local `win:*` PM2 tooling, and optional Linux EliteDesk fallback.
+- **Desktop tray app** — single Windows installer (`desktop/`) with Host/Client modes, tray → Admin Settings, Host Git update, Electron auto-update, and `/api/live/events` for near-real-time multi-user Settings sync.
+- **Host / Client tray QOL** — Host auto-starts the server after reboot; tray shows Server / Tunnel / Lease (Clients see Site / Host); **Become Host…**, **Stop hosting (become Client)…**, and **Export Host secrets pack…**; demotion stops Cloudflare and notifies instead of only blocking a dialog.
 
 **Changed**
 
 - Pi `.env` defaults documented in `.env.example` (`SCRAPER_CONCURRENCY=2`, `SCRAPE_FAST_INTERVAL_SECONDS=120`).
-- Server `.env` template: `.env.server16gb.example` on `16gb` (`SCRAPER_CONCURRENCY=4`, etc.).
+- Server `.env` template: `.env.server16gb.example` on `16gb` (`SCRAPER_CONCURRENCY=6`, `PM2_DASHBOARD_MAX_MEMORY=4G`, `SCRAPE_FAST_INTERVAL_SECONDS=60` on Windows).
+- Moving Host: old Host demotion now tears down local Cloudflare so the new Host can own the tunnel cleanly.
 
 **What you need to do**
 
-- Dev: `git checkout 4gb` for feature work; deploy Pi with `npm run pi:deploy`.
-- Server (when EliteDesk is ready): `git checkout 16gb`, merge `4gb`, copy `.env.server16gb.example` → `.env`, follow [EliteDesk setup](#elitedesk-setup-16gb-server) in README, deploy with `npm run server:deploy`.
+- Dev / Pi: `git checkout 4gb` for feature work; deploy Pi with `npm run pi:deploy`.
+- Windows server: `git checkout 16gb`, merge `4gb`, `npm run win:setup-env`, follow [Windows setup](#windows-setup-16gb-server) in README, then `npm run win:start`.
+- Linux EliteDesk (optional): use `npm run server:deploy` and the Linux fallback lines in `.env.server16gb.example`.
 
 ---
 

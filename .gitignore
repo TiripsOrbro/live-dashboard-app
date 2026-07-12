@@ -1,4 +1,8 @@
 node_modules/
+desktop/dist/
+desktop/node_modules/
+_pi-gitignore.tar.gz
+_pi-data-migrate.tar.gz
 
 # Vendor catalogs — live dotfiles are Pi-only (templates in vendors/examples/)
 !vendors/
@@ -26,6 +30,7 @@ users/data/mmx-users/
 users/data/lifelenz-users/
 users/data/webauthn/
 users/data/.dashboard-auth-secret
+users/data/host-lease.json
 
 # Debug screenshots dumped by probe/debug scripts
 scripts/*.png
@@ -63,6 +68,8 @@ dashboard/data/forecast-auto-submit.json
 dashboard/data/forecast-store-auto-submit.json
 dashboard/data/forecast-schedule-state.json
 dashboard/data/forecast-schedule-log/
+dashboard/data/morning-restart-state.json
+dashboard/data/daily-reports-run-state.json
 !dashboard/data/feature-requests.json
 !dashboard/data/bug-reports.json
 dashboard/data/bug-reports/photos/

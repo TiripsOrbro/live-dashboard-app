@@ -3,9 +3,14 @@
  *
  *   pm2 start ecosystem.config.cjs
  *   pm2 save
- *   pm2 startup   # follow the printed command so it survives a Pi reboot
+ *   pm2 startup   # follow the printed command so it survives reboot
  *
  * Logs:  pm2 logs dashboard
+ *
+ * Memory caps come from .env (see .env.example / .env.server16gb.example):
+ *   PM2_DASHBOARD_MAX_MEMORY
+ *   PM2_REPORT_SCHEDULER_MAX_MEMORY
+ *   PM2_FORECAST_SCHEDULER_MAX_MEMORY
  */
 const path = require('path');
 const fs = require('fs');
@@ -34,7 +39,7 @@ function loadEnvFile(name) {
     return out;
 }
 
-// PM2 loads the same single `.env` as the app (Pi + dev).
+// PM2 loads the same single `.env` as the app (Pi / Windows server / dev).
 const env = {
     ...loadEnvFile('.env'),
     NODE_ENV: 'production',
@@ -51,8 +56,8 @@ module.exports = {
             max_restarts: 100,
             min_uptime: '20s',
             restart_delay: 5000,
-            // A leaked Chromium can grow memory over days; recycle before the Pi runs out.
-            // Pi 4 (4GB): default 900M. Override via PM2_DASHBOARD_MAX_MEMORY in .env (e.g. 1G).
+            // Leaked Chromium can grow over days; recycle before the host runs out.
+            // Pi 4 (4GB): default 900M. Windows 16gb profile: 4G via .env.
             max_memory_restart: env.PM2_DASHBOARD_MAX_MEMORY || '900M',
             kill_timeout: 15000,
             env,
@@ -66,7 +71,7 @@ module.exports = {
             max_restarts: 50,
             min_uptime: '30s',
             restart_delay: 10000,
-            max_memory_restart: '400M',
+            max_memory_restart: env.PM2_REPORT_SCHEDULER_MAX_MEMORY || '400M',
             kill_timeout: 120000,
             env: {
                 ...env,
@@ -82,11 +87,28 @@ module.exports = {
             max_restarts: 50,
             min_uptime: '30s',
             restart_delay: 10000,
-            max_memory_restart: '500M',
+            max_memory_restart: env.PM2_FORECAST_SCHEDULER_MAX_MEMORY || '500M',
             kill_timeout: 180000,
             env: {
                 ...env,
                 FORECAST_SCHEDULE_ENABLED: env.FORECAST_SCHEDULE_ENABLED || '1',
+            },
+        },
+        {
+            // Lightweight watcher — recycles the other apps once each morning before daily reports.
+            name: 'morning-restart',
+            cwd: ROOT,
+            script: 'scripts/run-morning-restart.js',
+            interpreter: 'node',
+            autorestart: true,
+            max_restarts: 50,
+            min_uptime: '10s',
+            restart_delay: 5000,
+            max_memory_restart: env.PM2_MORNING_RESTART_MAX_MEMORY || '150M',
+            kill_timeout: 10000,
+            env: {
+                ...env,
+                MORNING_RESTART_ENABLED: env.MORNING_RESTART_ENABLED || '1',
             },
         },
     ],

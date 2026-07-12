@@ -18,10 +18,14 @@ const {
     melbourneTodayIso,
     resolveDefaultDateRange,
 } = require('./reportSubscriptionsStore');
+const { envConcurrency, mapWithConcurrency } = require('../../../src/shared/concurrency');
 
 const LABOUR_URL =
     'https://tacobellau.macromatix.net/MMS_Stores_LabourScheduler.aspx?MenuCustomItemID=249';
 
+function backfillStoreConcurrency(storeCount) {
+    return Math.min(envConcurrency('BACKFILL_STORE_CONCURRENCY', 1), Math.max(1, storeCount || 1));
+}
 function hashFile(filePath) {
     return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
@@ -441,20 +445,30 @@ async function generateReportBundle({ reportType, scopeType, scopeId, dateRange 
     });
     if (!stores.length) throw new Error('No stores matched the selected scope.');
 
-    const attachments = [];
-    const statuses = [];
-    for (const row of stores) {
-        const file = await generateReportForStore(reportType, row.storeNumber, dateRange, options);
-        attachments.push(file);
-        statuses.push({
-            storeNumber: row.storeNumber,
-            reportType,
-            coverage:
-                reportType === 'historical-hourly-sales'
-                    ? assessHourlySalesCoverage(row.storeNumber, dateRange)
-                    : assessIseCoverage(row.storeNumber, dateRange),
-        });
+    const concurrency = backfillStoreConcurrency(stores.length);
+    if (concurrency > 1) {
+        console.log(
+            `[ReportRunner] Generating ${reportType} for ${stores.length} store(s) with concurrency ${concurrency}`
+        );
     }
+
+    const generated = await mapWithConcurrency(stores, concurrency, async (row) => {
+        const file = await generateReportForStore(reportType, row.storeNumber, dateRange, options);
+        return {
+            file,
+            status: {
+                storeNumber: row.storeNumber,
+                reportType,
+                coverage:
+                    reportType === 'historical-hourly-sales'
+                        ? assessHourlySalesCoverage(row.storeNumber, dateRange)
+                        : assessIseCoverage(row.storeNumber, dateRange),
+            },
+        };
+    });
+
+    const attachments = generated.map((row) => row.file);
+    const statuses = generated.map((row) => row.status);
 
     if (reportType === 'ise-trimmed-average' && attachments.length > 1) {
         const storeNumbers = stores.map((row) => row.storeNumber);
@@ -552,25 +566,29 @@ async function backfillScopeData({ reportType, scopeType, scopeId, dateRange = {
         includedStoreNumbers: resolveScopeStoreFilter(options),
     });
     if (!stores.length) throw new Error('No stores matched the selected scope.');
+    const concurrency = backfillStoreConcurrency(stores.length);
     emitProgress(options, {
         type: 'scope-start',
         scopeType,
         scopeId,
         storeCount: stores.length,
-        message: `Starting backfill for ${stores.length} store(s)…`,
+        message: `Starting backfill for ${stores.length} store(s)${concurrency > 1 ? ` (concurrency ${concurrency})` : ''}…`,
     });
-    const statuses = [];
-    for (const row of stores) {
+    const statuses = await mapWithConcurrency(stores, concurrency, async (row) => {
         const coverage =
             reportType === 'ise-trimmed-average'
-                ? await ensureIseHistory(row.storeNumber, { dateRange, force: options.force, onProgress: options.onProgress })
+                ? await ensureIseHistory(row.storeNumber, {
+                      dateRange,
+                      force: options.force,
+                      onProgress: options.onProgress,
+                  })
                 : await backfillMissingHourlySales(row.storeNumber, dateRange, options);
-        statuses.push({
+        return {
             storeNumber: row.storeNumber,
             storeName: row.storeName,
             coverage,
-        });
-    }
+        };
+    });
     const ready = statuses.length > 0 && statuses.every((r) => r.coverage.ready);
     const forecastReady =
         reportType === 'historical-hourly-sales' &&
@@ -762,17 +780,17 @@ async function backfillForecastHistoryForStores(storeNumbers, options = {}) {
     const stores = [...new Set((storeNumbers || []).map((s) => String(s || '').trim()).filter(Boolean))];
     if (!stores.length) throw new Error('No stores selected.');
 
+    const concurrency = backfillStoreConcurrency(stores.length);
     emitProgress(options, {
         type: 'scope-start',
         storeCount: stores.length,
-        message: `Backfilling forecast history for ${stores.length} store(s) from MMX…`,
+        message: `Backfilling forecast history for ${stores.length} store(s) from MMX${concurrency > 1 ? ` (concurrency ${concurrency})` : ''}…`,
     });
 
-    const statuses = [];
-    for (const storeNumber of stores) {
+    const statuses = await mapWithConcurrency(stores, concurrency, async (storeNumber) => {
         const coverage = await backfillMissingHourlySales(storeNumber, {}, options);
-        statuses.push({ storeNumber, coverage });
-    }
+        return { storeNumber, coverage };
+    });
 
     const ready = statuses.length > 0 && statuses.every((r) => r.coverage.ready);
     const forecastReady =

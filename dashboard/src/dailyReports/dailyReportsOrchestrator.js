@@ -24,6 +24,7 @@ const {
     extractForecastFailureLines,
     sendFailedAutomatedReportsEmail,
 } = require('./dailyReportsFailureEmail');
+const { envConcurrency, mapWithConcurrency } = require('../../../src/shared/concurrency');
 
 const MAX_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 5000;
@@ -279,7 +280,8 @@ async function runDailyReportSubscriptions(runDateKey, failuresByStore, options 
 }
 
 /**
- * Run all enabled daily automated reports sequentially (stock, forecast, then subscriptions).
+ * Run all enabled daily automated reports (stock + forecast per store, then subscriptions).
+ * Store jobs run with DAILY_REPORTS_CONCURRENCY (default 1). LifeLenz remains serialized inside forecast.
  * Marks the Melbourne calendar day complete when finished so schedulers idle until tomorrow.
  */
 async function runDailyReportsOrchestrator(deps) {
@@ -293,9 +295,12 @@ async function runDailyReportsOrchestrator(deps) {
     };
 
     const storePlan = buildStorePlan(deps.isTestStore, deps);
-    console.info(`[DailyReports] Starting daily batch for ${runDateKey} (${storePlan.length} store job(s))`);
+    const concurrency = envConcurrency('DAILY_REPORTS_CONCURRENCY', 1);
+    console.info(
+        `[DailyReports] Starting daily batch for ${runDateKey} (${storePlan.length} store job(s), concurrency ${concurrency})`
+    );
 
-    for (const row of storePlan) {
+    const storeSummaries = await mapWithConcurrency(storePlan, concurrency, async (row) => {
         const storeSummary = {
             storeNumber: row.storeNumber,
             storeName: row.storeName,
@@ -334,8 +339,10 @@ async function runDailyReportsOrchestrator(deps) {
             }
         }
 
-        summary.stores.push(storeSummary);
-    }
+        return storeSummary;
+    });
+
+    summary.stores = storeSummaries;
 
     summary.subscriptions = await runDailyReportSubscriptions(runDateKey, failuresByStore, deps);
 

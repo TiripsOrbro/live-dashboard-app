@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Taco Bell Dashboard</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #1a1a1a;
+      color: #f5f5f5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+    }
+    .wrap {
+      text-align: center;
+      padding: 16px 24px;
+      max-width: 360px;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    #status {
+      margin: 0 0 12px;
+      font-size: 13px;
+      color: #c8c8c8;
+      line-height: 1.35;
+      min-height: 2.4em;
+    }
+    .bar {
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    #fill {
+      height: 100%;
+      width: 0%;
+      background: #e87722;
+      border-radius: 3px;
+      transition: width 0.2s ease;
+    }
+    #pct {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Taco Bell Dashboard</h1>
+    <p id="status">Checking for updates…</p>
+    <div class="bar"><div id="fill"></div></div>
+    <div id="pct"></div>
+  </div>
+  <script>
+    window.setUpdateStatus = (text, percent) => {
+      const status = document.getElementById('status');
+      const fill = document.getElementById('fill');
+      const pct = document.getElementById('pct');
+      if (text) status.textContent = text;
+      if (typeof percent === 'number' && Number.isFinite(percent)) {
+        const p = Math.max(0, Math.min(100, percent));
+        fill.style.width = p + '%';
+        pct.textContent = Math.round(p) + '%';
+      }
+    };
+  </script>
+</body>
+</html>

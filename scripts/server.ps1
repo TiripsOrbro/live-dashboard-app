@@ -1,8 +1,9 @@
-# EliteDesk / 16GB server SSH helpers - deploy code, restart PM2, stream logs.
+# Remote Linux EliteDesk SSH helpers - deploy code, restart PM2, stream logs.
+# For running ON this Windows PC instead, use: .\scripts\win-local.ps1
 # Usage:  .\scripts\server.ps1 <command>
 #         npm run server:deploy
 #
-# SSH host `dashboard` must be configured in ~/.ssh/config (see README EliteDesk setup).
+# SSH host `dashboard` must be configured in ~/.ssh/config (see README Windows / EliteDesk setup).
 # First-time setup (copies your SSH public key; enter server password once):
 #   .\scripts\server.ps1 setup-key
 

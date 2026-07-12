@@ -152,6 +152,7 @@ const {
     loadAuditRecurrenceConfigSync,
 } = require('./utils/auditRecurrence');
 const app = express();
+const liveEvents = require('./liveEvents');
 const compression = require('compression');
 app.use(compression());
 const PORT = process.env.PORT || 3000;
@@ -862,7 +863,17 @@ function isLoginPublicPath(reqPath) {
     }
     if (reqPath === '/api/account/login-ui') return true;
     if (reqPath === '/api/dashboard/meta') return true;
+    if (reqPath === '/api/live/version' || reqPath === '/api/live/events') return true;
+    if (
+        reqPath === '/api/host/status' ||
+        reqPath === '/api/host/claim' ||
+        reqPath === '/api/host/heartbeat' ||
+        reqPath === '/api/host/release'
+    ) {
+        return true;
+    }
     if (reqPath === '/scripts/dashboard-meta.js') return true;
+    if (reqPath === '/scripts/live-sync.js') return true;
     if (reqPath === '/api/account/create') return true;
     if (reqPath === '/api/account/create-options') return true;
     if (reqPath.startsWith('/api/webauthn/')) return true;
@@ -1189,6 +1200,10 @@ app.get('/api/dashboard/meta', (_req, res) => {
     res.json({ success: true, ...getDashboardMeta() });
 });
 
+liveEvents.attach(app);
+const hostLease = require('./hostLease');
+hostLease.attach(app, { liveEvents });
+
 app.post('/unlock', (req, res) => {
     const password = String(req.body?.accessKey || '');
     if (!authRequired()) {
@@ -1458,6 +1473,7 @@ function logDashboardScrapeComplete(payload) {
     console.log(
         `[Dashboard] Scrape cycle complete - ${when} ${tz} | ${stores.length} store(s): ${summary || '(none)'}`
     );
+    liveEvents.bump('sales.updated', { storeCount: stores.length });
     scheduleOrderingReportPrefetch(payload);
 }
 
@@ -3421,6 +3437,7 @@ app.put('/api/admin/store-hours/:storeNumber', (req, res) => {
     if (!assertStoreAccess(req, res, storeNumber)) return;
     try {
         const updated = updateStoreHours(storeNumber, req.body || {});
+        liveEvents.bump('storelist.updated', { storeNumber });
         res.json({ success: true, ...updated });
     } catch (err) {
         res.status(400).json({ success: false, error: err.message || 'Could not save store hours.' });
@@ -3596,6 +3613,7 @@ app.post('/api/feature-requests', async (req, res) => {
             res.status(400).json({ success: false, error: result.error });
             return;
         }
+        liveEvents.bump('settings.updated', { featureRequest: true });
         res.json({ success: true, request: result.request, requests: result.requests });
     } catch (error) {
         console.error('[FeatureRequests] Failed to create request:', error);
@@ -3875,6 +3893,7 @@ app.post('/api/account/mic-dark-mode', (req, res) => {
     }
     const freshUser = { ...user, micDarkMode: Boolean(result.micDarkMode) };
     setSessionCookie(res, freshUser, true, dashboardEntryFromRequest(req) || 'store');
+    liveEvents.bump('settings.updated', { preference: 'micDarkMode' });
     res.json({ success: true, micDarkMode: Boolean(result.micDarkMode) });
 });
 

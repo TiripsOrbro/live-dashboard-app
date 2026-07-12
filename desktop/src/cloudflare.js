@@ -57,15 +57,62 @@ function hasCert() {
     return fs.existsSync(path.join(cloudflaredDir(), 'cert.pem'));
 }
 
-async function ensureLoggedIn(bin) {
-    if (hasCert()) return { ok: true, already: true };
+async function ensureLoggedIn(bin, { onProgress, confirm } = {}) {
+    if (hasCert()) {
+        onProgress?.('Already signed in to Cloudflare on this PC');
+        return { ok: true, already: true };
+    }
+
+    if (typeof confirm === 'function') {
+        const choice = await confirm({
+            type: 'info',
+            title: 'Step: Cloudflare login',
+            message: 'Connect this PC to Cloudflare',
+            detail: [
+                'tbadashboard.com is published through a Cloudflare Tunnel.',
+                '',
+                '1. Click Continue — a browser window will open',
+                '2. Sign in with the Cloudflare account that owns tbadashboard.com',
+                '3. Click Authorize / Allow when Cloudflare asks',
+                '4. Return here when the browser says success',
+                '',
+                'Use the same Cloudflare account as the previous Host.',
+            ].join('\n'),
+            buttons: ['Continue — open Cloudflare login', 'Skip Cloudflare for now'],
+            defaultId: 0,
+            cancelId: 1,
+        });
+        if (choice !== 0) {
+            return { ok: false, skipped: true };
+        }
+    }
+
+    onProgress?.('Opening Cloudflare login in your browser — finish signing in there…');
     const result = await run(bin, ['tunnel', 'login']);
     if (!hasCert()) {
+        if (typeof confirm === 'function') {
+            const retry = await confirm({
+                type: 'warning',
+                title: 'Cloudflare login incomplete',
+                message: 'Login did not finish',
+                detail:
+                    (result.stderr || result.stdout || '').trim().slice(0, 400) ||
+                    'No Cloudflare certificate was saved. Try again, or skip and set up the tunnel later from the tray.',
+                buttons: ['Try login again', 'Skip for now'],
+                defaultId: 0,
+                cancelId: 1,
+            });
+            if (retry === 0) {
+                return ensureLoggedIn(bin, { onProgress, confirm });
+            }
+            return { ok: false, skipped: true };
+        }
         throw new Error(
             result.stderr ||
                 'Cloudflare login did not finish. Complete the browser login, then retry Setup Cloudflare.'
         );
     }
+    onProgress?.('Cloudflare login complete');
     return { ok: true, loggedIn: true };
 }
 
@@ -208,8 +255,22 @@ async function pickTunnel(bin) {
  * Host Cloudflare cutover using the existing production tunnel token when possible
  * (keeps tbadashboard.com DNS working). Falls back to background process if the
  * Windows service cannot be installed without elevation.
+ *
+ * @param {{ hostname?: string, onProgress?: Function, confirm?: Function, guided?: boolean }} opts
+ *   confirm(opts) → Promise<number> button index (Electron dialog response)
  */
-async function setupCloudflareTunnel({ hostname = DEFAULT_HOSTNAME } = {}) {
+async function setupCloudflareTunnel({
+    hostname = DEFAULT_HOSTNAME,
+    onProgress,
+    confirm,
+    guided = false,
+} = {}) {
+    const progress = (msg) => onProgress?.(String(msg || ''));
+    const ask = async (opts) => {
+        if (typeof confirm !== 'function') return 0;
+        return confirm(opts);
+    };
+
     const bin = resolveCloudflared();
     if (!bin) {
         throw new Error(
@@ -218,12 +279,43 @@ async function setupCloudflareTunnel({ hostname = DEFAULT_HOSTNAME } = {}) {
     }
     const steps = [];
 
+    if (guided) {
+        const start = await ask({
+            type: 'info',
+            title: 'Cloudflare tunnel setup',
+            message: 'Publish tbadashboard.com from this PC',
+            detail: [
+                'This walkthrough will:',
+                '• Sign you into Cloudflare (browser)',
+                '• Attach the existing “dashboard” tunnel to this PC',
+                '• Ask Windows for Admin once so the tunnel restarts after reboot',
+                '',
+                'When it finishes, Admin Settings will open on this PC.',
+            ].join('\n'),
+            buttons: ['Start Cloudflare setup', 'Skip for now'],
+            defaultId: 0,
+            cancelId: 1,
+        });
+        if (start !== 0) {
+            progress('Cloudflare setup skipped — you can run it later from the tray');
+            return { ok: false, skipped: true, hostname };
+        }
+    }
+
     const ver = await run(bin, ['--version']);
     steps.push({ step: 'detect', ok: true, detail: (ver.stdout || ver.stderr).trim() });
+    progress(`Found cloudflared: ${(ver.stdout || ver.stderr).trim().slice(0, 80)}`);
 
-    await ensureLoggedIn(bin);
-    steps.push({ step: 'login', ok: true });
+    const login = await ensureLoggedIn(bin, {
+        onProgress: progress,
+        confirm: guided ? confirm : undefined,
+    });
+    if (login.skipped) {
+        return { ok: false, skipped: true, hostname, steps };
+    }
+    steps.push({ step: 'login', ok: true, detail: login.already ? 'already' : 'fresh' });
 
+    progress('Looking up your Cloudflare tunnels…');
     const tunnel = await pickTunnel(bin);
     if (!tunnel) {
         throw new Error(
@@ -231,7 +323,24 @@ async function setupCloudflareTunnel({ hostname = DEFAULT_HOSTNAME } = {}) {
         );
     }
     steps.push({ step: 'tunnel', ok: true, detail: `${tunnel.name} (${tunnel.id})` });
+    progress(`Using tunnel “${tunnel.name}”`);
 
+    if (guided) {
+        await ask({
+            type: 'info',
+            title: 'Step: Connect tunnel',
+            message: `Connect “${tunnel.name}” to this PC`,
+            detail: [
+                `${hostname} will point at http://127.0.0.1:3000 on this computer.`,
+                '',
+                'Only one PC should run this tunnel at a time.',
+            ].join('\n'),
+            buttons: ['Connect tunnel'],
+            defaultId: 0,
+        });
+    }
+
+    progress('Fetching tunnel token…');
     const token = await getTunnelToken(bin, tunnel.name);
     steps.push({ step: 'token', ok: true });
 
@@ -239,21 +348,84 @@ async function setupCloudflareTunnel({ hostname = DEFAULT_HOSTNAME } = {}) {
     steps.push({ step: 'config', ok: true });
 
     let elevated = false;
-    try {
-        await installServiceWithToken(bin, token);
-        steps.push({ step: 'service-install', ok: true });
-        const started = await startService();
-        steps.push({ step: 'service-start', ok: started.ok, detail: started.text });
-        elevated = true;
-    } catch (err) {
-        steps.push({ step: 'service-install', ok: false, detail: String(err.message || err) });
+    let preferService = true;
+    if (guided && typeof confirm === 'function') {
+        const serviceChoice = await ask({
+            type: 'info',
+            title: 'Step: Windows service (recommended)',
+            message: 'Install Cloudflare as a Windows service?',
+            detail: [
+                'Windows may show a User Account Control (UAC) prompt — click Yes.',
+                '',
+                'This keeps tbadashboard.com online after reboot.',
+                'If you decline Admin, the tunnel still starts until you sign out.',
+            ].join('\n'),
+            buttons: ['Install service (Admin)', 'Start without service'],
+            defaultId: 0,
+            cancelId: 1,
+        });
+        preferService = serviceChoice === 0;
+    }
+
+    if (preferService) {
+        try {
+            progress('Installing Cloudflare Windows service (approve Admin if asked)…');
+            await installServiceWithToken(bin, token);
+            steps.push({ step: 'service-install', ok: true });
+            const started = await startService();
+            steps.push({ step: 'service-start', ok: started.ok, detail: started.text });
+            elevated = true;
+            progress('Cloudflare Windows service is running');
+        } catch (err) {
+            steps.push({ step: 'service-install', ok: false, detail: String(err.message || err) });
+            progress(
+                `Service install needs Admin — starting tunnel in the background instead (${err.message || err})`
+            );
+            const pid = startTokenProcess(bin, token);
+            steps.push({ step: 'tunnel-run-fallback', ok: true, detail: `pid ${pid}` });
+            if (guided) {
+                await ask({
+                    type: 'warning',
+                    title: 'Tunnel started without Windows service',
+                    message: 'Cloudflare is running for this session',
+                    detail: [
+                        'The Windows service could not be installed (usually missing Admin approval).',
+                        '',
+                        'The site can work now, but after reboot use tray → Setup Cloudflare tunnel and approve Admin once.',
+                    ].join('\n'),
+                    buttons: ['Continue'],
+                    defaultId: 0,
+                });
+            }
+        }
+    } else {
+        progress('Starting Cloudflare tunnel without Windows service…');
         const pid = startTokenProcess(bin, token);
         steps.push({ step: 'tunnel-run-fallback', ok: true, detail: `pid ${pid}` });
     }
 
-    // Give the connector a moment to register
+    progress('Waiting for Cloudflare connector…');
     await new Promise((r) => setTimeout(r, 2500));
     const service = await queryService();
+
+    if (guided) {
+        await ask({
+            type: elevated || service.running ? 'info' : 'warning',
+            title: 'Cloudflare setup finished',
+            message: elevated || service.running ? 'Tunnel is connected' : 'Tunnel started',
+            detail: [
+                `${hostname} → ${LOCAL_ORIGIN}`,
+                `Tunnel: ${tunnel.name}`,
+                elevated || service.running
+                    ? 'Windows service: running (survives reboot)'
+                    : 'Background connector: running until sign-out/reboot',
+                '',
+                'Next: Admin Settings will open on this PC so you can sign in.',
+            ].join('\n'),
+            buttons: ['Open Admin Settings'],
+            defaultId: 0,
+        });
+    }
 
     return {
         ok: true,

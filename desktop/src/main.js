@@ -50,6 +50,21 @@ function showOperatorNotice({ title, body }) {
     notifyTray(String(title || 'Live Dashboard'), message);
 }
 
+/** Guided setup prompts (Cloudflare walkthrough, etc.). Returns button index. */
+async function confirmDialog(opts = {}) {
+    const { response } = await dialog.showMessageBox({
+        type: opts.type || 'info',
+        title: opts.title || 'Live Dashboard',
+        message: opts.message || '',
+        detail: opts.detail || '',
+        buttons: opts.buttons && opts.buttons.length ? opts.buttons : ['OK'],
+        defaultId: opts.defaultId ?? 0,
+        cancelId: opts.cancelId,
+        noLink: true,
+    });
+    return response;
+}
+
 function createWizardWindow() {
     if (wizardWindow && !wizardWindow.isDestroyed()) {
         wizardWindow.focus();
@@ -57,7 +72,7 @@ function createWizardWindow() {
     }
     wizardWindow = new BrowserWindow({
         width: 580,
-        height: 640,
+        height: 680,
         resizable: false,
         title: 'Live Dashboard setup',
         webPreferences: {
@@ -351,6 +366,8 @@ async function becomeHostFromTray() {
             onProgress: sendProgress,
             setupCloudflare: true,
             secretsPath,
+            confirm: confirmDialog,
+            guidedCloudflare: true,
         });
 
         sendProgress('Registering this PC as Host…');
@@ -362,7 +379,7 @@ async function becomeHostFromTray() {
                 setConfig({ mode: 'client', setupComplete: true });
                 progressWin.close();
                 rebuildContextMenu().catch(() => {});
-                openSettings();
+                await openSettings();
                 return { ok: true, mode: 'client' };
             }
             await hostLease.claimHost({ takeover: true });
@@ -736,6 +753,8 @@ function registerIpc() {
                 onProgress: sendProgress,
                 setupCloudflare: true,
                 secretsPath,
+                confirm: confirmDialog,
+                guidedCloudflare: true,
             });
 
             sendProgress('Registering this PC as Host…');
@@ -775,9 +794,9 @@ function registerIpc() {
                     `Server folder: ${result.serverDir}`,
                     secretsNote,
                     cfOk
-                        ? 'Cloudflare tunnel is configured for tbadashboard.com.'
-                        : 'Cloudflare may need one more approval — use tray → Setup Cloudflare tunnel.',
-                    'Opening Admin on this PC (localhost). Public tbadashboard.com needs the tunnel + server both running.',
+                        ? 'Cloudflare tunnel walkthrough finished.'
+                        : 'Cloudflare was skipped or needs tray → Setup Cloudflare tunnel…',
+                    'Opening Admin Settings on this PC now.',
                 ].join('\n'),
             });
         } catch (err) {

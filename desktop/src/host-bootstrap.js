@@ -132,7 +132,13 @@ async function ensurePm2(onProgress) {
  * Full easy Host bootstrap for non-technical users.
  * Downloads/installs tooling, clones server, starts app + Cloudflare.
  */
-async function runHostBootstrap({ onProgress, setupCloudflare = true, secretsPath = null } = {}) {
+async function runHostBootstrap({
+    onProgress,
+    setupCloudflare = true,
+    secretsPath = null,
+    confirm = null,
+    guidedCloudflare = true,
+} = {}) {
     const progress = (msg) => {
         onProgress?.(String(msg || ''));
     };
@@ -265,21 +271,41 @@ async function runHostBootstrap({ onProgress, setupCloudflare = true, secretsPat
 
     let cloudflareResult = null;
     if (setupCloudflare) {
-        progress('Setting up Cloudflare for tbadashboard.com…');
-        progress('If a browser opens, sign in to Cloudflare and approve access once.');
+        progress('—— Cloudflare tunnel ——');
+        progress('A short walkthrough will guide login and tunnel connection…');
         try {
             cloudflareResult = await cloudflare.setupCloudflareTunnel({
                 hostname: 'tbadashboard.com',
+                onProgress: progress,
+                confirm: typeof confirm === 'function' ? confirm : undefined,
+                guided: guidedCloudflare && typeof confirm === 'function',
             });
-            if (cloudflareResult.elevated) {
+            if (cloudflareResult.skipped) {
+                progress('Cloudflare skipped — use tray → Setup Cloudflare tunnel when ready');
+            } else if (cloudflareResult.elevated) {
                 progress('Cloudflare Windows service installed');
-            } else {
-                progress('Cloudflare tunnel started (for auto-start after reboot, approve Admin once from the tray)');
+            } else if (cloudflareResult.ok) {
+                progress('Cloudflare tunnel started (for reboot auto-start, approve Admin once from the tray)');
             }
             steps.push('cloudflare');
         } catch (err) {
             progress(`Cloudflare needs attention: ${err.message || err}`);
             cloudflareResult = { ok: false, error: String(err.message || err) };
+            if (typeof confirm === 'function') {
+                await confirm({
+                    type: 'error',
+                    title: 'Cloudflare setup failed',
+                    message: 'Tunnel could not be set up',
+                    detail: [
+                        String(err.message || err),
+                        '',
+                        'Admin Settings will still open on this PC.',
+                        'Fix the tunnel later with tray → Setup Cloudflare tunnel…',
+                    ].join('\n'),
+                    buttons: ['Continue to Admin'],
+                    defaultId: 0,
+                });
+            }
         }
     }
 

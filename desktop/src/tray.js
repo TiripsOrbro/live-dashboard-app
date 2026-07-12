@@ -137,14 +137,32 @@ async function rebuildContextMenu() {
                                       return cloudflare.DEFAULT_HOSTNAME;
                                   }
                               })(),
+                              guided: true,
+                              confirm: async (opts) => {
+                                  const { response } = await dialog.showMessageBox({
+                                      type: opts.type || 'info',
+                                      title: opts.title || 'Cloudflare',
+                                      message: opts.message || '',
+                                      detail: opts.detail || '',
+                                      buttons: opts.buttons || ['OK'],
+                                      defaultId: opts.defaultId ?? 0,
+                                      cancelId: opts.cancelId,
+                                      noLink: true,
+                                  });
+                                  return response;
+                              },
+                              onProgress: (msg) => console.log('[cloudflare]', msg),
                           });
+                          if (cf.skipped) return;
                           await dialog.showMessageBox({
-                              type: cf.service?.running ? 'info' : 'warning',
+                              type: cf.service?.running || cf.elevated ? 'info' : 'warning',
                               message: 'Cloudflare tunnel',
                               detail: [
                                   `${cf.hostname} → ${cf.localOrigin}`,
                                   `Tunnel: ${cf.tunnel?.name}`,
-                                  cf.service?.running ? 'Service: running' : 'Service: not running (may need Admin)',
+                                  cf.service?.running || cf.elevated
+                                      ? 'Service: running'
+                                      : 'Service: background connector (may need Admin)',
                               ].join('\n'),
                           });
                       } catch (err) {

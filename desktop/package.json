@@ -1,6 +1,6 @@
 {
   "name": "live-dashboard-desktop",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Tray shell for Live Dashboard — Host or Client mode",
   "main": "src/main.js",
   "author": "Orbro",

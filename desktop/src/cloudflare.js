@@ -11,6 +11,7 @@ const LOCAL_ORIGIN = 'http://127.0.0.1:3000';
 const PID_FILE = path.join(os.homedir(), '.cloudflared', 'live-dashboard-tunnel.pid');
 const TOKEN_FILE = path.join(os.homedir(), '.cloudflared', 'live-dashboard-host.token');
 const STARTUP_CMD_NAME = 'LiveDashboard-Cloudflared.cmd';
+const STARTUP_VBS_NAME = 'LiveDashboard-Cloudflared.vbs';
 
 function cloudflaredCandidates() {
     return [
@@ -342,8 +343,8 @@ function readHostTunnelToken() {
     }
 }
 
-function startupCmdPath() {
-    const startup = path.join(
+function startupDir() {
+    return path.join(
         process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'),
         'Microsoft',
         'Windows',
@@ -351,36 +352,64 @@ function startupCmdPath() {
         'Programs',
         'Startup'
     );
-    return path.join(startup, STARTUP_CMD_NAME);
 }
 
-/** Persist tunnel across reboot via Startup folder (runs as the logged-in user). */
+function startupCmdPath() {
+    return path.join(startupDir(), STARTUP_CMD_NAME);
+}
+
+function startupVbsPath() {
+    return path.join(startupDir(), STARTUP_VBS_NAME);
+}
+
+function vbsQuote(s) {
+    return String(s).replace(/"/g, '""');
+}
+
+/**
+ * Persist tunnel across reboot via Startup folder (runs as the logged-in user).
+ * Uses a .vbs launcher with WindowStyle 0 so no console window appears.
+ */
 function installTunnelAutostart(bin, token) {
     saveHostTunnelToken(token);
-    const cmdPath = startupCmdPath();
-    fs.mkdirSync(path.dirname(cmdPath), { recursive: true });
+    const dir = startupDir();
+    fs.mkdirSync(dir, { recursive: true });
+    const vbsPath = startupVbsPath();
     const tokenPath = TOKEN_FILE;
     const body = [
-        '@echo off',
-        'REM Live Dashboard Host — Cloudflare tunnel (user session; survives reboot after login)',
-        `set "CFBIN=${bin}"`,
-        `set "TOKENFILE=${tokenPath}"`,
-        'if not exist "%TOKENFILE%" exit /b 0',
-        'set /p TOKEN=<"%TOKENFILE%"',
-        'if "%TOKEN%"=="" exit /b 0',
-        'start "" /min "%CFBIN%" tunnel run --token %TOKEN%',
+        "' Live Dashboard Host — Cloudflare tunnel (hidden; survives reboot after login)",
+        'Option Explicit',
+        'Dim fso, sh, bin, tokenFile, token, f',
+        'Set fso = CreateObject("Scripting.FileSystemObject")',
+        'Set sh = CreateObject("WScript.Shell")',
+        `bin = "${vbsQuote(bin)}"`,
+        `tokenFile = "${vbsQuote(tokenPath)}"`,
+        'If Not fso.FileExists(tokenFile) Then WScript.Quit 0',
+        'Set f = fso.OpenTextFile(tokenFile, 1)',
+        'token = Trim(f.ReadAll)',
+        'f.Close',
+        'If Len(token) < 40 Then WScript.Quit 0',
+        'sh.Run """" & bin & """ tunnel run --token " & token, 0, False',
         '',
     ].join('\r\n');
-    fs.writeFileSync(cmdPath, body, 'utf8');
-    return { cmdPath, tokenFile: TOKEN_FILE };
-}
-
-function removeTunnelAutostart() {
+    fs.writeFileSync(vbsPath, body, 'utf8');
+    // Remove legacy visible .cmd if present
     try {
         const cmdPath = startupCmdPath();
         if (fs.existsSync(cmdPath)) fs.unlinkSync(cmdPath);
     } catch {
         /* ignore */
+    }
+    return { cmdPath: vbsPath, tokenFile: TOKEN_FILE };
+}
+
+function removeTunnelAutostart() {
+    for (const p of [startupCmdPath(), startupVbsPath()]) {
+        try {
+            if (fs.existsSync(p)) fs.unlinkSync(p);
+        } catch {
+            /* ignore */
+        }
     }
     try {
         if (fs.existsSync(TOKEN_FILE)) fs.unlinkSync(TOKEN_FILE);

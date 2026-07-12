@@ -542,6 +542,23 @@ async function ensureHostTunnelRunning({ onProgress, token: tokenArg } = {}) {
     }
 
     progress('Starting Cloudflare tunnel…');
+    // Prefer origin up first so cloudflared does not log a burst of refused connections.
+    try {
+        const deadline = Date.now() + 90000;
+        while (Date.now() < deadline) {
+            try {
+                const res = await fetch('http://127.0.0.1:3000/api/live/version', {
+                    signal: AbortSignal.timeout(2000),
+                });
+                if (res.ok) break;
+            } catch {
+                /* wait */
+            }
+            await new Promise((r) => setTimeout(r, 2000));
+        }
+    } catch {
+        /* still start tunnel — public may 502 briefly */
+    }
     const pid = startTokenProcess(bin, token);
     await new Promise((r) => setTimeout(r, 2500));
     return {

@@ -109,7 +109,7 @@ function createSettingsWindow() {
             contextIsolation: true,
             nodeIntegration: false,
         },
-        show: true,
+        show: false,
     });
     settingsWindow.removeMenu();
     settingsWindow.loadURL(url);
@@ -130,6 +130,12 @@ function createSettingsWindow() {
         settingsWindow.show();
         settingsWindow.focus();
     });
+    settingsWindow.webContents.on('did-finish-load', () => {
+        if (settingsWindow && !settingsWindow.isDestroyed()) {
+            settingsWindow.show();
+            settingsWindow.focus();
+        }
+    });
     settingsWindow.once('ready-to-show', () => {
         if (settingsWindow && !settingsWindow.isDestroyed()) {
             settingsWindow.show();
@@ -149,24 +155,26 @@ async function openSettings() {
         createWizardWindow();
         return;
     }
-    // Show Admin immediately so the app never looks like it "vanished" into the tray.
-    createSettingsWindow();
+    // Host: wait for local server before loading Admin so launch doesn't flash CONNECTION_REFUSED.
     if (cfg.mode === 'host') {
         try {
             const health = await host.probeLocalHealth();
             if (!health.ok) {
                 hostServerPhase = 'starting';
-                const result = await host.ensureServerRunning({ waitMs: 45000 });
-                if (result.health?.ok && settingsWindow && !settingsWindow.isDestroyed()) {
-                    settingsWindow.loadURL(settingsUrl(getConfig()));
-                    settingsWindow.show();
-                    settingsWindow.focus();
-                }
+                refreshTrayStatus().catch(() => {});
+                notifyTray('Live Dashboard', 'Starting server before opening Admin…');
+                const result = await host.ensureServerRunning({ waitMs: 60000 });
+                if (result.health?.ok) hostServerPhase = 'running';
+                else hostServerPhase = 'error';
+            } else {
+                hostServerPhase = 'running';
             }
         } catch (err) {
             console.warn('[desktop] openSettings ensure server', err);
+            hostServerPhase = 'error';
         }
     }
+    createSettingsWindow();
     if (settingsWindow && !settingsWindow.isDestroyed()) {
         settingsWindow.show();
         settingsWindow.focus();
@@ -922,24 +930,17 @@ if (!gotLock) {
             startLiveWatch();
             hostLease.ensureHostId();
             startStatusPolling();
-            // Always open Admin/Settings so install/launch never leaves only a tray icon.
-            openSettings().catch(() => {});
             if (cfg.mode === 'host') {
                 startHostHeartbeat();
-                ensureHostServerOnLaunch()
-                    .then(async () => {
-                        if (settingsWindow && !settingsWindow.isDestroyed()) {
-                            settingsWindow.loadURL(settingsUrl(getConfig()));
-                            settingsWindow.show();
-                            settingsWindow.focus();
-                        }
-                    })
-                    .catch((err) => {
-                        console.warn('[desktop] ensureHostServerOnLaunch', err);
-                    });
-            } else {
-                refreshTrayStatus().catch(() => {});
+                // Server first, then tunnel, then Admin — avoids refused-connection flash.
+                try {
+                    await ensureHostServerOnLaunch();
+                } catch (err) {
+                    console.warn('[desktop] ensureHostServerOnLaunch', err);
+                }
             }
+            await openSettings().catch(() => {});
+            refreshTrayStatus().catch(() => {});
         }
 
         app.on('activate', () => openSettings());

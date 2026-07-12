@@ -369,6 +369,8 @@ function vbsQuote(s) {
 /**
  * Persist tunnel across reboot via Startup folder (runs as the logged-in user).
  * Uses a .vbs launcher with WindowStyle 0 so no console window appears.
+ * Waits for the local dashboard on :3000 before starting cloudflared so startup
+ * does not spam "Unable to reach the origin service" while PM2 is still booting.
  */
 function installTunnelAutostart(bin, token) {
     saveHostTunnelToken(token);
@@ -377,9 +379,9 @@ function installTunnelAutostart(bin, token) {
     const vbsPath = startupVbsPath();
     const tokenPath = TOKEN_FILE;
     const body = [
-        "' Live Dashboard Host — Cloudflare tunnel (hidden; survives reboot after login)",
+        "' Live Dashboard Host — Cloudflare tunnel (hidden; waits for local server)",
         'Option Explicit',
-        'Dim fso, sh, bin, tokenFile, token, f',
+        'Dim fso, sh, bin, tokenFile, token, f, rc',
         'Set fso = CreateObject("Scripting.FileSystemObject")',
         'Set sh = CreateObject("WScript.Shell")',
         `bin = "${vbsQuote(bin)}"`,
@@ -389,6 +391,8 @@ function installTunnelAutostart(bin, token) {
         'token = Trim(f.ReadAll)',
         'f.Close',
         'If Len(token) < 40 Then WScript.Quit 0',
+        "' Wait up to ~90s for http://127.0.0.1:3000 before connecting the tunnel",
+        'rc = sh.Run("powershell.exe -NoProfile -WindowStyle Hidden -Command ""$d=(Get-Date).AddSeconds(90); do { try { $r=Invoke-WebRequest -UseBasicParsing http://127.0.0.1:3000/api/live/version -TimeoutSec 2; if ($r.StatusCode -eq 200) { exit 0 } } catch {} Start-Sleep -Seconds 2 } while ((Get-Date) -lt $d); exit 1""", 0, True)',
         'sh.Run """" & bin & """ tunnel run --token " & token, 0, False',
         '',
     ].join('\r\n');

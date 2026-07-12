@@ -1,6 +1,6 @@
 const { Tray, Menu, nativeImage, shell, app, dialog } = require('electron');
 const path = require('path');
-const { getConfig, settingsUrl, dashboardUrl } = require('./config');
+const { getConfig, settingsUrl, dashboardUrl, publicSettingsUrl, publicDashboardUrl } = require('./config');
 const host = require('./host-controller');
 const { checkForUpdates } = require('./updater');
 const cloudflare = require('./cloudflare');
@@ -215,11 +215,12 @@ async function rebuildContextMenu() {
         },
         {
             label: 'Open Dashboard',
-            click: () => shell.openExternal(dashboardUrl()),
+            click: () => shell.openExternal(getConfig().mode === 'host' ? dashboardUrl() : publicDashboardUrl()),
         },
         {
             label: 'Open Settings in browser',
-            click: () => shell.openExternal(settingsUrl()),
+            click: () =>
+                shell.openExternal(getConfig().mode === 'host' ? publicSettingsUrl() : settingsUrl()),
         },
         ...statusItems,
         ...hostItems,

@@ -1,6 +1,7 @@
 const Store = require('electron-store');
 
 const DEFAULT_SERVER_URL = 'https://tbadashboard.com';
+const LOCAL_SERVER_URL = 'http://127.0.0.1:3000';
 const DEFAULT_GIT_BRANCH = '16gb';
 const DEFAULT_GIT_REMOTE = 'https://github.com/TiripsOrbro/live-dashboard-app.git';
 
@@ -40,20 +41,39 @@ function setConfig(partial) {
     return getConfig();
 }
 
+/** In-app Admin for Hosts uses localhost so CF 502 cannot block setup. */
+function appOrigin(cfg = getConfig()) {
+    if (cfg.mode === 'host') return LOCAL_SERVER_URL;
+    return cfg.serverUrl || DEFAULT_SERVER_URL;
+}
+
 function settingsUrl(cfg = getConfig()) {
-    return `${cfg.serverUrl}/Admin/Settings`;
+    return `${appOrigin(cfg)}/Admin/Settings`;
 }
 
 function dashboardUrl(cfg = getConfig()) {
-    return `${cfg.serverUrl}/`;
+    return `${appOrigin(cfg)}/`;
+}
+
+/** Public site (Cloudflare) — for reachability checks / “open in browser” against the live hostname. */
+function publicSettingsUrl(cfg = getConfig()) {
+    return `${cfg.serverUrl || DEFAULT_SERVER_URL}/Admin/Settings`;
+}
+
+function publicDashboardUrl(cfg = getConfig()) {
+    return `${cfg.serverUrl || DEFAULT_SERVER_URL}/`;
 }
 
 module.exports = {
     DEFAULT_SERVER_URL,
+    LOCAL_SERVER_URL,
     DEFAULT_GIT_BRANCH,
     DEFAULT_GIT_REMOTE,
     getConfig,
     setConfig,
+    appOrigin,
     settingsUrl,
     dashboardUrl,
+    publicSettingsUrl,
+    publicDashboardUrl,
 };

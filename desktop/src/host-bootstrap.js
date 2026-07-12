@@ -283,10 +283,14 @@ async function runHostBootstrap({ onProgress, setupCloudflare = true, secretsPat
         }
     }
 
-    progress('Checking local server…');
-    const health = await host.probeLocalHealth(3000);
+    progress('Waiting for local server on port 3000…');
+    let health = await host.probeLocalHealth(3000);
     if (!health.ok) {
-        progress('Server may still be starting — give it ~30 seconds, then open Settings');
+        const ensured = await host.ensureServerRunning({ waitMs: 45000 });
+        health = ensured.health || health;
+    }
+    if (!health.ok) {
+        progress('Local server still not responding — Admin will open on localhost once it is up; use tray → Start server if needed');
     } else {
         progress('Local server is healthy');
     }

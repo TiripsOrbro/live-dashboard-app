@@ -8,7 +8,7 @@ const {
 } = require('electron');
 const path = require('path');
 const os = require('os');
-const { getConfig, setConfig, settingsUrl, dashboardUrl, DEFAULT_SERVER_URL } = require('./config');
+const { getConfig, setConfig, settingsUrl, dashboardUrl, appOrigin, DEFAULT_SERVER_URL } = require('./config');
 const { createTray, rebuildContextMenu, notifyTray, setTrayTooltip } = require('./tray');
 const host = require('./host-controller');
 const { configureUpdater, ensureUpToDateBeforeLaunch } = require('./updater');
@@ -78,15 +78,16 @@ function createWizardWindow() {
 
 function createSettingsWindow() {
     const cfg = getConfig();
+    const url = settingsUrl(cfg);
     if (settingsWindow && !settingsWindow.isDestroyed()) {
         settingsWindow.focus();
-        settingsWindow.loadURL(settingsUrl(cfg));
+        settingsWindow.loadURL(url);
         return settingsWindow;
     }
     settingsWindow = new BrowserWindow({
         width: 1280,
         height: 860,
-        title: 'Live Dashboard — Settings',
+        title: 'Live Dashboard — Admin',
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -95,7 +96,7 @@ function createSettingsWindow() {
         show: false,
     });
     settingsWindow.removeMenu();
-    settingsWindow.loadURL(settingsUrl(cfg));
+    settingsWindow.loadURL(url);
     settingsWindow.once('ready-to-show', () => settingsWindow.show());
     settingsWindow.on('closed', () => {
         settingsWindow = null;
@@ -104,11 +105,22 @@ function createSettingsWindow() {
     return settingsWindow;
 }
 
-function openSettings() {
+async function openSettings() {
     const cfg = getConfig();
     if (!cfg.setupComplete) {
         createWizardWindow();
         return;
+    }
+    if (cfg.mode === 'host') {
+        try {
+            const health = await host.probeLocalHealth();
+            if (!health.ok) {
+                hostServerPhase = 'starting';
+                await host.ensureServerRunning({ waitMs: 20000 });
+            }
+        } catch (err) {
+            console.warn('[desktop] openSettings ensure server', err);
+        }
     }
     createSettingsWindow();
 }
@@ -117,7 +129,7 @@ async function pollLiveVersion() {
     const cfg = getConfig();
     if (!cfg.setupComplete) return;
     try {
-        const res = await fetch(`${cfg.serverUrl}/api/live/version`, {
+        const res = await fetch(`${appOrigin(cfg)}/api/live/version`, {
             signal: AbortSignal.timeout(4000),
         });
         if (!res.ok) return;
@@ -359,6 +371,11 @@ async function becomeHostFromTray() {
         setConfig({ setupComplete: true, mode: 'host', openAtLogin: true });
         hostServerPhase = 'running';
         startHostHeartbeat();
+        try {
+            await host.ensureServerRunning({ waitMs: 45000 });
+        } catch {
+            /* ignore */
+        }
         progressWin.close();
 
         const cfOk = result.cloudflare && result.cloudflare.ok !== false;
@@ -371,11 +388,12 @@ async function becomeHostFromTray() {
                 cfOk
                     ? 'Cloudflare tunnel is configured.'
                     : 'Cloudflare may need tray → Setup Cloudflare tunnel (Admin once).',
+                'Opening Admin on this PC now.',
             ].join('\n'),
         });
         rebuildContextMenu().catch(() => {});
         refreshTrayStatus().catch(() => {});
-        openSettings();
+        await openSettings();
         return { ok: true, mode: 'host' };
     } catch (err) {
         try {
@@ -738,6 +756,13 @@ function registerIpc() {
             hostServerPhase = 'running';
             startHostHeartbeat();
 
+            sendProgress('Making sure Admin can open on this PC…');
+            try {
+                await host.ensureServerRunning({ waitMs: 45000 });
+            } catch (err) {
+                console.warn('[desktop] post-setup ensureServerRunning', err);
+            }
+
             const cfOk = result.cloudflare && result.cloudflare.ok !== false;
             const secretsNote = secretsPath
                 ? 'Host secrets were imported from your pack.'
@@ -752,7 +777,7 @@ function registerIpc() {
                     cfOk
                         ? 'Cloudflare tunnel is configured for tbadashboard.com.'
                         : 'Cloudflare may need one more approval — use tray → Setup Cloudflare tunnel.',
-                    'Next: sign in with your dashboard admin account.',
+                    'Opening Admin on this PC (localhost). Public tbadashboard.com needs the tunnel + server both running.',
                 ].join('\n'),
             });
         } catch (err) {
@@ -765,7 +790,7 @@ function registerIpc() {
         }
         rebuildContextMenu().catch(() => {});
         refreshTrayStatus().catch(() => {});
-        openSettings();
+        await openSettings();
         return getConfig();
     });
 

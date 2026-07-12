@@ -134,6 +134,22 @@ function closeSplashWindow() {
     splashWindow = null;
 }
 
+/** Reusable splash for tray actions (Git server sync, etc.). */
+async function openProgressSplash(opts = {}) {
+    createSplashWindow();
+    await new Promise((r) => setTimeout(r, 200));
+    setSplashView({
+        headline: opts.headline || 'Taco Bell Dashboard',
+        status: opts.status || 'Working…',
+        showBar: false,
+        showClose: false,
+    });
+}
+
+function setProgressSplash(opts = {}) {
+    setSplashView(opts);
+}
+
 function configureUpdater() {
     if (configured) return;
     configured = true;
@@ -352,4 +368,7 @@ module.exports = {
     configureUpdater,
     checkForUpdates,
     ensureUpToDateBeforeLaunch,
+    openProgressSplash,
+    setProgressSplash,
+    closeProgressSplash: closeSplashWindow,
 };

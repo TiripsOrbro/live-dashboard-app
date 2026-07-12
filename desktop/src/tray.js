@@ -2,7 +2,7 @@ const { Tray, Menu, nativeImage, shell, app, dialog } = require('electron');
 const path = require('path');
 const { getConfig, dashboardUrl, publicDashboardUrl } = require('./config');
 const host = require('./host-controller');
-const { checkForUpdates } = require('./updater');
+const { checkForUpdates, openProgressSplash, setProgressSplash, closeProgressSplash } = require('./updater');
 const cloudflare = require('./cloudflare');
 
 let tray = null;
@@ -105,13 +105,35 @@ async function rebuildContextMenu() {
                           label: 'Server from Git…',
                           click: async () => {
                               try {
-                                  const result = await host.updateFromGit();
-                                  await dialog.showMessageBox({
-                                      type: 'info',
-                                      message: 'Server updated',
-                                      detail: `Branch ${result.branch} pulled and server restarted.`,
+                                  await openProgressSplash({
+                                      headline: 'Server update',
+                                      status: 'Checking Git for updates…',
                                   });
+                                  const result = await host.updateFromGit({
+                                      onProgress: (msg) =>
+                                          setProgressSplash({
+                                              headline: 'Server update',
+                                              status: msg,
+                                              showBar: false,
+                                              showClose: false,
+                                          }),
+                                  });
+                                  closeProgressSplash();
+                                  if (result.updated) {
+                                      await dialog.showMessageBox({
+                                          type: 'info',
+                                          message: 'Server updated',
+                                          detail: `Branch ${result.branch} pulled and server restarted.`,
+                                      });
+                                  } else {
+                                      await dialog.showMessageBox({
+                                          type: 'info',
+                                          message: 'Already up to date',
+                                          detail: `Branch ${result.branch} matches GitHub. Server was restarted.`,
+                                      });
+                                  }
                               } catch (err) {
+                                  closeProgressSplash();
                                   await dialog.showErrorBox('Git update failed', String(err.message || err));
                               }
                               refreshMenu && refreshMenu();
@@ -139,6 +161,7 @@ async function rebuildContextMenu() {
                                           }
                                       })(),
                                       guided: true,
+                                      onOpenAdminSettings: () => openSettings && openSettings(),
                                       confirm: async (opts) => {
                                           const { response } = await dialog.showMessageBox({
                                               type: opts.type || 'info',
@@ -155,17 +178,6 @@ async function rebuildContextMenu() {
                                       onProgress: (msg) => console.log('[cloudflare]', msg),
                                   });
                                   if (cf.skipped) return;
-                                  await dialog.showMessageBox({
-                                      type: cf.running || cf.pidRunning ? 'info' : 'warning',
-                                      message: 'Cloudflare tunnel',
-                                      detail: [
-                                          `${cf.hostname} → ${cf.localOrigin}`,
-                                          `Tunnel: ${cf.tunnel?.name}`,
-                                          cf.via === 'user-process' || cf.pidRunning
-                                              ? 'Mode: your Windows user + Startup (survives reboot after login)'
-                                              : 'Tunnel may still be starting — check tray status in a few seconds',
-                                      ].join('\n'),
-                                  });
                               } catch (err) {
                                   await dialog.showErrorBox('Cloudflare setup failed', String(err.message || err));
                               }

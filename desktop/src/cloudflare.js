@@ -307,14 +307,17 @@ function stopPidFileProcess() {
     }
 }
 
-function startTokenProcess(bin, token) {
+async function killAllCloudflaredProcesses() {
+    return new Promise((resolve) => {
+        execFile('taskkill', ['/IM', 'cloudflared.exe', '/F'], { windowsHide: true }, () => resolve());
+    });
+}
+
+async function startTokenProcess(bin, token) {
     stopPidFileProcess();
-    // Prefer killing user-owned duplicates; service processes may ignore this without Admin.
-    try {
-        execFile('taskkill', ['/IM', 'cloudflared.exe', '/F'], { windowsHide: true });
-    } catch {
-        /* ignore */
-    }
+    // Must finish taskkill before spawn — fire-and-forget taskkill was killing the new connector.
+    await killAllCloudflaredProcesses();
+    await new Promise((r) => setTimeout(r, 400));
     const child = spawn(bin, ['tunnel', 'run', '--token', token], {
         detached: true,
         stdio: 'ignore',
@@ -325,6 +328,15 @@ function startTokenProcess(bin, token) {
     fs.mkdirSync(path.dirname(PID_FILE), { recursive: true });
     fs.writeFileSync(PID_FILE, String(child.pid), 'utf8');
     return child.pid;
+}
+
+async function waitForTunnelPid(pid, { timeoutMs = 5000 } = {}) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (isPidRunning(pid)) return true;
+        await new Promise((r) => setTimeout(r, 300));
+    }
+    return isPidRunning(pid);
 }
 
 function saveHostTunnelToken(token) {
@@ -517,16 +529,22 @@ async function pickTunnel(bin) {
 
 /**
  * Ensure the Host user-mode Cloudflare tunnel is running (install path + tray launch).
+ * forceRestart kills the current connector first — used by the watchdog when the
+ * pid is alive but the public hostname is unreachable (zombie connector / 530).
  */
-async function ensureHostTunnelRunning({ onProgress, token: tokenArg } = {}) {
+async function ensureHostTunnelRunning({ onProgress, token: tokenArg, forceRestart = false } = {}) {
     const progress = (msg) => onProgress?.(String(msg || ''));
     const bin = resolveCloudflared();
     if (!bin) throw new Error('cloudflared is not installed');
 
     const status = await getCloudflareStatus();
-    if (status.pidRunning) {
+    if (status.pidRunning && !forceRestart) {
         progress('Cloudflare tunnel already running');
         return { ok: true, already: true, via: 'user-process', status };
+    }
+    if (status.pidRunning && forceRestart) {
+        progress('Force-restarting Cloudflare tunnel…');
+        // startTokenProcess below kills existing connectors before spawning.
     }
 
     let token = tokenArg || readHostTunnelToken();
@@ -559,8 +577,19 @@ async function ensureHostTunnelRunning({ onProgress, token: tokenArg } = {}) {
     } catch {
         /* still start tunnel — public may 502 briefly */
     }
-    const pid = startTokenProcess(bin, token);
-    await new Promise((r) => setTimeout(r, 2500));
+    let pid = await startTokenProcess(bin, token);
+    let alive = await waitForTunnelPid(pid);
+    if (!alive) {
+        progress('Tunnel exited immediately — retrying once…');
+        pid = await startTokenProcess(bin, token);
+        alive = await waitForTunnelPid(pid);
+    }
+    if (!alive) {
+        throw new Error(
+            'Cloudflare tunnel process exited right after start. Run tray → Setup Cloudflare tunnel… or check cloudflared is installed.'
+        );
+    }
+    await new Promise((r) => setTimeout(r, 1500));
     return {
         ok: true,
         already: false,
@@ -583,6 +612,7 @@ async function setupCloudflareTunnel({
     onProgress,
     confirm,
     guided = false,
+    onOpenAdminSettings,
 } = {}) {
     const progress = (msg) => onProgress?.(String(msg || ''));
     const ask = async (opts) => {
@@ -690,11 +720,17 @@ async function setupCloudflareTunnel({
     steps.push({ step: 'autostart', ok: true, detail: autostart.cmdPath });
 
     progress('Starting Cloudflare tunnel…');
-    const pid = startTokenProcess(bin, token);
-    steps.push({ step: 'tunnel-run', ok: true, detail: `pid ${pid}` });
+    let pid = await startTokenProcess(bin, token);
+    let alive = await waitForTunnelPid(pid);
+    if (!alive) {
+        progress('Tunnel exited immediately — retrying once…');
+        pid = await startTokenProcess(bin, token);
+        alive = await waitForTunnelPid(pid);
+    }
+    steps.push({ step: 'tunnel-run', ok: alive, detail: alive ? `pid ${pid}` : 'process exited' });
 
     progress('Waiting for Cloudflare connector…');
-    await new Promise((r) => setTimeout(r, 3000));
+    await new Promise((r) => setTimeout(r, 1500));
     const status = await getCloudflareStatus();
 
     if (guided) {
@@ -707,11 +743,20 @@ async function setupCloudflareTunnel({
                 `Tunnel: ${tunnel.name}`,
                 'Mode: your Windows user + Startup (survives reboot after login)',
                 '',
-                'Next: Admin Settings will open on this PC so you can sign in.',
+                status.running
+                    ? 'Opening Admin Settings on this PC so you can sign in.'
+                    : 'Admin Settings will open — if the tunnel stays stopped, run Setup Cloudflare tunnel again from the tray.',
             ].join('\n'),
             buttons: ['Open Admin Settings'],
             defaultId: 0,
         });
+        if (typeof onOpenAdminSettings === 'function') {
+            try {
+                await onOpenAdminSettings();
+            } catch (err) {
+                console.warn('[cloudflare] onOpenAdminSettings', err);
+            }
+        }
     }
 
     return {
@@ -742,7 +787,8 @@ async function getCloudflareStatus() {
     } catch {
         /* ignore */
     }
-    const startupInstalled = fs.existsSync(startupCmdPath());
+    const startupInstalled =
+        fs.existsSync(startupVbsPath()) || fs.existsSync(startupCmdPath());
     const hasToken = Boolean(readHostTunnelToken());
     return {
         cloudflaredPath: resolveCloudflared(),

@@ -4,6 +4,7 @@ const { getConfig, dashboardUrl, publicDashboardUrl } = require('./config');
 const host = require('./host-controller');
 const { checkForUpdates, openProgressSplash, setProgressSplash, closeProgressSplash } = require('./updater');
 const cloudflare = require('./cloudflare');
+const watchdog = require('./watchdog');
 
 let tray = null;
 let openSettings = null;
@@ -75,6 +76,8 @@ async function rebuildContextMenu() {
                         label: 'Stop server',
                         click: async () => {
                             try {
+                                // Operator chose to stop — auto-repair must not undo it.
+                                watchdog.pauseWatchdog(60 * 60 * 1000, 'server stopped from tray');
                                 await host.stopServer();
                             } catch (err) {
                                 await dialog.showErrorBox('Stop failed', String(err.message || err));
@@ -86,6 +89,7 @@ async function rebuildContextMenu() {
                         label: 'Start server',
                         click: async () => {
                             try {
+                                watchdog.resumeWatchdog();
                                 await host.startServer();
                                 await dialog.showMessageBox({
                                     type: 'info',
@@ -105,6 +109,7 @@ async function rebuildContextMenu() {
                           label: 'Server from Git…',
                           click: async () => {
                               try {
+                                  watchdog.pauseWatchdog(30 * 60 * 1000, 'git server update running');
                                   await openProgressSplash({
                                       headline: 'Server update',
                                       status: 'Checking Git for updates…',
@@ -135,6 +140,8 @@ async function rebuildContextMenu() {
                               } catch (err) {
                                   closeProgressSplash();
                                   await dialog.showErrorBox('Git update failed', String(err.message || err));
+                              } finally {
+                                  watchdog.resumeWatchdog();
                               }
                               refreshMenu && refreshMenu();
                           },
@@ -152,6 +159,7 @@ async function rebuildContextMenu() {
                           label: 'Setup Cloudflare tunnel…',
                           click: async () => {
                               try {
+                                  watchdog.pauseWatchdog(15 * 60 * 1000, 'cloudflare setup running');
                                   const cf = await cloudflare.setupCloudflareTunnel({
                                       hostname: (() => {
                                           try {
@@ -180,6 +188,8 @@ async function rebuildContextMenu() {
                                   if (cf.skipped) return;
                               } catch (err) {
                                   await dialog.showErrorBox('Cloudflare setup failed', String(err.message || err));
+                              } finally {
+                                  watchdog.resumeWatchdog();
                               }
                               refreshMenu && refreshMenu();
                           },
@@ -204,6 +214,7 @@ async function rebuildContextMenu() {
                               });
                               if (response !== 0) return;
                               try {
+                                  watchdog.pauseWatchdog(60 * 60 * 1000, 'easy host repair running');
                                   const bootstrap = require('./host-bootstrap');
                                   await bootstrap.runHostBootstrap({
                                       onProgress: (msg) => console.log('[host-repair]', msg),
@@ -215,6 +226,8 @@ async function rebuildContextMenu() {
                                   });
                               } catch (err) {
                                   await dialog.showErrorBox('Host repair failed', String(err.message || err));
+                              } finally {
+                                  watchdog.resumeWatchdog();
                               }
                               refreshMenu && refreshMenu();
                           },

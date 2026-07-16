@@ -16,6 +16,7 @@ const cloudflare = require('./cloudflare');
 const bootstrap = require('./host-bootstrap');
 const hostLease = require('./host-lease-client');
 const secretsPack = require('./secrets-pack');
+const watchdog = require('./watchdog');
 
 let settingsWindow = null;
 let wizardWindow = null;
@@ -193,7 +194,9 @@ async function pollLiveVersion() {
         const v = Number(body.version || 0);
         if (lastLiveVersion && v > lastLiveVersion && settingsWindow && !settingsWindow.isDestroyed()) {
             settingsWindow.webContents.send('live:event', body.lastEvent || body);
-            if (body.lastEvent && /updated|settings|accounts|storelist|sales/i.test(String(body.lastEvent.type))) {
+            // Only reload for genuine config changes — sales.updated fires after
+            // every scrape (~1/min) and must not blank the Settings window.
+            if (body.lastEvent && /settings|accounts|storelist/i.test(String(body.lastEvent.type))) {
                 settingsWindow.webContents.reloadIgnoringCache();
             }
         }
@@ -218,7 +221,20 @@ function stopHostHeartbeat() {
     }
 }
 
+/** Auto-repair loop for Host mode (server / tunnel / lease). */
+function startHostWatchdog() {
+    watchdog.startWatchdog({
+        notify: showOperatorNotice,
+        afterRepair: () => {
+            hostServerPhase = 'running';
+            refreshTrayStatus().catch(() => {});
+            rebuildContextMenu().catch(() => {});
+        },
+    });
+}
+
 async function tearDownLocalHosting({ releaseLease = false } = {}) {
+    watchdog.stopWatchdog();
     stopHostHeartbeat();
     try {
         await host.stopServer();
@@ -409,6 +425,7 @@ async function becomeHostFromTray() {
             secretsPath,
             confirm: confirmDialog,
             guidedCloudflare: true,
+            onOpenAdminSettings: openSettings,
         });
 
         sendProgress('Registering this PC as Host…');
@@ -429,6 +446,7 @@ async function becomeHostFromTray() {
         setConfig({ setupComplete: true, mode: 'host', openAtLogin: true });
         hostServerPhase = 'running';
         startHostHeartbeat();
+        startHostWatchdog();
         try {
             await host.ensureServerRunning({ waitMs: 45000 });
         } catch {
@@ -849,6 +867,7 @@ function registerIpc() {
             setConfig({ setupComplete: true, mode: 'host', openAtLogin: true });
             hostServerPhase = 'running';
             startHostHeartbeat();
+            startHostWatchdog();
 
             sendProgress('Making sure Admin can open on this PC…');
             try {
@@ -954,6 +973,7 @@ if (!gotLock) {
                 } catch (err) {
                     console.warn('[desktop] ensureHostServerOnLaunch', err);
                 }
+                startHostWatchdog();
             }
             await openSettings().catch(() => {});
             refreshTrayStatus().catch(() => {});

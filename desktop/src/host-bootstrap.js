@@ -138,6 +138,7 @@ async function runHostBootstrap({
     secretsPath = null,
     confirm = null,
     guidedCloudflare = true,
+    onOpenAdminSettings = null,
 } = {}) {
     const progress = (msg) => {
         onProgress?.(String(msg || ''));
@@ -279,6 +280,8 @@ async function runHostBootstrap({
                 onProgress: progress,
                 confirm: typeof confirm === 'function' ? confirm : undefined,
                 guided: guidedCloudflare && typeof confirm === 'function',
+                onOpenAdminSettings:
+                    typeof onOpenAdminSettings === 'function' ? onOpenAdminSettings : undefined,
             });
             if (cloudflareResult.skipped) {
                 progress('Cloudflare skipped — use tray → Setup Cloudflare tunnel when ready');

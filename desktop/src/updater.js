@@ -150,11 +150,27 @@ function setProgressSplash(opts = {}) {
     setSplashView(opts);
 }
 
+/** Local electron-builder output — packaged, but not a real install (no app-update.yml). */
+function isLocalUnpackedDist() {
+    try {
+        const exe = String(app.getPath('exe') || process.execPath || '');
+        return /[\\/]desktop[\\/]dist[\\/]win-unpacked[\\/]/i.test(exe);
+    } catch {
+        return false;
+    }
+}
+
 function configureUpdater() {
     if (configured) return;
     configured = true;
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
+    // Don't rely on resources/app-update.yml (missing in local win-unpacked builds).
+    autoUpdater.setFeedURL({
+        provider: 'github',
+        owner: 'TiripsOrbro',
+        repo: 'live-dashboard-app',
+    });
 
     autoUpdater.on('error', (err) => {
         console.warn('[desktop-updater]', err && err.message ? err.message : err);
@@ -220,7 +236,7 @@ function configureUpdater() {
 async function ensureUpToDateBeforeLaunch() {
     configureUpdater();
 
-    if (!app.isPackaged) {
+    if (!app.isPackaged || isLocalUnpackedDist()) {
         return { proceeded: true, skipped: 'dev' };
     }
 
@@ -284,12 +300,17 @@ async function waitForUpdateDownload(result) {
 async function checkForUpdates({ silent = false } = {}) {
     configureUpdater();
 
-    if (!app.isPackaged) {
+    if (!app.isPackaged || isLocalUnpackedDist()) {
         if (!silent) {
             await dialog.showMessageBox({
                 type: 'info',
-                title: 'Up to date',
-                message: 'Development build — tray app updates apply when you rebuild the installer.',
+                title: 'Development build',
+                message: isLocalUnpackedDist()
+                    ? 'This is the local dist\\win-unpacked build, not the installed tray app.'
+                    : 'Development build — tray app updates apply when you rebuild the installer.',
+                detail: isLocalUnpackedDist()
+                    ? 'Install from GitHub Releases (desktop-v*), or use Start Menu → Live Dashboard. For day-to-day tray work from git, run desktop\\start-from-git.cmd instead.'
+                    : 'Use desktop\\start-from-git.cmd for source, or install a desktop-v* release for auto-update.',
             });
         }
         return null;
@@ -348,16 +369,21 @@ async function checkForUpdates({ silent = false } = {}) {
         }
         if (!silent) {
             const raw = String(err && err.message ? err.message : err);
-            const missingYml = /latest\.yml/i.test(raw);
+            const missingLatest = /latest\.yml/i.test(raw);
+            const missingAppUpdate = /app-update\.yml/i.test(raw) || /ENOENT/i.test(raw);
             await dialog.showMessageBox({
                 type: 'warning',
                 title: 'Update check failed',
-                message: missingYml
+                message: missingLatest
                     ? 'Update metadata (latest.yml) is missing from the GitHub release.'
-                    : raw.slice(0, 280),
-                detail: missingYml
+                    : missingAppUpdate
+                      ? 'This copy of the tray app cannot auto-update (missing update config).'
+                      : raw.slice(0, 280),
+                detail: missingLatest
                     ? 'Desktop releases must include latest.yml next to the installer. Tag desktop-v* after the release workflow fix, or re-upload that file to the current release.'
-                    : 'Updates come from GitHub Releases (desktop-v* tags). Check your network and try again.',
+                    : missingAppUpdate
+                      ? 'Install the latest Taco-Bell-Dashboard-Installer.exe from GitHub Releases, or run the Start Menu “Live Dashboard” shortcut — not desktop\\dist\\win-unpacked.'
+                      : 'Updates come from GitHub Releases (desktop-v* tags). Check your network and try again.',
             });
         }
         throw err;

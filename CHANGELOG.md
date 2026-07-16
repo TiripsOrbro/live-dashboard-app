@@ -29,6 +29,7 @@ Tip: skim the git log since the last release tag (`git log Version-0.3..HEAD --o
 ### Unreleased – July 2026
 
 - **Added** — Desktop tray **v1.0.14**: Host menu **Re-run daily reports…** (localhost force re-run of stock / forecast / subscriptions).
+- **Fixed** — Desktop tray **v1.0.15**: clearer update messaging when running `dist\\win-unpacked` (missing `app-update.yml`); always use GitHub Releases as the update feed.
 - **Added** — Pending vendor checks run on their own timer (default every 15 minutes) instead of riding every sales scrape.
 - **Added** — Optional persistent Macromatix browser (`SCRAPER_PERSISTENT_SESSIONS=1` on the 16GB Windows profile): login once per store in the morning, then refresh the labour page for hourly sales; re-logins if the session drops.
 - **Changed** — Interval sales scrapes no longer open Scheduled Orders (faster cycles, less loading).

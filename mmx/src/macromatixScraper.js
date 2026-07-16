@@ -2008,14 +2008,14 @@ async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
     if (refreshLabour) {
         const url = page.url() || '';
         if (/LabourScheduler/i.test(url)) {
-            await page.reload({ waitUntil: 'load', timeout: 45000 }).catch(async () => {
-                await page.goto(LABOUR_URL, GOTO_OPTS);
+            await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(async () => {
+                await page.goto(LABOUR_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
             });
         } else {
-            await page.goto(LABOUR_URL, GOTO_OPTS);
+            await page.goto(LABOUR_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
         }
     } else {
-        await page.goto(LABOUR_URL, GOTO_OPTS);
+        await page.goto(LABOUR_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
     }
     await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
 
@@ -2519,9 +2519,13 @@ async function loginPage(page, username, password) {
     await fillInputValue(page, '#Login_Password', password);
     const loginButton = await page.$('input[type="submit"]');
     if (!loginButton) throw new Error('Login button not found');
+    // Native click() can hang forever waiting on navigation; submit via DOM + wait separately.
     await Promise.all([
         page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {}),
-        loginButton.click(),
+        page.evaluate(() => {
+            const btn = document.querySelector('input[type="submit"]');
+            if (btn) btn.click();
+        }),
     ]);
     await page
         .waitForFunction(
@@ -2542,25 +2546,24 @@ async function loginPage(page, username, password) {
             loginError || 'Macromatix login failed. Check username and password in Admin → Setup Store Logins.'
         );
     }
+    // Prefer the multi-store SelectStore picker when the account has one.
+    if (!(await isLoginStorePickerPresent(page))) {
+        console.log('[Macromatix] Login skipped store picker; reopening SelectStore...');
+        await page.goto(SELECT_STORE_URL, LOGIN_GOTO_OPTS);
+        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+        await page.waitForTimeout(800);
+    }
     if (await isLoginStorePickerPresent(page)) {
         const count = await waitForLoginStoreDropdownStable(page);
         console.log(`[Macromatix] Logged in (${count} stores on login picker)`);
         return;
     }
-
-    // Headless login sometimes skips SelectStore and lands on home - reopen the picker URL.
-    if (!(await isMacromatixLoginPage(page))) {
-        console.log('[Macromatix] Login skipped store picker; reopening SelectStore...');
-        await page.goto(SELECT_STORE_URL, LOGIN_GOTO_OPTS);
-        await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
-        await page.waitForTimeout(800);
-        if (await isLoginStorePickerPresent(page)) {
-            const count = await waitForLoginStoreDropdownStable(page);
-            console.log(`[Macromatix] Logged in (${count} stores on login picker)`);
-            return;
-        }
+    if (await isMacromatixLoginPage(page)) {
+        const loginError = await readMacromatixLoginError(page);
+        throw new Error(
+            loginError || 'Macromatix login failed after SelectStore reopen. Check store credentials.'
+        );
     }
-
     console.log('[Macromatix] Logged in (no store picker - single-store account?)');
 }
 

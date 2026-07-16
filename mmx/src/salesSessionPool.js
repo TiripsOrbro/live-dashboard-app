@@ -161,10 +161,24 @@ async function primeLabourDayView(page, storeNumber) {
         'Australia/Melbourne';
     const todayKey = getStoreDateKey({ storeNumber, timeZone });
 
-    await page.goto(LABOUR_URL, { waitUntil: 'load', timeout: 45000 });
-    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+    await page.goto(LABOUR_URL, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 15000 }).catch(() => {});
     await openDayViewAndReadSales(page, false, { targetDateIso: todayKey, timeZone });
     console.log(`[SessionPool] Store ${storeNumber} primed on labour Day view (${todayKey})`);
+}
+
+async function withDeadline(promise, ms, label) {
+    let timer;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise((_, reject) => {
+                timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+            }),
+        ]);
+    } finally {
+        clearTimeout(timer);
+    }
 }
 
 async function ensureStoreSession(storeNumber, credentials, options = {}) {
@@ -187,12 +201,21 @@ async function ensureStoreSession(storeNumber, credentials, options = {}) {
 
     const browser = await ensureBrowser(options);
     const context = await createIsolatedContext(browser);
-    const labourPage = await context.newPage();
+    let labourPage = await context.newPage();
     const ordersPage = await context.newPage();
 
     try {
-        await loginAndBindStore(labourPage, key, credentials);
-        await primeLabourDayView(labourPage, key);
+        await withDeadline(loginAndBindStore(labourPage, key, credentials), 60000, `Store ${key} login`);
+        // Edge can wedge the login page after SelectStore postback; continue on a fresh tab.
+        try {
+            await labourPage.close().catch(() => {});
+            labourPage = await context.newPage();
+            await labourPage.setViewport({ width: 1280, height: 720 });
+            await mmx().applyResourceBlocking(labourPage);
+        } catch (pageErr) {
+            console.warn(`[SessionPool] Store ${key} could not open fresh labour tab: ${pageErr.message}`);
+        }
+        console.log(`[SessionPool] Store ${key} logged in — Day view will open on first scrape`);
         await ordersPage.setViewport({ width: 1280, height: 720 });
         await mmx().applyResourceBlocking(ordersPage);
         await ordersPage.goto('about:blank').catch(() => {});

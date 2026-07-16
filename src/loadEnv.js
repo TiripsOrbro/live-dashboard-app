@@ -8,7 +8,8 @@ function loadEnv(options = {}) {
     const basePath = path.join(root, '.env');
 
     if (fs.existsSync(basePath)) {
-        dotenv.config({ path: basePath });
+        // Always prefer the project .env over stale PM2-embedded env values.
+        dotenv.config({ path: basePath, override: true });
         return { mode: 'env', loaded: ['.env'] };
     }
     return { mode: 'none', loaded: [] };

@@ -1692,6 +1692,10 @@ async function scrapeWithRetry(scrapeOptions = {}) {
     resetSalesScrapeAbort();
     let lastError;
     const attempts = Math.max(1, SCRAPE_RETRIES + 1);
+    const isContinuous = /continuous/i.test(String(scrapeOptions.scrapeReason || ''));
+    const timeoutMs = isContinuous
+        ? Math.max(30000, Number(process.env.SCRAPE_CONTINUOUS_STORE_TIMEOUT_MS || 90000) || 90000)
+        : SCRAPE_TIMEOUT_MS;
     for (let attempt = 1; attempt <= attempts; attempt++) {
         let activeBrowser = null;
         let preemptWatch = null;
@@ -1720,7 +1724,7 @@ async function scrapeWithRetry(scrapeOptions = {}) {
                         registerSalesScrapeBrowser(browser);
                     },
                 }),
-                SCRAPE_TIMEOUT_MS,
+                timeoutMs,
                 async () => {
                     if (!activeBrowser) return;
                     console.warn('API: Closing active browser after scrape timeout');

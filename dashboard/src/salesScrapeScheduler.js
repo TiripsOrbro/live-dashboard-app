@@ -1,4 +1,4 @@
-﻿const { isMmxResourceBusy, mmxPauseScrapeForPriority } = require('../../mmx/src/mmxResourceGate');
+﻿const { mmxPauseScrapeForPriority } = require('../../mmx/src/mmxResourceGate');
 const {
     hasPendingHigherPriority,
     hasBlockingWorkForPriority,
@@ -25,9 +25,9 @@ function startSalesScrapeScheduler(handlers) {
 
     const shouldSkipScrapeTick = () => {
         if (!mmxPauseScrapeForPriority()) return false;
+        // Only MIC/admin — vendor is lower priority and sales will preempt it.
         let reason = '';
-        if (isMmxResourceBusy()) reason = 'MMX resource busy';
-        else if (hasPendingHigherPriority(PRIORITY.SCRAPE)) reason = 'higher-priority MMX queue work pending';
+        if (hasPendingHigherPriority(PRIORITY.SCRAPE)) reason = 'higher-priority MMX queue work pending';
         else if (hasBlockingWorkForPriority(PRIORITY.SCRAPE)) reason = 'MMX queue slot blocked';
         if (!reason) return false;
         const now = Date.now();
@@ -65,7 +65,7 @@ function startSalesScrapeScheduler(handlers) {
     }
 
     console.log(
-        `[Dashboard] Sales scrape scheduler - full market every ${INTERVAL_MS / 1000}s during store active hours (${TIME_ZONE})` +
+        `[Dashboard] Sales scrape scheduler - full market every ${INTERVAL_MS / 1000}s (${TIME_ZONE})` +
             (mmxPauseScrapeForPriority() ? '' : ' (parallel with stock count / orders)')
     );
 

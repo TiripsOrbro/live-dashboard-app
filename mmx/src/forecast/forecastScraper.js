@@ -154,6 +154,33 @@ async function waitForForecastSaveSettled(page, timeoutMs = SAVE_SETTLE_MS) {
     await waitForForecastSaveCompleted(page, timeoutMs);
 }
 
+/** Wait until the forecast toolbar date picker is mounted (not the workflow-nav 01/01/1900 placeholder). */
+async function waitForForecastDatePickerReady(page, timeoutMs = GRID_WAIT_MS) {
+    const ok = await page
+        .waitForFunction(
+            (pickerSel) => {
+                const host = document.querySelector(pickerSel);
+                if (!host) return false;
+                const r = host.getBoundingClientRect();
+                if (r.width <= 0 || r.height <= 0) return false;
+                const valid = (t) => /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(t) && t !== '01/01/1900';
+                for (const span of host.querySelectorAll('.ng-binding')) {
+                    const t = (span.textContent || '').trim();
+                    if (valid(t)) return true;
+                }
+                const hasNav =
+                    host.querySelector('button.mx-date-picker-nav-next') &&
+                    host.querySelector('button.mx-date-picker-nav-prev');
+                const hasClickTarget = host.querySelector('.mx-date-picker-selected-date');
+                return Boolean(hasNav && hasClickTarget);
+            },
+            { timeout: timeoutMs, polling: POLL_MS },
+            DATE_PICKER_SEL
+        )
+        .catch(() => null);
+    return Boolean(ok);
+}
+
 /** Top-of-page date on Forecasting/Edit. */
 async function readDisplayedForecastDate(page) {
     return page.evaluate((pickerSel) => {
@@ -1144,15 +1171,22 @@ async function enterAndVerifyForecastSlot(page, slot, onProgress, options = {}) 
     if (!filled) {
         if (!retry) {
             await dismissForecastOverrideEditor(page);
-            return enterAndVerifyForecastSlot(page, slot, onProgress, { retry: true, cellCache, force: true });
+            return enterAndVerifyForecastSlot(page, slot, onProgress, {
+                retry: true,
+                cellCache,
+                force: true,
+                suppressFailureProgress: options.suppressFailureProgress,
+            });
         }
-        emitSlotProgress(onProgress, {
-            type: 'hour-failed',
-            hour: slot.hour,
-            label: slot.label,
-            forecast: slot.forecast,
-            reason: 'Could not open forecast cell',
-        });
+        if (!options.suppressFailureProgress) {
+            emitSlotProgress(onProgress, {
+                type: 'hour-failed',
+                hour: slot.hour,
+                label: slot.label,
+                forecast: slot.forecast,
+                reason: 'Could not open forecast cell',
+            });
+        }
         return { ok: false, reason: 'no-fill' };
     }
 
@@ -1481,7 +1515,7 @@ async function fillForecastHourlyInputs(page, hourly, options = {}) {
         }
     }
 
-    const out = { touched: confirmed, confirmed, missed, failed, slotCount: slots.length, changed };
+    const out = { touched: confirmed, confirmed, missed, failed, slotCount: slots.length, changed, cellCache };
     const tradingSlots = slots.filter((s) => !s.outsideHours);
     const tradingMissed = missed.filter((label) => {
         const slot = slots.find((s) => s.label === label);
@@ -1522,24 +1556,30 @@ async function verifyForecastDay(page, hourly, options = {}) {
             phase: 'day-check',
         });
 
-        const readText =
-            getCellCacheValue(cellCache, slot) !== undefined
-                ? getCellCacheValue(cellCache, slot)
-                : await readManagerForecastCell(page, slot.label, slot.hour);
-        if (forecastValuesMatch(readText, slot.forecast)) {
+        const liveRead = await readManagerForecastCell(page, slot.label, slot.hour);
+        const cachedRead = getCellCacheValue(cellCache, slot);
+        const readText = liveRead != null && liveRead !== '' ? liveRead : cachedRead;
+        const readMatches = forecastValuesMatch(readText, slot.forecast);
+        const cacheMatches =
+            cachedRead !== undefined && forecastValuesMatch(cachedRead, slot.forecast);
+        if (readMatches || cacheMatches) {
             confirmed += 1;
+            const matchedRead = readMatches ? readText : cachedRead;
             emitSlotProgress(onProgress, {
                 type: 'hour-confirmed',
                 hour: slot.hour,
                 label: slot.label,
                 forecast: slot.forecast,
-                read: parseForecastDollar(readText),
+                read: parseForecastDollar(matchedRead),
                 phase: 'day-check',
             });
             continue;
         }
 
-        const fix = await enterAndVerifyForecastSlot(page, slot, onProgress, { cellCache });
+        const fix = await enterAndVerifyForecastSlot(page, slot, onProgress, {
+            cellCache,
+            suppressFailureProgress: true,
+        });
         if (fix.ok) {
             confirmed += 1;
         } else {
@@ -1632,6 +1672,15 @@ async function setForecastPageDate(page, isoDate, options = {}) {
             .catch(() => null);
     }
     await waitForForecastGrid(page);
+    const datePickerReady = await waitForForecastDatePickerReady(
+        page,
+        options.fast ? Math.min(GRID_WAIT_MS, 8000) : GRID_WAIT_MS
+    );
+    if (!datePickerReady) {
+        throw new Error(
+            'Forecast date picker did not load on Macromatix (page may still be initializing). Try again in a moment.'
+        );
+    }
 
     const already = await readDisplayedForecastDate(page);
     if (already === displayStr) {
@@ -1662,7 +1711,9 @@ async function setForecastPageDate(page, isoDate, options = {}) {
                 .slice(0, 8);
             return { inputs, dateTexts };
         });
-        throw new Error(`Forecast date control not found (${JSON.stringify(hints).slice(0, 400)})`);
+        throw new Error(
+            `Forecast date control not found — the Macromatix forecast page may not have finished loading (${JSON.stringify(hints).slice(0, 400)})`
+        );
     }
 
     const verified = await readDisplayedForecastDate(page);
@@ -1712,6 +1763,17 @@ async function writeForecastPlanToSpa(page, storeNumber, plan, options = {}) {
     }
 
     await waitForForecastGrid(page);
+    let datePickerReady = await waitForForecastDatePickerReady(page);
+    if (!datePickerReady) {
+        await page.goto(FORECASTING_URL, SPA_GOTO_OPTS);
+        await waitForForecastGrid(page);
+        datePickerReady = await waitForForecastDatePickerReady(page);
+    }
+    if (!datePickerReady) {
+        throw new Error(
+            `Forecast date picker did not load for store ${store} on Macromatix. The page may still be initializing — try again.`
+        );
+    }
     await ensureManagerForecastDollarMode(page);
 
     emit({ type: 'store-start', dayCount: (plan || []).length });
@@ -1786,6 +1848,7 @@ async function writeForecastPlanToSpa(page, storeNumber, plan, options = {}) {
         }
         const slotProgress = (evt) => emit({ date: day.date, ...evt });
         let fillResult;
+        let verifySlots = fillSlots;
         try {
             fillResult = await fillForecastHourlyInputs(page, fillSlots, {
                 skipDollarMode: true,
@@ -1800,8 +1863,8 @@ async function writeForecastPlanToSpa(page, storeNumber, plan, options = {}) {
                 timeoutMs: GRID_WAIT_MS,
             });
             await dismissForecastOverrideEditor(page).catch(() => {});
-            const retrySlots = await buildDayFillSlots(page, day, dayForFill.openHour, dayForFill.closeHour);
-            fillResult = await fillForecastHourlyInputs(page, retrySlots, {
+            verifySlots = await buildDayFillSlots(page, day, dayForFill.openHour, dayForFill.closeHour);
+            fillResult = await fillForecastHourlyInputs(page, verifySlots, {
                 skipDollarMode: true,
                 onProgress: slotProgress,
                 storeNumber: store,
@@ -1809,8 +1872,10 @@ async function writeForecastPlanToSpa(page, storeNumber, plan, options = {}) {
         }
 
         emit({ type: 'day-verifying', date: day.date });
-        let verifySlots = fillSlots;
-        let verifyResult = await verifyForecastDay(page, verifySlots, { onProgress: slotProgress });
+        let verifyResult = await verifyForecastDay(page, verifySlots, {
+            onProgress: slotProgress,
+            cellCache: fillResult?.cellCache,
+        });
         if (!verifyResult.ok) {
             const tradingFailed = verifyResult.failed.filter((row) => !row.outsideHours);
             if (tradingFailed.length) {
@@ -1818,10 +1883,18 @@ async function writeForecastPlanToSpa(page, storeNumber, plan, options = {}) {
                 verifySlots = await realignSlotsFromGrid(page, verifySlots);
                 for (const slot of tradingFailed) {
                     const aligned = verifySlots.find((row) => row.hour === slot.hour);
-                    const fix = await retryForecastSlotRedundant(page, aligned || slot, slotProgress, null);
+                    const fix = await retryForecastSlotRedundant(
+                        page,
+                        aligned || slot,
+                        slotProgress,
+                        fillResult?.cellCache || null
+                    );
                     if (fix.ok) verifyResult.confirmed += 1;
                 }
-                verifyResult = await verifyForecastDay(page, verifySlots, { onProgress: slotProgress });
+                verifyResult = await verifyForecastDay(page, verifySlots, {
+                    onProgress: slotProgress,
+                    cellCache: fillResult?.cellCache,
+                });
             }
         }
         if (!verifyResult.ok) {

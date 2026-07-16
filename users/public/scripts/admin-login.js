@@ -46,8 +46,12 @@
             }
             try {
                 sessionStorage.removeItem('mic-overview-area');
+                sessionStorage.removeItem('mic-overview-show-scope-nav');
                 sessionStorage.removeItem('admin-view-as-store-enabled');
                 sessionStorage.removeItem('admin-view-as-store');
+                const showScopeNav = Boolean(data?.showScopeNav ?? data?.layoutCapabilities?.showScopeNav);
+                sessionStorage.setItem('mic-overview-show-scope-nav', showScopeNav ? '1' : '0');
+                if (showScopeNav) sessionStorage.removeItem('mic-last-store');
                 localStorage.setItem('mic-area-picker-pending', '1');
             } catch {
                 /* ignore */

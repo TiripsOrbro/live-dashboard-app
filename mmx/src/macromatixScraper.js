@@ -826,6 +826,20 @@ function getScraperConcurrency(storeCount) {
     return Math.max(1, Math.min(maxConc, storeCount));
 }
 
+function getWorkerStaggerMs(concurrency) {
+    const raw = Number(process.env.SCRAPER_WORKER_STAGGER_MS);
+    if (Number.isFinite(raw) && raw >= 0) return raw;
+    // Slight stagger when many workers share one MMX account — reduces login pile-ups.
+    return concurrency >= 8 ? 500 : 0;
+}
+
+async function staggerWorkerStart(workerId, concurrency) {
+    const staggerMs = getWorkerStaggerMs(concurrency);
+    if (workerId > 0 && staggerMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, workerId * staggerMs));
+    }
+}
+
 /** Pull a 3–6 digit store number out of an option label like "3811 Chirnside Park". */
 function storeNumberFromLabel(label) {
     const m = String(label || '').match(/\b(\d{3,6})\b/);
@@ -2780,7 +2794,7 @@ async function scrapeSingleStoreSession(page, store, ctx, credentials) {
  * Persistent-session sales scrape for one store (no logout; session stays warm).
  */
 async function scrapeStorePersistentWithCandidates(store, ctx, candidates, poolOpts = {}) {
-    const { withLabourPage, ensureBrowser } = require('./salesSessionPool');
+    const { withLabourPage, ensureBrowser, hasStoreSession } = require('./salesSessionPool');
     const label = store.storeNumber || '(default)';
     const want = normalizeStoreNumberKey(store.storeNumber);
     const tries = Array.isArray(candidates) && candidates.length
@@ -2794,13 +2808,15 @@ async function scrapeStorePersistentWithCandidates(store, ctx, candidates, poolO
         throwIfSalesScrapeAborted();
         const resolved = tries[attempt];
         const storeCreds = { username: resolved.username, password: resolved.password };
-        const accessible = await getAccessibleStoreNumbersForCredentials(browser, storeCreds);
-        if (accessible && want && !accessible.has(want)) {
-            lastErr = new StoreInaccessibleError(
-                label,
-                buildStoreInaccessibleMessage(label, accessible)
-            );
-            continue;
+        if (!hasStoreSession(store.storeNumber) && !ctx.skipAccessibleDiscovery) {
+            const accessible = await getAccessibleStoreNumbersForCredentials(browser, storeCreds);
+            if (accessible && want && !accessible.has(want)) {
+                lastErr = new StoreInaccessibleError(
+                    label,
+                    buildStoreInaccessibleMessage(label, accessible)
+                );
+                continue;
+            }
         }
         try {
             if (tries.length > 1 || resolved.source !== 'global SCRAPER_*') {
@@ -2994,6 +3010,7 @@ function buildScrapeContext(options = {}) {
         skipPendingVendors,
         storeFilter: resolveStoreFilterNumbers(options),
         respectScrapeSchedule: !testScheduledOrdersPick && !options.bypassScrapeSchedule,
+        skipAccessibleDiscovery: /continuous/i.test(String(options.scrapeReason || '').trim()),
     };
 }
 
@@ -3471,6 +3488,7 @@ async function scrapeMacromatix(options = {}) {
         pickYmd,
         skipScheduledPersistence,
         skipPendingVendors,
+        skipAccessibleDiscovery: meta.skipAccessibleDiscovery,
     };
 
     const { isPersistentSessionsEnabled, getPoolBrowser, ensureBrowser } = require('./salesSessionPool');
@@ -3520,6 +3538,7 @@ async function scrapeMacromatix(options = {}) {
         const storeSuccessfulCreds = new Map();
 
         const runSingleStoreWorker = async (workerId) => {
+            await staggerWorkerStart(workerId, concurrency);
             for (;;) {
                 throwIfSalesScrapeAborted();
                 const i = takeNext();
@@ -3677,6 +3696,7 @@ async function scrapeMacromatixVendorsOnly(options = {}) {
         const collected = new Array(stores.length);
 
         const worker = async (workerId) => {
+            await staggerWorkerStart(workerId, concurrency);
             for (;;) {
                 throwIfSalesScrapeAborted();
                 const i = takeNext();

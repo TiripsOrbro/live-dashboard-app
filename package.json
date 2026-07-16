@@ -10,6 +10,8 @@
     "patch-americold-dry-carryover": "node scripts/patch-americold-dry-carryover.js",
     "force-sales-scrape": "node scripts/force-sales-scrape.js",
     "test-scrape": "node scripts/test-scrape.js",
+    "test-continuous-scrapers": "node scripts/test-continuous-scrapers.js",
+    "continuous-scrapers": "node scripts/run-continuous-scrapers.js",
     "download-reports": "node scripts/download-reports.js",
     "clear-store-reports": "node scripts/clear-store-reports.js",
     "refresh-store-build-to": "node scripts/refresh-store-build-to.js",

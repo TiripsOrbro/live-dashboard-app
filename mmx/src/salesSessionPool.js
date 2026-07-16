@@ -136,6 +136,9 @@ async function createIsolatedContext(browser) {
     return fn.call(browser);
 }
 
+const LABOUR_URL =
+    'https://tacobellau.macromatix.net/MMS_Stores_LabourScheduler.aspx?MenuCustomItemID=249';
+
 async function loginAndBindStore(page, storeNumber, credentials) {
     const { loginPage, selectStoreAfterLogin, applyResourceBlocking, assertMacromatixAuthenticated } =
         mmx();
@@ -144,6 +147,24 @@ async function loginAndBindStore(page, storeNumber, credentials) {
     await loginPage(page, credentials.username, credentials.password);
     await selectStoreAfterLogin(page, storeNumber, credentials);
     await assertMacromatixAuthenticated(page, `store ${storeNumber} after login`);
+}
+
+async function primeLabourDayView(page, storeNumber) {
+    const { openDayViewAndReadSales } = mmx();
+    const { getStoreConfig } = require('../../src/services/storeList');
+    const { getStoreDateKey } = require('../../dashboard/src/sssg/sssgWeeklyLedger');
+    const cfg = getStoreConfig(storeNumber) || {};
+    const timeZone =
+        String(cfg.timeZone || '').trim() ||
+        process.env.DASHBOARD_TIME_ZONE ||
+        process.env.MMX_TIME_ZONE ||
+        'Australia/Melbourne';
+    const todayKey = getStoreDateKey({ storeNumber, timeZone });
+
+    await page.goto(LABOUR_URL, { waitUntil: 'load', timeout: 45000 });
+    await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
+    await openDayViewAndReadSales(page, false, { targetDateIso: todayKey, timeZone });
+    console.log(`[SessionPool] Store ${storeNumber} primed on labour Day view (${todayKey})`);
 }
 
 async function ensureStoreSession(storeNumber, credentials, options = {}) {
@@ -171,6 +192,7 @@ async function ensureStoreSession(storeNumber, credentials, options = {}) {
 
     try {
         await loginAndBindStore(labourPage, key, credentials);
+        await primeLabourDayView(labourPage, key);
         await ordersPage.setViewport({ width: 1280, height: 720 });
         await mmx().applyResourceBlocking(ordersPage);
         await ordersPage.goto('about:blank').catch(() => {});
@@ -267,6 +289,10 @@ function getSessionCount() {
     return sessions.size;
 }
 
+function hasStoreSession(storeNumber) {
+    return sessions.has(storeKey(storeNumber));
+}
+
 /** Tear down when no store is in the active scrape window (frees RAM overnight). */
 async function maybeTeardownOutsideWindow() {
     if (!isPersistentSessionsEnabled()) return;
@@ -294,4 +320,5 @@ module.exports = {
     maybeTeardownOutsideWindow,
     getPoolBrowser,
     getSessionCount,
+    hasStoreSession,
 };

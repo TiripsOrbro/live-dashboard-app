@@ -162,6 +162,8 @@
     }
 
     function ensureAdminSettingsStyles() {
+        // Preferences colour-blind swatches (.mic-colour-sample-box) live in mic.css.
+        ensureStylesheet('shell-mic-css', '/styles/mic.css');
         ensureStylesheet('shell-admin-menu-css', '/styles/admin-menu.css');
         ensureStylesheet('shell-account-modal-css', '/styles/account-modal.css');
         ensureStylesheet('shell-requests-css', '/styles/requests.css');

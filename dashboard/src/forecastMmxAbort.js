@@ -46,12 +46,11 @@ function throwIfForecastMmxAborted() {
 }
 
 const { registerMmxAbortHandler } = require('../../mmx/src/mmxResourceGate');
-const { getLocalSlotPriority, shouldAbortForPreempt, markPreemptHandled, PRIORITY } = require('../../mmx/src/mmxTaskQueue');
+const { getLocalSlotPriority, shouldAbortForPreempt, PRIORITY } = require('../../mmx/src/mmxTaskQueue');
 
 registerMmxAbortHandler((reason) => {
     const localPriority = getLocalSlotPriority();
     if (localPriority === PRIORITY.ADMIN || shouldAbortForPreempt(PRIORITY.ADMIN)) {
-        markPreemptHandled();
         requestForecastMmxAbort(reason);
     }
 });

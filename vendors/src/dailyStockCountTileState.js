@@ -74,9 +74,13 @@ async function buildAreaDailyStockCountTileStateAsync(areaStores) {
     let inProgress = 0;
     let completed = 0;
     let needsReview = 0;
-    for (const storeNumber of base.storeNumbers) {
-        const draft = await getDraft(storeNumber);
-        const pipeline = await getDailyCountPipelineStatus(storeNumber);
+    const statuses = await Promise.all(
+        base.storeNumbers.map(async (storeNumber) => ({
+            draft: await getDraft(storeNumber),
+            pipeline: await getDailyCountPipelineStatus(storeNumber),
+        }))
+    );
+    for (const { draft, pipeline } of statuses) {
         if (pipeline.inProgress) inProgress += 1;
         else if (draft?.mmxSentAt) completed += 1;
         else if (pipeline.stage === 'prepared' && pipeline.redVarianceCount > 0) needsReview += 1;

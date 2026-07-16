@@ -362,9 +362,39 @@ async function findStorePickerTrigger(page) {
     return handle.asElement();
 }
 
+async function waitForStoreDropdownClosed(page, options = {}, timeoutMs = 3000) {
+    return pollUntil(
+        () =>
+            page.evaluate(() => {
+                const open = document.querySelector(
+                    '[role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]'
+                );
+                if (!open) return true;
+                const r = open.getBoundingClientRect();
+                return r.width <= 0 || r.height <= 0;
+            }),
+        { timeoutMs, pollMs: resolvePollMs(options), label: 'store dropdown closed' }
+    );
+}
+
 async function pickStoreOptionFromOpenDropdown(page, storeNumber, options = {}) {
     const storePattern = new RegExp(`\\b${storeNumber}\\s*-`, 'i');
     for (let pass = 0; pass < 30; pass += 1) {
+        const clicked = await page.evaluate((regexSource, flags) => {
+            const pattern = new RegExp(regexSource, flags);
+            const selectors = '[role="option"], [role="menuitem"], li, button, a';
+            for (const el of document.querySelectorAll(selectors)) {
+                const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+                if (!pattern.test(text)) continue;
+                const r = el.getBoundingClientRect();
+                if (r.width <= 0 || r.height <= 0) continue;
+                el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                el.click();
+                return true;
+            }
+            return false;
+        }, storePattern.source, storePattern.flags.replace('g', ''));
+        if (clicked) return true;
         if (
             await clickByText(page, ['[role="option"]', '[role="menuitem"]', 'li', 'button', 'a'], storePattern)
         ) {
@@ -380,42 +410,59 @@ async function pickStoreOptionFromOpenDropdown(page, storeNumber, options = {}) 
 async function selectStoreInLifeLenz(page, storeNumber, options = {}) {
     const store = String(storeNumber || '').trim();
     const labelNeedle = `${store} -`;
+    let lastError = null;
 
-    await page.keyboard.press('Escape').catch(() => null);
-    await pollUntil(
-        () =>
-            page.evaluate(() => {
-                const open = document.querySelector(
-                    '[role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]'
-                );
-                if (!open) return true;
-                const r = open.getBoundingClientRect();
-                return r.width <= 0 || r.height <= 0;
-            }),
-        { timeoutMs: 2000, pollMs: resolvePollMs(options), label: 'dropdown closed' }
-    ).catch(() => null);
-
-    const current = await readCurrentStoreTriggerLabel(page);
-    if (current.startsWith(labelNeedle)) return true;
-
-    const trigger = await findStorePickerTrigger(page);
-    if (!trigger) {
-        throw new Error(`Store picker trigger not found (could not select store ${store}).`);
-    }
-
-    await safeClickHandle(page, trigger);
-    if (!(await waitForDropdownOptions(page, options))) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
         await page.keyboard.press('Escape').catch(() => null);
-        throw new Error(`Store dropdown did not open for store ${store}.`);
+        await waitForStoreDropdownClosed(page, options).catch(() => null);
+
+        const current = await readCurrentStoreTriggerLabel(page);
+        if (current.startsWith(labelNeedle)) return true;
+
+        try {
+            const trigger = await findStorePickerTrigger(page);
+            if (!trigger) {
+                throw new Error(`Store picker trigger not found (could not select store ${store}).`);
+            }
+
+            await safeClickHandle(page, trigger);
+            if (!(await waitForDropdownOptions(page, options))) {
+                throw new Error(`Store dropdown did not open for store ${store}.`);
+            }
+
+            if (!(await pickStoreOptionFromOpenDropdown(page, store, options))) {
+                await page.keyboard.press('Escape').catch(() => null);
+                throw new Error(`Store ${store} was not found in the LifeLenz store list.`);
+            }
+
+            await waitForStoreDropdownClosed(page, options, 5000).catch(() => null);
+
+            if (await waitForStoreSelected(page, labelNeedle, STORE_PICKER_TIMEOUT_MS, options)) {
+                return true;
+            }
+
+            lastError = new Error(
+                `Clicked store ${store} in the LifeLenz picker but it did not become active.`
+            );
+            if (attempt < 2) {
+                await new Promise((resolve) => setTimeout(resolve, resolvePollMs(options) * 4));
+                continue;
+            }
+            throw lastError;
+        } catch (err) {
+            lastError = err;
+            const retryable =
+                attempt < 2 &&
+                /did not become active|did not open|picker trigger not found/i.test(err.message || '');
+            if (retryable) {
+                await new Promise((resolve) => setTimeout(resolve, resolvePollMs(options) * 4));
+                continue;
+            }
+            throw err;
+        }
     }
 
-    if (!(await pickStoreOptionFromOpenDropdown(page, store, options))) {
-        await page.keyboard.press('Escape').catch(() => null);
-        throw new Error(`Store ${store} was not found in the LifeLenz store list.`);
-    }
-
-    if (await waitForStoreSelected(page, labelNeedle, STORE_PICKER_TIMEOUT_MS, options)) return true;
-    throw new Error(`Clicked store ${store} in the LifeLenz picker but it did not become active.`);
+    throw lastError || new Error(`Could not select store ${store} in LifeLenz.`);
 }
 
 async function navigateToForecast(page, options = {}) {

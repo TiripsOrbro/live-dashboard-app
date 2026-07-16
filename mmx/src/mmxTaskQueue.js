@@ -1,6 +1,7 @@
 /**
- * Cross-process MMX task queue - MIC (1) > Admin (2) > Scrape (3).
+ * Cross-process MMX task queue — MIC (1) > Admin (2) > Sales scrape (3) > Vendor scrape (4).
  * One browser slot on disk; in-process ref-count for nested MIC/admin holds.
+ * Sales may preempt vendor; vendor never preempts sales.
  */
 const fs = require('fs');
 const path = require('path');
@@ -20,16 +21,20 @@ const ACTIVE_FILE = path.join(DATA_DIR, 'mmx-task-active.json');
 const LOCK_FILE = path.join(DATA_DIR, 'mmx-task-lock');
 const PREEMPT_FILE = path.join(DATA_DIR, 'mmx-preempt-request.json');
 
-const PRIORITY = Object.freeze({ MIC: 1, ADMIN: 2, SCRAPE: 3 });
+const PRIORITY = Object.freeze({ MIC: 1, ADMIN: 2, SCRAPE: 3, VENDOR: 4 });
 
 const STALE_ACTIVE_MS = Number(process.env.MMX_TASK_STALE_MS || 2 * 60 * 60 * 1000);
+const SCRAPE_STALE_ACTIVE_MS = Number(process.env.MMX_SCRAPE_TASK_STALE_MS || 20 * 60 * 1000);
 const POLL_MS = Number(process.env.MMX_TASK_POLL_MS || 500);
 const WAIT_TIMEOUT_MS = Number(process.env.MMX_TASK_WAIT_TIMEOUT_MS || 60 * 60 * 1000);
+/** After this long, higher-priority waiters force-clear a stuck lower-priority active slot. */
+const PREEMPT_FORCE_CLEAR_MS = Number(process.env.MMX_PREEMPT_FORCE_CLEAR_MS || 60 * 1000);
 
 const localHoldCounts = new Map([
     [PRIORITY.MIC, 0],
     [PRIORITY.ADMIN, 0],
     [PRIORITY.SCRAPE, 0],
+    [PRIORITY.VENDOR, 0],
 ]);
 let localSlotMeta = null;
 let lastPreemptHandledAt = 0;
@@ -177,9 +182,16 @@ function isPidAlive(pid) {
     }
 }
 
+function pausesSalesForPriority(priority) {
+    return Number(priority) <= PRIORITY.ADMIN;
+}
+
 function isActiveStale(active) {
     if (!active?.startedAt) return true;
-    return Date.now() - Number(active.startedAt) > STALE_ACTIVE_MS;
+    const type = String(active.type || '').toLowerCase();
+    const isScrape = type.includes('scrape');
+    const maxMs = isScrape ? SCRAPE_STALE_ACTIVE_MS : STALE_ACTIVE_MS;
+    return Date.now() - Number(active.startedAt) > maxMs;
 }
 
 function resetLocalPrioritySlot(reason) {
@@ -357,8 +369,22 @@ function hasBlockingWorkForPriority(priority) {
 }
 
 function requestPreemptLowerPriority(fromPriority, reason) {
-    // Scrape (lowest priority) must not abort its own browser work when acquiring a slot.
-    if (fromPriority >= PRIORITY.SCRAPE) return;
+    // Vendor (lowest) must not abort sales/other scrapes when acquiring a slot.
+    // Sales (SCRAPE) may preempt vendor; MIC/admin may preempt both.
+    if (fromPriority >= PRIORITY.VENDOR) return;
+
+    if (fromPriority === PRIORITY.SCRAPE) {
+        const active = readActiveTask();
+        // Sales only preempts vendor — never abort itself when a new interval tick acquires the slot.
+        if (
+            !active ||
+            Number(active.priority) !== PRIORITY.VENDOR ||
+            !isPidAlive(active.pid) ||
+            isActiveStale(active)
+        ) {
+            return;
+        }
+    }
 
     const payload = {
         priority: fromPriority,
@@ -377,17 +403,39 @@ function clearPreemptIfMatches(priority) {
     }
 }
 
-function shouldAbortForPreempt(localPriority) {
+function getPreemptRequestForLocalPriority(localPriority) {
     clearStalePreemptIfNeeded();
     const req = readPreemptRequest();
-    if (!req || !localPriority) return false;
-    if (Number(req.requestedAt) <= lastPreemptHandledAt) return false;
-    return Number(req.priority) < Number(localPriority);
+    if (!req || !localPriority) return null;
+    if (Number(req.priority) < Number(localPriority)) return req;
+    return null;
+}
+
+function shouldAbortForPreempt(localPriority) {
+    return Boolean(getPreemptRequestForLocalPriority(localPriority));
 }
 
 function markPreemptHandled() {
     const req = readPreemptRequest();
     if (req?.requestedAt) lastPreemptHandledAt = Number(req.requestedAt);
+}
+
+function forceClearActiveTaskForPreempt(active, waitingLabel) {
+    const label = active?.label || active?.type || 'unknown';
+    const priority = Number(active?.priority);
+    console.warn(
+        `[MMX Queue] Force-releasing blocked slot (P${priority} ${label}) — ${waitingLabel || 'higher-priority work'} waiting`
+    );
+    if (Number(active?.pid) === process.pid && Number.isFinite(priority)) {
+        localHoldCounts.set(priority, 0);
+        if (localSlotMeta) {
+            releaseMmxResource(localSlotMeta.label, { pausesSales: pausesSalesForPriority(priority) });
+            localSlotMeta = null;
+        }
+        abortCompetingMmxWork(waitingLabel || 'MMX queue');
+    }
+    writeActiveTask(null);
+    releaseLockFile();
 }
 
 function getLocalSlotPriority() {
@@ -397,6 +445,7 @@ function getLocalSlotPriority() {
 async function waitForQueueTurn(taskId, priority) {
     const started = Date.now();
     let lastWaitLogAt = 0;
+    let preemptWaitStartedAt = 0;
     while (true) {
         if (Date.now() - started > WAIT_TIMEOUT_MS) {
             removeTaskFromQueue(taskId);
@@ -428,10 +477,20 @@ async function waitForQueueTurn(taskId, priority) {
 
         if (active && isPidAlive(active.pid) && !isActiveStale(active)) {
             if (Number(active.priority) > priority) {
+                if (!preemptWaitStartedAt) preemptWaitStartedAt = Date.now();
                 requestPreemptLowerPriority(priority, head.label || head.type || 'MMX queue');
+                if (
+                    PREEMPT_FORCE_CLEAR_MS > 0 &&
+                    Date.now() - preemptWaitStartedAt >= PREEMPT_FORCE_CLEAR_MS
+                ) {
+                    forceClearActiveTaskForPreempt(active, head.label || head.type || 'MMX queue');
+                    preemptWaitStartedAt = 0;
+                    continue;
+                }
                 await sleep(POLL_MS);
                 continue;
             }
+            preemptWaitStartedAt = 0;
             if (Number(active.priority) < priority || Number(active.pid) !== process.pid) {
                 await sleep(POLL_MS);
                 continue;
@@ -482,7 +541,8 @@ async function acquirePrioritySlot(priority, { type, label }) {
 
     await waitForQueueTurn(taskId, priority);
     incrementLocalHold(priority);
-    acquireMmxResource(meta.label);
+    const pausesSales = pausesSalesForPriority(priority);
+    acquireMmxResource(meta.label, { pausesSales });
     if (priority === PRIORITY.MIC) refreshScrapePauseTimeout();
     return { nested: false, taskId, position };
 }
@@ -494,16 +554,27 @@ async function releasePrioritySlot(priority, label) {
         return;
     }
 
-    releaseMmxResource(label);
-    writeActiveTask(null);
-    releaseLockFile();
+    releaseMmxResource(label, { pausesSales: pausesSalesForPriority(priority) });
+    if (localSlotMeta) {
+        writeActiveTask(null);
+        releaseLockFile();
+        localSlotMeta = null;
+    }
     clearPreemptIfMatches(priority);
-    localSlotMeta = null;
 }
 
 async function runWithPriority(priority, { type, label, run }) {
     await acquirePrioritySlot(priority, { type, label });
     try {
+        // Preempt may have tripped the cooperative abort flag during acquire — clear before work.
+        if (priority <= PRIORITY.SCRAPE) {
+            try {
+                const { resetSalesScrapeAbort } = require('../../dashboard/src/salesScrapeAbort');
+                resetSalesScrapeAbort();
+            } catch {
+                /* ignore */
+            }
+        }
         return await run();
     } finally {
         await releasePrioritySlot(priority, label);
@@ -514,10 +585,9 @@ function startPreemptPoller() {
     setInterval(() => {
         const localPriority = getLocalSlotPriority();
         if (!localPriority || getLocalHoldCount(localPriority) <= 0) return;
-        if (!shouldAbortForPreempt(localPriority)) return;
-        const req = readPreemptRequest();
-        markPreemptHandled();
-        abortCompetingMmxWork(req?.reason || 'higher-priority MMX work');
+        const req = getPreemptRequestForLocalPriority(localPriority);
+        if (!req) return;
+        abortCompetingMmxWork(req.reason || 'higher-priority MMX work');
     }, POLL_MS).unref?.();
 }
 
@@ -542,6 +612,7 @@ module.exports = {
     clearStaleActiveIfNeeded,
     clearStalePreemptIfNeeded,
     getLocalSlotPriority,
+    getPreemptRequestForLocalPriority,
     shouldAbortForPreempt,
     markPreemptHandled,
     sweepOrphanedTmpFiles,

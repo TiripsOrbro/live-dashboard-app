@@ -1480,6 +1480,7 @@
             slot.error = null;
         } else if (payload.type === 'hour-verifying') {
             slot.status = 'verifying';
+            slot.error = null;
         } else if (payload.type === 'hour-confirmed') {
             slot.status = 'confirmed';
             slot.readValue = payload.read ?? slot.readValue;
@@ -1721,7 +1722,15 @@
         } else if (payload.type === 'day-verifying') {
             state.activeDate = payload.date;
             const day = findProgressDay(store, payload.date);
-            if (day) day.status = 'verifying';
+            if (day) {
+                day.status = 'verifying';
+                for (const slot of day.hourly || []) {
+                    if (slot.status === 'failed' || slot.status === 'entering') {
+                        slot.status = 'pending';
+                        slot.error = null;
+                    }
+                }
+            }
         } else if (payload.type === 'hour-entering' || payload.type === 'hour-verifying' || payload.type === 'hour-confirmed' || payload.type === 'hour-failed') {
             state.activeDate = payload.date;
             applyHourProgress(findProgressDay(store, payload.date), payload);
@@ -2445,6 +2454,11 @@
                 if (!lifelenzSkipped && llRow && !llRow.ok) {
                     errors.push(`LifeLenz: ${llRow.error || 'Failed'}`);
                 }
+                const weekStart = (payload?.targetWeeks || previewData?.targetWeeks || [])[0] || '';
+                const storeFailed = (mmxRow && !mmxRow.ok) || (!lifelenzSkipped && llRow && !llRow.ok);
+                const manualBtn = storeFailed
+                    ? `<p class="admin-forecast-progress-manual-store-action"><button type="button" class="mic-settings-btn" data-manual-store="${escapeHtml(String(storeNumber))}" data-manual-week="${escapeHtml(weekStart)}">Manual entry guide - ${escapeHtml(String(storeNumber))}</button></p>`
+                    : '';
 
                 return `<section class="admin-forecast-progress-done-store">
                     <h3>${escapeHtml(storeNumber)}${storeName !== storeNumber ? ` · ${escapeHtml(storeName)}` : ''}</h3>
@@ -2453,6 +2467,7 @@
                             ? `<p class="admin-modal-error admin-forecast-progress-done-error">${escapeHtml(errors.join(' · '))}</p>`
                             : ''
                     }
+                    ${manualBtn}
                     <div class="admin-forecast-progress-done-table-wrap">
                         <table class="admin-table admin-forecast-progress-done-table">
                             <thead>
@@ -2521,20 +2536,9 @@
             state,
             payload
         );
-
-        const manualEl = root.querySelector('#admin-forecast-progress-manual-actions');
-        const failedStores = new Set();
-        for (const row of mmxResults) if (!row.ok) failedStores.add(String(row.storeNumber));
-        for (const row of lifelenzResults) if (!row.ok) failedStores.add(String(row.storeNumber));
-        if (manualEl && failedStores.size) {
-            manualEl.hidden = false;
-            manualEl.innerHTML = [...failedStores]
-                .map(
-                    (store) =>
-                        `<button type="button" class="mic-settings-btn" data-manual-store="${escapeHtml(store)}" data-manual-week="${escapeHtml(weekStart || '')}">Manual entry guide - ${escapeHtml(store)}</button>`
-                )
-                .join(' ');
-            manualEl.querySelectorAll('[data-manual-store]').forEach((btn) => {
+        root.querySelector('#admin-forecast-progress-done-results')
+            ?.querySelectorAll('[data-manual-store]')
+            .forEach((btn) => {
                 btn.addEventListener('click', () => {
                     void openManualEntryGuide(
                         btn.getAttribute('data-manual-store'),
@@ -2542,7 +2546,9 @@
                     );
                 });
             });
-        } else if (manualEl) {
+
+        const manualEl = root.querySelector('#admin-forecast-progress-manual-actions');
+        if (manualEl) {
             manualEl.hidden = true;
             manualEl.innerHTML = '';
         }

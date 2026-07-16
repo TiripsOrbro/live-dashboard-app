@@ -199,9 +199,22 @@ let activePreloadSession = null;
 
 const OVERVIEW_SESSION_KEYS = [
     'mic-overview-area',
+    'mic-overview-show-scope-nav',
     'admin-view-as-store-enabled',
     'admin-view-as-store',
 ];
+const MIC_LAST_STORE_KEY = 'mic-last-store';
+const MIC_OVERVIEW_SCOPE_NAV_KEY = 'mic-overview-show-scope-nav';
+
+function applyOverviewScopeNavFromLogin(data) {
+    try {
+        const showScopeNav = Boolean(data?.showScopeNav ?? data?.layoutCapabilities?.showScopeNav);
+        sessionStorage.setItem(MIC_OVERVIEW_SCOPE_NAV_KEY, showScopeNav ? '1' : '0');
+        if (showScopeNav) sessionStorage.removeItem(MIC_LAST_STORE_KEY);
+    } catch {
+        /* ignore */
+    }
+}
 const AREA_PICKER_PENDING_KEY = 'mic-area-picker-pending';
 
 function markAreaPickerPendingForLogin() {
@@ -509,6 +522,7 @@ async function submitLogin() {
             for (const key of OVERVIEW_SESSION_KEYS) {
                 sessionStorage.removeItem(key);
             }
+            applyOverviewScopeNavFromLogin(data);
             markAreaPickerPendingForLogin();
             sessionStorage.setItem(
                 'dashboard-entry',

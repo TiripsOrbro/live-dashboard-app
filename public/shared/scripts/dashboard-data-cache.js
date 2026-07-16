@@ -5,6 +5,7 @@
 (function dashboardDataCacheModule(global) {
     const VERSION = 1;
     const TIME_ZONE = 'Australia/Melbourne';
+    const LAST_ADMIN_OVERVIEW_KEY = 'dashboard-last-admin-overview-key';
 
     function storageKey(kind, store) {
         const s = String(store || 'default').toLowerCase();
@@ -92,6 +93,26 @@
         return Math.round((Date.now() - entry.savedAt) / 1000);
     }
 
+    function rememberAdminOverviewKey(scopeKey) {
+        const key = String(scopeKey || '').trim();
+        if (!key) return;
+        try {
+            sessionStorage.setItem(LAST_ADMIN_OVERVIEW_KEY, key);
+        } catch {
+            /* ignore */
+        }
+    }
+
+    function readAdminOverviewByLastKey() {
+        try {
+            const key = sessionStorage.getItem(LAST_ADMIN_OVERVIEW_KEY);
+            if (!key) return null;
+            return read('overview-admin', key);
+        } catch {
+            return null;
+        }
+    }
+
     global.DashboardDataCache = {
         readSales: (store) => read('sales', store),
         writeSales: (store, data) => {
@@ -105,6 +126,8 @@
         writeAdminOverview: (scopeKey, data) => {
             if (hasMeaningfulAdminOverview(data)) write('overview-admin', scopeKey, data);
         },
+        rememberAdminOverviewKey,
+        readAdminOverviewByLastKey,
         hasMeaningfulSalesSlice,
         hasMeaningfulMicOverview,
         hasMeaningfulAdminOverview,

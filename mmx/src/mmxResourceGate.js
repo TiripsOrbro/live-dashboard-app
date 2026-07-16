@@ -6,6 +6,7 @@
  */
 
 let holdCount = 0;
+let salesPauseHoldCount = 0;
 let lightweightHoldCount = 0;
 const idleWaiters = [];
 const abortHandlers = new Set();
@@ -58,12 +59,15 @@ function refreshScrapePauseTimeout() {
     schedulePauseTimeout();
 }
 
-function acquireMmxResource(reason) {
+function acquireMmxResource(reason, { pausesSales = true } = {}) {
     const wasIdle = holdCount === 0;
     holdCount++;
+    if (pausesSales) salesPauseHoldCount++;
     if (wasIdle && reason) {
-        if (mmxPauseScrapeForPriority()) {
+        if (pausesSales && mmxPauseScrapeForPriority()) {
             console.log(`[MMX Resource] Pausing sales scrape - ${reason}`);
+        } else if (!pausesSales) {
+            console.log(`[MMX Resource] MMX browser slot in use - ${reason}`);
         } else {
             console.log(`[MMX Resource] Heavy MMX work started - ${reason}`);
         }
@@ -73,10 +77,11 @@ function acquireMmxResource(reason) {
     }
 }
 
-function releaseMmxResource(reason) {
+function releaseMmxResource(reason, { pausesSales = true } = {}) {
     clearPauseTimeout();
     if (holdCount <= 0) return;
     holdCount--;
+    if (pausesSales && salesPauseHoldCount > 0) salesPauseHoldCount--;
     if (holdCount === 0 && lightweightHoldCount === 0) {
         if (mmxPauseScrapeForPriority()) {
             console.log(
@@ -118,6 +123,11 @@ function isMmxResourceBusy() {
     return holdCount > 0;
 }
 
+/** True when MIC/admin work is holding the gate (vendor scrape alone does not block sales). */
+function isSalesScrapeBlocked() {
+    return salesPauseHoldCount > 0;
+}
+
 function isLightweightMmxResourceBusy() {
     return lightweightHoldCount > 0;
 }
@@ -138,6 +148,7 @@ function forceReleaseAllMmxResourceHolds(reason) {
     const light = lightweightHoldCount;
     if (heavy <= 0 && light <= 0) return false;
     holdCount = 0;
+    salesPauseHoldCount = 0;
     lightweightHoldCount = 0;
     console.warn(
         `[MMX Resource] Force-released ${heavy} heavy + ${light} lightweight hold(s)${
@@ -158,6 +169,7 @@ module.exports = {
     releaseLightweightMmxResource,
     refreshScrapePauseTimeout,
     isMmxResourceBusy,
+    isSalesScrapeBlocked,
     isLightweightMmxResourceBusy,
     isAnyMmxResourceBusy,
     waitUntilMmxResourceIdle,

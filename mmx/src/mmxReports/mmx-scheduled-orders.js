@@ -6,7 +6,7 @@ const { GOTO_OPTS } = require('./mmx-browser');
 const { withPageContextRetry } = require('./mmx-context-retry');
 const { setReportListDate } = require('./mmx-rad-date-picker');
 const { resolveReportDate } = require('./util-dates');
-const { waitForAspPostback } = require('./mmx-postback');
+const { waitForAspPostback, waitForDocumentStable } = require('./mmx-postback');
 const { waitForScheduledOrdersTableReady } = require('./mmx-order-waits');
 const log = require('./util-logging');
 
@@ -15,7 +15,7 @@ const DEFAULT_URL = 'https://tacobellau.macromatix.net/mms_stores_scheduledorder
 const SCHEDULED_TABLE_WAIT_MS = Number(process.env.MMX_SCHEDULED_TABLE_WAIT_MS || 12000);
 
 async function waitForAspNetSettle(page) {
-    await waitForAspPostback(page, { timeoutMs: 12000 });
+    await waitForDocumentStable(page, { timeoutMs: 15000, quietMs: 400 });
 }
 
 async function waitForScheduledOrdersTable(page, timeoutMs = SCHEDULED_TABLE_WAIT_MS) {
@@ -24,24 +24,23 @@ async function waitForScheduledOrdersTable(page, timeoutMs = SCHEDULED_TABLE_WAI
 
 async function isListDateAlready(page, display) {
     const want = String(display || '').trim().toLowerCase();
-    return withPageContextRetry(page, 'scheduled orders list date check', async () =>
-        page.evaluate((target) => {
-            const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
-            for (const input of document.querySelectorAll('input[type="text"], input:not([type])')) {
-                const ctx = ((input.closest('tr, td, div, table') || input.parentElement)?.innerText || '').toLowerCase();
-                if (!ctx.includes('date') || ctx.includes('delivery') || ctx.includes('end date')) continue;
-                const v = norm(input.value);
-                if (v.includes(target) || v.replace(/-/g, ' ').includes(target.replace(/-/g, ' '))) {
-                    return true;
-                }
+    await waitForDocumentStable(page, { timeoutMs: 15000, quietMs: 400 });
+    return page.evaluate((target) => {
+        const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        for (const input of document.querySelectorAll('input[type="text"], input:not([type])')) {
+            const ctx = ((input.closest('tr, td, div, table') || input.parentElement)?.innerText || '').toLowerCase();
+            if (!ctx.includes('date') || ctx.includes('delivery') || ctx.includes('end date')) continue;
+            const v = norm(input.value);
+            if (v.includes(target) || v.replace(/-/g, ' ').includes(target.replace(/-/g, ' '))) {
+                return true;
             }
-            return false;
-        }, want)
-    );
+        }
+        return false;
+    }, want);
 }
 
 async function waitAfterListDateChange(page) {
-    await waitForAspPostback(page, { timeoutMs: 10000 });
+    await waitForAspPostback(page, { timeoutMs: 12000, quietMs: 500 });
     await waitForScheduledOrdersTable(page, SCHEDULED_TABLE_WAIT_MS);
 }
 

@@ -1120,16 +1120,19 @@
         }
     }
 
-    async function loadOverview() {
+    async function loadOverview(prefetched) {
         if (!canMaintainMicOverview()) return;
         if (overviewLoadInFlight) return;
         overviewLoadInFlight = true;
         try {
-            const res = await fetch('/api/overview', { credentials: 'same-origin' });
-            const data = await res.json();
-            if (!res.ok || !data.success) {
-                app.textContent = data.error || 'Could not load overview.';
-                return;
+            let data = prefetched && prefetched.success ? prefetched : null;
+            if (!data) {
+                const res = await fetch('/api/overview', { credentials: 'same-origin' });
+                data = await res.json();
+                if (!res.ok || !data.success) {
+                    app.textContent = data.error || 'Could not load overview.';
+                    return;
+                }
             }
             if (data.salesUpdatedAt) lastSalesUpdatedAt = data.salesUpdatedAt;
             updateSalesScrapeHint(data.salesScrapeStatus || { salesUpdatedAt: data.salesUpdatedAt });
@@ -1189,7 +1192,7 @@
         overviewLoadInFlight = false;
     }
 
-    async function start(profile, appEl, promoBannerHtml) {
+    async function start(profile, appEl, promoBannerHtml, options = {}) {
         meProfile = profile;
         app = appEl;
         clearIntervals();
@@ -1224,7 +1227,11 @@
         }
 
         void global.CoreCountdown?.init?.();
-        void loadOverview();
+        // Parallel: overview (or use prefetch) + DFSC status.
+        void Promise.all([
+            loadOverview(options.prefetchedOverview || null),
+            loadDfscStatus(),
+        ]);
 
         intervals.push(
             global.setInterval(() => {
@@ -1232,7 +1239,7 @@
                 if (clock) clock.textContent = formatTime(new Date());
             }, 1000)
         );
-        intervals.push(global.setInterval(loadOverview, REFRESH_MS));
+        intervals.push(global.setInterval(() => loadOverview(), REFRESH_MS));
         intervals.push(global.setInterval(checkForScrapeUpdate, SCRAPE_POLL_MS));
         global.addEventListener('resize', () => {
             syncMicLayoutMode();

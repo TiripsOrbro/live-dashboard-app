@@ -1,4 +1,4 @@
-﻿const { isMmxResourceBusy } = require('../../mmx/src/mmxResourceGate');
+﻿const { isMmxResourceBusy, mmxPauseScrapeForPriority } = require('../../mmx/src/mmxResourceGate');
 const {
     hasPendingHigherPriority,
     hasBlockingWorkForPriority,
@@ -21,12 +21,21 @@ function startSalesScrapeScheduler(handlers) {
 
     let intervalId = null;
     let bootTimeoutId = null;
+    let lastDeferLogAt = 0;
 
     const shouldSkipScrapeTick = () => {
-        if (isMmxResourceBusy()) return true;
-        if (hasPendingHigherPriority(PRIORITY.SCRAPE)) return true;
-        if (hasBlockingWorkForPriority(PRIORITY.SCRAPE)) return true;
-        return false;
+        if (!mmxPauseScrapeForPriority()) return false;
+        let reason = '';
+        if (isMmxResourceBusy()) reason = 'MMX resource busy';
+        else if (hasPendingHigherPriority(PRIORITY.SCRAPE)) reason = 'higher-priority MMX queue work pending';
+        else if (hasBlockingWorkForPriority(PRIORITY.SCRAPE)) reason = 'MMX queue slot blocked';
+        if (!reason) return false;
+        const now = Date.now();
+        if (now - lastDeferLogAt >= 5 * 60 * 1000) {
+            console.log(`[Dashboard] Sales scrape deferred — ${reason}`);
+            lastDeferLogAt = now;
+        }
+        return true;
     };
 
     const intervalTick = async () => {
@@ -56,7 +65,8 @@ function startSalesScrapeScheduler(handlers) {
     }
 
     console.log(
-        `[Dashboard] Sales scrape scheduler - full market every ${INTERVAL_MS / 1000}s during store active hours (${TIME_ZONE})`
+        `[Dashboard] Sales scrape scheduler - full market every ${INTERVAL_MS / 1000}s during store active hours (${TIME_ZONE})` +
+            (mmxPauseScrapeForPriority() ? '' : ' (parallel with stock count / orders)')
     );
 
     return {

@@ -11,6 +11,7 @@ const {
     releaseMmxResource,
     refreshScrapePauseTimeout,
     abortCompetingMmxWork,
+    forceReleaseAllMmxResourceHolds,
 } = require('./mmxResourceGate');
 
 const DATA_DIR = paths.dashboard.data;
@@ -181,20 +182,53 @@ function isActiveStale(active) {
     return Date.now() - Number(active.startedAt) > STALE_ACTIVE_MS;
 }
 
+function resetLocalPrioritySlot(reason) {
+    for (const priority of localHoldCounts.keys()) {
+        localHoldCounts.set(priority, 0);
+    }
+    localSlotMeta = null;
+    writePreemptRequest(null);
+    forceReleaseAllMmxResourceHolds(reason);
+}
+
 function clearStaleActiveIfNeeded() {
     const active = readActiveTask();
-    if (!active) return null;
+    if (!active) {
+        clearStalePreemptIfNeeded();
+        return null;
+    }
     if (isPidAlive(active.pid) && !isActiveStale(active)) return active;
-    console.warn(
-        `[MMX Queue] Clearing stale active task (${active.label || active.type || 'unknown'}, pid ${active.pid})`
-    );
+    const label = active.label || active.type || 'unknown';
+    console.warn(`[MMX Queue] Clearing stale active task (${label}, pid ${active.pid})`);
+    if (Number(active.pid) === process.pid) {
+        resetLocalPrioritySlot(`stale active task cleared: ${label}`);
+        abortCompetingMmxWork(`stale active task cleared: ${label}`);
+    }
     writeActiveTask(null);
     try {
         if (fs.existsSync(LOCK_FILE)) fs.unlinkSync(LOCK_FILE);
     } catch {
         /* ignore */
     }
+    clearStalePreemptIfNeeded();
     return null;
+}
+
+/** Drop preempt requests left by a process that exited before clearing the file. */
+function clearStalePreemptIfNeeded() {
+    const req = readPreemptRequest();
+    if (!req || typeof req !== 'object') return false;
+    const requester = Number(req.requestedByPid);
+    if (Number.isFinite(requester) && requester > 0 && isPidAlive(requester)) {
+        return false;
+    }
+    console.warn(
+        `[MMX Queue] Clearing stale preempt request (${req.reason || 'unknown'}${
+            Number.isFinite(requester) && requester > 0 ? `, pid ${requester}` : ''
+        })`
+    );
+    writePreemptRequest(null);
+    return true;
 }
 
 /** Drop pending rows whose owner process exited without acquiring or releasing the slot. */
@@ -293,6 +327,7 @@ function removeTaskFromQueue(taskId) {
 
 function getQueueSnapshot() {
     clearStaleActiveIfNeeded();
+    clearStalePreemptIfNeeded();
     purgeStalePendingTasks();
     return {
         active: readActiveTask(),
@@ -343,6 +378,7 @@ function clearPreemptIfMatches(priority) {
 }
 
 function shouldAbortForPreempt(localPriority) {
+    clearStalePreemptIfNeeded();
     const req = readPreemptRequest();
     if (!req || !localPriority) return false;
     if (Number(req.requestedAt) <= lastPreemptHandledAt) return false;
@@ -487,6 +523,8 @@ function startPreemptPoller() {
 
 startPreemptPoller();
 sweepOrphanedTmpFiles();
+clearStaleActiveIfNeeded();
+clearStalePreemptIfNeeded();
 
 module.exports = {
     PRIORITY,
@@ -502,6 +540,7 @@ module.exports = {
     getQueueSnapshot,
     purgeStalePendingTasks,
     clearStaleActiveIfNeeded,
+    clearStalePreemptIfNeeded,
     getLocalSlotPriority,
     shouldAbortForPreempt,
     markPreemptHandled,

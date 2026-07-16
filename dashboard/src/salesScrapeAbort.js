@@ -1,4 +1,4 @@
-﻿/** Cooperative abort for dashboard sales scrape when stock count / orders take MMX. */
+﻿/** Cooperative abort for dashboard sales scrape when higher-priority MMX work takes the browser. */
 
 const { closeBrowserQuietly } = require('../../mmx/src/browserLifecycle');
 
@@ -7,21 +7,34 @@ class MmxWorkAbortedError extends Error {
         super(reason);
         this.name = 'MmxWorkAbortedError';
         this.aborted = true;
+        this.abortReason = reason;
     }
 }
 
 let abortRequested = false;
+let abortReason = '';
 let activeBrowser = null;
 let abortCloseTimer = null;
 
 const ABORT_FORCE_CLOSE_MS = Number(process.env.SALES_SCRAPE_ABORT_CLOSE_MS || 2500);
+const DEFAULT_ABORT_REASON = 'higher-priority MMX work';
 
 function isSalesScrapeAbortRequested() {
     return abortRequested;
 }
 
+function getSalesScrapeAbortReason() {
+    return abortReason || DEFAULT_ABORT_REASON;
+}
+
+function salesScrapeAbortError(kind = 'Sales scrape') {
+    const label = String(kind || 'Sales scrape').trim() || 'Sales scrape';
+    return new MmxWorkAbortedError(`${label} aborted - ${getSalesScrapeAbortReason()}`);
+}
+
 function resetSalesScrapeAbort() {
     abortRequested = false;
+    abortReason = '';
     if (abortCloseTimer) {
         clearTimeout(abortCloseTimer);
         abortCloseTimer = null;
@@ -37,9 +50,12 @@ function clearSalesScrapeBrowser(browser) {
 }
 
 function requestSalesScrapeAbort(reason) {
+    const { mmxPauseScrapeForPriority } = require('../../mmx/src/mmxResourceGate');
+    if (!mmxPauseScrapeForPriority()) return false;
     if (abortRequested) return true;
     abortRequested = true;
-    console.log(`[MMX Resource] Aborting in-flight sales scrape - ${reason}`);
+    abortReason = String(reason || DEFAULT_ABORT_REASON).trim() || DEFAULT_ABORT_REASON;
+    console.log(`[MMX Resource] Aborting in-flight sales scrape - ${abortReason}`);
     // Cooperative abort: scrape checks the flag and closes its own browser. A delayed
     // force-close avoids racing workers mid-page.evaluate (immediate close caused retry storms).
     if (abortCloseTimer) clearTimeout(abortCloseTimer);
@@ -48,14 +64,14 @@ function requestSalesScrapeAbort(reason) {
         const browser = activeBrowser;
         if (!browser) return;
         activeBrowser = null;
-        closeBrowserQuietly(browser, `sales-scrape-abort:${reason}`).catch(() => {});
+        closeBrowserQuietly(browser, `sales-scrape-abort:${abortReason}`).catch(() => {});
     }, ABORT_FORCE_CLOSE_MS);
     return true;
 }
 
-function throwIfSalesScrapeAborted() {
+function throwIfSalesScrapeAborted(kind = 'Sales scrape') {
     if (abortRequested) {
-        throw new MmxWorkAbortedError('Sales scrape aborted - stock count / orders in progress');
+        throw salesScrapeAbortError(kind);
     }
 }
 
@@ -65,6 +81,8 @@ registerMmxAbortHandler(requestSalesScrapeAbort);
 module.exports = {
     MmxWorkAbortedError,
     isSalesScrapeAbortRequested,
+    getSalesScrapeAbortReason,
+    salesScrapeAbortError,
     resetSalesScrapeAbort,
     registerSalesScrapeBrowser,
     clearSalesScrapeBrowser,

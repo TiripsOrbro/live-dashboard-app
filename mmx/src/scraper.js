@@ -15,4 +15,16 @@ async function scrapeData(options = {}) {
     };
 }
 
+async function scrapeVendorsData(options = {}) {
+    const mm = await scrapeMacromatix.scrapeMacromatixVendorsOnly(options);
+    return {
+        success: true,
+        message: 'Macromatix vendors',
+        timestamp: mm.timestamp,
+        stores: Array.isArray(mm.stores) ? mm.stores : [],
+        scrapeSkipped: Boolean(mm.scrapeSkipped),
+    };
+}
+
 module.exports = scrapeData;
+module.exports.scrapeVendorsData = scrapeVendorsData;

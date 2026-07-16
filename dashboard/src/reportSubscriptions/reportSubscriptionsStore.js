@@ -265,12 +265,12 @@ function setSubscriptionEnabled(id, enabled, updatedBy = null) {
     return row;
 }
 
-function listEnabledSubscriptionsDue(now = new Date()) {
+function listEnabledSubscriptionsDue(now = new Date(), { force = false } = {}) {
     const today = melbourneTodayIso();
     const instant = now instanceof Date ? now : new Date(now);
     return listSubscriptions().filter((sub) => {
         if (!sub.enabled) return false;
-        if (sub.lastSentDate === today) return false;
+        if (!force && sub.lastSentDate === today) return false;
         const frequency = String(sub.frequency || 'daily').trim().toLowerCase();
         if (frequency === 'weekly') {
             const dayOfWeek = localDayOfWeekInTimeZone(instant, TIME_ZONE);
@@ -279,6 +279,7 @@ function listEnabledSubscriptionsDue(now = new Date()) {
                 : 1;
             if (dayOfWeek !== scheduledDay) return false;
         }
+        if (force) return true;
         const hour = localHourInTimeZone(instant, TIME_ZONE);
         return hour >= Number(sub.scheduleHour ?? DEFAULT_SCHEDULE_HOUR);
     });

@@ -77,7 +77,7 @@ npm run win:start         # local Windows PM2 (see [Windows setup](#windows-setu
 # Or remote Linux EliteDesk: npm run server:deploy
 ```
 
-Tuning is env-driven (`SCRAPER_CONCURRENCY`, `SCRAPE_FAST_INTERVAL_SECONDS`, `PM2_DASHBOARD_MAX_MEMORY`) — no separate app code per branch.
+Tuning is env-driven (`SCRAPER_CONCURRENCY`, `SCRAPE_FAST_INTERVAL_SECONDS`, `VENDOR_SCRAPE_INTERVAL_MINUTES`, `SCRAPER_PERSISTENT_SESSIONS`, `PM2_DASHBOARD_MAX_MEMORY`) — no separate app code per branch.
 
 ## Desktop tray app (Host / Client)
 
@@ -164,8 +164,12 @@ SALES_CACHE_SECONDS=300
 SALES_REFRESH_SECONDS=240
 # Keep today's sales on screen for this many hours after close (default 2).
 SCRAPE_POST_CLOSE_RETAIN_HOURS=2
-# Full cycle = login + every store's labour + orders. ~1 min/store; allow plenty on a slow Pi.
+# Full cycle = login + every store's labour page. ~1 min/store cold; faster with persistent sessions.
 SCRAPE_TIMEOUT_MS=900000
+# Pending vendors (Scheduled Orders) run on a separate timer (default 15 min).
+VENDOR_SCRAPE_INTERVAL_MINUTES=15
+# Keep Macromatix logged in between sales ticks (Windows 16GB only — leave 0 on Pi).
+SCRAPER_PERSISTENT_SESSIONS=0
 CONFIRMED_EMPTY_ORDER_CHECKS=2
 
 # Multi-store: the stores to scrape/show and their hours live in `.storelist` (see "Multiple stores" below).
@@ -456,7 +460,9 @@ pm2 start ecosystem.config.cjs
 pm2 save
 ```
 
-Windows defaults in `.env.server16gb.example`: `SCRAPER_CONCURRENCY=12`, `SCRAPE_BATCH_SIZE=12`, `PM2_DASHBOARD_MAX_MEMORY=8G`, `SCRAPE_FAST_INTERVAL_SECONDS=60`.
+Windows defaults in `.env.server16gb.example`: `SCRAPER_CONCURRENCY=12`, `SCRAPE_BATCH_SIZE=12`, `PM2_DASHBOARD_MAX_MEMORY=8G`, `SCRAPE_FAST_INTERVAL_SECONDS=60`, `VENDOR_SCRAPE_INTERVAL_MINUTES=15`, `SCRAPER_PERSISTENT_SESSIONS=1`.
+
+Sales ticks refresh Labour Scheduler only; pending vendors are scraped every 15 minutes on their own schedule. With persistent sessions enabled, Chromium stays logged in per store during trading hours and re-logins if the session expires.
 
 Useful local commands:
 

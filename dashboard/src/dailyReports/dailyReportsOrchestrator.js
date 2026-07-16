@@ -18,6 +18,7 @@ const {
     melbourneDateKey,
     hasCompletedDailyRun,
     markDailyRunComplete,
+    clearDailyRun,
     TIME_ZONE,
 } = require('./dailyReportsRunState');
 const {
@@ -102,7 +103,7 @@ async function runStockJob(storeNumber, deps) {
     const store = String(storeNumber || '').trim();
     const timeZone = storeTimeZone(store, deps.getStoreConfig);
     const todayYmd = ymdInTimeZone(new Date(), timeZone);
-    if (getStockLastRun(store, timeZone) === todayYmd) {
+    if (!deps.force && getStockLastRun(store, timeZone) === todayYmd) {
         return { skipped: true, reason: 'already-ran-today' };
     }
 
@@ -242,7 +243,7 @@ function subscriptionFailureLabel(sub) {
 
 async function runDailyReportSubscriptions(runDateKey, failuresByStore, options = {}) {
     if (options.subscriptionsEnabled?.() === false) return [];
-    const due = listEnabledSubscriptionsDue(new Date());
+    const due = listEnabledSubscriptionsDue(new Date(), { force: Boolean(options.force) });
     const results = [];
     for (const sub of due) {
         const label = `${reportTypeLabel(sub.reportType)} — ${sub.scopeType} ${sub.scopeId}`;
@@ -344,7 +345,10 @@ async function runDailyReportsOrchestrator(deps) {
 
     summary.stores = storeSummaries;
 
-    summary.subscriptions = await runDailyReportSubscriptions(runDateKey, failuresByStore, deps);
+    summary.subscriptions = await runDailyReportSubscriptions(runDateKey, failuresByStore, {
+        ...deps,
+        force: Boolean(deps.force),
+    });
 
     try {
         deps.purgeStockResults?.(runDateKey);
@@ -380,7 +384,8 @@ async function maybeRunDailyReportsOrchestrator(deps) {
     const now = new Date();
     const runDateKey = melbourneDateKey(now);
     if (hasCompletedDailyRun(runDateKey)) return null;
-    if (localHourInTimeZone(now, TIME_ZONE) < scheduleHour()) return null;
+    // Only during the scheduled hour — not any time after (avoids mid-day restart catch-up).
+    if (localHourInTimeZone(now, TIME_ZONE) !== scheduleHour()) return null;
 
     deps.setRunning(true);
     try {
@@ -394,9 +399,43 @@ async function maybeRunDailyReportsOrchestrator(deps) {
     }
 }
 
+/**
+ * Manual / tray re-run: ignore schedule hour and today's completed lock.
+ * Re-runs stock + forecast + subscriptions (subscriptions ignore lastSentDate).
+ */
+async function forceRunDailyReportsOrchestrator(deps) {
+    if (deps.isEnabled && !deps.isEnabled()) {
+        const err = new Error('Daily reports orchestrator is disabled');
+        err.code = 'DISABLED';
+        throw err;
+    }
+    if (deps.isRunning?.()) {
+        const err = new Error('Daily reports are already running');
+        err.code = 'ALREADY_RUNNING';
+        throw err;
+    }
+
+    const runDateKey = melbourneDateKey();
+    clearDailyRun(runDateKey);
+    const forceDeps = { ...deps, force: true };
+
+    deps.setRunning(true);
+    try {
+        console.info(`[DailyReports] Force re-run started for ${runDateKey}`);
+        return await runWithPriority(PRIORITY.ADMIN, {
+            type: 'daily-reports-orchestrator',
+            label: `daily reports force (${runDateKey})`,
+            run: () => runDailyReportsOrchestrator(forceDeps),
+        });
+    } finally {
+        deps.setRunning(false);
+    }
+}
+
 module.exports = {
     runDailyReportsOrchestrator,
     maybeRunDailyReportsOrchestrator,
+    forceRunDailyReportsOrchestrator,
     runWithRetries,
     buildStorePlan,
     scheduleHour,

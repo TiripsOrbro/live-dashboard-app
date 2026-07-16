@@ -233,6 +233,53 @@ async function rebuildContextMenu() {
                           },
                       },
                       {
+                          label: 'Re-run daily reports…',
+                          click: async () => {
+                              const { response } = await dialog.showMessageBox({
+                                  type: 'question',
+                                  buttons: ['Start', 'Cancel'],
+                                  defaultId: 0,
+                                  cancelId: 1,
+                                  message: 'Re-run daily reports now?',
+                                  detail:
+                                      'Runs stock levels, forecast auto-submit, and report subscriptions for enabled stores. This can take a while and may re-send today’s subscription emails.',
+                              });
+                              if (response !== 0) return;
+                              try {
+                                  const health = await host.probeLocalHealth();
+                                  if (!health?.ok) {
+                                      await dialog.showErrorBox(
+                                          'Server not running',
+                                          'Start the dashboard server first, then try again.'
+                                      );
+                                      return;
+                                  }
+                                  const res = await fetch('http://127.0.0.1:3000/api/host/daily-reports/run', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ force: true }),
+                                      signal: AbortSignal.timeout(15000),
+                                  });
+                                  const body = await res.json().catch(() => ({}));
+                                  if (!res.ok) {
+                                      throw new Error(body.error || `HTTP ${res.status}`);
+                                  }
+                                  notifyTray('Daily reports', 'Started — check PM2 / dashboard logs for progress.');
+                                  await dialog.showMessageBox({
+                                      type: 'info',
+                                      message: 'Daily reports started',
+                                      detail: `Running in the background for ${body.dateKey || 'today'}. Watch the dashboard logs for progress.`,
+                                  });
+                              } catch (err) {
+                                  await dialog.showErrorBox(
+                                      'Could not start daily reports',
+                                      String(err.message || err)
+                                  );
+                              }
+                              refreshMenu && refreshMenu();
+                          },
+                      },
+                      {
                           label: 'Stop hosting (become Client)…',
                           click: async () => {
                               if (onStopHosting) await onStopHosting();

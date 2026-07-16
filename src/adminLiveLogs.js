@@ -234,6 +234,62 @@ function streamLogs(res, { source: sourceKey = 'dashboard', tail = 200 } = {}) {
     res.on('finish', cleanup);
 }
 
+/**
+ * Build a plain-text export of PM2 log tails for a source.
+ * Caps each file so a download stays manageable.
+ */
+function buildLogExport(sourceKey = 'dashboard', { maxBytesPerFile = 2 * 1024 * 1024 } = {}) {
+    const source = resolveSource(sourceKey);
+    const perFile = Math.min(8 * 1024 * 1024, Math.max(64 * 1024, Number(maxBytesPerFile) || 2 * 1024 * 1024));
+    const files = logFilesForSource(source);
+    const exportedAt = new Date().toISOString();
+    const sections = [];
+    const meta = [];
+
+    sections.push(`# Host logs export`);
+    sections.push(`# Source: ${source.label} (${source.id})`);
+    sections.push(`# Exported: ${exportedAt}`);
+    sections.push(`# Logs dir: ${pm2LogsDir()}`);
+    sections.push(`# Max bytes per file: ${perFile}`);
+    sections.push('');
+
+    for (const file of files) {
+        const snap = readFileTail(file.path, perFile);
+        const header = `===== ${file.process} · ${file.stream} · ${path.basename(file.path)} =====`;
+        meta.push({
+            process: file.process,
+            stream: file.stream,
+            path: file.path,
+            exists: snap.exists,
+            size: snap.size,
+            truncated: snap.exists && snap.size > perFile,
+        });
+        sections.push(header);
+        if (!snap.exists) {
+            sections.push('(file not found)');
+        } else if (!snap.text) {
+            sections.push('(empty)');
+        } else {
+            if (snap.size > perFile) {
+                sections.push(`(truncated — last ${perFile} of ${snap.size} bytes)`);
+            }
+            sections.push(snap.text.replace(/\s+$/, ''));
+        }
+        sections.push('');
+    }
+
+    const stamp = exportedAt.replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `host-logs-${source.id}-${stamp}.txt`;
+    return {
+        filename,
+        contentType: 'text/plain; charset=utf-8',
+        body: `${sections.join('\n')}\n`,
+        source,
+        files: meta,
+        exportedAt,
+    };
+}
+
 module.exports = {
     SOURCES,
     listSources,
@@ -241,4 +297,5 @@ module.exports = {
     pm2LogsDir,
     logFilesForSource,
     streamLogs,
+    buildLogExport,
 };

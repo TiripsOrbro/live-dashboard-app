@@ -98,6 +98,61 @@
         if (root) root.innerHTML = '';
     }
 
+    function filenameFromDisposition(header, fallback) {
+        if (!header) return fallback;
+        const match = String(header).match(/filename\*?=(?:UTF-8''|")?([^\";]+)/i);
+        if (!match) return fallback;
+        try {
+            return decodeURIComponent(match[1].replace(/"/g, '').trim()) || fallback;
+        } catch {
+            return match[1].replace(/"/g, '').trim() || fallback;
+        }
+    }
+
+    async function exportLogs() {
+        const btn = getRoot()?.querySelector('[data-live-log-export]');
+        if (btn) {
+            btn.disabled = true;
+            btn.textContent = 'Exporting…';
+        }
+        setStatus('Preparing log export…', 'info');
+        try {
+            const res = await fetch(
+                `/api/admin/logs/download?source=${encodeURIComponent(activeSource)}`,
+                { credentials: 'same-origin' }
+            );
+            if (!res.ok) {
+                let message = `Export failed (${res.status})`;
+                try {
+                    const data = await res.json();
+                    if (data?.error) message = data.error;
+                } catch {
+                    /* ignore */
+                }
+                throw new Error(message);
+            }
+            const blob = await res.blob();
+            const fallback = `host-logs-${activeSource}.txt`;
+            const filename = filenameFromDisposition(res.headers.get('Content-Disposition'), fallback);
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            setStatus(`Exported ${filename}`, 'ok');
+        } catch (err) {
+            setStatus(err?.message || 'Could not export logs.', 'error');
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Export';
+            }
+        }
+    }
+
     function stopStream() {
         if (eventSource) {
             try {
@@ -196,6 +251,10 @@
                 clearOutput();
                 return;
             }
+            if (event.target.closest('[data-live-log-export]')) {
+                void exportLogs();
+                return;
+            }
             if (event.target.closest('[data-live-log-pause]')) {
                 paused = !paused;
                 const btn = root.querySelector('[data-live-log-pause]');
@@ -245,7 +304,7 @@
             <div class="admin-modal admin-modal--inline admin-live-logs">
                 <div class="admin-section-header">
                     <h2>Live logs</h2>
-                    <p class="admin-section-subtitle">Host process output from PM2 (dashboard and schedulers). Updates live while this section is open.</p>
+                    <p class="admin-section-subtitle">Host process output from PM2 (dashboard and schedulers). Updates live while this section is open. Use Export to download log tails for the selected source.</p>
                 </div>
                 <div class="admin-live-logs-toolbar">
                     <div class="admin-live-logs-sources" role="group" aria-label="Log source">${renderSourceTabs()}</div>
@@ -253,6 +312,7 @@
                         <button type="button" class="admin-live-logs-action is-active" data-live-log-follow aria-pressed="true">Follow</button>
                         <button type="button" class="admin-live-logs-action" data-live-log-pause>Pause</button>
                         <button type="button" class="admin-live-logs-action" data-live-log-clear>Clear</button>
+                        <button type="button" class="admin-live-logs-action" data-live-log-export title="Download PM2 log tails for the selected source">Export</button>
                     </div>
                 </div>
                 <p class="admin-live-logs-status" id="admin-live-logs-status" data-level="">${escapeHtml(statusText)}</p>

@@ -4,11 +4,19 @@
  */
 (function dashboardDataCacheModule(global) {
     const VERSION = 1;
-    const MAX_AGE_MS = 48 * 60 * 60 * 1000;
+    const TIME_ZONE = 'Australia/Melbourne';
 
     function storageKey(kind, store) {
         const s = String(store || 'default').toLowerCase();
         return `dashboard-data-cache:v${VERSION}:${kind}:${s}`;
+    }
+
+    function businessDayKey(timestamp) {
+        try {
+            return new Intl.DateTimeFormat('en-CA', { timeZone: TIME_ZONE }).format(new Date(timestamp));
+        } catch {
+            return new Date(timestamp).toDateString();
+        }
     }
 
     function read(kind, store) {
@@ -17,8 +25,12 @@
             if (!raw) return null;
             const entry = JSON.parse(raw);
             if (!entry?.data || !entry.savedAt) return null;
-            if (Date.now() - entry.savedAt > MAX_AGE_MS) {
-                localStorage.removeItem(storageKey(kind, store));
+            // Sales figures reset each trading day, so an entry saved on a
+            // previous day would flash stale numbers before the live fetch
+            // wipes them. Only restore same-day data, but keep the stored
+            // entry around in case it's needed (it gets overwritten by the
+            // next meaningful payload anyway).
+            if (businessDayKey(entry.savedAt) !== businessDayKey(Date.now())) {
                 return null;
             }
             return entry;

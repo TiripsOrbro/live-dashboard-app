@@ -13,6 +13,7 @@
     let pendingNavigation = null;
     let navigationDrain = null;
     let bootId = '';
+    let shellHasMountedOnce = false;
 
     function prefersReducedMotion() {
         return global.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -136,32 +137,73 @@
         await Promise.all((urls || []).map((url) => loadScript(url)));
     }
 
+    function ensureStylesheet(id, href) {
+        if (document.getElementById(id)) return;
+        const link = document.createElement('link');
+        link.id = id;
+        link.rel = 'stylesheet';
+        const token = bootId || '';
+        link.href = token
+            ? `${href}${href.includes('?') ? '&' : '?'}v=${encodeURIComponent(token)}`
+            : href;
+        document.head.appendChild(link);
+    }
+
+    function ensureOverviewStyles() {
+        ensureStylesheet('shell-mic-css', '/styles/mic.css');
+        ensureStylesheet('shell-account-modal-css', '/styles/account-modal.css');
+        ensureStylesheet('shell-admin-menu-css', '/styles/admin-menu.css');
+    }
+
+    function ensureSalesDashboardStyles() {
+        ensureStylesheet('shell-dashboard-css', '/styles/dashboard.css');
+        ensureStylesheet('shell-account-modal-css', '/styles/account-modal.css');
+        ensureStylesheet('shell-admin-menu-css', '/styles/admin-menu.css');
+    }
+
+    function ensureAdminSettingsStyles() {
+        ensureStylesheet('shell-admin-menu-css', '/styles/admin-menu.css');
+        ensureStylesheet('shell-account-modal-css', '/styles/account-modal.css');
+        ensureStylesheet('shell-requests-css', '/styles/requests.css');
+        ensureStylesheet('shell-bug-reports-css', '/styles/bug-reports.css');
+        ensureStylesheet('shell-login-css', '/styles/login.css');
+    }
+
+    function ensureTacauditStyles() {
+        ensureStylesheet('shell-dfsc-css', '/styles/dfsc.css');
+        ensureStylesheet('shell-tacaudit-css', '/styles/tacaudit.css');
+    }
+
     async function loadOverviewScripts() {
+        // Critical path only — enough to paint shell + tiles + mount overview.
         await loadScriptBatch([
-            '/scripts/page-transition.js',
-            '/scripts/welcome-overlay.js',
             '/scripts/loading-dots.js',
             '/scripts/dashboard-preload-bridge.js',
             '/scripts/dashboard-data-cache.js',
             '/scripts/area-display.js',
-            '/scripts/area-picker-overlay.js',
-            '/scripts/sales-progress.js',
+            '/scripts/scope-popup.js',
+            '/scripts/mic-settings.js',
             '/scripts/nav-back.js',
+            '/scripts/sales-progress.js',
             '/scripts/store-snap-row.js',
+            '/scripts/audit-preferences.js',
+            '/scripts/area-picker-overlay.js',
             '/scripts/mic-mini-dashboard.js',
             '/scripts/core-countdown.js',
-            '/scripts/admin-menu.js',
-            '/scripts/audit-preferences.js',
+            '/scripts/mic-overview-shell.js',
+            '/scripts/mic-overview-tiles.js',
+            '/scripts/mic-overview-multi.js',
+            '/scripts/admin-scope-picker.js',
+            '/scripts/admin-store-view.js',
+            '/scripts/mic-dashboard.js',
         ]);
-        await loadScript('/scripts/mic-overview-shell.js');
-        await loadScript('/scripts/mic-overview-tiles.js');
-        await loadScript('/scripts/mic-overview-multi.js');
-        await loadScriptBatch(['/scripts/admin-scope-picker.js', '/scripts/admin-store-view.js']);
-        await loadScript('/scripts/mic-dashboard.js');
     }
 
     async function loadOverviewScriptsDeferred() {
         await loadScriptBatch([
+            '/scripts/page-transition.js',
+            '/scripts/welcome-overlay.js',
+            '/scripts/admin-menu.js',
             '/scripts/account-modal.js',
             '/scripts/create-account-form.js',
             '/scripts/admin-accounts.js',
@@ -239,6 +281,7 @@
     ];
 
     const ADMIN_SETTINGS_DEFERRED_SCRIPTS = [
+        '/scripts/create-account-form.js',
         '/scripts/admin-accounts.js',
         '/scripts/admin-forecast.js',
         '/scripts/admin-build-to.js',
@@ -251,6 +294,22 @@
         '/scripts/requests.js',
         '/scripts/bug-reports.js',
     ];
+
+    /** Per-section scripts so opening Settings does not wait on forecast/build-to/etc. */
+    const ADMIN_SECTION_SCRIPTS = {
+        'accounts-create': ['/scripts/create-account-form.js', '/scripts/admin-accounts.js'],
+        'accounts-existing': ['/scripts/create-account-form.js', '/scripts/admin-accounts.js'],
+        'store-logins': ['/scripts/admin-store-logins.js'],
+        'smg-nsf': ['/scripts/admin-smg-nsf.js'],
+        forecast: ['/scripts/admin-forecast.js'],
+        'build-to': ['/scripts/admin-build-to.js'],
+        'store-hours': ['/scripts/admin-store-hours.js'],
+        'five-am-reports': ['/scripts/admin-five-am-reports.js'],
+        'report-subscriptions': ['/scripts/admin-report-subscriptions.js'],
+        'live-logs': ['/scripts/admin-live-logs.js'],
+        'feature-requests': ['/scripts/requests.js'],
+        'bug-reports': ['/scripts/bug-reports.js'],
+    };
 
     function paintAdminSettingsBootShell(app) {
         document.body.classList.add('admin-settings-page', 'admin-page');
@@ -297,6 +356,7 @@
     }
 
     let adminDeferredScriptsPromise = null;
+    const adminSectionScriptPromises = new Map();
 
     function ensureAdminDeferredScripts() {
         if (!adminDeferredScriptsPromise) {
@@ -308,13 +368,31 @@
         return adminDeferredScriptsPromise;
     }
 
+    function ensureAdminScriptsForSection(sectionId) {
+        const id = String(sectionId || '');
+        const urls = ADMIN_SECTION_SCRIPTS[id];
+        if (!urls?.length) return Promise.resolve();
+        if (adminSectionScriptPromises.has(id)) return adminSectionScriptPromises.get(id);
+        const promise = loadScriptBatch(urls).catch((err) => {
+            adminSectionScriptPromises.delete(id);
+            throw err;
+        });
+        adminSectionScriptPromises.set(id, promise);
+        return promise;
+    }
+
     async function mountAdminSettings() {
+        ensureAdminSettingsStyles();
         const app = getAppEl();
         paintAdminSettingsBootShell(app);
         try {
-            await loadScriptBatch(SHARED_ADMIN_SCRIPTS);
-            // Host PCs: wait for every settings module before mounting so tabs never open blank.
-            await ensureAdminDeferredScripts();
+            await loadScriptBatch([
+                '/scripts/scope-popup.js',
+                '/scripts/mic-settings.js',
+                ...SHARED_ADMIN_SCRIPTS,
+            ]);
+            // Prefetch heavy section modules in the background — do not block first paint.
+            void ensureAdminDeferredScripts();
             if (global.AdminSettingsView?.mount) {
                 await global.AdminSettingsView.mount(app);
                 return;
@@ -335,6 +413,7 @@
         '/scripts/page-transition.js',
         '/scripts/nav-back.js',
         '/scripts/audit-preferences.js',
+        '/scripts/scope-popup.js',
         '/scripts/mic-settings.js',
         '/scripts/admin-scope-picker.js',
     ];
@@ -398,6 +477,7 @@
     }
 
     async function mountOverview() {
+        ensureOverviewStyles();
         await loadOverviewScripts();
         void loadOverviewScriptsDeferred().then(() => {
             global.AdminAccounts?.maybeOpenFromQuery?.();
@@ -419,22 +499,23 @@
             '/scripts/dashboard-preload-bridge.js',
             '/scripts/dashboard-data-cache.js',
             '/scripts/area-display.js',
+            '/scripts/scope-popup.js',
             '/scripts/audit-preferences.js',
             '/scripts/mic-settings.js',
             '/scripts/nav-back.js',
             '/scripts/store-snap-row.js',
             '/scripts/stock-count-notify.js',
-        ]);
-        await loadScriptBatch([
             '/scripts/admin-store-tabs.js',
             '/scripts/admin-area-panel.js',
             '/scripts/admin-scope-picker.js',
+            '/scripts/popup-timing.js',
+            '/scripts/popup-content.js',
+            '/scripts/dashboard.js',
         ]);
-        await loadScriptBatch(['/scripts/popup-timing.js', '/scripts/popup-content.js']);
-        await loadScript('/scripts/dashboard.js');
     }
 
     async function mountSalesDashboard() {
+        ensureSalesDashboardStyles();
         async function loadDashboardScriptsWithRetry() {
             await loadDashboardScripts();
         }
@@ -466,13 +547,8 @@
     }
 
 
-    async function ensureStockCountStyles() {
-        if (document.getElementById('shell-stock-count-css')) return;
-        const link = document.createElement('link');
-        link.id = 'shell-stock-count-css';
-        link.rel = 'stylesheet';
-        link.href = '/styles/stock-count.css';
-        document.head.appendChild(link);
+    function ensureStockCountStyles() {
+        ensureStylesheet('shell-stock-count-css', '/styles/stock-count.css');
     }
 
     async function mountStockCount() {
@@ -548,6 +624,7 @@
 
     async function mountTacauditSummary() {
         document.body.classList.add('dfsc-page', 'tacaudit-page');
+        ensureTacauditStyles();
         ensureTacauditShellChrome();
         try {
             const ready = await ensureTacauditViewLoaded();
@@ -640,7 +717,8 @@
 
     function runTransition(nextMount) {
         const view = document.getElementById(VIEW_ID);
-        if (!view || prefersReducedMotion()) {
+        // First boot: never hide the loading UI behind opacity:0 or a 280ms exit wait.
+        if (!view || prefersReducedMotion() || !shellHasMountedOnce) {
             return nextMount();
         }
         view.classList.add('app-shell-view--exiting');
@@ -718,6 +796,7 @@
             await mountView(route);
             activeView = route.id;
             activeUnmount = unmountHandlerFor(route.id);
+            shellHasMountedOnce = true;
         });
         prefetchAdjacent(route);
     }
@@ -815,29 +894,36 @@
         );
     }
 
-    async function boot() {
-        try {
-            if (global.DashboardMeta?.fetchMeta) {
-                const meta = await global.DashboardMeta.fetchMeta();
-                bootId = meta.bootId || '';
-            } else {
-                const res = await fetch('/api/dashboard/meta', {
-                    credentials: 'same-origin',
-                    cache: 'no-store',
-                });
-                const meta = await res.json().catch(() => ({}));
-                bootId = meta.bootId || '';
-            }
-        } catch {
-            bootId = '';
+    function fetchBootMeta() {
+        const apply = (meta) => {
+            bootId = meta?.bootId || bootId || '';
+        };
+        if (global.DashboardMeta?.fetchMeta) {
+            return global.DashboardMeta.fetchMeta().then(apply).catch(() => {
+                bootId = bootId || '';
+            });
         }
+        return fetch('/api/dashboard/meta', {
+            credentials: 'same-origin',
+            cache: 'no-store',
+        })
+            .then((res) => res.json().catch(() => ({})))
+            .then(apply)
+            .catch(() => {
+                bootId = bootId || '';
+            });
+    }
+
+    async function boot() {
+        // Do not block first paint on meta — use Date.now() until bootId arrives.
+        void fetchBootMeta();
         installLinkInterceptor();
         installHoverPrefetch();
         global.addEventListener('popstate', () => {
             const path = global.location.pathname;
             navigate(path, { replace: true, search: global.location.search, hash: global.location.hash });
         });
-        let target = maybeCanonicalizeAdminPath(
+        const target = maybeCanonicalizeAdminPath(
             parseShellTarget(
                 global.location.pathname,
                 global.location.search,
@@ -848,14 +934,13 @@
         const route = matchRoute(target.pathname);
         document.title = titleForRoute(route);
         await navigate(target.pathname, { replace: true, search: target.search, hash: target.hash });
-        const view = document.getElementById(VIEW_ID);
-        view?.classList.add('app-shell-view--visible');
     }
 
     global.AppShell = {
         navigate,
         boot,
         ensureAdminDeferredScripts,
+        ensureAdminScriptsForSection,
         shellPathname,
         shellSearch,
         setShellRoute,

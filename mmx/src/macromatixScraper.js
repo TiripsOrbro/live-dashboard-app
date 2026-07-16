@@ -4,7 +4,7 @@ const puppeteer = require('puppeteer');
 const {
     throwIfSalesScrapeAborted,
     isSalesScrapeAbortRequested,
-    MmxWorkAbortedError,
+    salesScrapeAbortError,
 } = require('../../src/services/salesScrapeAbort');
 const {
     trackBrowser,
@@ -1631,7 +1631,7 @@ async function waitForActualSalesKpiRow(page, timeoutMs) {
     );
 }
 
-async function openDayViewAndReadSales(page, shouldReadForecast) {
+async function openDayViewAndReadSales(page, shouldReadForecast, options = {}) {
     const kpiTimeout = dayViewKpiTimeoutMs();
     const alreadyReady = await page.evaluate(() => {
         const row = document.querySelector('tr[data-kpi="ActualSalesKpi"]');
@@ -1673,27 +1673,20 @@ async function openDayViewAndReadSales(page, shouldReadForecast) {
         );
     }
 
-    return page.evaluate((readForecast) => {
-        const parseHourlyRow = (row) => {
-            const cells = row.querySelectorAll('td');
-            const values = [];
-            for (let i = 2; i < cells.length; i++) {
-                const raw = cells[i].textContent.replace(/[^0-9.-]/g, '').trim();
-                const value = parseFloat(raw);
-                if (!Number.isNaN(value)) values.push(value);
-            }
-            return values;
-        };
+    const targetIso = String(options.targetDateIso || '').trim();
+    const timeZone = options.timeZone || DASHBOARD_TIME_ZONE;
+    if (targetIso) {
+        const context = await readLabourSchedulerDayContext(page);
+        if (!dayComboLabelMatchesIso(context.dayText, targetIso, timeZone)) {
+            console.log(
+                `[Macromatix] Labour scheduler on "${context.dayText || '(unknown)'}" — navigating to ${targetIso}`
+            );
+            await navigateLabourSchedulerToDate(page, targetIso, timeZone);
+            await waitForActualSalesKpiRow(page, kpiTimeout);
+        }
+    }
 
-        const actualRow = document.querySelector('tr[data-kpi="ActualSalesKpi"]');
-        const forecastRow = document.querySelector('tr[data-kpi="ForecastSalesKpi"]');
-        if (!actualRow || (readForecast && !forecastRow)) throw new Error('Sales data rows not found');
-
-        return {
-            actual: parseHourlyRow(actualRow),
-            forecast: readForecast ? parseHourlyRow(forecastRow) : null,
-        };
-    }, shouldReadForecast);
+    return readDayViewSalesOnly(page, shouldReadForecast, { timeout: kpiTimeout, softFail: false });
 }
 
 /** Raw vendor text from Macromatix → short label for the dashboard (only these are listed). */
@@ -1736,13 +1729,14 @@ function uniqueSortedRawLabels(rawVendors) {
 function rethrowIfSalesScrapeAborted(err) {
     if (err?.aborted) throw err;
     if (isSalesScrapeAbortRequested()) {
-        throw new MmxWorkAbortedError('Sales scrape aborted - stock count / orders in progress');
+        throw salesScrapeAbortError('Sales scrape');
     }
 }
 
 /** Full page reload after postback can replace the JS context while we scrape; retry after load settles. */
 async function withPageContextRetry(page, label, fn) {
-    const backoffMs = [450, 900, 1600];
+    const { waitForDocumentStable } = require('./mmxReports/mmx-postback');
+    const backoffMs = [800, 1800, 3500, 6000];
     let lastErr;
     for (let attempt = 0; attempt <= backoffMs.length; attempt++) {
         throwIfSalesScrapeAborted();
@@ -1752,7 +1746,7 @@ async function withPageContextRetry(page, label, fn) {
             lastErr = e;
             rethrowIfSalesScrapeAborted(e);
             const msg = String(e && e.message ? e.message : e);
-            const sessionDead = /Session closed|Target closed/i.test(msg);
+            const sessionDead = /Session closed|Target closed|browser has been closed|Connection closed/i.test(msg);
             if (sessionDead) {
                 throw e;
             }
@@ -1763,8 +1757,8 @@ async function withPageContextRetry(page, label, fn) {
                 throw e;
             }
             console.warn(`[Macromatix] ${label}: context lost during scrape; retry ${attempt + 2}/${backoffMs.length + 1}`);
-            await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
-            await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+            // Avoid waitForNavigation after the fact — that waits for the *next* nav and burns retries.
+            await waitForDocumentStable(page, { timeoutMs: 25000, quietMs: 500 }).catch(() => {});
             await page.waitForTimeout(backoffMs[attempt]);
         }
     }
@@ -1982,17 +1976,33 @@ async function probePendingOrdersForStores(page, stores, options = {}) {
 
 /**
  * Scrape one store on an already-logged-in page: select the store on the labour scheduler, enter Day view,
- * read actual/forecast, then read pending vendors from scheduled orders for that same store.
+ * read actual/forecast, then optionally read pending vendors from scheduled orders.
  * When skipStoreSelect is true (single-store login mode), the session is already bound to that store.
+ * When skipPendingVendors is true (default for interval sales), vendors are left to the 15-min vendor scheduler.
  */
 async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
     throwIfSalesScrapeAborted();
     const { todayKey, testScheduledOrdersPick, pickYmd, skipScheduledPersistence } = ctx;
     const skipStoreSelect = Boolean(scrapeOpts.skipStoreSelect);
+    const skipPendingVendors = Boolean(
+        scrapeOpts.skipPendingVendors ?? ctx.skipPendingVendors
+    );
+    const refreshLabour = Boolean(scrapeOpts.refreshLabour);
     const storeNumber = String(store.storeNumber || '').trim();
     const label = storeNumber || '(default)';
 
-    await page.goto(LABOUR_URL, GOTO_OPTS);
+    if (refreshLabour) {
+        const url = page.url() || '';
+        if (/LabourScheduler/i.test(url)) {
+            await page.reload({ waitUntil: 'load', timeout: 45000 }).catch(async () => {
+                await page.goto(LABOUR_URL, GOTO_OPTS);
+            });
+        } else {
+            await page.goto(LABOUR_URL, GOTO_OPTS);
+        }
+    } else {
+        await page.goto(LABOUR_URL, GOTO_OPTS);
+    }
     await page.waitForFunction(() => document.readyState === 'complete', { timeout: 20000 }).catch(() => {});
 
     if (storeNumber && !skipStoreSelect) {
@@ -2013,7 +2023,14 @@ async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
 
     const hadForecastCache = forecastCacheByStore.get(storeStateKey(storeNumber))?.dateKey === todayKey;
     const cachedForecast = getCachedForecastForToday(storeNumber, todayKey);
-    const sales = await openDayViewAndReadSales(page, !cachedForecast);
+    const storeTimeZone =
+        String(store.timeZone || '').trim() ||
+        getStoreConfig(storeNumber)?.timeZone ||
+        DASHBOARD_TIME_ZONE;
+    const sales = await openDayViewAndReadSales(page, !cachedForecast, {
+        targetDateIso: todayKey,
+        timeZone: storeTimeZone,
+    });
     let forecastNote = '(fresh)';
     if (cachedForecast) {
         sales.forecast = cachedForecast;
@@ -2025,35 +2042,43 @@ async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
     }
 
     console.log(
-        `[Macromatix] Store ${label} - actual ${sales.actual.length}h, forecast ${sales.forecast?.length || 0}h ${forecastNote}`
+        `[Macromatix] Store ${label} - actual ${sales.actual.length}h, forecast ${sales.forecast?.length || 0}h ${forecastNote}${
+            skipPendingVendors ? ' (vendors deferred)' : ''
+        }`
     );
 
     let pendingVendors = [];
-    const skipVendorScrape = shouldSkipPendingVendorScrape(storeNumber, todayKey);
-    if (skipVendorScrape) {
-        const dayEntry = getStoreEntry(storeNumber, todayKey);
-        pendingVendors = [];
-        console.log(
-            `[Macromatix] Store ${label} ordering day status=${dayEntry.status || 'complete'} - skipping scheduled orders vendor check`
-        );
+    let skipPendingVendorsUpdate = false;
+    if (skipPendingVendors) {
+        pendingVendors = getLastKnownPendingVendors(storeNumber, todayKey);
+        skipPendingVendorsUpdate = true;
     } else {
-        try {
-            const pendingResult = await scrapePendingVendors(page, {
-                storeNumber,
-                pickYmd: testScheduledOrdersPick ? pickYmd : null,
-                skipStoreSelect,
-            });
-            pendingVendors = pendingResult.vendors;
-            console.log(`[Macromatix] Store ${label} pending vendors:`, pendingVendors.join(', ') || '(none)');
-            if (!skipScheduledPersistence) {
-                recordScheduledOrdersResult(storeNumber, todayKey, pendingVendors, {
-                    allVendorLabels: pendingResult.allVendorLabels,
+        const skipVendorScrape = shouldSkipPendingVendorScrape(storeNumber, todayKey);
+        if (skipVendorScrape) {
+            const dayEntry = getStoreEntry(storeNumber, todayKey);
+            pendingVendors = [];
+            console.log(
+                `[Macromatix] Store ${label} ordering day status=${dayEntry.status || 'complete'} - skipping scheduled orders vendor check`
+            );
+        } else {
+            try {
+                const pendingResult = await scrapePendingVendors(page, {
+                    storeNumber,
+                    pickYmd: testScheduledOrdersPick ? pickYmd : null,
+                    skipStoreSelect,
                 });
+                pendingVendors = pendingResult.vendors;
+                console.log(`[Macromatix] Store ${label} pending vendors:`, pendingVendors.join(', ') || '(none)');
+                if (!skipScheduledPersistence) {
+                    recordScheduledOrdersResult(storeNumber, todayKey, pendingVendors, {
+                        allVendorLabels: pendingResult.allVendorLabels,
+                    });
+                }
+            } catch (vendorErr) {
+                rethrowIfSalesScrapeAborted(vendorErr);
+                console.warn(`[Macromatix] Store ${label} scheduled orders scrape failed:`, vendorErr.message);
+                pendingVendors = getLastKnownPendingVendors(storeNumber, todayKey);
             }
-        } catch (vendorErr) {
-            rethrowIfSalesScrapeAborted(vendorErr);
-            console.warn(`[Macromatix] Store ${label} scheduled orders scrape failed:`, vendorErr.message);
-            pendingVendors = getLastKnownPendingVendors(storeNumber, todayKey);
         }
     }
 
@@ -2066,6 +2091,7 @@ async function scrapeStoreData(page, store, ctx, scrapeOpts = {}) {
         actual: sales.actual,
         forecast: sales.forecast,
         pendingVendors,
+        skipPendingVendorsUpdate,
     };
 }
 
@@ -2722,7 +2748,7 @@ function attachSssgToResult(result, _todayKey) {
 }
 
 /**
- * One isolated login session: pick store → sales + vendors → logout.
+ * One isolated login session: pick store → sales (and optionally vendors) → logout.
  * SSSG Last Year is scraped in one shared SPA pass after all stores (see runBatchSssgLyScrape).
  */
 async function scrapeSingleStoreSession(page, store, ctx, credentials) {
@@ -2748,6 +2774,239 @@ async function scrapeSingleStoreSession(page, store, ctx, credentials) {
     const result = await scrapeStoreData(page, store, ctx, { skipStoreSelect: true });
     await logoutPage(page);
     return result;
+}
+
+/**
+ * Persistent-session sales scrape for one store (no logout; session stays warm).
+ */
+async function scrapeStorePersistentWithCandidates(store, ctx, candidates, poolOpts = {}) {
+    const { withLabourPage, ensureBrowser } = require('./salesSessionPool');
+    const label = store.storeNumber || '(default)';
+    const want = normalizeStoreNumberKey(store.storeNumber);
+    const tries = Array.isArray(candidates) && candidates.length
+        ? candidates
+        : listMacromatixCredentialCandidatesForStore(store.storeNumber);
+    let lastErr;
+
+    const browser = await ensureBrowser(poolOpts);
+
+    for (let attempt = 0; attempt < tries.length; attempt++) {
+        throwIfSalesScrapeAborted();
+        const resolved = tries[attempt];
+        const storeCreds = { username: resolved.username, password: resolved.password };
+        const accessible = await getAccessibleStoreNumbersForCredentials(browser, storeCreds);
+        if (accessible && want && !accessible.has(want)) {
+            lastErr = new StoreInaccessibleError(
+                label,
+                buildStoreInaccessibleMessage(label, accessible)
+            );
+            continue;
+        }
+        try {
+            if (tries.length > 1 || resolved.source !== 'global SCRAPER_*') {
+                console.log(
+                    `[Macromatix] Store ${label}: persistent try ${resolved.source} (${resolved.username})`
+                );
+            }
+            const result = await withLabourPage(
+                store.storeNumber,
+                storeCreds,
+                async (page) =>
+                    scrapeStoreData(page, store, ctx, {
+                        skipStoreSelect: true,
+                        refreshLabour: true,
+                    }),
+                poolOpts
+            );
+            if (attempt > 0 || tries.length > 1) {
+                console.log(`[Macromatix] Store ${label}: succeeded via ${resolved.source}`);
+            }
+            return {
+                result,
+                credentials: storeCreds,
+                source: resolved.source,
+            };
+        } catch (err) {
+            lastErr = err;
+            rethrowIfSalesScrapeAborted(err);
+            const hasMore = attempt < tries.length - 1;
+            if (!isStoreInaccessibleError(err) || hasMore) {
+                console.log(
+                    `[Macromatix] Store ${label}: ${resolved.source} failed - ${err.message}${
+                        hasMore ? ' - trying next login' : ''
+                    }`
+                );
+            }
+        }
+    }
+
+    if (isStoreInaccessibleError(lastErr)) throw lastErr;
+    throw lastErr || new Error(`No Macromatix credentials available for store ${label}`);
+}
+
+/**
+ * Cold-path vendor-only scrape for one store (launch context → login → orders → logout).
+ */
+async function scrapeVendorsColdWithCandidates(browser, store, ctx, candidates) {
+    const label = store.storeNumber || '(default)';
+    const want = normalizeStoreNumberKey(store.storeNumber);
+    const tries = Array.isArray(candidates) && candidates.length
+        ? candidates
+        : listMacromatixCredentialCandidatesForStore(store.storeNumber);
+    let lastErr;
+
+    for (let attempt = 0; attempt < tries.length; attempt++) {
+        throwIfSalesScrapeAborted();
+        const resolved = tries[attempt];
+        const storeCreds = { username: resolved.username, password: resolved.password };
+        const accessible = await getAccessibleStoreNumbersForCredentials(browser, storeCreds);
+        if (accessible && want && !accessible.has(want)) {
+            lastErr = new StoreInaccessibleError(
+                label,
+                buildStoreInaccessibleMessage(label, accessible)
+            );
+            continue;
+        }
+        let context;
+        try {
+            context = await createIsolatedContext(browser);
+            const page = await context.newPage();
+            await page.setViewport({ width: 1280, height: 720 });
+            await applyResourceBlocking(page);
+            await loginPage(page, storeCreds.username, storeCreds.password);
+            await selectStoreAfterLogin(page, store.storeNumber, storeCreds);
+            const pendingResult = await scrapePendingVendors(page, {
+                storeNumber: store.storeNumber,
+                pickYmd: ctx.testScheduledOrdersPick ? ctx.pickYmd : null,
+                skipStoreSelect: true,
+            });
+            await logoutPage(page);
+            return {
+                vendors: pendingResult.vendors,
+                allVendorLabels: pendingResult.allVendorLabels,
+                credentials: storeCreds,
+                source: resolved.source,
+            };
+        } catch (err) {
+            lastErr = err;
+            rethrowIfSalesScrapeAborted(err);
+            const hasMore = attempt < tries.length - 1;
+            console.log(
+                `[Macromatix] Vendor scrape ${label}: ${resolved.source} failed - ${err.message}${
+                    hasMore ? ' - trying next login' : ''
+                }`
+            );
+        } finally {
+            if (context) {
+                try {
+                    await context.close();
+                } catch {
+                    /* ignore */
+                }
+            }
+        }
+    }
+
+    if (isStoreInaccessibleError(lastErr)) throw lastErr;
+    throw lastErr || new Error(`No Macromatix credentials available for store ${label}`);
+}
+
+async function scrapeVendorsPersistentWithCandidates(store, ctx, candidates, poolOpts = {}) {
+    const { withOrdersPage, ensureBrowser } = require('./salesSessionPool');
+    const label = store.storeNumber || '(default)';
+    const want = normalizeStoreNumberKey(store.storeNumber);
+    const tries = Array.isArray(candidates) && candidates.length
+        ? candidates
+        : listMacromatixCredentialCandidatesForStore(store.storeNumber);
+    let lastErr;
+    const browser = await ensureBrowser(poolOpts);
+
+    for (let attempt = 0; attempt < tries.length; attempt++) {
+        throwIfSalesScrapeAborted();
+        const resolved = tries[attempt];
+        const storeCreds = { username: resolved.username, password: resolved.password };
+        const accessible = await getAccessibleStoreNumbersForCredentials(browser, storeCreds);
+        if (accessible && want && !accessible.has(want)) {
+            lastErr = new StoreInaccessibleError(
+                label,
+                buildStoreInaccessibleMessage(label, accessible)
+            );
+            continue;
+        }
+        try {
+            const pendingResult = await withOrdersPage(
+                store.storeNumber,
+                storeCreds,
+                async (page) =>
+                    scrapePendingVendors(page, {
+                        storeNumber: store.storeNumber,
+                        pickYmd: ctx.testScheduledOrdersPick ? ctx.pickYmd : null,
+                        skipStoreSelect: true,
+                    }),
+                poolOpts
+            );
+            return {
+                vendors: pendingResult.vendors,
+                allVendorLabels: pendingResult.allVendorLabels,
+                credentials: storeCreds,
+                source: resolved.source,
+            };
+        } catch (err) {
+            lastErr = err;
+            rethrowIfSalesScrapeAborted(err);
+            const hasMore = attempt < tries.length - 1;
+            console.log(
+                `[Macromatix] Vendor scrape ${label}: ${resolved.source} failed - ${err.message}${
+                    hasMore ? ' - trying next login' : ''
+                }`
+            );
+        }
+    }
+
+    if (isStoreInaccessibleError(lastErr)) throw lastErr;
+    throw lastErr || new Error(`No Macromatix credentials available for store ${label}`);
+}
+
+/**
+ * Resolve the active store list for a scrape (shared by sales + vendor-only).
+ * Returns `{ stores, scrapeSkipped, todayKey, ...ctx fields }` or early skip payload.
+ */
+function buildScrapeContext(options = {}) {
+    const todayKey = dashboardDateKey();
+    const pickYmd = options.scheduledOrdersPickYmd;
+    const testScheduledOrdersPick =
+        pickYmd &&
+        Number.isFinite(pickYmd.year) &&
+        Number.isFinite(pickYmd.month) &&
+        Number.isFinite(pickYmd.day);
+    const skipScheduledPersistence = Boolean(options.skipScheduledOrdersPersistence);
+    const skipPendingVendors =
+        options.skipPendingVendors === false || testScheduledOrdersPick
+            ? false
+            : options.skipPendingVendors !== undefined
+              ? Boolean(options.skipPendingVendors)
+              : true;
+    return {
+        todayKey,
+        pickYmd,
+        testScheduledOrdersPick,
+        skipScheduledPersistence,
+        skipPendingVendors,
+        storeFilter: resolveStoreFilterNumbers(options),
+        respectScrapeSchedule: !testScheduledOrdersPick && !options.bypassScrapeSchedule,
+    };
+}
+
+function filterStoresForActiveScrape(stores, respectScrapeSchedule) {
+    if (!respectScrapeSchedule) return stores;
+    const activeStores = stores.filter((s) => getStoreScrapePhase(s) === 'active');
+    const skipped = stores.filter((s) => getStoreScrapePhase(s) !== 'active');
+    for (const s of skipped) {
+        console.log(
+            `[Macromatix] Store ${s.storeNumber} outside scrape window (${getStoreScrapePhase(s)}) - ${formatScrapeWindow(s)}`
+        );
+    }
+    return activeStores;
 }
 
 /** One login → loop Change Store in SPA for all stores needing LY → logout. */
@@ -3101,37 +3360,92 @@ function filterStoresByNumbers(stores, filterNums) {
 }
 
 /**
- * Taco Bell AU Macromatix - for every store the account can access: labour scheduler (hourly sales) +
- * scheduled orders (pending vendor labels). Returns `{ success, timestamp, stores: [...] }`.
+ * Resolve stores to scrape (schedule + credentials). Returns null payload when nothing to do.
+ */
+function prepareStoresForMacromatixRun(options, meta) {
+    const { storeFilter, respectScrapeSchedule } = meta;
+    let stores = getStoreList();
+    if (!stores.length) {
+        throw new Error(
+            'Single-store login mode requires .storelist. Configure stores and per-store Macromatix logins in Admin → Setup Store Logins.'
+        );
+    }
+    console.log(
+        `[Macromatix] Store list (.storelist) - ${stores.length}:`,
+        stores.map((s) => s.storeNumber).join(', ')
+    );
+
+    if (storeFilter.length) {
+        stores = filterStoresByNumbers(stores, storeFilter);
+        if (storeFilter.length === 1) {
+            console.log(`[Macromatix] Restricting scrape to store ${storeFilter[0]}`);
+        } else {
+            console.log(
+                `[Macromatix] Restricting scrape to ${stores.length} store(s):`,
+                storeFilter.join(', ')
+            );
+        }
+    }
+
+    stores = filterStoresForActiveScrape(stores, respectScrapeSchedule);
+    if (!stores.length) {
+        console.log('[Macromatix] No stores in active scrape window - skipping remaining scrape');
+        return { stores: [], scrapeSkipped: true };
+    }
+    console.log(
+        `[Macromatix] Scraping ${stores.length} store(s) in active window:`,
+        stores.map((s) => s.storeNumber).join(', ')
+    );
+
+    if (useSingleStoreLoginMode()) {
+        const withCreds = stores.filter((s) => storeHasMmxCredentials(s.storeNumber));
+        const missing = stores.length - withCreds.length;
+        if (missing > 0) {
+            console.log(
+                `[Macromatix] Skipping ${missing} store(s) with no Macromatix login (Admin → Setup Store Logins)`
+            );
+        }
+        stores = withCreds;
+        if (!stores.length) {
+            console.log('[Macromatix] No stores with Macromatix logins - skipping scrape');
+            return { stores: [], scrapeSkipped: true };
+        }
+    }
+
+    return { stores, scrapeSkipped: false };
+}
+
+/**
+ * Taco Bell AU Macromatix - labour scheduler (hourly sales). Pending vendors are handled by
+ * scrapeMacromatixVendorsOnly on a separate schedule unless skipPendingVendors is false.
  */
 async function scrapeMacromatix(options = {}) {
     clearAccessibleStoresDiscoveryCache();
-    const todayKey = dashboardDateKey();
-    const pickYmd = options.scheduledOrdersPickYmd;
-    const testScheduledOrdersPick =
-        pickYmd &&
-        Number.isFinite(pickYmd.year) &&
-        Number.isFinite(pickYmd.month) &&
-        Number.isFinite(pickYmd.day);
-    const skipScheduledPersistence = Boolean(options.skipScheduledOrdersPersistence);
-    const storeFilter = resolveStoreFilterNumbers(options);
-    const onlyStore = storeFilter.length === 1 ? storeFilter[0] : '';
+    const meta = buildScrapeContext(options);
+    const {
+        todayKey,
+        pickYmd,
+        testScheduledOrdersPick,
+        skipScheduledPersistence,
+        skipPendingVendors,
+        storeFilter,
+        respectScrapeSchedule,
+    } = meta;
 
-    const respectScrapeSchedule = !testScheduledOrdersPick && !options.bypassScrapeSchedule;
     let prelistedStores = getStoreList();
     if (storeFilter.length && prelistedStores.length) {
         prelistedStores = filterStoresByNumbers(prelistedStores, storeFilter);
     }
     if (respectScrapeSchedule && prelistedStores.length) {
-        const activeStores = prelistedStores.filter((s) => getStoreScrapePhase(s) === 'active');
-        const skipped = prelistedStores.filter((s) => getStoreScrapePhase(s) !== 'active');
-        for (const s of skipped) {
-            console.log(
-                `[Macromatix] Store ${s.storeNumber} outside scrape window (${getStoreScrapePhase(s)}) - ${formatScrapeWindow(s)}`
-            );
-        }
+        const activeStores = filterStoresForActiveScrape(prelistedStores, true);
         if (!activeStores.length) {
             console.log('[Macromatix] No stores in active scrape window - skipping browser session');
+            try {
+                const { maybeTeardownOutsideWindow } = require('./salesSessionPool');
+                await maybeTeardownOutsideWindow();
+            } catch {
+                /* ignore */
+            }
             return {
                 success: true,
                 timestamp: new Date().toISOString(),
@@ -3141,111 +3455,68 @@ async function scrapeMacromatix(options = {}) {
         }
     }
 
-    let browser;
-    try {
-        const launchOpts = getPuppeteerLaunchOptions(options.launchOptions || {});
-        if (!launchOpts.headless) {
-            console.log('[Macromatix] Visible browser (SCRAPER_HEADLESS=false/0); use SCRAPER_SLOW_MO_MS only when debugging');
-        }
-        browser = await puppeteer.launch(launchOpts);
-        trackBrowser(browser, 'scrape-macromatix');
-        if (typeof options.onBrowser === 'function') {
-            options.onBrowser(browser);
-        }
+    const prepared = prepareStoresForMacromatixRun(options, meta);
+    if (prepared.scrapeSkipped) {
+        return {
+            success: true,
+            timestamp: new Date().toISOString(),
+            stores: [],
+            scrapeSkipped: true,
+        };
+    }
+    const stores = prepared.stores;
+    const ctx = {
+        todayKey,
+        testScheduledOrdersPick,
+        pickYmd,
+        skipScheduledPersistence,
+        skipPendingVendors,
+    };
 
-        const singleStoreLogin = useSingleStoreLoginMode();
-        if (!singleStoreLogin) {
+    const { isPersistentSessionsEnabled, getPoolBrowser, ensureBrowser } = require('./salesSessionPool');
+    const persistent = isPersistentSessionsEnabled();
+    let browser = null;
+    let ownsBrowser = false;
+
+    try {
+        if (!useSingleStoreLoginMode()) {
             console.warn(
                 '[Macromatix] Shared-session mode (SCRAPER_SINGLE_STORE_LOGIN=0) is deprecated. Using per-store login mode.'
             );
         }
 
-        // `.storelist` is the master list of stores to scrape.
-        let stores = getStoreList();
-        if (stores.length) {
+        const poolOpts = {
+            launchOptions: options.launchOptions || {},
+            onBrowser: options.onBrowser,
+        };
+
+        if (persistent) {
+            browser = await ensureBrowser(poolOpts);
             console.log(
-                `[Macromatix] Store list (.storelist) - ${stores.length}:`,
-                stores.map((s) => s.storeNumber).join(', ')
+                `[Macromatix] Persistent session mode - ${stores.length} store(s), concurrency ${getScraperConcurrency(stores.length)}`
             );
         } else {
-            throw new Error(
-                'Single-store login mode requires .storelist. Configure stores and per-store Macromatix logins in Admin → Setup Store Logins.'
-            );
-        }
-
-        if (storeFilter.length) {
-            stores = filterStoresByNumbers(stores, storeFilter);
-            if (storeFilter.length === 1) {
-                console.log(`[Macromatix] Restricting scrape to store ${storeFilter[0]}`);
-            } else {
+            const launchOpts = getPuppeteerLaunchOptions(options.launchOptions || {});
+            if (!launchOpts.headless) {
                 console.log(
-                    `[Macromatix] Restricting scrape to ${stores.length} store(s):`,
-                    storeFilter.join(', ')
+                    '[Macromatix] Visible browser (SCRAPER_HEADLESS=false/0); use SCRAPER_SLOW_MO_MS only when debugging'
                 );
             }
-        }
-
-        if (respectScrapeSchedule) {
-            const activeStores = stores.filter((s) => getStoreScrapePhase(s) === 'active');
-            const skipped = stores.filter((s) => getStoreScrapePhase(s) !== 'active');
-            if (skipped.length) {
-                for (const s of skipped) {
-                    const phase = getStoreScrapePhase(s);
-                    console.log(
-                        `[Macromatix] Store ${s.storeNumber} outside scrape window (${phase}) - ${formatScrapeWindow(s)}`
-                    );
-                }
+            browser = await puppeteer.launch(launchOpts);
+            ownsBrowser = true;
+            trackBrowser(browser, 'scrape-macromatix');
+            if (typeof options.onBrowser === 'function') {
+                options.onBrowser(browser);
             }
-            if (!activeStores.length) {
-                console.log('[Macromatix] No stores in active scrape window - skipping remaining scrape');
-                await closeBrowserQuietly(browser, 'schedule idle');
-                browser = null;
-                return {
-                    success: true,
-                    timestamp: new Date().toISOString(),
-                    stores: [],
-                    scrapeSkipped: true,
-                };
-            }
-            stores = activeStores;
             console.log(
-                `[Macromatix] Scraping ${stores.length} store(s) in active window:`,
-                stores.map((s) => s.storeNumber).join(', ')
+                `[Macromatix] Per-store login mode - ${stores.length} store(s), concurrency ${getScraperConcurrency(stores.length)} (login → select → scrape → logout per store)`
             );
         }
 
-        if (useSingleStoreLoginMode()) {
-            const withCreds = stores.filter((s) => storeHasMmxCredentials(s.storeNumber));
-            const missing = stores.length - withCreds.length;
-            if (missing > 0) {
-                console.log(
-                    `[Macromatix] Skipping ${missing} store(s) with no Macromatix login (Admin → Setup Store Logins)`
-                );
-            }
-            stores = withCreds;
-            if (!stores.length) {
-                console.log('[Macromatix] No stores with Macromatix logins - skipping scrape');
-                await closeBrowserQuietly(browser, 'no mmx logins');
-                browser = null;
-                return {
-                    success: true,
-                    timestamp: new Date().toISOString(),
-                    stores: [],
-                    scrapeSkipped: true,
-                };
-            }
-        }
-
-        const ctx = { todayKey, testScheduledOrdersPick, pickYmd, skipScheduledPersistence };
         const results = new Array(stores.length);
         let nextIndex = 0;
         const takeNext = () => (nextIndex < stores.length ? nextIndex++ : -1);
         const concurrency = getScraperConcurrency(stores.length);
-
-        console.log(
-            `[Macromatix] Per-store login mode - ${stores.length} store(s), concurrency ${concurrency} (login → select → scrape → logout per store)`
-        );
-
         const storeSuccessfulCreds = new Map();
 
         const runSingleStoreWorker = async (workerId) => {
@@ -3257,12 +3528,9 @@ async function scrapeMacromatix(options = {}) {
                 const label = store.storeNumber || '(default)';
                 try {
                     const candidates = listMacromatixCredentialCandidatesForStore(store.storeNumber);
-                    const scraped = await scrapeStoreWithCredentialCandidates(
-                        browser,
-                        store,
-                        ctx,
-                        candidates
-                    );
+                    const scraped = persistent
+                        ? await scrapeStorePersistentWithCandidates(store, ctx, candidates, poolOpts)
+                        : await scrapeStoreWithCredentialCandidates(browser, store, ctx, candidates);
                     results[i] = scraped.result;
                     storeSuccessfulCreds.set(store.storeNumber, {
                         credentials: scraped.credentials,
@@ -3291,6 +3559,7 @@ async function scrapeMacromatix(options = {}) {
 
         throwIfSalesScrapeAborted();
 
+        const sssgBrowser = persistent ? getPoolBrowser() || browser : browser;
         const credGroups = groupStoresByMacromatixCredentials(
             stores.filter((s) => storeSuccessfulCreds.has(s.storeNumber)),
             new Map(
@@ -3304,7 +3573,7 @@ async function scrapeMacromatix(options = {}) {
             console.log(
                 `[Macromatix] SSSG LY batch (${group.stores.length} store(s)) via ${group.source} (${group.credentials.username})`
             );
-            await runBatchSssgLyScrape(browser, group.stores, todayKey, group.credentials);
+            await runBatchSssgLyScrape(sssgBrowser, group.stores, todayKey, group.credentials);
         }
         for (const result of results) {
             attachSssgToResult(result, todayKey);
@@ -3312,21 +3581,171 @@ async function scrapeMacromatix(options = {}) {
 
         summarizeInaccessibleStores(stores, results);
 
-        await closeBrowserQuietly(browser, 'normal completion');
-        browser = null;
+        if (ownsBrowser) {
+            await closeBrowserQuietly(browser, 'normal completion');
+            browser = null;
+        }
 
-        const scrapedStores = results.filter((r) => r != null);
         return {
             success: true,
             timestamp: new Date().toISOString(),
-            stores: scrapedStores,
+            stores: results.filter((r) => r != null),
         };
     } catch (error) {
-        await closeBrowserQuietly(browser, 'error cleanup');
+        if (ownsBrowser) {
+            await closeBrowserQuietly(browser, 'error cleanup');
+        }
         if (error?.aborted || isSalesScrapeAbortRequested()) {
-            throw error?.aborted ? error : new MmxWorkAbortedError('Sales scrape aborted - stock count / orders in progress');
+            throw error?.aborted
+                ? error
+                : salesScrapeAbortError('Sales scrape');
         }
         console.error('[Macromatix] Error:', error.message);
+        throw error;
+    }
+}
+
+/**
+ * Scheduled-orders only: pending vendor labels for stores that still need a check today.
+ * Uses the persistent session pool when SCRAPER_PERSISTENT_SESSIONS is enabled.
+ */
+async function scrapeMacromatixVendorsOnly(options = {}) {
+    clearAccessibleStoresDiscoveryCache();
+    const meta = buildScrapeContext({ ...options, skipPendingVendors: false });
+    const { todayKey, pickYmd, testScheduledOrdersPick, skipScheduledPersistence, storeFilter, respectScrapeSchedule } =
+        meta;
+    const ctx = {
+        todayKey,
+        testScheduledOrdersPick,
+        pickYmd,
+        skipScheduledPersistence,
+    };
+
+    let stores = getStoreList();
+    if (!stores.length) {
+        return { success: true, timestamp: new Date().toISOString(), stores: [], scrapeSkipped: true };
+    }
+    if (storeFilter.length) {
+        stores = filterStoresByNumbers(stores, storeFilter);
+    }
+    stores = filterStoresForActiveScrape(stores, respectScrapeSchedule);
+    stores = stores.filter((s) => storeHasMmxCredentials(s.storeNumber));
+    stores = stores.filter((s) => !shouldSkipPendingVendorScrape(s.storeNumber, todayKey));
+
+    if (!stores.length) {
+        console.log('[Macromatix] Vendor scrape - no stores need scheduled-orders check');
+        try {
+            const { maybeTeardownOutsideWindow } = require('./salesSessionPool');
+            await maybeTeardownOutsideWindow();
+        } catch {
+            /* ignore */
+        }
+        return { success: true, timestamp: new Date().toISOString(), stores: [], scrapeSkipped: true };
+    }
+
+    console.log(
+        `[Macromatix] Vendor scrape - ${stores.length} store(s):`,
+        stores.map((s) => s.storeNumber).join(', ')
+    );
+
+    const { isPersistentSessionsEnabled, ensureBrowser } = require('./salesSessionPool');
+    const persistent = isPersistentSessionsEnabled();
+    const poolOpts = {
+        launchOptions: options.launchOptions || {},
+        onBrowser: options.onBrowser,
+    };
+
+    let browser = null;
+    let ownsBrowser = false;
+    const results = [];
+
+    try {
+        if (persistent) {
+            browser = await ensureBrowser(poolOpts);
+        } else {
+            browser = await puppeteer.launch(getPuppeteerLaunchOptions(options.launchOptions || {}));
+            ownsBrowser = true;
+            trackBrowser(browser, 'scrape-macromatix-vendors');
+            if (typeof options.onBrowser === 'function') {
+                options.onBrowser(browser);
+            }
+        }
+
+        const concurrency = getScraperConcurrency(stores.length);
+        let nextIndex = 0;
+        const takeNext = () => (nextIndex < stores.length ? nextIndex++ : -1);
+        const collected = new Array(stores.length);
+
+        const worker = async (workerId) => {
+            for (;;) {
+                throwIfSalesScrapeAborted();
+                const i = takeNext();
+                if (i < 0) break;
+                const store = stores[i];
+                const label = store.storeNumber || '(default)';
+                try {
+                    const candidates = listMacromatixCredentialCandidatesForStore(store.storeNumber);
+                    const scraped = persistent
+                        ? await scrapeVendorsPersistentWithCandidates(store, ctx, candidates, poolOpts)
+                        : await scrapeVendorsColdWithCandidates(browser, store, ctx, candidates);
+                    const vendors = scraped.vendors || [];
+                    console.log(
+                        `[Macromatix] Store ${label} pending vendors:`,
+                        vendors.join(', ') || '(none)'
+                    );
+                    if (!skipScheduledPersistence) {
+                        recordScheduledOrdersResult(store.storeNumber, todayKey, vendors, {
+                            allVendorLabels: scraped.allVendorLabels,
+                        });
+                    }
+                    collected[i] = {
+                        storeNumber: store.storeNumber,
+                        storeName: store.storeName || store.storeNumber,
+                        pendingVendors: vendors,
+                    };
+                } catch (storeErr) {
+                    if (storeErr?.aborted) throw storeErr;
+                    if (isStoreInaccessibleError(storeErr)) {
+                        collected[i] = null;
+                        continue;
+                    }
+                    console.error(
+                        `[Macromatix] Vendor worker ${workerId} store ${label} failed:`,
+                        storeErr.message
+                    );
+                    collected[i] = {
+                        storeNumber: store.storeNumber,
+                        storeName: store.storeName || store.storeNumber,
+                        pendingVendors: getLastKnownPendingVendors(store.storeNumber, todayKey),
+                        error: storeErr.message,
+                    };
+                }
+            }
+        };
+
+        await Promise.all(Array.from({ length: concurrency }, (_, w) => worker(w)));
+        results.push(...collected.filter((r) => r != null));
+
+        if (ownsBrowser) {
+            await closeBrowserQuietly(browser, 'vendor scrape complete');
+            browser = null;
+        }
+
+        return {
+            success: true,
+            timestamp: new Date().toISOString(),
+            stores: results,
+        };
+    } catch (error) {
+        if (ownsBrowser) {
+            await closeBrowserQuietly(browser, 'vendor scrape error');
+        }
+        if (error?.aborted || isSalesScrapeAbortRequested()) {
+            throw error?.aborted
+                ? error
+                : salesScrapeAbortError('Vendor scrape');
+        }
+        console.error('[Macromatix] Vendor scrape error:', error.message);
         throw error;
     }
 }
@@ -3425,6 +3844,7 @@ async function openMacromatixBrowser(options = {}) {
 }
 
 module.exports = scrapeMacromatix;
+module.exports.scrapeMacromatixVendorsOnly = scrapeMacromatixVendorsOnly;
 module.exports.listStores = listStores;
 module.exports.submitStockCountToMacromatix = submitStockCountToMacromatix;
 module.exports.openMacromatixBrowser = openMacromatixBrowser;

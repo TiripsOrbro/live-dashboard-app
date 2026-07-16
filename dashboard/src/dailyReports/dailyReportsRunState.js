@@ -43,11 +43,23 @@ function markDailyRunComplete(dateKey, summary = {}) {
     return state.runs[key];
 }
 
+/** Clear today's completed marker so a manual re-run can proceed. */
+function clearDailyRun(dateKey = melbourneDateKey()) {
+    const key = String(dateKey || '').trim();
+    if (!key) return false;
+    const state = readState();
+    if (!state.runs?.[key]) return false;
+    delete state.runs[key];
+    writeJsonAtomic(STATE_FILE, state);
+    return true;
+}
+
 module.exports = {
     STATE_FILE,
     TIME_ZONE,
     melbourneDateKey,
     hasCompletedDailyRun,
     markDailyRunComplete,
+    clearDailyRun,
     readState,
 };

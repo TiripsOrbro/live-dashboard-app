@@ -41,36 +41,45 @@ async function openReportSelectionPage(page, reportNav, navTimeoutMs) {
 }
 
 async function setGroupDropdown(page, groupName) {
-    const set = await page.evaluate((group) => {
-        const want = group.toLowerCase();
-        for (const sel of document.querySelectorAll('select')) {
-            const ctx = ((sel.closest('tr, td, div') || sel).innerText || '').toLowerCase();
-            if (!ctx.includes('group') && !Array.from(sel.options).some((o) => o.text.toLowerCase().includes('supply'))) {
-                continue;
-            }
-            for (const opt of sel.options) {
-                if ((opt.textContent || '').trim().toLowerCase().includes(want)) {
-                    sel.value = opt.value;
-                    sel.dispatchEvent(new Event('change', { bubbles: true }));
-                    return opt.textContent.trim();
+    let set = null;
+    await clickAndWaitForPostback(
+        page,
+        async () => {
+            set = await page.evaluate((group) => {
+                const want = group.toLowerCase();
+                for (const sel of document.querySelectorAll('select')) {
+                    const ctx = ((sel.closest('tr, td, div') || sel).innerText || '').toLowerCase();
+                    if (
+                        !ctx.includes('group') &&
+                        !Array.from(sel.options).some((o) => o.text.toLowerCase().includes('supply'))
+                    ) {
+                        continue;
+                    }
+                    for (const opt of sel.options) {
+                        if ((opt.textContent || '').trim().toLowerCase().includes(want)) {
+                            sel.value = opt.value;
+                            sel.dispatchEvent(new Event('change', { bubbles: true }));
+                            return opt.textContent.trim();
+                        }
+                    }
                 }
-            }
-        }
-        for (const sel of document.querySelectorAll('select')) {
-            for (const opt of sel.options) {
-                if ((opt.textContent || '').trim().toLowerCase().includes(want)) {
-                    sel.value = opt.value;
-                    sel.dispatchEvent(new Event('change', { bubbles: true }));
-                    return opt.textContent.trim();
+                for (const sel of document.querySelectorAll('select')) {
+                    for (const opt of sel.options) {
+                        if ((opt.textContent || '').trim().toLowerCase().includes(want)) {
+                            sel.value = opt.value;
+                            sel.dispatchEvent(new Event('change', { bubbles: true }));
+                            return opt.textContent.trim();
+                        }
+                    }
                 }
-            }
-        }
-        return null;
-    }, groupName);
+                return null;
+            }, groupName);
+        },
+        { timeoutMs: 15000 }
+    );
 
     if (!set) throw new Error(`Group dropdown: could not select "${groupName}"`);
     log.info(`Group set to: ${set}`);
-    await waitForAspPostback(page, { timeoutMs: 15000 });
     await waitForReportListAfterGroup(page, groupName);
 }
 
@@ -157,40 +166,45 @@ async function waitForReportInList(page, reportName, opts = {}) {
 async function selectReportInList(page, reportName, opts = {}) {
     const loose = Boolean(opts.loose);
     await waitForReportInList(page, reportName, opts);
-    const picked = await page.evaluate(
-        (name, looseMode) => {
-        const want = name.toLowerCase();
-        for (const sel of document.querySelectorAll('select')) {
-            const label = ((sel.closest('tr, td') || sel).innerText || '').toLowerCase();
-            const hasInventory = Array.from(sel.options).some((o) => /inventory|special event/i.test(o.text));
-            const hasScm = Array.from(sel.options).some((o) => /scm|items on/i.test(o.text));
-            if (
-                !looseMode &&
-                !label.includes('report') &&
-                !hasScm
-            ) {
-                continue;
-            }
-            if (looseMode && !label.includes('report') && !hasInventory && !hasScm) {
-                continue;
-            }
-            for (const opt of sel.options) {
-                const t = (opt.textContent || '').trim();
-                if (t.toLowerCase().includes(want) || want.includes(t.toLowerCase())) {
-                    if (sel.multiple) {
-                        for (const o of sel.options) o.selected = false;
+    let picked = null;
+    await clickAndWaitForPostback(
+        page,
+        async () => {
+            picked = await page.evaluate(
+                (name, looseMode) => {
+                    const want = name.toLowerCase();
+                    for (const sel of document.querySelectorAll('select')) {
+                        const label = ((sel.closest('tr, td') || sel).innerText || '').toLowerCase();
+                        const hasInventory = Array.from(sel.options).some((o) =>
+                            /inventory|special event/i.test(o.text)
+                        );
+                        const hasScm = Array.from(sel.options).some((o) => /scm|items on/i.test(o.text));
+                        if (!looseMode && !label.includes('report') && !hasScm) {
+                            continue;
+                        }
+                        if (looseMode && !label.includes('report') && !hasInventory && !hasScm) {
+                            continue;
+                        }
+                        for (const opt of sel.options) {
+                            const t = (opt.textContent || '').trim();
+                            if (t.toLowerCase().includes(want) || want.includes(t.toLowerCase())) {
+                                if (sel.multiple) {
+                                    for (const o of sel.options) o.selected = false;
+                                }
+                                opt.selected = true;
+                                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                                sel.dispatchEvent(new Event('click', { bubbles: true }));
+                                return t;
+                            }
+                        }
                     }
-                    opt.selected = true;
-                    sel.dispatchEvent(new Event('change', { bubbles: true }));
-                    sel.dispatchEvent(new Event('click', { bubbles: true }));
-                    return t;
-                }
-            }
-        }
-        return null;
-    },
-        reportName,
-        loose
+                    return null;
+                },
+                reportName,
+                loose
+            );
+        },
+        { timeoutMs: 15000 }
     );
 
     if (!picked) {
@@ -199,7 +213,6 @@ async function selectReportInList(page, reportName, opts = {}) {
         throw new Error(`Reports list: could not select "${reportName}"`);
     }
     log.info(`Report selected: ${picked}`);
-    await waitForAspPostback(page, { timeoutMs: 15000 });
     await waitForReportFormatControls(page);
 }
 

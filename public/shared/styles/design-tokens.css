@@ -4,6 +4,9 @@
 /* -----------------------------------------------------------
    Shared design tokens — dashboard palette & typography
    Reference: dashboard/public/styles/dashboard.css
+   Note: fonts/app-tabs stay as @import for legacy HTML that only
+   pulls tokens via mic.css / dashboard.css. Shell pages also link
+   them explicitly so the browser can start those fetches earlier.
 ----------------------------------------------------------- */
 :root {
     --dashboard-scale: 1;

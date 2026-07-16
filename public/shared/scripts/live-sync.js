@@ -38,7 +38,9 @@
     function onEvent(payload) {
         const type = String(payload && payload.type ? payload.type : '');
         if (!type || type === 'hello') return;
-        if (/settings|accounts|storelist|sales|updated/i.test(type)) {
+        // Only reload for genuine config changes. sales.updated fires after every
+        // scrape (~1/min) and must NOT trigger a full page reload.
+        if (/settings|accounts|storelist/i.test(type)) {
             scheduleReload(`Settings updated (${type}) — refreshing…`);
         }
     }
@@ -48,7 +50,7 @@
         try {
             const es = new EventSource('/api/live/events');
             es.addEventListener('hello', () => {});
-            ['settings.updated', 'accounts.updated', 'storelist.updated', 'sales.updated', 'message'].forEach(
+            ['settings.updated', 'accounts.updated', 'storelist.updated', 'message'].forEach(
                 (name) => {
                     es.addEventListener(name, (ev) => {
                         try {

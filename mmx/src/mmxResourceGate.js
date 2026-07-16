@@ -1,4 +1,9 @@
-﻿/** Blocks dashboard sales scraping while Macromatix stock count / order entry holds a browser session. */
+﻿/**
+ * Coordinates Macromatix browser work across scrapes vs stock count / orders.
+ *
+ * By default (more RAM hosts), sales/vendor scrapes run in parallel with MIC/admin work.
+ * Set MMX_PAUSE_SCRAPE_FOR_PRIORITY=1 on low-RAM hosts (e.g. Pi) to restore exclusive pause/abort.
+ */
 
 let holdCount = 0;
 let lightweightHoldCount = 0;
@@ -8,11 +13,16 @@ let pauseTimer = null;
 /** Optional warning timer only - must never release the hold (stock count / orders can take 15+ min). */
 const SCRAPE_PAUSE_MAX_MS = Number(process.env.MMX_SCRAPE_PAUSE_MAX_MS ?? 0);
 
+/** When true, scrapes defer/abort for MIC/admin MMX work. Default off. */
+function mmxPauseScrapeForPriority() {
+    return /^(1|true|yes|on)$/i.test(String(process.env.MMX_PAUSE_SCRAPE_FOR_PRIORITY ?? '0').trim());
+}
+
 function registerMmxAbortHandler(handler) {
     if (typeof handler === 'function') abortHandlers.add(handler);
 }
 
-/** Force-stop in-flight MMX browsers (sales scrape, upselling, etc.) before stock count / orders. */
+/** Force-stop in-flight MMX browsers (sales scrape when pause enabled, forecast, etc.). */
 function abortCompetingMmxWork(reason) {
     const label = String(reason || 'stock count / orders').trim();
     for (const handler of abortHandlers) {
@@ -52,7 +62,11 @@ function acquireMmxResource(reason) {
     const wasIdle = holdCount === 0;
     holdCount++;
     if (wasIdle && reason) {
-        console.log(`[MMX Resource] Pausing sales scrape - ${reason}`);
+        if (mmxPauseScrapeForPriority()) {
+            console.log(`[MMX Resource] Pausing sales scrape - ${reason}`);
+        } else {
+            console.log(`[MMX Resource] Heavy MMX work started - ${reason}`);
+        }
     }
     if (holdCount === 1) {
         schedulePauseTimeout();
@@ -64,9 +78,15 @@ function releaseMmxResource(reason) {
     if (holdCount <= 0) return;
     holdCount--;
     if (holdCount === 0 && lightweightHoldCount === 0) {
-        console.log(
-            `[MMX Resource] Sales scrape may resume${reason ? ` (${reason})` : ''}`
-        );
+        if (mmxPauseScrapeForPriority()) {
+            console.log(
+                `[MMX Resource] Sales scrape may resume${reason ? ` (${reason})` : ''}`
+            );
+        } else {
+            console.log(
+                `[MMX Resource] Heavy MMX work finished${reason ? ` (${reason})` : ''}`
+            );
+        }
         while (idleWaiters.length) {
             idleWaiters.shift()();
         }
@@ -111,7 +131,27 @@ function waitUntilMmxResourceIdle() {
     return new Promise((resolve) => idleWaiters.push(resolve));
 }
 
+/** Reset leaked in-process holds (e.g. stale queue slot cleared while work still marked active). */
+function forceReleaseAllMmxResourceHolds(reason) {
+    clearPauseTimeout();
+    const heavy = holdCount;
+    const light = lightweightHoldCount;
+    if (heavy <= 0 && light <= 0) return false;
+    holdCount = 0;
+    lightweightHoldCount = 0;
+    console.warn(
+        `[MMX Resource] Force-released ${heavy} heavy + ${light} lightweight hold(s)${
+            reason ? ` (${reason})` : ''
+        } — sales scrape may resume`
+    );
+    while (idleWaiters.length) {
+        idleWaiters.shift()();
+    }
+    return true;
+}
+
 module.exports = {
+    mmxPauseScrapeForPriority,
     acquireMmxResource,
     releaseMmxResource,
     acquireLightweightMmxResource,
@@ -123,4 +163,5 @@ module.exports = {
     waitUntilMmxResourceIdle,
     registerMmxAbortHandler,
     abortCompetingMmxWork,
+    forceReleaseAllMmxResourceHolds,
 };

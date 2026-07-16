@@ -1380,6 +1380,37 @@ function paintOverviewShellEarly() {
     return true;
 }
 
+/** Paint multi-store chrome before /api/me returns (admins / area managers). */
+function paintMultiOverviewShellEarly() {
+    if (!app || !isMicOverviewPath()) return false;
+    if (document.getElementById('mic-grid')) return true;
+    if (!window.MicOverviewShell?.mountShell) return false;
+    window.MicOverviewShell.mountShell(app, {
+        subtitle: 'Overview',
+        promoBannerHtml: window.MicOverviewShell.renderPromoBanner?.() || '',
+    });
+    const grid = document.getElementById('mic-grid');
+    if (grid) {
+        const placeholders =
+            window.MicOverviewTiles?.renderLoadingPlaceholderTiles?.(6) ||
+            '<div class="mic-grid-loading-overlay" aria-live="polite">Loading…</div>';
+        grid.innerHTML = placeholders;
+        grid.setAttribute('aria-busy', 'true');
+    }
+    signalLoginPreloadReady('shell');
+    return true;
+}
+
+function prefetchOverviewPayload() {
+    return fetch('/api/overview', { credentials: 'same-origin' })
+        .then(async (res) => {
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !data?.success) return null;
+            return data;
+        })
+        .catch(() => null);
+}
+
 async function initStoreOverview(me, { skipShell = false } = {}) {
     if (!STORE_NUMBER && isMicOverviewPath()) {
         STORE_NUMBER = await resolveMicStoreNumber();
@@ -1444,7 +1475,14 @@ async function init() {
     }
     try {
         const overviewPaintedEarly = paintOverviewShellEarly();
-        const me = await fetchMeProfile();
+        const multiPaintedEarly = !overviewPaintedEarly && paintMultiOverviewShellEarly();
+        // Overlap profile + overview fetch so multi-store users get data sooner.
+        const mePromise = fetchMeProfile();
+        const overviewPrefetchPromise =
+            multiPaintedEarly || (!overviewPaintedEarly && isMicOverviewPath())
+                ? prefetchOverviewPayload()
+                : Promise.resolve(null);
+        const me = await mePromise;
         if (!me) {
             if (window.__APP_SHELL__ && !canMaintainMicStoreOverview()) return;
             app.textContent = 'Could not load your profile. Redirecting to sign in…';
@@ -1461,7 +1499,6 @@ async function init() {
             return;
         }
 
-        const scope = me.overviewScope || 'store';
         let viewAs = window.AdminStoreView?.resolveStoreForOverview?.(me) || '';
 
         if (window.AdminStoreView?.isEnabled?.() && !viewAs) {
@@ -1473,7 +1510,10 @@ async function init() {
             if (!window.MicOverviewMulti?.start) {
                 throw new Error('Overview scripts failed to load. Hard refresh the page (Ctrl+Shift+R).');
             }
-            void window.MicOverviewMulti.start(me, app, renderPromoBanner());
+            const prefetched = await overviewPrefetchPromise;
+            void window.MicOverviewMulti.start(me, app, renderPromoBanner(), {
+                prefetchedOverview: prefetched,
+            });
             window.AdminStoreView?.afterShellRendered?.(me);
             return;
         }

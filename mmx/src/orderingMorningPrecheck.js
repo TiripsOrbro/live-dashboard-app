@@ -12,6 +12,8 @@ const { prefetchOrderingReportsForStore } = require('../../vendors/src/orderingR
 const { runWithPriority, PRIORITY } = require('./mmxTaskQueue');
 const { resolveOrderDateKey, ymdToPickParts } = require('./scheduledReportDownload');
 
+const TIME_ZONE = process.env.REPORT_DOWNLOAD_TIME_ZONE || process.env.DASHBOARD_TIME_ZONE || 'Australia/Melbourne';
+
 function resolveMorningPrecheckOrderDateKey(options = {}) {
     if (options.orderDateKey) return options.orderDateKey;
     if (options.orderDate) return resolveOrderDateKey(options.orderDate);
@@ -22,6 +24,42 @@ function resolveMorningPrecheckOrderDateKey(options = {}) {
 
 function morningPrecheckEnabled() {
     return !/^(0|false|no|off)$/i.test(String(process.env.ORDERING_MORNING_PRECHECK ?? '1').trim());
+}
+
+function localHourInTimeZone(date = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-AU', {
+        timeZone: TIME_ZONE,
+        hour: 'numeric',
+        hour12: false,
+    }).formatToParts(date instanceof Date ? date : new Date(date));
+    return Number(parts.find((p) => p.type === 'hour')?.value || 0);
+}
+
+/** Inclusive start hour (default 4). Boot catch-up before typical morning restart / reports. */
+function morningPrecheckStartHour() {
+    const h = Number(process.env.ORDERING_MORNING_PRECHECK_HOUR ?? 4);
+    return Number.isFinite(h) && h >= 0 && h <= 23 ? Math.floor(h) : 4;
+}
+
+/** Exclusive end hour (default 12). Afternoon dashboard restarts must not re-run precheck. */
+function morningPrecheckUntilHour() {
+    const h = Number(process.env.ORDERING_MORNING_PRECHECK_UNTIL_HOUR ?? 12);
+    return Number.isFinite(h) && h >= 1 && h <= 24 ? Math.floor(h) : 12;
+}
+
+/**
+ * Scheduled/boot runs only inside the morning window. Manual / force runs ignore this.
+ * Window is [startHour, untilHour) in Melbourne (or DASHBOARD_TIME_ZONE).
+ */
+function isWithinMorningPrecheckWindow(date = new Date()) {
+    const hour = localHourInTimeZone(date);
+    const start = morningPrecheckStartHour();
+    const until = morningPrecheckUntilHour();
+    if (until <= start) {
+        // Wrap past midnight (e.g. 22 → 6): hour >= start OR hour < until
+        return hour >= start || hour < until;
+    }
+    return hour >= start && hour < until;
 }
 
 /** Per-store MMX logins need a store number to decrypt; pick any credentialed store to open the browser. */
@@ -45,6 +83,29 @@ async function runMorningOrderingPrecheck(options = {}) {
     const runDateKey = options.runDateKey || melbourneDateKey();
     const orderDateKey = resolveMorningPrecheckOrderDateKey(options);
     const pickYmd = ymdToPickParts(orderDateKey);
+
+    if (
+        options.scheduled &&
+        !options.force &&
+        !isWithinMorningPrecheckWindow()
+    ) {
+        const hour = localHourInTimeZone();
+        const start = morningPrecheckStartHour();
+        const until = morningPrecheckUntilHour();
+        console.log(
+            `[Ordering] Morning precheck skipped - outside morning window ` +
+                `(hour ${hour}, window ${start}-${until} ${TIME_ZONE})`
+        );
+        return {
+            skipped: true,
+            reason: 'outside-morning-window',
+            runDateKey,
+            orderDateKey,
+            localHour: hour,
+            windowStartHour: start,
+            windowUntilHour: until,
+        };
+    }
 
     if (!options.force && morningPrecheckCompletedFor(runDateKey)) {
         return { skipped: true, reason: 'already-ran-today', runDateKey, orderDateKey };
@@ -129,6 +190,9 @@ async function runMorningOrderingPrecheck(options = {}) {
 
 module.exports = {
     morningPrecheckEnabled,
+    isWithinMorningPrecheckWindow,
+    morningPrecheckStartHour,
+    morningPrecheckUntilHour,
     runMorningOrderingPrecheck,
     resolveMorningPrecheckOrderDateKey,
 };

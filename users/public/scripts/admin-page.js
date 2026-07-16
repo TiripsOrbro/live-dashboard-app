@@ -601,10 +601,14 @@
         section?.activate?.();
     }
 
-    const PREFERENCES_BOOT_SECTIONS = new Set(['preferences', 'general']);
+    const PREFERENCES_BOOT_SECTIONS = new Set(['preferences', 'general', 'account', 'store']);
 
     async function ensureDeferredScriptsForSection(sectionId) {
         if (PREFERENCES_BOOT_SECTIONS.has(sectionId)) return;
+        if (typeof global.AppShell?.ensureAdminScriptsForSection === 'function') {
+            await global.AppShell.ensureAdminScriptsForSection(sectionId);
+            return;
+        }
         await global.AppShell?.ensureAdminDeferredScripts?.();
     }
 
@@ -696,8 +700,8 @@
         mountBackButton();
         global.__APP_SHELL__ = Boolean(global.__APP_SHELL__);
         try {
-            // Wait for all admin section scripts before mounting panels (avoids blank Store logins etc.).
-            await global.AppShell?.ensureAdminDeferredScripts?.();
+            // Prefetch heavy sections in the background; Preferences/General need no deferred scripts.
+            void global.AppShell?.ensureAdminDeferredScripts?.();
 
             const data = await fetchProfile();
             global.MicSettings?.setStoreContext?.({
@@ -711,18 +715,18 @@
             const host = contentHost();
             if (host && !host.querySelector('.admin-settings-loading-panel')) {
                 host.innerHTML =
-                    '<div class="admin-settings-loading-panel" aria-live="polite"><p class="admin-settings-loading">Loading all settings…</p></div>';
+                    '<div class="admin-settings-loading-panel" aria-live="polite"><p class="admin-settings-loading">Loading settings…</p></div>';
             } else {
-                setLoadingMessage('Loading all settings…');
+                setLoadingMessage('Loading settings…');
             }
 
             const requested = sectionFromLocation() || defaultSectionId(data);
             const allowed = visibleSections(data, mountOptions());
             const section = allowed.find((row) => row.id === requested) || allowed[0];
             if (section) {
-                // Preload every visible section on this Host before first paint.
-                await preloadAllSections(data);
+                // Paint the requested section immediately; warm the rest in the background.
                 await activateSection(section, data, { skipPreloadKick: true });
+                void preloadAllSections(data);
             }
         } catch {
             global.location.href = '/login';

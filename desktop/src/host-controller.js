@@ -175,7 +175,8 @@ async function syncFromGitIfBehind({ force = false, onProgress } = {}) {
 
     const alreadyCurrent = local && remote && local === remote;
     progress(alreadyCurrent ? 'Already current — refreshing install…' : 'Pulling latest server code…');
-    await run('git', ['pull', '--ff-only', 'origin', branch], { cwd: serverDir });
+    // --autostash: Host runtime edits (ISE history, local experiments) must not block updates
+    await run('git', ['pull', '--ff-only', '--autostash', 'origin', branch], { cwd: serverDir });
     progress('Installing packages…');
     await npmInstall(serverDir);
     progress('Restarting server…');

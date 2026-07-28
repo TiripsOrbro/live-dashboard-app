@@ -3478,171 +3478,110 @@ function assertDailyCountMmxAccess(req, res) {
     return true;
 }
 
-function sendDfscPage(req, res, storeNumber) {
-    if (!assertStoreAccess(req, res, storeNumber)) return;
-    if (!assertDfscAccess(req, res)) return;
-    const htmlPath = path.join(paths.tacaudit.public, 'dfsc.html');
-    let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = injectAssetVersion(html);
-    res.type('html').send(html);
+function redirectAwayFromTacAudit(req, res) {
+    res.redirect(302, getMicOverviewPath());
+}
+
+function sendDfscPage(req, res) {
+    redirectAwayFromTacAudit(req, res);
 }
 
 app.get(/^\/(teststore|\d{3,6})\/dfsc\/?$/i, (req, res) => {
-    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/dfsc\/?$/i) || [])[1]);
-    sendDfscPage(req, res, storeNumber);
+    redirectAwayFromTacAudit(req, res);
 });
 
 app.get(/^\/(teststore|\d{3,6})\/dfsc\/audit\/?$/i, (req, res) => {
-    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/dfsc\/audit\/?$/i) || [])[1]);
-    sendDfscPage(req, res, storeNumber);
+    redirectAwayFromTacAudit(req, res);
 });
 
-function sendPestWalkPage(req, res, storeNumber) {
-    if (!assertStoreAccess(req, res, storeNumber)) return;
-    if (!assertDfscAccess(req, res)) return;
-    const htmlPath = path.join(paths.tacaudit.public, 'pest-walk.html');
-    let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = injectAssetVersion(html);
-    res.type('html').send(html);
+function sendPestWalkPage(req, res) {
+    redirectAwayFromTacAudit(req, res);
 }
 
 app.get(/^\/(teststore|\d{3,6})\/pest-walk\/?$/i, (req, res) => {
-    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/pest-walk\/?$/i) || [])[1]);
-    sendPestWalkPage(req, res, storeNumber);
+    redirectAwayFromTacAudit(req, res);
 });
 
 app.get(/^\/(teststore|\d{3,6})\/pest-walk\/audit\/?$/i, (req, res) => {
-    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/pest-walk\/audit\/?$/i) || [])[1]);
-    sendPestWalkPage(req, res, storeNumber);
+    redirectAwayFromTacAudit(req, res);
 });
 
-function sendRgmCleaningPage(req, res, storeNumber) {
-    if (!assertStoreAccess(req, res, storeNumber)) return;
-    if (!assertDfscAccess(req, res)) return;
-    const htmlPath = path.join(paths.tacaudit.public, 'rgm-cleaning.html');
-    let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = injectAssetVersion(html);
-    res.type('html').send(html);
+function sendRgmCleaningPage(req, res) {
+    redirectAwayFromTacAudit(req, res);
 }
 
 app.get(/^\/(teststore|\d{3,6})\/rgm-cleaning\/?$/i, (req, res) => {
-    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/rgm-cleaning\/?$/i) || [])[1]);
-    sendRgmCleaningPage(req, res, storeNumber);
+    redirectAwayFromTacAudit(req, res);
 });
 
 app.get(/^\/(teststore|\d{3,6})\/rgm-cleaning\/audit\/?$/i, (req, res) => {
-    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/rgm-cleaning\/audit\/?$/i) || [])[1]);
-    sendRgmCleaningPage(req, res, storeNumber);
+    redirectAwayFromTacAudit(req, res);
 });
 
-function sendPsiPage(req, res, storeNumber) {
-    if (!assertStoreAccess(req, res, storeNumber)) return;
-    if (!assertDfscAccess(req, res)) return;
-    const htmlPath = path.join(paths.tacaudit.public, 'psi.html');
-    let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = injectAssetVersion(html);
-    res.type('html').send(html);
+function sendPsiPage(req, res) {
+    redirectAwayFromTacAudit(req, res);
 }
 
 app.get(/^\/(teststore|\d{3,6})\/psi\/?$/i, (req, res) => {
-    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/psi\/?$/i) || [])[1]);
-    sendPsiPage(req, res, storeNumber);
+    redirectAwayFromTacAudit(req, res);
 });
 
 app.get(/^\/(teststore|\d{3,6})\/psi\/audit\/?$/i, (req, res) => {
-    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/psi\/audit\/?$/i) || [])[1]);
-    sendPsiPage(req, res, storeNumber);
+    redirectAwayFromTacAudit(req, res);
 });
 
-function sendSquareOnePage(req, res, storeNumber) {
-    if (!assertStoreAccess(req, res, storeNumber)) return;
-    if (!assertDfscAccess(req, res)) return;
-    const htmlPath = path.join(paths.tacaudit.public, 'square-one.html');
-    let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = injectAssetVersion(html);
-    res.type('html').send(html);
+function sendSquareOnePage(req, res) {
+    redirectAwayFromTacAudit(req, res);
 }
 
 app.get(/^\/(teststore|\d{3,6})\/square-one\/?$/i, (req, res) => {
-    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/square-one\/?$/i) || [])[1]);
-    sendSquareOnePage(req, res, storeNumber);
+    redirectAwayFromTacAudit(req, res);
 });
 
 app.get(/^\/(teststore|\d{3,6})\/square-one\/audit\/?$/i, (req, res) => {
-    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/square-one\/audit\/?$/i) || [])[1]);
-    sendSquareOnePage(req, res, storeNumber);
+    redirectAwayFromTacAudit(req, res);
 });
 
 const PERIOD_AUDIT_PAGE_TYPES = ['core-ops', 'core-food-safety', 'visit-coach', 'visit-customer'];
 
-function sendPeriodAuditPage(req, res, storeNumber, auditType) {
-    if (!assertStoreAccess(req, res, storeNumber)) return;
-    if (!assertDfscAccess(req, res)) return;
-    if (['visit-coach', 'visit-customer'].includes(auditType) && !assertCoachAuditAccess(req, res)) return;
-    const htmlPath = path.join(paths.tacaudit.public, 'period-audit.html');
-    let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = injectAssetVersion(html.replace(/__AUDIT_TYPE__/g, auditType));
-    res.type('html').send(html);
+function sendPeriodAuditPage(req, res) {
+    redirectAwayFromTacAudit(req, res);
 }
 
 for (const auditType of PERIOD_AUDIT_PAGE_TYPES) {
     const pagePattern = new RegExp(`^\\/(teststore|\\d{3,6})\\/${auditType}(?:\\/audit)?\\/?$`, 'i');
     app.get(pagePattern, (req, res) => {
-        const storeNumber = normalizeStoreKey((req.path.match(pagePattern) || [])[1]);
-        sendPeriodAuditPage(req, res, storeNumber, auditType);
+        redirectAwayFromTacAudit(req, res);
     });
 }
 
 function sendTacauditHtml(req, res) {
-    if (sendShellOrLegacy(req, res, null, 'TacAudit')) return;
-    const htmlPath = path.join(paths.tacaudit.public, 'tacaudit.html');
-    let html = fsSync.readFileSync(htmlPath, 'utf8');
-    html = injectAssetVersion(html);
-    res.type('html').send(html);
+    redirectAwayFromTacAudit(req, res);
 }
 
-function sendTacauditPage(req, res, storeNumber) {
-    if (!assertStoreAccess(req, res, storeNumber)) return;
-    if (!assertDfscAccess(req, res)) return;
-    sendTacauditHtml(req, res);
+function sendTacauditPage(req, res) {
+    redirectAwayFromTacAudit(req, res);
 }
 
 function sendTacauditSummaryPage(req, res) {
-    const user = req.dashboardUser || getRequestUser(req);
-    if (!user) {
-        res.redirect('/login');
-        return;
-    }
-    if (!isRealDashboardUser(user)) {
-        sendUnauthorized(req, res);
-        return;
-    }
-    if (!canViewTacauditAdminSummary(user)) {
-        sendForbidden(req, res, 'Area audit summary is not available for this account.');
-        return;
-    }
-    sendTacauditHtml(req, res);
+    redirectAwayFromTacAudit(req, res);
 }
 
 app.get(/^\/tacaudit\/summary\/?$/i, sendTacauditSummaryPage);
 app.get(/^\/tacaudit\/actions\/?$/i, sendTacauditSummaryPage);
 app.get(/^\/Admin\/tacaudit\/?$/i, (req, res) => {
-    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
-    res.redirect(302, `/tacaudit/summary${qs}`);
+    redirectAwayFromTacAudit(req, res);
 });
 app.get(/^\/admin\/tacaudit\/?$/i, (req, res) => {
-    const qs = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
-    res.redirect(302, `/tacaudit/summary${qs}`);
+    redirectAwayFromTacAudit(req, res);
 });
 
 app.get(/^\/(teststore|\d{3,6})\/tacaudit\/actions\/?$/i, (req, res) => {
-    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/tacaudit\/actions\/?$/i) || [])[1]);
-    sendTacauditPage(req, res, storeNumber);
+    redirectAwayFromTacAudit(req, res);
 });
 
 app.get(/^\/(teststore|\d{3,6})\/tacaudit\/?$/i, (req, res) => {
-    const storeNumber = normalizeStoreKey((req.path.match(/^\/(teststore|\d{3,6})\/tacaudit\/?$/i) || [])[1]);
-    sendTacauditPage(req, res, storeNumber);
+    redirectAwayFromTacAudit(req, res);
 });
 
 app.get('/api/me', (req, res) => {

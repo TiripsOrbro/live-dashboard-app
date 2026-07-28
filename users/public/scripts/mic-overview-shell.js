@@ -10,7 +10,6 @@
         { id: 'sales', label: 'Sales' },
         { id: 'results', label: 'Results' },
         { id: 'orders', label: 'Orders' },
-        { id: 'audits', label: 'Audits' },
     ];
 
     const CURRENT_PROMO = {

@@ -14,8 +14,6 @@ const {
 } = require('../../../../../dashboard/src/salesProgress');
 const { buildStockCountTileState } = require('../../../../../vendors/src/stockCountTileState');
 const { buildAreaDailyStockCountTileStateAsync } = require('../../../../../vendors/src/dailyStockCountTileState');
-const { buildStoresNeedingAudits } = require('../../../../../dashboard/src/weeklyAuditsTileState');
-const { buildAdminAuditTileSummaries } = require('../../../../../dashboard/src/adminAuditTileSummaries');
 const { DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR, getStoreConfig } = require('../../../../../stores/src/storeList');
 const { TIME_ZONE } = require('../../../../../dashboard/src/upselling/upsellingConfig');
 const { getCachedSssgLy } = require('../../../../../mmx/src/macromatixScraper');
@@ -265,7 +263,6 @@ function buildAreaStockCountTileState(areaStores, liveByNum) {
 }
 
 async function buildAdminOverviewPayload(salesPayload, areaGroups, options = {}) {
-    const { auditStateByStore, requiredAudits } = options;
     const resolveAreaGroups =
         typeof options.ensureAllAreaGroups === 'function'
             ? options.ensureAllAreaGroups
@@ -328,10 +325,7 @@ async function buildAdminOverviewPayload(salesPayload, areaGroups, options = {})
             sssgTodayPercent,
             sssgWtdPercent,
             sssgWtdTotals,
-            auditTileSummaries:
-                auditStateByStore instanceof Map && Array.isArray(requiredAudits)
-                    ? buildAdminAuditTileSummaries(configs, auditStateByStore, { requiredAudits })
-                    : [],
+            auditTileSummaries: [],
             dailyStockCount: await buildAreaDailyStockCountTileStateAsync(configs),
         };
     }));
@@ -348,19 +342,12 @@ async function buildAdminOverviewPayload(salesPayload, areaGroups, options = {})
         .map((entry) => ({ label: entry.label, basePoints: Number(entry.points) || 0 }))
         .sort((a, b) => a.label.localeCompare(b.label));
 
-    const storesNeedingAudits =
-        auditStateByStore instanceof Map && Array.isArray(requiredAudits)
-            ? buildStoresNeedingAudits(areaGroups, auditStateByStore, requiredAudits, {
-                  ensureAllAreaGroups: resolveAreaGroups,
-              })
-            : [];
-
     return {
         day,
         areas,
         vocByArea,
         storesNeedingOrders: buildStoresNeedingOrders(liveByNum, resolveAreaGroups(areaGroups)),
-        storesNeedingAudits,
+        storesNeedingAudits: [],
         activeMultipliers: getAllActiveMultipliersForDay(day),
         items,
         defaultMultiplier: DEFAULT_ITEM_MULTIPLIER,

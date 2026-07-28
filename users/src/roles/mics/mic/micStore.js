@@ -7,8 +7,6 @@ const { getCachedSssgLy } = require('../../../../../mmx/src/macromatixScraper');
 const { computeStoreWtdSssgPercent, getStoreDateKey } = require('../../../../../dashboard/src/sssg/sssgWeeklyLedger');
 const { buildStockCountTileState } = require('../../../../../vendors/src/stockCountTileState');
 const { buildDailyStockCountTileState } = require('../../../../../vendors/src/dailyStockCountTileState');
-const { buildDaySummary, storeDateKey: dfscStoreDateKey, listOpenAudits } = require('../../../../../tacaudit/audits/Daily Food Safety Check/dfscStore');
-const { formatStoreTileSubtext } = require('../../../../../tacaudit/audits/Daily Food Safety Check/dfscAdmin');
 const { loadScores, soldCountForItemLabel } = require('../../../../../dashboard/src/upselling/leaderboardStore');
 const { trimHourlyToTradingWindow, computeDaySalesPresentation } = require('../../../../../dashboard/src/salesProgress');
 const { DEFAULT_OPEN_HOUR, DEFAULT_CLOSE_HOUR, getStoreConfig } = require('../../../../../stores/src/storeList');
@@ -320,7 +318,6 @@ function computeSalesToday(storeSlice = {}) {
 
 function buildMicPayload(storeNumber, storeSlice = {}, options = {}) {
     const store = String(storeNumber || '').trim();
-    const canAccessDfsc = options.canAccessDfsc !== false;
     const day = melbourneTodayIso();
     const dailyItemMultipliers = getDailyItemMultipliers(store, day);
     const cfg = getStoreConfig(store) || {};
@@ -331,17 +328,6 @@ function buildMicPayload(storeNumber, storeSlice = {}, options = {}) {
         ...rule,
         soldCount: soldCountForItemLabel(itemQtyByDay, day, rule.itemLabel),
     }));
-    const dfscDateKey = dfscStoreDateKey(store);
-    const dfscDay = buildDaySummary(store, dfscDateKey);
-    const openAuditCount = listOpenAudits(store).length;
-    const dfscSubtext = formatStoreTileSubtext(
-        {
-            amCompleted: dfscDay.amCompleted,
-            pmCompleted: dfscDay.pmCompleted,
-        },
-        dfscDay.inProgress,
-        openAuditCount
-    );
     return {
         storeNumber: store,
         storeName: String(cfg.storeName || storeSlice.storeName || store).trim(),
@@ -363,16 +349,7 @@ function buildMicPayload(storeNumber, storeSlice = {}, options = {}) {
         multiplierNothingLabel: MULTIPLIER_NOTHING_LABEL,
         stockCount: buildStockCountTileState(store, storeSlice),
         dailyStockCount: buildDailyStockCountTileState(store),
-        dfsc: canAccessDfsc
-            ? {
-                  href: `/${store}/dfsc`,
-                  subtext: dfscSubtext,
-                  amCompleted: dfscDay.amCompleted,
-                  pmCompleted: dfscDay.pmCompleted,
-                  inProgress: Boolean(dfscDay.inProgress),
-                  openAuditCount,
-              }
-            : null,
+        dfsc: null,
     };
 }
 

@@ -106,7 +106,7 @@
                             </div>
                             <p class="mic-settings-pref-hint">White cards with soft drop shadows on dashboard tiles. Turn off for square bordered tiles.</p>
                         </div>
-                        <div class="mic-settings-pref-block">
+                        <div class="mic-settings-pref-block" hidden>
                             <div class="mic-settings-toggle-row">
                                 <span class="mic-settings-toggle-label" id="mic-audit-auto-collapse-label">Auto-collapse audit sections</span>
                                 <label class="mic-toggle-switch">
@@ -434,7 +434,7 @@
                     </div>
                     <p class="mic-settings-pref-hint">White cards with soft drop shadows on dashboard tiles. Turn off for square bordered tiles.</p>
                 </div>
-                <div class="mic-settings-pref-block">
+                <div class="mic-settings-pref-block" hidden>
                     <div class="mic-settings-toggle-row">
                         <span class="mic-settings-toggle-label" id="mic-audit-auto-collapse-label">Auto-collapse audit sections</span>
                         <label class="mic-toggle-switch">

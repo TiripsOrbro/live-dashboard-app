@@ -1,9 +1,6 @@
 ﻿const { buildMicPayload } = require('./micStore');
 const { getStoreConfig } = require('../../../../../stores/src/storeList');
-const { getSettings: getTacauditSettings } = require('../../../../../tacaudit/src/core/tacauditStore');
-const { summarizeStoreActions } = require('../../../../../tacaudit/src/core/storeActionsStore');
 const { buildAdminOverviewPayload, ensureAllAreaGroups } = require('./adminOverview');
-const { buildWeeklyAuditsTileState, buildSquareOneTiles } = require('../../../../../dashboard/src/weeklyAuditsTileState');
 const { normalizeAreaLabel } = require('../../../../../stores/src/marketsConfig');
 const { getAreaIds } = require('../../../../../stores/src/areasConfig');
 const { buildStockCountTileState } = require('../../../../../vendors/src/stockCountTileState');
@@ -74,23 +71,7 @@ async function buildStoreOverviewPayload(user, deps) {
         return { ok: false, error: 'Store is required for store-scoped overview.' };
     }
 
-    const {
-        storeSlice,
-        getAuditState,
-        isTestStore,
-        getAuditSchedule,
-        canUserAccessDfsc,
-    } = deps;
-
-    const auditsSchedule = getAuditSchedule();
-    const auditState = isTestStore(store) ? { dismissed: [] } : await getAuditState(store);
-    const weeklyAudits = buildWeeklyAuditsTileState(store, {
-        dismissed: auditState.dismissed,
-        requiredAudits: auditsSchedule.auditListItems,
-    });
-    const squareOneTiles = buildSquareOneTiles(store, { dismissed: auditState.dismissed });
-
-    const tacauditSettings = getTacauditSettings(store);
+    const { storeSlice } = deps;
     const storeCfg = getStoreConfig(store) || {};
 
     return {
@@ -99,28 +80,24 @@ async function buildStoreOverviewPayload(user, deps) {
         areaName: String(storeCfg.area || '').trim(),
         accessibleAreas: getAccessibleAreasForUser(user) || [],
         accessibleMarkets: getUserAccessScope(user).markets || [],
-        ...buildMicPayload(store, storeSlice, { canAccessDfsc: canUserAccessDfsc(user) }),
+        ...buildMicPayload(store, storeSlice, {}),
         stockCount: buildStockCountTileState(store, storeSlice),
         dailyStockCount: buildDailyStockCountTileState(store),
-        weeklyAudits,
-        squareOneTiles,
-        reportEmail: tacauditSettings.reportEmail || '',
-        actionsSummary: summarizeStoreActions(store),
+        weeklyAudits: [],
+        squareOneTiles: [],
+        reportEmail: '',
+        actionsSummary: { openCount: 0, soonCount: 0, overdueCount: 0 },
     };
 }
 
 async function buildMultiStoreOverviewPayload(user, deps) {
     const overviewScope = getOverviewScope(user);
-    const { salesPayload, stores, loadAuditStateMapForStores, getAuditSchedule, getSalesUpdatedAt } = deps;
+    const { salesPayload, stores, getSalesUpdatedAt } = deps;
     const storeRows = Array.isArray(stores) ? stores : [];
 
     const areaGroups = filterAreaGroupsForUser(buildAreaGroupsFromStoreRows(storeRows), user);
-    const auditsSchedule = getAuditSchedule();
-    const auditStateByStore = await loadAuditStateMapForStores(storeRows.map((s) => s.storeNumber));
 
     const adminPayload = await buildAdminOverviewPayload(salesPayload, areaGroups, {
-        auditStateByStore,
-        requiredAudits: auditsSchedule.auditListItems,
         ensureAllAreaGroups: (groups) => filterAreaGroupsForUser(groups, user),
     });
 

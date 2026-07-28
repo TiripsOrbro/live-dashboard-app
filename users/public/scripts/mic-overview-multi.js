@@ -401,8 +401,7 @@
     }
 
     function auditTilesForDisplay() {
-        const area = currentArea();
-        return area?.auditTileSummaries || [];
+        return [];
     }
 
     function currentVoc() {
@@ -555,20 +554,75 @@
         return text;
     }
 
-    function renderDfscAdminTile({ tabbed = false, inRow = false } = {}) {
-        const posClass = tabbed || inRow ? '' : ' mic-tile--pos-dfsc';
-        const sub = escapeHtml(dfscSubtextForDisplay());
-        const href = tacauditDfscAdminHref();
-        const body = `
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">DFSC</div>
-                <div class="mic-tile-sub">${sub}</div>
-            </div>`;
-        if (href) {
-            return `
-        <a class="mic-tile mic-tile--link mic-tile--dfsc${posClass}" href="${escapeHtml(href)}" aria-label="DFSC - open TacAudit summary">${body}</a>`;
+    function renderDfscAdminTile() {
+        return '';
+    }
+
+    function countAdminContentRows() {
+        return 2;
+    }
+
+    function tacauditAdminHubHref() {
+        return '';
+    }
+
+    function renderTacauditHubLink() {
+        return '';
+    }
+
+    function tacauditHrefForTile() {
+        return '';
+    }
+
+    function tacauditDfscAdminHref() {
+        return '';
+    }
+
+    function renderSquareOneMiddleTileAdmin() {
+        return '';
+    }
+
+    function renderAdminAuditTilesOnly() {
+        return '';
+    }
+
+    function renderAdminTopRow(vocRaw) {
+        const tiles = [
+            renderVocTile(vocRaw, { inRow: true }),
+            renderCoreCountdownTile({ inRow: true }),
+        ].filter(Boolean);
+        if (!tiles.length) return '';
+        return renderEqualWidthRow(tiles, { rowNum: 'top' });
+    }
+
+    function renderAdminMiddleRow({ tabbed = false } = {}) {
+        const tiles = [];
+        tiles.push(renderDailyCountTile({ tabbed, inRow: !tabbed }));
+        if (shouldShowAdminOrdersTile()) {
+            tiles.push(renderOrdersSummaryTile({ tabbed, inRow: !tabbed }));
         }
-        return `<article class="mic-tile mic-tile--dfsc${posClass}">${body}</article>`;
+        const filtered = tiles.filter(Boolean);
+        if (!filtered.length) return '';
+        if (tabbed) return renderEqualWidthRow(filtered, { tabbed: true });
+        return renderEqualWidthRow(filtered, { rowNum: 1, extraClass: 'mic-tile--pos-middle-row' });
+    }
+
+    function renderDesktopTiles() {
+        const displayArea = currentDisplayArea();
+        const vocRaw = useMicStyleTiles() ? VOC_PLACEHOLDER : currentVoc() || {};
+        return `
+        ${renderAreaStoresTile(displayArea)}
+        ${renderAdminTopRow(vocRaw)}
+        ${renderAdminMiddleRow()}`;
+    }
+
+    function renderMobileTabbedTiles() {
+        const displayArea = currentDisplayArea();
+        const vocRaw = useMicStyleTiles() ? VOC_PLACEHOLDER : currentVoc() || {};
+        return `
+        ${renderMicTabPanel('sales', renderAreaStoresTile(displayArea, { tabbed: true }))}
+        ${renderMicTabPanel('results', `${renderVocTile(vocRaw, { tabbed: true })}${renderCoreCountdownTile({ tabbed: true })}${renderSssgTile(displayArea, { tabbed: true })}`)}
+        ${renderMicTabPanel('orders', renderMobileOrdersTab())}`;
     }
 
     function renderAdminLabelTile({
@@ -719,43 +773,6 @@
         return entry?.message || 'Open stock count';
     }
 
-    function countAdminContentRows(auditTiles) {
-        let rows = 2;
-        if ((auditTiles || []).length > 0 || tacauditAdminHubHref()) rows += 1;
-        return rows;
-    }
-
-    function tacauditAdminHubHref() {
-        return (
-            tacauditHrefForTile() ||
-            global.AppPaths?.tacauditAdminHub?.({ area: tacauditAreaQuery() }) ||
-            '/tacaudit/summary'
-        );
-    }
-
-    function renderTacauditHubLink({ tabbed = false } = {}) {
-        const href = tacauditAdminHubHref();
-        if (!href) return '';
-        const tabbedClass = tabbed ? ' mic-tacaudit-hub-link--tabbed' : '';
-        return `<a class="mic-tacaudit-hub-link${tabbedClass}" href="${escapeHtml(href)}" aria-label="Go to TacAudit landing page">Go to TacAudit</a>`;
-    }
-
-    function formatStoreStatsSub(stats = {}) {
-        const notStarted = Number(stats.notStarted) || 0;
-        const inProgress = Number(stats.inProgress) || 0;
-        const complete = Number(stats.completed) || 0;
-        return [
-            `${notStarted} store${notStarted === 1 ? '' : 's'} not started`,
-            `${inProgress} store${inProgress === 1 ? '' : 's'} in progress`,
-            `${complete} store${complete === 1 ? '' : 's'} complete`,
-        ].join(' · ');
-    }
-
-    function auditStatLine(count, phrase) {
-        const n = Number(count) || 0;
-        return `${n} store${n === 1 ? '' : 's'} ${phrase}`;
-    }
-
     function firstStoreNumberInDisplayScope() {
         const area = currentDisplayArea();
         const fromArea = sortStoresByNumber(area?.storeSales || [])
@@ -767,91 +784,6 @@
                 const n = String(s.storeNumber).trim();
                 if (n) return n.toLowerCase();
             }
-        }
-        return '';
-    }
-
-    function tacauditAreaQuery() {
-        return String(currentDisplayArea()?.name || overviewData?.areas?.[0]?.name || '').trim();
-    }
-
-    function tacauditHrefForTile() {
-        if (!global.AppPaths?.tacauditAdminHub) return '';
-        return global.AppPaths.tacauditAdminHub({
-            area: tacauditAreaQuery(),
-        });
-    }
-
-    function tacauditDfscAdminHref() {
-        if (!global.AppPaths?.tacauditAdminHub) return '';
-        return global.AppPaths.tacauditAdminHub({
-            area: tacauditAreaQuery(),
-        });
-    }
-
-    function auditStatTextScaleClass(notStarted, inProgress, complete) {
-        const lines = [
-            auditStatLine(notStarted, 'not started'),
-            auditStatLine(inProgress, 'in progress'),
-            auditStatLine(complete, 'complete'),
-        ];
-        const maxLen = Math.max(...lines.map((line) => line.length));
-        if (maxLen > 24) return 'mic-audit-stat-scale--sm';
-        if (maxLen > 19) return 'mic-audit-stat-scale--md';
-        return 'mic-audit-stat-scale--lg';
-    }
-
-    function tileHasAuditStats(tile) {
-        return tile?.stats && typeof tile.stats === 'object';
-    }
-
-    function aggregatedSquareOneStats(tiles) {
-        const stats = { notStarted: 0, inProgress: 0, completed: 0 };
-        for (const tile of allSquareOneAuditTiles(tiles)) {
-            stats.notStarted += Number(tile.stats?.notStarted) || 0;
-            stats.inProgress += Number(tile.stats?.inProgress) || 0;
-            stats.completed += Number(tile.stats?.completed) || 0;
-        }
-        return stats;
-    }
-
-    function pickAdminAuditTilesForRow(tiles) {
-        const all = tiles || [];
-        const squareDue = all.filter((t) => t.kind === 'square-one' && !t.done);
-        const weekly = all.filter((t) => t.kind === 'weekly');
-        const weeklyDue = weekly.filter((t) => !t.done);
-        const weeklyPick = weeklyDue.length ? weeklyDue : weekly;
-        if (squareDue.length >= 2) {
-            return [...squareDue.slice(0, 2), ...weeklyPick.slice(0, 2)];
-        }
-        return [...squareDue, ...weeklyPick].slice(0, 4);
-    }
-
-    function dueSquareOneAuditTiles(tiles) {
-        return (tiles || []).filter((t) => t.kind === 'square-one' && !t.done);
-    }
-
-    function allSquareOneAuditTiles(tiles) {
-        return (tiles || []).filter((t) => t.kind === 'square-one');
-    }
-
-    function renderSquareOneMiddleTileAdmin(tiles, { tabbed = false, inRow = false } = {}) {
-        const due = dueSquareOneAuditTiles(tiles);
-        if (due.length >= 2) return '';
-        if (due.length === 1) {
-            return renderAdminAuditTile(due[0], { tabbed, inRow });
-        }
-        const all = allSquareOneAuditTiles(tiles);
-        if (all.length) {
-            return renderAdminAuditTile(
-                {
-                    tileLabel: 'Square One',
-                    kind: 'square-one',
-                    stats: aggregatedSquareOneStats(tiles),
-                    done: all.every((t) => t.done),
-                },
-                { tabbed, inRow }
-            );
         }
         return '';
     }
@@ -897,103 +829,8 @@
         return `<article class="mic-tile mic-tile--orders-to-place${stateClass}${posClass}">${body}</article>`;
     }
 
-    function renderAdminAuditTile(tile, { tabbed = false, inRow = false } = {}) {
-        const label = escapeHtml(tile?.tileLabel || tile?.label || 'Audit');
-        const plainLabel = tile?.tileLabel || tile?.label || 'Audit';
-        const doneClass = tile?.done ? ' mic-tile--audit-complete' : ' mic-tile--audit-due';
-        const kindClass = tile?.kind === 'square-one' ? ' mic-tile--square-one' : '';
-        const gridPos = tabbed || inRow ? '' : '';
-        const tacauditHref = tacauditHrefForTile(tile);
-        const linkClass = tacauditHref ? ' mic-tile--link' : '';
-        const tag = tacauditHref ? 'a' : 'article';
-        const hrefAttr = tacauditHref ? ` href="${escapeHtml(tacauditHref)}"` : '';
-        const ariaAttr = tacauditHref
-            ? ` aria-label="${escapeHtml(`${plainLabel} - open TacAudit`)}"`
-            : '';
-
-        if (tileHasAuditStats(tile)) {
-            const notStarted = Number(tile.stats.notStarted) || 0;
-            const inProgress = Number(tile.stats.inProgress) || 0;
-            const complete = Number(tile.stats.completed) || 0;
-            const scaleClass = auditStatTextScaleClass(notStarted, inProgress, complete);
-            return `
-        <${tag} class="mic-tile mic-tile--weekly-audit mic-tile--audit-stats${kindClass}${doneClass}${linkClass}${gridPos}"${hrefAttr}${ariaAttr}>
-            <div class="mic-tile-body mic-tile-body--audit-stats ${scaleClass}">
-                <div class="mic-tile-label mic-tile-label--audit-stats">${label}</div>
-                <div class="mic-audit-stat mic-audit-stat--not-started">
-                    <span class="mic-audit-stat-line">${escapeHtml(auditStatLine(notStarted, 'not started'))}</span>
-                </div>
-                <div class="mic-audit-stat mic-audit-stat--in-progress">
-                    <span class="mic-audit-stat-line">${escapeHtml(auditStatLine(inProgress, 'in progress'))}</span>
-                </div>
-                <div class="mic-audit-stat mic-audit-stat--complete">
-                    <span class="mic-audit-stat-line">${escapeHtml(auditStatLine(complete, 'complete'))}</span>
-                </div>
-            </div>
-        </${tag}>`;
-        }
-
-        const sub = escapeHtml(tile?.sub || (tile?.done ? 'Complete' : 'Due this week'));
-        return `
-        <${tag} class="mic-tile mic-tile--weekly-audit${kindClass}${doneClass}${linkClass}${gridPos}"${hrefAttr}${ariaAttr}>
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">${label}</div>
-                <div class="mic-tile-sub">${sub}</div>
-            </div>
-        </${tag}>`;
-    }
-
-    function renderAdminAuditTilesOnly(tiles, { tabbed = false, rowNum = 2, includeHub = false } = {}) {
-        const picked = (tiles || []).map((tile) => renderAdminAuditTile(tile));
-        const hub = includeHub ? renderTacauditHubLink({ tabbed }) : '';
-        if (!picked.length && !hub) return '';
-        if (tabbed) {
-            const row = picked.length ? renderEqualWidthRow(picked, { tabbed: true }) : '';
-            return `${row}${hub}`;
-        }
-        if (includeHub) {
-            const colCount = picked.length || 1;
-            const auditRow = picked.length
-                ? `<div class="mic-tacaudit-access-audits mic-grid-equal-row mic-grid-equal-row--cols-${colCount}">${picked.join('')}</div>`
-                : '';
-            return `<div class="mic-tacaudit-access mic-grid-equal-row--row-${rowNum} mic-tile--pos-weekly-audit-row">${auditRow}${hub}</div>`;
-        }
-        if (!picked.length) return '';
-        return renderEqualWidthRow(picked, {
-            rowNum,
-            extraClass: 'mic-tile--pos-weekly-audit-row',
-        });
-    }
-
     function renderCoreCountdownTile({ tabbed = false, inRow = false } = {}) {
         return global.CoreCountdown?.renderTileHtml?.({ tabbed, inRow }) || '';
-    }
-
-    function renderAdminTopRow(vocRaw) {
-        const tiles = [
-            renderVocTile(vocRaw, { inRow: true }),
-            renderDfscAdminTile({ inRow: true }),
-            renderCoreCountdownTile({ inRow: true }),
-        ].filter(Boolean);
-        if (!tiles.length) return '';
-        return renderEqualWidthRow(tiles, { rowNum: 'top' });
-    }
-
-    function renderAdminMiddleRow({ tabbed = false } = {}) {
-        const auditTiles = auditTilesForDisplay();
-        const tiles = [];
-        if (useMicStyleTiles()) {
-            const squareTile = renderSquareOneMiddleTileAdmin(auditTiles, { tabbed, inRow: !tabbed });
-            if (squareTile) tiles.push(squareTile);
-        }
-        tiles.push(renderDailyCountTile({ tabbed, inRow: !tabbed }));
-        if (shouldShowAdminOrdersTile()) {
-            tiles.push(renderOrdersSummaryTile({ tabbed, inRow: !tabbed }));
-        }
-        const filtered = tiles.filter(Boolean);
-        if (!filtered.length) return '';
-        if (tabbed) return renderEqualWidthRow(filtered, { tabbed: true });
-        return renderEqualWidthRow(filtered, { rowNum: 1, extraClass: 'mic-tile--pos-middle-row' });
     }
 
     function renderMobileOrdersTab() {
@@ -1003,28 +840,6 @@
         }
         tiles.push(renderDailyCountTile({ tabbed: true }));
         return renderEqualWidthRow(tiles.filter(Boolean), { tabbed: true });
-    }
-
-    function renderDesktopTiles() {
-        const displayArea = currentDisplayArea();
-        const vocRaw = useMicStyleTiles() ? VOC_PLACEHOLDER : currentVoc() || {};
-        const auditTiles = auditTilesForDisplay();
-        return `
-        ${renderAreaStoresTile(displayArea)}
-        ${renderAdminTopRow(vocRaw)}
-        ${renderAdminMiddleRow()}
-        ${renderAdminAuditTilesOnly(auditTiles, { includeHub: true })}`;
-    }
-
-    function renderMobileTabbedTiles() {
-        const displayArea = currentDisplayArea();
-        const vocRaw = useMicStyleTiles() ? VOC_PLACEHOLDER : currentVoc() || {};
-        const auditTiles = auditTilesForDisplay();
-        return `
-        ${renderMicTabPanel('sales', renderAreaStoresTile(displayArea, { tabbed: true }))}
-        ${renderMicTabPanel('results', `${renderVocTile(vocRaw, { tabbed: true })}${renderCoreCountdownTile({ tabbed: true })}${renderSssgTile(displayArea, { tabbed: true })}`)}
-        ${renderMicTabPanel('orders', renderMobileOrdersTab())}
-        ${renderMicTabPanel('audits', `${renderDfscAdminTile({ tabbed: true })}${renderAdminAuditTilesOnly(auditTiles, { tabbed: true, includeHub: true })}`)}`;
     }
 
     function bindStorePickerTiles() {
@@ -1109,17 +924,7 @@
     }
 
     async function loadDfscStatus() {
-        try {
-            const res = await fetch('/api/admin/dfsc/status', { credentials: 'same-origin' });
-            const data = await res.json();
-            if (res.ok && data.success) {
-                dfscStatus = data;
-                const sub = document.querySelector('.mic-tile--dfsc .mic-tile-sub');
-                if (sub) sub.textContent = dfscSubtextForDisplay();
-            }
-        } catch {
-            /* ignore */
-        }
+        /* TacAudit removed from overview — no DFSC status tile. */
     }
 
     function paintLoadingGrid() {

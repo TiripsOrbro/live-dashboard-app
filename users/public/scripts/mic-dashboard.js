@@ -434,108 +434,33 @@ function renderStoreSalesTile(data, { tabbed = false } = {}) {
     `;
 }
 
-function shouldShowDfscTile(data) {
-    const dfsc = data?.dfsc;
-    if (!dfsc) return false;
-    return !(dfsc.amCompleted && dfsc.pmCompleted);
+function shouldShowDfscTile() {
+    return false;
+}
+
+function renderTacauditHubLink() {
+    return '';
+}
+
+function renderDfscTile() {
+    return '';
+}
+
+function renderWeeklyAuditTiles() {
+    return '';
+}
+
+function renderSquareOneMiddleTile() {
+    return '';
+}
+
+function renderOpenActionsTile() {
+    return '';
 }
 
 function shouldShowOrdersTile(data) {
     const sc = data?.stockCount || {};
     return Number(sc.pendingCount) > 0;
-}
-
-const PSI_AUDIT_LABEL = 'Period Safety Inspection';
-
-function storeWeeklyAuditsForTiles(data) {
-    const tiles = data?.weeklyAudits?.auditTiles;
-    const list = Array.isArray(tiles) && tiles.length ? tiles : weeklyAuditFallbackTiles();
-    const due = list.filter((audit) => !audit.done);
-    const psi = list.find((audit) => audit.label === PSI_AUDIT_LABEL);
-    if (psi && !due.some((audit) => audit.label === PSI_AUDIT_LABEL)) {
-        return [...due, psi];
-    }
-    return due;
-}
-
-function dueSquareOneTiles(data) {
-    const tiles = data?.squareOneTiles;
-    if (!Array.isArray(tiles)) return [];
-    return tiles.filter((tile) => !tile.done);
-}
-
-function renderSquareOneTile(tile, { tabbed = false } = {}) {
-    const label = escapeHtml(tile?.tileLabel || tile?.label || 'Square One');
-    const sub = escapeHtml(tile?.sub || (tile?.done ? 'Complete' : 'Due this week'));
-    const adminHref = tacauditAdminHrefForAudit(tile?.label, tile?.areaId);
-    const href =
-        adminHref ||
-        tile?.href ||
-        (tile?.areaId && STORE_NUMBER ? `/${STORE_NUMBER}/square-one?area=${encodeURIComponent(tile.areaId)}` : '');
-    const doneClass = tile?.done ? ' mic-tile--audit-complete' : ' mic-tile--audit-due';
-    const body = `
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">${label}</div>
-                <div class="mic-tile-sub">${sub}</div>
-            </div>`;
-    if (href) {
-        return `
-        <a
-            class="mic-tile mic-tile--link mic-tile--weekly-audit mic-tile--square-one${doneClass}"
-            href="${escapeHtml(href)}"
-            aria-label="${escapeHtml(`${tile?.label || label} - ${sub}`)}"
-        >${body}
-        </a>`;
-    }
-    return `<article class="mic-tile mic-tile--weekly-audit mic-tile--square-one${doneClass}">${body}</article>`;
-}
-
-function countMicContentRows(data) {
-    let rows = 2;
-    if (hasStoreMiddleExtras(data)) rows += 1;
-    if (
-        storeWeeklyAuditsForTiles(data).length > 0 ||
-        dueSquareOneTiles(data).length > 0 ||
-        tacauditStoreHubHref()
-    ) {
-        rows += 1;
-    }
-    return rows;
-}
-
-function tacauditStoreHubHref() {
-    if (!STORE_NUMBER) return '';
-    return window.AppPaths?.tacaudit?.(STORE_NUMBER) || `/${STORE_NUMBER}/tacaudit`;
-}
-
-function renderTacauditHubLink({ tabbed = false } = {}) {
-    const href = tacauditStoreHubHref();
-    if (!href) return '';
-    const tabbedClass = tabbed ? ' mic-tacaudit-hub-link--tabbed' : '';
-    return `<a class="mic-tacaudit-hub-link${tabbedClass}" href="${escapeHtml(href)}" aria-label="Go to TacAudit landing page">Go to TacAudit</a>`;
-}
-
-function renderDfscTile(data, { tabbed = false, inRow = false } = {}) {
-    const dfsc = data?.dfsc;
-    if (!dfsc || !shouldShowDfscTile(data)) return '';
-    const adminHref =
-        micCanViewAdminAuditSummary &&
-        window.AppPaths?.tacauditAdminHub?.({ area: tacauditAdminAreaQuery() });
-    const href = adminHref || dfsc.href || `/${STORE_NUMBER}/dfsc`;
-    const sub = dfsc.subtext || 'AM pending · PM pending';
-    const posClass = tabbed || inRow ? '' : ' mic-tile--pos-dfsc';
-    return `
-        <a
-            class="mic-tile mic-tile--link${posClass}"
-            href="${escapeHtml(href)}"
-            aria-label="Daily Food Safety Check"
-        >
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">DFSC</div>
-                <div class="mic-tile-sub">${escapeHtml(sub)}</div>
-            </div>
-        </a>
-    `;
 }
 
 function ordersStoreDetail(entry) {
@@ -546,91 +471,26 @@ function ordersStoreDetail(entry) {
     return entry?.message || 'Open stock count';
 }
 
-const WEEKLY_AUDIT_FORM_ROUTES = {
-    'Pest Walk': (store) => `/${store}/pest-walk`,
-    'RGM Cleaning Checklist': (store) => `/${store}/rgm-cleaning`,
-    'RGM cleaning': (store) => `/${store}/rgm-cleaning`,
-    'Period Safety Inspection': (store) => `/${store}/psi`,
-    PSI: (store) => `/${store}/psi`,
-};
+function dueSquareOneTiles() {
+    return [];
+}
 
-function tacauditAdminAreaQuery() {
-    const fromPayload = String(micData?.areaName || '').trim();
-    if (fromPayload) return fromPayload;
-    const areas = micData?.accessibleAreas;
-    if (Array.isArray(areas) && areas.length === 1) return String(areas[0]).trim();
+function storeWeeklyAuditsForTiles() {
+    return [];
+}
+
+function countMicContentRows(data) {
+    let rows = 2;
+    if (hasStoreMiddleExtras(data)) rows += 1;
+    return rows;
+}
+
+function tacauditStoreHubHref() {
     return '';
 }
 
 function tacauditAdminHrefForAudit() {
-    if (!micCanViewAdminAuditSummary) return '';
-    return window.AppPaths?.tacauditAdminHub?.({ area: tacauditAdminAreaQuery() }) || '';
-}
-
-function weeklyAuditHref(audit) {
-    const label = String(audit?.label || audit?.tileLabel || '').trim();
-    const adminHref = tacauditAdminHrefForAudit(label);
-    if (adminHref) return adminHref;
-    if (audit?.href) return String(audit.href);
-    const route = WEEKLY_AUDIT_FORM_ROUTES[label];
-    return route && STORE_NUMBER ? route(STORE_NUMBER) : '';
-}
-
-function weeklyAuditFallbackTiles() {
-    return [
-        { label: 'Pest Walk', tileLabel: 'Pest Walk', sub: 'Due this week', done: false },
-        { label: 'RGM Cleaning Checklist', tileLabel: 'RGM cleaning', sub: 'Due this week', done: false },
-        { label: 'Period Safety Inspection', tileLabel: 'PSI', sub: 'Due this week', done: false },
-    ];
-}
-
-function renderWeeklyAuditTile(audit, index, { tabbed = false } = {}) {
-    const label = escapeHtml(audit?.tileLabel || audit?.label || 'Audit');
-    const sub = escapeHtml(audit?.sub || (audit?.done ? 'Complete' : 'Due this week'));
-    const href = weeklyAuditHref(audit);
-    const doneClass = audit?.done ? ' mic-tile--audit-complete' : ' mic-tile--audit-due';
-    const body = `
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">${label}</div>
-                <div class="mic-tile-sub">${sub}</div>
-            </div>`;
-    if (href) {
-        return `
-        <a
-            class="mic-tile mic-tile--link mic-tile--weekly-audit${doneClass}"
-            href="${escapeHtml(href)}"
-            aria-label="${escapeHtml(`${audit?.label || label} - ${sub}`)}"
-        >${body}
-        </a>`;
-    }
-    return `<article class="mic-tile mic-tile--weekly-audit${doneClass}">${body}</article>`;
-}
-
-function renderWeeklyAuditTiles(data, { tabbed = false, rowNum = 2, includeHub = false } = {}) {
-    const squareDue = dueSquareOneTiles(data);
-    const weekly = storeWeeklyAuditsForTiles(data);
-    const tiles = [
-        ...squareDue.slice(0, 2).map((tile) => renderSquareOneTile(tile, { tabbed })),
-        ...weekly.map((audit, index) => renderWeeklyAuditTile(audit, index, { tabbed })),
-    ];
-    const hub = includeHub ? renderTacauditHubLink({ tabbed }) : '';
-    if (!tiles.length && !hub) return '';
-    if (tabbed) {
-        const row = tiles.length ? renderEqualWidthRow(tiles, { tabbed: true }) : '';
-        return `${row}${hub}`;
-    }
-    if (includeHub) {
-        const colCount = tiles.length || 1;
-        const auditRow = tiles.length
-            ? `<div class="mic-tacaudit-access-audits mic-grid-equal-row mic-grid-equal-row--cols-${colCount}">${tiles.join('')}</div>`
-            : '';
-        return `<div class="mic-tacaudit-access mic-grid-equal-row--row-${rowNum} mic-tile--pos-weekly-audit-row">${auditRow}${hub}</div>`;
-    }
-    if (!tiles.length) return '';
-    return renderEqualWidthRow(tiles, {
-        rowNum,
-        extraClass: 'mic-tile--pos-weekly-audit-row',
-    });
+    return '';
 }
 
 function renderOrdersToPlaceTile(data, { tabbed = false, inRow = false } = {}) {
@@ -799,66 +659,18 @@ function renderDailyCountTile(data, { tabbed = false, inRow = false } = {}) {
     return `<article class="mic-tile mic-tile--daily-count${posClass}">${body}</article>`;
 }
 
-function renderSquareOneMiddleTile(data, { inRow = false } = {}) {
-    const due = dueSquareOneTiles(data);
-    if (due.length >= 2) return '';
-    if (due.length === 1) return renderSquareOneTile(due[0], { tabbed: false });
-    const all = data?.squareOneTiles || [];
-    if (all.length && all.every((t) => t.done)) {
-        return renderAdminLabelTile({
-            label: 'Square One',
-            sub: 'Complete this week',
-            posClass: 'mic-tile--pos-square-one',
-            inRow,
-        });
-    }
-    const squareHref =
-        tacauditAdminHrefForAudit('Square One') || (STORE_NUMBER ? `/${STORE_NUMBER}/square-one` : '');
-    return renderAdminLabelTile({
-        label: 'Square One',
-        sub: 'Due this week',
-        posClass: 'mic-tile--pos-square-one',
-        inRow,
-        href: squareHref,
-    });
-}
-
-function renderOpenActionsTile(data, { tabbed = false, inRow = false } = {}) {
-    const hub = tacauditStoreHubHref();
-    if (!hub || !STORE_NUMBER) return '';
-    const summary = data?.actionsSummary || { open: 0, overdue: 0, dueSoon: 0 };
-    const open = Number(summary.open) || 0;
-    const overdue = Number(summary.overdue) || 0;
-    const href = `${hub}/actions`;
-    const posClass = tabbed || inRow ? '' : ' mic-tile--pos-open-actions';
-    const alertClass = overdue > 0 ? ' mic-tile--actions-overdue' : '';
-    const sub =
-        open === 0 ? 'All complete' : overdue > 0 ? `${overdue} overdue` : `${summary.dueSoon || 0} due soon`;
-    const body = `
-            <div class="mic-tile-body">
-                <div class="mic-tile-label">Open actions</div>
-                <div class="mic-tile-metric">${open}</div>
-                <div class="mic-tile-sub">${escapeHtml(sub)}</div>
-            </div>`;
-    return `<a class="mic-tile mic-tile--link${posClass}${alertClass}" href="${escapeHtml(href)}" aria-label="Open actions - ${open}">${body}</a>`;
-}
-
 function renderCoreCountdownTile({ tabbed = false, inRow = false } = {}) {
     return window.CoreCountdown?.renderTileHtml?.({ tabbed, inRow }) || '';
 }
 
 function hasStoreMiddleExtras(data) {
-    const voc = formatVocDisplay(data?.voc || {});
-    if (shouldShowDfscTile(data) && renderVocTile(voc, { inRow: true })) return true;
-    if (renderOpenActionsTile(data, { inRow: true })) return true;
-    if (renderSquareOneMiddleTile(data, { inRow: true })) return true;
     if (shouldShowOrdersTile(data)) return true;
     return false;
 }
 
 function renderStoreQuadGrid(data) {
     const voc = formatVocDisplay(data?.voc || {});
-    const leftTop = renderDfscTile(data, { inRow: true }) || renderVocTile(voc, { inRow: true });
+    const leftTop = renderVocTile(voc, { inRow: true });
     const leftBottom = renderCoreCountdownTile({ inRow: true });
     const right = renderStockLevelsTile(data, { inRow: true });
     if (!leftTop && !leftBottom && !right) return '';
@@ -873,12 +685,6 @@ function renderStoreQuadGrid(data) {
 
 function renderDesktopMiddleRow(data) {
     const tiles = [];
-    const voc = formatVocDisplay(data?.voc || {});
-    if (shouldShowDfscTile(data)) {
-        const vocTile = renderVocTile(voc, { inRow: true });
-        if (vocTile) tiles.push(vocTile);
-    }
-    tiles.push(renderOpenActionsTile(data, { inRow: true }), renderSquareOneMiddleTile(data, { inRow: true }));
     if (shouldShowOrdersTile(data)) {
         tiles.push(renderOrdersToPlaceTile(data, { inRow: true }));
     }
@@ -896,23 +702,15 @@ function renderMobileOrdersTab(data) {
     return renderEqualWidthRow(tiles, { tabbed: true });
 }
 
-function renderMobileAuditsTab(data) {
-    const parts = [];
-    const actionsHtml = renderOpenActionsTile(data, { tabbed: true });
-    if (actionsHtml) parts.push(actionsHtml);
-    const dfscHtml = renderDfscTile(data, { tabbed: true });
-    if (dfscHtml) parts.push(dfscHtml);
-    parts.push(renderWeeklyAuditTiles(data, { tabbed: true, includeHub: true }));
-    return parts.filter(Boolean).join('');
+function renderMobileAuditsTab() {
+    return '';
 }
 
 function renderDesktopTiles(data) {
-    const extras = hasStoreMiddleExtras(data);
     return `
         ${renderStoreSalesTile(data)}
         ${renderStoreQuadGrid(data)}
         ${renderDesktopMiddleRow(data)}
-        ${renderWeeklyAuditTiles(data, { includeHub: true, rowNum: extras ? 3 : 2 })}
     `;
 }
 
@@ -930,7 +728,6 @@ function renderMobileTabbedTiles(data) {
         `
         )}
         ${renderMicTabPanel('orders', renderMobileOrdersTab(data))}
-        ${renderMicTabPanel('audits', renderMobileAuditsTab(data))}
     `;
 }
 
@@ -1152,8 +949,8 @@ function buildPlaceholderMicData() {
             stockLevelsSub: 'Stock levels not checked today',
         },
         dailyStockCount: { configured: false, message: 'No daily items tagged yet' },
-        weeklyAudits: { auditTiles: weeklyAuditFallbackTiles() },
-        squareOneTiles: [{ label: 'Square One', tileLabel: 'Square One', done: false, sub: 'Due this week' }],
+        weeklyAudits: { auditTiles: [] },
+        squareOneTiles: [],
         actionsSummary: { open: 0, overdue: 0, dueSoon: 0 },
     };
 }

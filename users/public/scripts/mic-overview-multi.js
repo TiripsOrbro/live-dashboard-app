@@ -148,7 +148,9 @@
 
     function persistAdminOverview(data) {
         if (!meProfile || !data?.success || data.placeholder) return;
-        global.DashboardDataCache?.writeAdminOverview?.(adminOverviewCacheKey(meProfile), data);
+        const cacheKey = adminOverviewCacheKey(meProfile);
+        global.DashboardDataCache?.writeAdminOverview?.(cacheKey, data);
+        global.DashboardDataCache?.rememberAdminOverviewKey?.(cacheKey);
     }
 
     function bindMicNavigationSettings() {
@@ -1120,16 +1122,73 @@
         }
     }
 
-    async function loadOverview() {
+    function paintLoadingGrid() {
+        const grid = document.getElementById('mic-grid');
+        if (!grid) return;
+        const mobile = syncMicLayoutMode();
+        syncMicOverviewTabs(mobile);
+        grid.classList.add('mic-grid--loading');
+        grid.classList.toggle('mic-grid--tabbed', mobile);
+        grid.setAttribute('aria-busy', 'true');
+        grid.innerHTML = mobile ? renderLoadingMobileTiles() : renderLoadingDesktopTiles();
+    }
+
+    function tryRestoreLastCachedOverview() {
+        const entry = global.DashboardDataCache?.readAdminOverviewByLastKey?.();
+        if (!entry?.data || !global.DashboardDataCache?.hasMeaningfulAdminOverview?.(entry.data)) {
+            return false;
+        }
+        overviewData = entry.data;
+        return true;
+    }
+
+    function paintCachedOrLoadingGrid() {
+        if (tryRestoreLastCachedOverview()) {
+            const grid = document.getElementById('mic-grid');
+            if (grid) {
+                grid.classList.remove('mic-grid--loading');
+                grid.setAttribute('aria-busy', 'false');
+            }
+            renderTiles();
+            global.DashboardPreloadBridge?.signalReady?.('content');
+            return true;
+        }
+        if (!overviewData?.placeholder) {
+            overviewData = buildPlaceholderAdminOverview(meProfile || {});
+        }
+        paintLoadingGrid();
+        return false;
+    }
+
+    async function resolvePrefetchedOverview(prefetched) {
+        if (!prefetched) return null;
+        if (typeof prefetched.then === 'function') {
+            try {
+                return await prefetched;
+            } catch {
+                return null;
+            }
+        }
+        return prefetched;
+    }
+
+    async function loadOverview(prefetched) {
         if (!canMaintainMicOverview()) return;
         if (overviewLoadInFlight) return;
         overviewLoadInFlight = true;
         try {
-            const res = await fetch('/api/overview', { credentials: 'same-origin' });
-            const data = await res.json();
-            if (!res.ok || !data.success) {
-                app.textContent = data.error || 'Could not load overview.';
-                return;
+            let data = prefetched && prefetched.success ? prefetched : null;
+            if (!data) {
+                const resolved = await resolvePrefetchedOverview(prefetched);
+                if (resolved?.success) data = resolved;
+            }
+            if (!data) {
+                const res = await fetch('/api/overview', { credentials: 'same-origin' });
+                data = await res.json();
+                if (!res.ok || !data.success) {
+                    app.textContent = data.error || 'Could not load overview.';
+                    return;
+                }
             }
             if (data.salesUpdatedAt) lastSalesUpdatedAt = data.salesUpdatedAt;
             updateSalesScrapeHint(data.salesScrapeStatus || { salesUpdatedAt: data.salesUpdatedAt });
@@ -1189,13 +1248,22 @@
         overviewLoadInFlight = false;
     }
 
-    async function start(profile, appEl, promoBannerHtml) {
+    async function start(profile, appEl, promoBannerHtml, options = {}) {
         meProfile = profile;
         app = appEl;
         clearIntervals();
         pendingAreaName =
             global.MicAreaPicker?.isPickerPending?.() ? '' : global.MicAreaPicker?.getStoredArea?.() || '';
-        overviewData = restoreCachedAdminOverview() || buildPlaceholderAdminOverview(profile);
+        const profileCached = restoreCachedAdminOverview();
+        if (profileCached) {
+            overviewData = profileCached;
+        } else if (
+            !overviewData ||
+            overviewData.placeholder ||
+            !global.DashboardDataCache?.hasMeaningfulAdminOverview?.(overviewData)
+        ) {
+            overviewData = buildPlaceholderAdminOverview(profile);
+        }
         if (!overviewData.placeholder) {
             global.DashboardPreloadBridge?.signalReady?.('content');
         }
@@ -1224,7 +1292,11 @@
         }
 
         void global.CoreCountdown?.init?.();
-        void loadOverview();
+        // Parallel: overview (or use prefetch) + DFSC status.
+        void Promise.all([
+            loadOverview(options.prefetchedOverview || null),
+            loadDfscStatus(),
+        ]);
 
         intervals.push(
             global.setInterval(() => {
@@ -1232,12 +1304,18 @@
                 if (clock) clock.textContent = formatTime(new Date());
             }, 1000)
         );
-        intervals.push(global.setInterval(loadOverview, REFRESH_MS));
+        intervals.push(global.setInterval(() => loadOverview(), REFRESH_MS));
         intervals.push(global.setInterval(checkForScrapeUpdate, SCRAPE_POLL_MS));
         global.addEventListener('resize', () => {
             syncMicLayoutMode();
         });
     }
 
-    global.MicOverviewMulti = { start, loadOverview, stop };
+    global.MicOverviewMulti = {
+        start,
+        loadOverview,
+        stop,
+        paintCachedOrLoadingGrid,
+        tryRestoreLastCachedOverview,
+    };
 })(window);

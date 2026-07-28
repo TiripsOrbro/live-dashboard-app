@@ -556,8 +556,6 @@
             updateAuditAutoCollapseToggle(prefs.auditAutoCollapse);
             updateMicRoundedTilesToggle(prefs.micRoundedTiles);
         });
-        global.AdminStoreView?.mountSettingsBlock?.();
-        global.AdminStoreView?.syncSettingsUi?.();
     }
 
     function closeSettingsPanel() {

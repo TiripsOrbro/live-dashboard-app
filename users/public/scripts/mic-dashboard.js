@@ -104,6 +104,7 @@ async function pollSalesScrapeStatus() {
 }
 
 const MIC_LAST_STORE_KEY = 'mic-last-store';
+const MIC_OVERVIEW_SCOPE_NAV_KEY = 'mic-overview-show-scope-nav';
 
 const MOS = () => window.MicOverviewShell;
 const MOT = () => window.MicOverviewTiles;
@@ -1354,6 +1355,60 @@ function readMicLastStore() {
     }
 }
 
+/** @returns {boolean|null} true = area/market, false = store, null = unknown */
+function readOverviewScopeNavHint() {
+    try {
+        const value = sessionStorage.getItem(MIC_OVERVIEW_SCOPE_NAV_KEY);
+        if (value === null || value === '') return null;
+        return value === '1';
+    } catch {
+        return null;
+    }
+}
+
+function writeOverviewScopeNavHint(showScopeNav) {
+    try {
+        sessionStorage.setItem(MIC_OVERVIEW_SCOPE_NAV_KEY, showScopeNav ? '1' : '0');
+    } catch {
+        /* ignore */
+    }
+}
+
+function isAdminViewAsStoreActive() {
+    try {
+        if (sessionStorage.getItem('admin-view-as-store-enabled') !== '1') return false;
+        return Boolean(String(sessionStorage.getItem('admin-view-as-store') || '').trim());
+    } catch {
+        return false;
+    }
+}
+
+function resolveEarlyStoreNumber() {
+    if (isAdminViewAsStoreActive()) {
+        try {
+            return String(sessionStorage.getItem('admin-view-as-store') || '').toLowerCase();
+        } catch {
+            return '';
+        }
+    }
+    return readMicLastStore();
+}
+
+function shouldPaintSingleStoreEarly() {
+    if (isAdminViewAsStoreActive()) return true;
+    const scopeHint = readOverviewScopeNavHint();
+    if (scopeHint === true) return false;
+    if (scopeHint === false) return Boolean(readMicLastStore());
+    return false;
+}
+
+function shouldPaintMultiStoreEarly() {
+    if (isAdminViewAsStoreActive()) return false;
+    const scopeHint = readOverviewScopeNavHint();
+    if (scopeHint === false) return false;
+    return true;
+}
+
 function resolveStoreForUserProfile(me) {
     const viewAs = window.AdminStoreView?.resolveStoreForOverview?.(me) || '';
     if (viewAs) return String(viewAs).toLowerCase();
@@ -1368,7 +1423,8 @@ function resolveStoreForUserProfile(me) {
 
 function paintOverviewShellEarly() {
     if (!app || !isMicOverviewPath()) return false;
-    const earlyStore = readMicLastStore();
+    if (!shouldPaintSingleStoreEarly()) return false;
+    const earlyStore = resolveEarlyStoreNumber();
     if (!earlyStore) return false;
     STORE_NUMBER = earlyStore;
     app.classList.remove('app-boot-loading');
@@ -1378,6 +1434,31 @@ function paintOverviewShellEarly() {
     void loadMicData();
     signalLoginPreloadReady('shell');
     return true;
+}
+
+/** Paint multi-store chrome before /api/me returns (admins / area managers). */
+function paintMultiOverviewShellEarly() {
+    if (!app || !isMicOverviewPath()) return false;
+    if (!shouldPaintMultiStoreEarly()) return false;
+    if (document.getElementById('mic-grid')) return true;
+    if (!window.MicOverviewShell?.mountShell) return false;
+    window.MicOverviewShell.mountShell(app, {
+        subtitle: 'Overview',
+        promoBannerHtml: window.MicOverviewShell.renderPromoBanner?.() || '',
+    });
+    window.MicOverviewMulti?.paintCachedOrLoadingGrid?.();
+    signalLoginPreloadReady('shell');
+    return true;
+}
+
+function prefetchOverviewPayload() {
+    return fetch('/api/overview', { credentials: 'same-origin' })
+        .then(async (res) => {
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !data?.success) return null;
+            return data;
+        })
+        .catch(() => null);
 }
 
 async function initStoreOverview(me, { skipShell = false } = {}) {
@@ -1444,13 +1525,21 @@ async function init() {
     }
     try {
         const overviewPaintedEarly = paintOverviewShellEarly();
-        const me = await fetchMeProfile();
+        const multiPaintedEarly = !overviewPaintedEarly && paintMultiOverviewShellEarly();
+        // Overlap profile + overview fetch so multi-store users get data sooner.
+        const mePromise = fetchMeProfile();
+        const overviewPrefetchPromise =
+            multiPaintedEarly || (!overviewPaintedEarly && isMicOverviewPath())
+                ? prefetchOverviewPayload()
+                : Promise.resolve(null);
+        const me = await mePromise;
         if (!me) {
             if (window.__APP_SHELL__ && !canMaintainMicStoreOverview()) return;
             app.textContent = 'Could not load your profile. Redirecting to sign in…';
             window.location.href = '/login';
             return;
         }
+        writeOverviewScopeNavHint(Boolean(me.layoutCapabilities?.showScopeNav));
         await window.AdminStoreView?.init?.(me);
 
         if (!isMicOverviewPath()) {
@@ -1461,7 +1550,6 @@ async function init() {
             return;
         }
 
-        const scope = me.overviewScope || 'store';
         let viewAs = window.AdminStoreView?.resolveStoreForOverview?.(me) || '';
 
         if (window.AdminStoreView?.isEnabled?.() && !viewAs) {
@@ -1470,17 +1558,24 @@ async function init() {
         }
 
         if (me.layoutCapabilities?.showScopeNav && !viewAs) {
+            try {
+                sessionStorage.removeItem(MIC_LAST_STORE_KEY);
+            } catch {
+                /* ignore */
+            }
             if (!window.MicOverviewMulti?.start) {
                 throw new Error('Overview scripts failed to load. Hard refresh the page (Ctrl+Shift+R).');
             }
-            void window.MicOverviewMulti.start(me, app, renderPromoBanner());
+            void window.MicOverviewMulti.start(me, app, renderPromoBanner(), {
+                prefetchedOverview: overviewPrefetchPromise,
+            });
             window.AdminStoreView?.afterShellRendered?.(me);
             return;
         }
         const resolvedStore = viewAs || resolveStoreForUserProfile(me);
         if (resolvedStore) STORE_NUMBER = String(resolvedStore).toLowerCase();
         const canReuseEarlyPaint =
-            overviewPaintedEarly && STORE_NUMBER && STORE_NUMBER === readMicLastStore();
+            overviewPaintedEarly && STORE_NUMBER && STORE_NUMBER === resolveEarlyStoreNumber();
         await initStoreOverview(me, { skipShell: canReuseEarlyPaint });
     } catch (err) {
         console.error('[MIC overview] Init failed:', err);

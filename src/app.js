@@ -24,8 +24,9 @@ process.env.SCRAPER_HEADLESS = 'true';
 })();
 
 const scrapeData = require('./services/scraper');
+const { scrapeVendorsData } = scrapeData;
 const { notifyScrapeFailure, alertsEnabled, sendAlertEmail, postAlertWebhook, shouldSendScheduledAlert } = require('./services/alertNotifier');
-const { isMmxResourceBusy } = require('./services/mmxResourceGate');
+const { isMmxResourceBusy, mmxPauseScrapeForPriority } = require('./services/mmxResourceGate');
 const {
     runWithPriority,
     PRIORITY,
@@ -82,6 +83,11 @@ const {
 const fsSync = require('fs');
 const { touchPresence } = require('./services/scrapePresence');
 const { startSalesScrapeScheduler } = require('./services/salesScrapeScheduler');
+const {
+    isContinuousWorkersEnabled,
+    startContinuousSalesWorkers,
+} = require('./services/continuousSalesWorkers');
+const { startVendorScrapeScheduler } = require('./services/vendorScrapeScheduler');
 const {
     getLastKnownPendingVendors,
     onStoreOrdersComplete,
@@ -168,6 +174,11 @@ const SCRAPE_BATCH_SIZE = Math.max(1, Number(process.env.SCRAPE_BATCH_SIZE || 4)
 const STORE_SCRAPE_STALE_MS = Math.max(
     60_000,
     Number(process.env.STORE_SCRAPE_STALE_MS || SCRAPE_INTERVAL_SECONDS * 1000 * 0.85)
+);
+/** Abort a scrape that blocks the interval scheduler longer than this (default 4 min). */
+const SCRAPE_IN_FLIGHT_MAX_MS = Math.max(
+    60_000,
+    Number(process.env.SCRAPE_IN_FLIGHT_MAX_MS || 4 * 60 * 1000)
 );
 /** Store shown at `/` (no store in the path). Empty = first store the scrape returns. */
 const DASHBOARD_DEFAULT_STORE = String(process.env.DASHBOARD_DEFAULT_STORE || '').trim();
@@ -414,7 +425,8 @@ const {
     purgeOldResults: purgeFiveAmReportsResults,
     purgeOldReportFiles: purgeFiveAmReportsReportFiles,
 } = require('../dashboard/src/fiveAmReports/fiveAmReportsResults');
-const { maybeRunDailyReportsOrchestrator } = require('../dashboard/src/dailyReports/dailyReportsOrchestrator');
+const { maybeRunDailyReportsOrchestrator, forceRunDailyReportsOrchestrator } = require('../dashboard/src/dailyReports/dailyReportsOrchestrator');
+const { melbourneDateKey: melbourneDailyReportsDateKey } = require('../dashboard/src/dailyReports/dailyReportsRunState');
 const {
     listSubscriptions: listReportSubscriptions,
     getSubscription: getReportSubscription,
@@ -625,6 +637,8 @@ onStoreOrdersComplete((storeNumber) => {
     patchSalesCachePendingVendors(storeNumber, []);
 });
 let salesInFlight = null;
+let vendorInFlight = null;
+let salesScrapeStartedAt = 0;
 /** Per-store last successful scrape (epoch ms) — drives batched interval scrapes in per-store login mode. */
 const storeLastScrapedAt = new Map();
 let lastSalesScrapeCompletedAt = null;
@@ -755,6 +769,7 @@ function sendLoginSuccess(req, res, user, destOverride = '') {
             welcomeName: profile.welcomeName || '',
             defaultPath: dest,
             mode,
+            showScopeNav: Boolean(profile.layoutCapabilities?.showScopeNav),
             mustCompleteMmxSetup: Boolean(profile.mustCompleteMmxSetup),
             mustChangePassword: Boolean(profile.mustChangePassword),
             passwordPolicy: profile.passwordPolicy,
@@ -868,7 +883,8 @@ function isLoginPublicPath(reqPath) {
         reqPath === '/api/host/status' ||
         reqPath === '/api/host/claim' ||
         reqPath === '/api/host/heartbeat' ||
-        reqPath === '/api/host/release'
+        reqPath === '/api/host/release' ||
+        reqPath === '/api/host/daily-reports/run'
     ) {
         return true;
     }
@@ -1400,37 +1416,84 @@ function noteStoreScrapeSuccess(storeNumber, when = Date.now()) {
     storeLastScrapedAt.set(key, when);
 }
 
+function getStoreLastScrapedAt(storeNumber) {
+    return storeLastScrapedAt.get(String(storeNumber || '').trim()) || 0;
+}
+
+function isStoreSalesDataStale(storeNumber, now = Date.now()) {
+    const key = String(storeNumber || '').trim();
+    if (!key) return false;
+    const listed = getStoreList().find((s) => String(s.storeNumber) === key);
+    if (!listed || getStoreScrapePhase(listed, now) !== 'active') return false;
+    if (!storeHasMmxCredentials(key)) return false;
+    const last = getStoreLastScrapedAt(key);
+    if (!last) return true;
+    return now - last >= STORE_SCRAPE_STALE_MS;
+}
+
+function getSnapshotMtimeMs(storeNumber) {
+    try {
+        const filePath = postCloseSnapshotPath(storeNumber);
+        if (!fsSync.existsSync(filePath)) return 0;
+        return fsSync.statSync(filePath).mtimeMs;
+    } catch {
+        return 0;
+    }
+}
+
+function maybeAbortHungSalesScrape() {
+    if (!salesInFlight || !salesScrapeStartedAt) return false;
+    if (Date.now() - salesScrapeStartedAt < SCRAPE_IN_FLIGHT_MAX_MS) return false;
+    console.warn(
+        `[Dashboard] Aborting hung sales scrape after ${Math.round(
+            (Date.now() - salesScrapeStartedAt) / 1000
+        )}s — releasing interval scheduler`
+    );
+    const { requestSalesScrapeAbort } = require('./services/salesScrapeAbort');
+    requestSalesScrapeAbort('scrape hung - exceeding in-flight timeout');
+    try {
+        const activePath = path.join(paths.dashboard.data, 'mmx-task-active.json');
+        const lockPath = path.join(paths.dashboard.data, 'mmx-task-lock');
+        if (fsSync.existsSync(activePath)) fsSync.unlinkSync(activePath);
+        if (fsSync.existsSync(lockPath)) fsSync.unlinkSync(lockPath);
+    } catch {
+        /* ignore */
+    }
+    return true;
+}
+
 function countMeaningfulScrapeStores(stores) {
     if (!Array.isArray(stores)) return 0;
     return stores.filter((s) => storeHasMeaningfulData(s) && !s.error).length;
 }
 
-/** Pick stores due for the next interval tick (per-store logins are slow — rotate batches). */
+/** Pick all active credentialed stores for the next interval tick (full market, concurrent workers). */
 function pickStoresForIntervalScrape(now = Date.now()) {
-    const listed = getStoreList().filter((s) => getStoreScrapePhase(s, now) === 'active');
-    const withCreds = listed.filter((s) => storeHasMmxCredentials(s.storeNumber));
-    const due = withCreds
-        .filter((s) => {
-            const last = storeLastScrapedAt.get(String(s.storeNumber)) || 0;
-            return now - last >= STORE_SCRAPE_STALE_MS;
-        })
-        .sort(
-            (a, b) =>
-                (storeLastScrapedAt.get(String(a.storeNumber)) || 0) -
-                (storeLastScrapedAt.get(String(b.storeNumber)) || 0)
-        );
-    if (!due.length) return [];
-    return due.slice(0, SCRAPE_BATCH_SIZE).map((s) => String(s.storeNumber));
+    const withCreds = getStoreList()
+        .filter((s) => getStoreScrapePhase(s, now) === 'active')
+        .filter((s) => storeHasMmxCredentials(s.storeNumber));
+    if (!withCreds.length) return [];
+    return withCreds.slice(0, SCRAPE_BATCH_SIZE).map((s) => String(s.storeNumber));
 }
 
 function prepareSalesScrapeOptions(options = {}) {
     const reason = String(options.scrapeReason || '').trim();
+    // Interval / on-demand sales ticks leave Scheduled Orders to the vendor scheduler.
+    // Explicit false or a scheduled-orders test date still runs vendors inline.
+    const hasTestOrdersDate = Boolean(options.scheduledOrdersPickYmd);
+    const skipPendingVendors =
+        options.skipPendingVendors === false || hasTestOrdersDate
+            ? false
+            : options.skipPendingVendors !== undefined
+              ? Boolean(options.skipPendingVendors)
+              : true;
+    let next = { ...options, skipPendingVendors };
     if (reason === 'interval' && !options.storeNumbers?.length && !options.storeNumber) {
         const batch = pickStoresForIntervalScrape();
-        if (!batch.length) return { ...options, skipScrape: true };
-        return { ...options, storeNumbers: batch };
+        if (!batch.length) return { ...next, skipScrape: true };
+        next = { ...next, storeNumbers: batch };
     }
-    return options;
+    return next;
 }
 
 function getSalesScrapeStatus(user) {
@@ -1629,9 +1692,30 @@ async function scrapeWithRetry(scrapeOptions = {}) {
     resetSalesScrapeAbort();
     let lastError;
     const attempts = Math.max(1, SCRAPE_RETRIES + 1);
+    const isContinuous = /continuous/i.test(String(scrapeOptions.scrapeReason || ''));
+    const timeoutMs = isContinuous
+        ? Math.max(30000, Number(process.env.SCRAPE_CONTINUOUS_STORE_TIMEOUT_MS || 90000) || 90000)
+        : SCRAPE_TIMEOUT_MS;
     for (let attempt = 1; attempt <= attempts; attempt++) {
         let activeBrowser = null;
+        let preemptWatch = null;
         try {
+            preemptWatch = setInterval(() => {
+                try {
+                    const {
+                        getLocalSlotPriority,
+                        shouldAbortForPreempt,
+                        PRIORITY,
+                    } = require('../mmx/src/mmxTaskQueue');
+                    const localPriority = getLocalSlotPriority();
+                    if (localPriority === PRIORITY.SCRAPE && shouldAbortForPreempt(localPriority)) {
+                        requestSalesScrapeAbort('higher-priority MMX queue work');
+                    }
+                } catch {
+                    /* ignore */
+                }
+            }, 1000);
+            preemptWatch.unref?.();
             return await withTimeout(
                 scrapeData({
                     ...scrapeOptions,
@@ -1640,7 +1724,7 @@ async function scrapeWithRetry(scrapeOptions = {}) {
                         registerSalesScrapeBrowser(browser);
                     },
                 }),
-                SCRAPE_TIMEOUT_MS,
+                timeoutMs,
                 async () => {
                     if (!activeBrowser) return;
                     console.warn('API: Closing active browser after scrape timeout');
@@ -1655,6 +1739,8 @@ async function scrapeWithRetry(scrapeOptions = {}) {
             }
             lastError = error;
             console.error(`API: Scrape attempt ${attempt}/${attempts} failed:`, error.message);
+        } finally {
+            if (preemptWatch) clearInterval(preemptWatch);
         }
     }
     throw lastError;
@@ -1879,24 +1965,43 @@ function mergeStoresPreservingGood(prevPayload, freshPayload, now = new Date()) 
     return [...allKeys].map((key) => {
         const fresh = freshByNum.get(key);
         if (!fresh) return prevByNum.get(key);
-        if (storeHasMeaningfulData(fresh) && !fresh.error) return fresh;
+        if (storeHasMeaningfulData(fresh) && !fresh.error) {
+            if (fresh.skipPendingVendorsUpdate && prevByNum.has(key)) {
+                const prev = prevByNum.get(key);
+                const { skipPendingVendorsUpdate: _skip, ...rest } = fresh;
+                return {
+                    ...rest,
+                    pendingVendors: Array.isArray(prev.pendingVendors)
+                        ? prev.pendingVendors
+                        : rest.pendingVendors,
+                };
+            }
+            const { skipPendingVendorsUpdate: _skip2, ...clean } = fresh;
+            return clean;
+        }
         const prev = prevByNum.get(key);
         if (storeHasMeaningfulData(prev)) {
             const prevSnap = prev.postCloseSnapshot;
             if (prevSnap && !isSnapshotForToday(key, prevSnap, now)) {
-                return fresh;
+                const { skipPendingVendorsUpdate: _skip3, ...cleanFresh } = fresh;
+                return cleanFresh;
             }
             return {
                 ...prev,
                 openHour: Number.isFinite(fresh.openHour) ? fresh.openHour : prev.openHour,
                 closeHour: Number.isFinite(fresh.closeHour) ? fresh.closeHour : prev.closeHour,
                 storeName: fresh.storeName || prev.storeName,
-                pendingVendors: Array.isArray(fresh.pendingVendors) ? fresh.pendingVendors : prev.pendingVendors,
+                pendingVendors: fresh.skipPendingVendorsUpdate
+                    ? prev.pendingVendors
+                    : Array.isArray(fresh.pendingVendors)
+                      ? fresh.pendingVendors
+                      : prev.pendingVendors,
                 sssgPercent: fresh.sssgPercent != null ? fresh.sssgPercent : prev.sssgPercent,
                 retained: true,
             };
         }
-        return fresh;
+        const { skipPendingVendorsUpdate: _skip4, ...cleanFresh } = fresh;
+        return cleanFresh;
     }).filter(Boolean);
 }
 
@@ -1909,7 +2014,7 @@ function buildCacheShellFromStoreList() {
     return { success: true, timestamp: new Date().toISOString(), stores };
 }
 
-function applyScrapeScheduleToCache(cache, now = new Date()) {
+function applyScrapeScheduleToCache(cache, now = new Date(), { persist = true } = {}) {
     if (!cache) return cache;
     if (!Array.isArray(cache.stores)) cache.stores = [];
 
@@ -1941,7 +2046,7 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
 
         if (phase === 'idle' && !inPostCloseGrace) {
             if (prev && prev !== 'idle') {
-                finalizeForecastHistoryBeforeClear(store, listedStore, now);
+                if (persist) finalizeForecastHistoryBeforeClear(store, listedStore, now);
                 clearStoreScrapeCaches(key);
             }
             store.actual = [];
@@ -1952,7 +2057,7 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
             delete store.postCloseSnapshot;
             store.scrapePhase = 'idle';
         } else if (phase === 'retain' || inPostCloseGrace) {
-            if (storeHasMeaningfulData(store)) {
+            if (persist && storeHasMeaningfulData(store)) {
                 const todayKey = getStoreDateKey(listedStore, now);
                 const weekStart = getMelbourneWeekStart(now);
                 const todayEntry = getStoreDayEntry(key, todayKey, weekStart);
@@ -1963,7 +2068,7 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
             if (!storeHasMeaningfulData(store)) {
                 restorePostCloseSnapshot(store, now);
             }
-            if (storeHasMeaningfulData(store)) {
+            if (persist && storeHasMeaningfulData(store)) {
                 const todayKey = getStoreDateKey(listedStore, now);
                 capturePostCloseSnapshot(store, {
                     recordForecastHistory: true,
@@ -1973,7 +2078,7 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
             store.scrapePhase = 'retain';
         } else {
             if (prev === 'idle') {
-                finalizeEndOfYesterdaySssg(store, now);
+                if (persist) finalizeEndOfYesterdaySssg(store, now);
                 resetScheduledOrdersForNewDay(key);
                 resetSssgForNewDay(key);
                 resetWeeklyLedgerIfNeeded(now);
@@ -1985,7 +2090,7 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
             if (store.sssgPercent == null && storeHasMeaningfulData(store)) {
                 store.sssgPercent = computeSssgForStore(store);
             }
-            if (storeHasMeaningfulData(store)) {
+            if (persist && storeHasMeaningfulData(store)) {
                 syncSssgWeeklyForStore(store, { finalize: false });
                 capturePostCloseSnapshot(store);
             }
@@ -1996,6 +2101,26 @@ function applyScrapeScheduleToCache(cache, now = new Date()) {
     }
 
     return cache;
+}
+
+/** Throttle disk-backed schedule sync so API reads stay fast. */
+const SCRAPE_SCHEDULE_PERSIST_MS = Number(process.env.SCRAPE_SCHEDULE_PERSIST_MS || 30000);
+let scrapeSchedulePersistTimer = null;
+let scrapeSchedulePersistDue = false;
+
+function scheduleScrapeSchedulePersist() {
+    scrapeSchedulePersistDue = true;
+    if (scrapeSchedulePersistTimer) return;
+    scrapeSchedulePersistTimer = setTimeout(() => {
+        scrapeSchedulePersistTimer = null;
+        if (!scrapeSchedulePersistDue || !salesCache) return;
+        scrapeSchedulePersistDue = false;
+        try {
+            applyScrapeScheduleToCache(salesCache, new Date(), { persist: true });
+        } catch (err) {
+            console.warn('[Dashboard] Scheduled scrape-schedule persist failed:', err.message);
+        }
+    }, SCRAPE_SCHEDULE_PERSIST_MS);
 }
 
 function logScrapeStart(options = {}) {
@@ -2011,16 +2136,86 @@ function logScrapeStart(options = {}) {
 }
 
 function salesScrapeShouldDefer() {
+    if (!mmxPauseScrapeForPriority()) return false;
+    // Yield only to MIC/admin. Vendor holds the same browser slot but is lower
+    // priority — sales enters the queue and preempts vendor instead of soft-deferring.
     return (
-        isMmxResourceBusy() ||
         hasPendingHigherPriority(PRIORITY.SCRAPE) ||
         hasBlockingWorkForPriority(PRIORITY.SCRAPE)
     );
 }
 
+function vendorScrapeShouldDefer() {
+    if (salesInFlight) return true;
+    if (!mmxPauseScrapeForPriority()) return false;
+    return (
+        hasPendingHigherPriority(PRIORITY.VENDOR) ||
+        hasBlockingWorkForPriority(PRIORITY.VENDOR)
+    );
+}
+
+async function runSalesScrapeJob(scrapeOpts) {
+    const run = () => scrapeWithRetry(scrapeOpts);
+    if (scrapeOpts.scrapeReason === 'continuous') return run();
+    if (!mmxPauseScrapeForPriority()) return run();
+    return runWithPriority(PRIORITY.SCRAPE, {
+        type: 'sales-scrape',
+        label: `sales scrape (${scrapeOpts.scrapeReason || 'manual'})`,
+        run,
+    });
+}
+
+async function scrapeSingleStoreContinuous(store) {
+    const storeNumber = String(store?.storeNumber || '').trim();
+    if (!storeNumber) return null;
+    const result = await runSalesScrapeJob({
+        storeNumbers: [storeNumber],
+        skipPendingVendors: true,
+        scrapeReason: 'continuous',
+    });
+    return (result?.stores || []).find((row) => String(row.storeNumber) === storeNumber) || null;
+}
+
+function mergeSingleStoreScrapeIntoCache(storeRow, timestamp) {
+    if (!storeRow?.storeNumber) return;
+    if (!salesCache) {
+        salesCache = buildCacheShellFromStoreList();
+        salesCacheAt = Date.now();
+    }
+
+    const when = timestamp || new Date().toISOString();
+    const fresh = { success: true, timestamp: when, stores: [storeRow] };
+    salesCache = {
+        success: true,
+        timestamp: when,
+        stores: mergeStoresPreservingGood(salesCache, fresh),
+    };
+
+    if (storeHasMeaningfulData(storeRow) && !storeRow.error) {
+        noteStoreScrapeSuccess(storeRow.storeNumber, Date.now());
+        lastSalesScrapeCompletedAt = when;
+        salesCacheAt = Date.now();
+        syncSssgWeeklyForStore(storeRow, { finalize: false });
+        capturePostCloseSnapshot(storeRow);
+    }
+    applyScrapeScheduleToCache(salesCache);
+    liveEvents.bump('sales.updated', { storeCount: 1 });
+}
+
+async function runVendorScrapeJob(options) {
+    const run = () => vendorScrapeWithRetry(options);
+    if (!mmxPauseScrapeForPriority()) return run();
+    return runWithPriority(PRIORITY.VENDOR, {
+        type: 'vendor-scrape',
+        label: `vendor scrape (${options.scrapeReason || 'manual'})`,
+        run,
+    });
+}
+
 /** Run a scrape and merge it into the cache (per-store retention). De-duped via salesInFlight. */
 function runScrapeIntoCache(options = {}) {
     if (salesInFlight) return salesInFlight;
+    salesScrapeStartedAt = Date.now();
     salesInFlight = (async () => {
         try {
             applyScrapeScheduleToCache(salesCache);
@@ -2050,11 +2245,7 @@ function runScrapeIntoCache(options = {}) {
             }
 
             logScrapeStart(scrapeOpts);
-            const result = await runWithPriority(PRIORITY.SCRAPE, {
-                type: 'sales-scrape',
-                label: `sales scrape (${scrapeOpts.scrapeReason || 'manual'})`,
-                run: () => scrapeWithRetry(scrapeOpts),
-            });
+            const result = await runSalesScrapeJob(scrapeOpts);
             const scrapedStores = Array.isArray(result.stores) ? result.stores : [];
             const meaningfulCount = countMeaningfulScrapeStores(scrapedStores);
             const scrapeSkipped = Boolean(result.scrapeSkipped) && meaningfulCount === 0;
@@ -2095,7 +2286,7 @@ function runScrapeIntoCache(options = {}) {
             return salesCache;
         } catch (error) {
             if (error?.aborted || error instanceof MmxWorkAbortedError) {
-                console.log('[Dashboard] Sales scrape aborted - stock count / orders in progress');
+                console.log(`[Dashboard] ${error.message || 'Sales scrape aborted'}`);
                 if (!salesCache) {
                     salesCache = buildCacheShellFromStoreList();
                     salesCacheAt = Date.now();
@@ -2109,8 +2300,106 @@ function runScrapeIntoCache(options = {}) {
     })();
     salesInFlight.catch(() => {}).finally(() => {
         salesInFlight = null;
+        salesScrapeStartedAt = 0;
     });
     return salesInFlight;
+}
+
+async function vendorScrapeWithRetry(scrapeOptions = {}) {
+    resetSalesScrapeAbort();
+    let lastError;
+    const attempts = Math.max(1, SCRAPE_RETRIES + 1);
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+        let activeBrowser = null;
+        try {
+            return await withTimeout(
+                scrapeVendorsData({
+                    ...scrapeOptions,
+                    onBrowser: (browser) => {
+                        activeBrowser = browser;
+                        registerSalesScrapeBrowser(browser);
+                    },
+                }),
+                SCRAPE_TIMEOUT_MS,
+                async () => {
+                    if (!activeBrowser) return;
+                    console.warn('API: Closing active browser after vendor scrape timeout');
+                    await closeBrowserQuietly(activeBrowser, 'vendor-scrape-timeout');
+                    clearSalesScrapeBrowser(activeBrowser);
+                }
+            );
+        } catch (error) {
+            if (activeBrowser) clearSalesScrapeBrowser(activeBrowser);
+            if (error?.aborted || error instanceof MmxWorkAbortedError) {
+                throw error;
+            }
+            lastError = error;
+            console.error(`API: Vendor scrape attempt ${attempt}/${attempts} failed:`, error.message);
+        }
+    }
+    throw lastError || new Error('Vendor scrape failed');
+}
+
+/** Pending-vendor scrape only; patches salesCache.pendingVendors per store. */
+function runVendorScrapeIntoCache(options = {}) {
+    if (vendorInFlight) return vendorInFlight;
+    vendorInFlight = (async () => {
+        try {
+            if (!anyStoreInActiveScrapeWindow()) {
+                try {
+                    const { maybeTeardownOutsideWindow } = require('../mmx/src/salesSessionPool');
+                    await maybeTeardownOutsideWindow();
+                } catch {
+                    /* ignore */
+                }
+                return salesCache;
+            }
+            if (vendorScrapeShouldDefer()) {
+                console.log('[Dashboard] Vendor scrape paused - higher-priority MMX work queued or in progress');
+                return salesCache;
+            }
+
+            console.log(`[Dashboard] Vendor scrape (${options.scrapeReason || 'manual'})`);
+            const result = await runVendorScrapeJob(options);
+
+            const stores = Array.isArray(result.stores) ? result.stores : [];
+            if (!salesCache) {
+                salesCache = buildCacheShellFromStoreList();
+                salesCacheAt = Date.now();
+            }
+            for (const row of stores) {
+                if (!row?.storeNumber || row.error) continue;
+                const vendors = Array.isArray(row.pendingVendors) ? row.pendingVendors : [];
+                patchSalesCachePendingVendors(row.storeNumber, vendors);
+            }
+            applyScrapeScheduleToCache(salesCache);
+            if (stores.length) {
+                console.log(
+                    `[Dashboard] Vendor scrape complete - ${stores.length} store(s): ${stores
+                        .map((s) => `${s.storeNumber}(${(s.pendingVendors || []).length})`)
+                        .join(', ')}`
+                );
+                liveEvents.bump('sales.updated', { storeCount: salesCache.stores?.length || 0 });
+                scheduleOrderingReportPrefetch({
+                    stores: (salesCache.stores || []).filter((s) =>
+                        stores.some((r) => String(r.storeNumber) === String(s.storeNumber))
+                    ),
+                });
+            }
+            return salesCache;
+        } catch (error) {
+            if (error?.aborted || error instanceof MmxWorkAbortedError) {
+                console.log(`[Dashboard] ${error.message || 'Vendor scrape aborted'}`);
+                return salesCache;
+            }
+            notifyScrapeFailure(error, 'vendor scrape cycle').catch(() => {});
+            throw error;
+        }
+    })();
+    vendorInFlight.catch(() => {}).finally(() => {
+        vendorInFlight = null;
+    });
+    return vendorInFlight;
 }
 
 /** After MMX logins are saved, scrape all credentialed stores once the batch settles. */
@@ -2140,34 +2429,48 @@ function queueStoreLoginBootstrapScrape(storeNumber) {
     }, 5000);
 }
 
-async function getSalesDataCached() {
-    applyScrapeScheduleToCache(salesCache);
+async function getSalesDataCached(options = {}) {
+    const requestedStore = String(options.storeNumber || '').trim();
+    // In-memory phase apply only — disk ledger/snapshot writes are throttled.
+    applyScrapeScheduleToCache(salesCache, new Date(), { persist: false });
+    scheduleScrapeSchedulePersist();
 
     if (salesScrapeShouldDefer()) {
         if (!salesCache) {
             salesCache = buildCacheShellFromStoreList();
             salesCacheAt = Date.now();
-            applyScrapeScheduleToCache(salesCache);
+            applyScrapeScheduleToCache(salesCache, new Date(), { persist: false });
         }
         return salesCache;
+    }
+
+    maybeAbortHungSalesScrape();
+
+    const shouldRefreshStore =
+        requestedStore &&
+        anyStoreInActiveScrapeWindow() &&
+        isStoreSalesDataStale(requestedStore) &&
+        !salesInFlight;
+
+    const shouldRefreshMarket =
+        !requestedStore &&
+        anyStoreInActiveScrapeWindow() &&
+        !isSalesCacheFresh() &&
+        !salesInFlight;
+
+    if (shouldRefreshStore) {
+        runScrapeIntoCache({ scrapeReason: 'on-demand', storeNumbers: [requestedStore] });
+    } else if (shouldRefreshMarket) {
+        runScrapeIntoCache({ scrapeReason: 'on-demand' });
     }
 
     if (salesCache) {
-        if (anyStoreInActiveScrapeWindow() && !isSalesCacheFresh() && !salesInFlight) {
-            runScrapeIntoCache({ scrapeReason: 'on-demand' });
-        }
         return salesCache;
     }
 
-    if (!salesCache) {
-        salesCache = buildCacheShellFromStoreList();
-        salesCacheAt = Date.now();
-        applyScrapeScheduleToCache(salesCache);
-    }
-
-    if (anyStoreInActiveScrapeWindow() && !isSalesCacheFresh() && !salesInFlight) {
-        runScrapeIntoCache({ scrapeReason: 'on-demand' });
-    }
+    salesCache = buildCacheShellFromStoreList();
+    salesCacheAt = Date.now();
+    applyScrapeScheduleToCache(salesCache, new Date(), { persist: false });
     return salesCache;
 }
 
@@ -4096,6 +4399,26 @@ app.get('/api/admin/logs/stream', (req, res) => {
     }
 });
 
+app.get('/api/admin/logs/download', (req, res) => {
+    const user = req.dashboardUser || getRequestUser(req);
+    if (!canUserAccessAdminMenu(user)) {
+        res.status(403).json({ success: false, error: 'Admin menu access required.' });
+        return;
+    }
+    try {
+        const exportPayload = adminLiveLogs.buildLogExport(req.query?.source, {
+            maxBytesPerFile: req.query?.maxBytes,
+        });
+        res.set('Cache-Control', 'no-store');
+        res.setHeader('Content-Type', exportPayload.contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${exportPayload.filename}"`);
+        res.send(exportPayload.body);
+    } catch (err) {
+        console.error('[AdminLogs] download failed:', err);
+        res.status(500).json({ success: false, error: err?.message || 'Could not export logs.' });
+    }
+});
+
 app.get('/api/admin/forecast/next-three-weeks', (req, res) => {
     const user = req.dashboardUser || getRequestUser(req);
     if (!canUserAccessAdminMenu(user)) {
@@ -5195,7 +5518,12 @@ app.get('/api/admin/mmx-queue', (req, res) => {
     const snapshot = getQueueSnapshot();
     res.json({
         success: true,
-        priorities: { MIC: PRIORITY.MIC, ADMIN: PRIORITY.ADMIN, SCRAPE: PRIORITY.SCRAPE },
+        priorities: {
+            MIC: PRIORITY.MIC,
+            ADMIN: PRIORITY.ADMIN,
+            SCRAPE: PRIORITY.SCRAPE,
+            VENDOR: PRIORITY.VENDOR,
+        },
         ...snapshot,
     });
 });
@@ -6867,7 +7195,7 @@ app.get('/api/sales', async (req, res) => {
             return;
         }
 
-        fullPayload = await getSalesDataCached();
+        fullPayload = await getSalesDataCached({ storeNumber: requestedStore });
         const testPending = wantsTestStockCountPending(req);
         const user = req.dashboardUser || getRequestUser(req);
         res.json({
@@ -6900,6 +7228,41 @@ app.get('/api/sales', async (req, res) => {
     }
 });
 
+const OVERVIEW_PAYLOAD_CACHE_MS = Number(process.env.OVERVIEW_PAYLOAD_CACHE_MS || 10000);
+const overviewPayloadCache = new Map();
+
+function overviewPayloadCacheKey(user, { store = '', viewAsStore = false } = {}) {
+    const scope = getOverviewScope(user);
+    const username = String(user?.username || '').toLowerCase();
+    if (scope === 'store' || viewAsStore) {
+        return `store:${username}:${String(store || '').toLowerCase()}`;
+    }
+    const areas = (user?.accessibleAreas || [])
+        .map((name) => String(name || '').trim().toLowerCase())
+        .filter(Boolean)
+        .sort()
+        .join('|');
+    return `multi:${username}:${scope}:${areas || '*'}`;
+}
+
+function readOverviewPayloadCache(key) {
+    const entry = overviewPayloadCache.get(key);
+    if (!entry) return null;
+    if (Date.now() - entry.at > OVERVIEW_PAYLOAD_CACHE_MS) {
+        overviewPayloadCache.delete(key);
+        return null;
+    }
+    return entry.body;
+}
+
+function writeOverviewPayloadCache(key, body) {
+    overviewPayloadCache.set(key, { at: Date.now(), body });
+    if (overviewPayloadCache.size > 200) {
+        const oldest = overviewPayloadCache.keys().next().value;
+        overviewPayloadCache.delete(oldest);
+    }
+}
+
 async function handleOverviewApi(req, res) {
     try {
         if (!assertOverviewAccess(req, res)) return;
@@ -6915,6 +7278,15 @@ async function handleOverviewApi(req, res) {
         if (scope === 'store' || viewAsStore) {
             const store = scope === 'store' ? storeQuery || singleStoreForUser(user) : storeQuery;
             if (!store || !assertStoreAccess(req, res, store)) return;
+            const cacheKey = overviewPayloadCacheKey(user, { store, viewAsStore: Boolean(viewAsStore) });
+            const cached = readOverviewPayloadCache(cacheKey);
+            if (cached) {
+                res.json({
+                    ...cached,
+                    salesScrapeStatus: getSalesScrapeStatus(user),
+                });
+                return;
+            }
             let storeSlice = {};
             if (isTestStore(store)) {
                 const payload = await getSalesDataCached();
@@ -6939,7 +7311,19 @@ async function handleOverviewApi(req, res) {
                 return;
             }
             const { ok, ...payload } = result;
+            const body = { success: true, ...payload };
+            writeOverviewPayloadCache(cacheKey, body);
             res.json({ success: true, salesScrapeStatus: getSalesScrapeStatus(user), ...payload });
+            return;
+        }
+
+        const multiCacheKey = overviewPayloadCacheKey(user);
+        const multiCached = readOverviewPayloadCache(multiCacheKey);
+        if (multiCached) {
+            res.json({
+                ...multiCached,
+                salesScrapeStatus: getSalesScrapeStatus(user),
+            });
             return;
         }
 
@@ -6971,6 +7355,8 @@ async function handleOverviewApi(req, res) {
             return;
         }
         const { ok, ...body } = result;
+        const responseBody = { success: true, ...body };
+        writeOverviewPayloadCache(multiCacheKey, responseBody);
         res.json({
             success: true,
             salesScrapeStatus: getSalesScrapeStatus(user),
@@ -8975,11 +9361,11 @@ async function buildAreaDashboardPayload(areaParam, user, salesPayload, auditSta
 async function loadAuditStateMapForStores(storeNumbers) {
     const map = new Map();
     const nums = [...new Set((storeNumbers || []).map((n) => String(n).trim()).filter(Boolean))];
-    await Promise.all(
-        nums.map(async (num) => {
-            map.set(num, await getAuditState(num));
-        })
-    );
+    const all = await getAuditStateAll();
+    for (const num of nums) {
+        const dismissed = all.stores[auditStoreKey(num)] || [];
+        map.set(num, { periodKey: all.periodKey, weekKey: all.periodKey, dismissed });
+    }
     return map;
 }
 
@@ -9118,6 +9504,41 @@ app.get('/api/area-dashboard', async (req, res) => {
     }
 });
 
+/** Tray / localhost manual re-run of the daily reports orchestrator. */
+app.post('/api/host/daily-reports/run', (req, res) => {
+    if (getRequestIp(req) !== '127.0.0.1') {
+        res.status(403).json({ success: false, error: 'Localhost only.' });
+        return;
+    }
+    if (dailyReportsOrchestratorRunning) {
+        res.status(409).json({ success: false, error: 'Daily reports are already running.' });
+        return;
+    }
+
+    const dateKey = melbourneDailyReportsDateKey();
+    res.status(202).json({
+        success: true,
+        started: true,
+        dateKey,
+        message: 'Daily reports started in the background.',
+    });
+
+    // Manual tray re-run is allowed even when the scheduled orchestrator is disabled.
+    void forceRunDailyReportsOrchestrator({
+        ...buildDailyReportsDeps(),
+        isEnabled: () => true,
+    })
+        .then((summary) => {
+            console.info(
+                `[DailyReports] Force re-run finished for ${dateKey}` +
+                    (summary?.failureCount != null ? ` (${summary.failureCount} failure(s))` : '')
+            );
+        })
+        .catch((err) => {
+            console.warn('[DailyReports] Force re-run failed:', err.message || err);
+        });
+});
+
 app.use((req, res) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
         if (isApiRequest(req)) {
@@ -9142,6 +9563,7 @@ app.use((err, req, res, next) => {
 });
 
 let salesScrapeSchedulerTimer = null;
+let vendorScrapeSchedulerTimer = null;
 function cancelSchedulerHandle(handle) {
     handle?.cancel?.();
 }
@@ -9151,12 +9573,20 @@ function primeSalesCacheFromDisk() {
     applyScrapeScheduleToCache(salesCache);
     const retained = (salesCache.stores || []).filter((s) => storeHasMeaningfulData(s)).length;
     if (retained) {
-        const when = Date.now();
         for (const store of salesCache.stores || []) {
-            if (storeHasMeaningfulData(store)) noteStoreScrapeSuccess(store.storeNumber, when);
+            if (!storeHasMeaningfulData(store)) continue;
+            // Use snapshot age so interval picks truly stale stores, not "just scraped" on boot.
+            const mtime = getSnapshotMtimeMs(store.storeNumber);
+            noteStoreScrapeSuccess(store.storeNumber, mtime || 0);
         }
-        if (!lastSalesScrapeCompletedAt) {
-            lastSalesScrapeCompletedAt = salesCache.timestamp || new Date(when).toISOString();
+        const newest = Math.max(
+            0,
+            ...(salesCache.stores || [])
+                .filter((s) => storeHasMeaningfulData(s))
+                .map((s) => getSnapshotMtimeMs(s.storeNumber))
+        );
+        if (!lastSalesScrapeCompletedAt && newest > 0) {
+            lastSalesScrapeCompletedAt = new Date(newest).toISOString();
         }
         console.log(`[Dashboard] Restored sales data for ${retained} store(s) from cache/snapshots`);
     }
@@ -9170,14 +9600,40 @@ function shouldPrimeSalesCacheOnBoot() {
 }
 
 function startBackgroundRefresh() {
-    salesScrapeSchedulerTimer = startSalesScrapeScheduler({
-        runFullScrape: (opts) =>
-            runScrapeIntoCache(opts).catch((error) => {
-                notifyScrapeFailure(error, 'interval scrape').catch(() => {});
+    if (isContinuousWorkersEnabled()) {
+        salesScrapeSchedulerTimer = startContinuousSalesWorkers({
+            listStores: () =>
+                getStoreList()
+                    .filter((store) => storeHasMmxCredentials(store.storeNumber))
+                    .filter((store) => getStoreScrapePhase(store) === 'active'),
+            isStoreActive: (store) => getStoreScrapePhase(store) === 'active',
+            scrapeStore: async (store) => {
+                const row = await scrapeSingleStoreContinuous(store);
+                if (row) mergeSingleStoreScrapeIntoCache(row);
+            },
+        });
+    } else {
+        salesScrapeSchedulerTimer = startSalesScrapeScheduler({
+            runFullScrape: (opts) =>
+                runScrapeIntoCache(opts).catch((error) => {
+                    notifyScrapeFailure(error, 'interval scrape').catch(() => {});
+                    throw error;
+                }),
+            shouldPrimeOnBoot: shouldPrimeSalesCacheOnBoot,
+            isScrapeInFlight: () => {
+                maybeAbortHungSalesScrape();
+                return Boolean(salesInFlight);
+            },
+        });
+    }
+    vendorScrapeSchedulerTimer = startVendorScrapeScheduler({
+        runVendorScrape: (opts) =>
+            runVendorScrapeIntoCache(opts).catch((error) => {
+                notifyScrapeFailure(error, 'vendor interval scrape').catch(() => {});
                 throw error;
             }),
-        shouldPrimeOnBoot: shouldPrimeSalesCacheOnBoot,
-        isScrapeInFlight: () => Boolean(salesInFlight),
+        isVendorScrapeInFlight: () => Boolean(vendorInFlight),
+        isSalesScrapeInFlight: () => Boolean(salesInFlight),
     });
     scheduleMorningOrderingPrecheckIfNeeded();
 }
@@ -9299,7 +9755,13 @@ async function runFiveAmReportsForStore(storeNumber, { force = false } = {}) {
 
 async function maybeRunDailyReports() {
     if (!DAILY_REPORTS_ORCHESTRATOR_ENABLED) return;
-    await maybeRunDailyReportsOrchestrator({
+    await maybeRunDailyReportsOrchestrator(buildDailyReportsDeps()).catch((err) =>
+        console.warn('[DailyReports] Orchestrator failed:', err.message)
+    );
+}
+
+function buildDailyReportsDeps() {
+    return {
         isEnabled: () => DAILY_REPORTS_ORCHESTRATOR_ENABLED,
         isRunning: () => dailyReportsOrchestratorRunning,
         setRunning: (value) => {
@@ -9316,7 +9778,7 @@ async function maybeRunDailyReports() {
         alertsEnabled,
         sendAlertEmail,
         postAlertWebhook,
-    }).catch((err) => console.warn('[DailyReports] Orchestrator failed:', err.message));
+    };
 }
 
 function startDailyReportsScheduler() {
@@ -9394,6 +9856,13 @@ async function shutdown(signal) {
     shuttingDown = true;
     console.log(`[Dashboard] ${signal} received - closing browsers and server…`);
     cancelSchedulerHandle(salesScrapeSchedulerTimer);
+    cancelSchedulerHandle(vendorScrapeSchedulerTimer);
+    try {
+        const { closeAllSessions } = require('../mmx/src/salesSessionPool');
+        await closeAllSessions('shutdown');
+    } catch (err) {
+        console.warn('[Dashboard] Session pool shutdown failed:', err.message);
+    }
     const force = setTimeout(() => {
         console.warn('[Dashboard] Forced exit after shutdown timeout');
         process.exit(0);
